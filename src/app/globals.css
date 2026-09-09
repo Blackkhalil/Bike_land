@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------
+   Bike Land — jetons de design
+   Cahier des charges §4.1 : « chaleureux et convivial, tons naturels
+   et accueillants — terracotta, beige, vert olive, touches vives
+   type orange/jaune évoquant l'aventure ».
+   ------------------------------------------------------------------ */
+
+@theme {
+  /* Terracotta : couleur d'action, boutons primaires, chiffres clés */
+  --color-terre-50: #fdf5f1;
+  --color-terre-100: #f9e6dc;
+  --color-terre-200: #f2cbb8;
+  --color-terre-300: #e6a687;
+  --color-terre-400: #d87d57;
+  --color-terre-500: #c75c34;
+  --color-terre-600: #b04726;
+  --color-terre-700: #90371f;
+  --color-terre-800: #6d2b18;
+  --color-terre-900: #4b1f13;
+
+  /* Sable : fonds de page, cartes, respiration */
+  --color-sable-50: #fdfbf7;
+  --color-sable-100: #f8f2e9;
+  --color-sable-200: #f0e5d6;
+  --color-sable-300: #e3d3bd;
+  --color-sable-400: #d0b998;
+  --color-sable-500: #b89b73;
+
+  /* Olive : sections calmes, badges, texte secondaire sur fond clair */
+  --color-olive-50: #f5f7f0;
+  --color-olive-100: #e8eddd;
+  --color-olive-200: #d0dbbb;
+  --color-olive-300: #adbf8e;
+  --color-olive-400: #87a063;
+  --color-olive-500: #67813f;
+  --color-olive-600: #4e6630;
+  --color-olive-700: #3d4f27;
+  --color-olive-800: #2e3b1f;
+  --color-olive-900: #1f2716;
+
+  /* Soleil : accent aventure, surlignages, états actifs */
+  --color-soleil-300: #f7cf7a;
+  --color-soleil-400: #f0b445;
+  --color-soleil-500: #e2971d;
+  --color-soleil-600: #c07813;
+
+  /* Encre : noir chaud, jamais #000 */
+  --color-encre-500: #6b6058;
+  --color-encre-700: #3a322c;
+  --color-encre-800: #2a231e;
+  --color-encre-900: #1c1714;
+
+  --font-display: var(--font-bricolage), "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --radius-card: 1.5rem;
+
+  --ease-doux: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root {
+  color-scheme: light;
+  --page: var(--color-sable-50);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  background: var(--page);
+  color: var(--color-encre-900);
+  font-family: var(--font-sans);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ------------------------------------------------------------------
+   Primitives typographiques
+   ------------------------------------------------------------------ */
+
+/* Le grand titre éditorial : casse haute, interlettrage resserré,
+   interligne courte — il doit tenir comme un bloc plein. */
+.titre-editorial {
+  font-family: var(--font-display);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.03em;
+  line-height: 0.92;
+  text-wrap: balance;
+}
+
+/* Étiquette de section : petites capitales espacées, souvent numérotées. */
+.etiquette {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.lien-souligne {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0% 1px;
+  transition: background-size 0.35s var(--ease-doux);
+}
+.lien-souligne:hover {
+  background-size: 100% 1px;
+}
+
+/* Grain léger : réchauffe les aplats de sable et évite l'effet « plastique ». */
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Apparition à l'entrée dans le viewport, pilotée par IntersectionObserver. */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s var(--ease-doux),
+    transform 0.7s var(--ease-doux);
+}
+.reveal[data-visible="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+::selection {
+  background: var(--color-soleil-300);
+  color: var(--color-encre-900);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-terre-600);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* Masque les flèches des input[type=number] dans les formulaires d'options. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}

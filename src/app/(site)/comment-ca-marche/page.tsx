@@ -1,0 +1,159 @@
+import type { Metadata } from "next";
+
+import { BoutonLien } from "@/components/Bouton";
+import { VeloIllustration } from "@/components/VeloIllustration";
+import { Etiquette, Section, TitreSection } from "@/components/ui";
+import { etapesLocation } from "@/data/contenus";
+import { moyensDisponibles } from "@/lib/paiement";
+
+export const metadata: Metadata = {
+  title: "Comment ça marche",
+  description:
+    "Les cinq étapes d'une location Bike Land : choisir, réserver, payer en Mobile Money, récupérer et restituer. Sans compte, sans paperasse.",
+  alternates: { canonical: "/comment-ca-marche" },
+};
+
+export default function PageCommentCaMarche() {
+  return (
+    <>
+      <Section fond="sable" className="pb-16 pt-32 sm:pt-40">
+        <Etiquette numero="01">Le parcours</Etiquette>
+        <TitreSection as="h1" taille="lg" className="mt-6 max-w-4xl">
+          De l&apos;envie
+          <br />
+          au départ, en cinq étapes
+        </TitreSection>
+        <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-encre-500">
+          Nous avons retiré tout ce qui pouvait l&apos;être : pas de compte à créer, pas de
+          dossier à constituer, pas de photocopie de passeport. Il reste le vélo et la route.
+        </p>
+      </Section>
+
+      <Section fond="blanc" className="py-20">
+        <ol className="border-t border-encre-900/12">
+          {etapesLocation.map((etape) => (
+            <li
+              key={etape.numero}
+              className="reveal grid gap-4 border-b border-encre-900/12 py-9 sm:grid-cols-12 sm:gap-8"
+            >
+              <p className="font-display text-[2.2rem] font-extrabold leading-none tabular-nums text-terre-200 sm:col-span-2">
+                {etape.numero}
+              </p>
+              <h2 className="font-display text-[1.25rem] font-bold uppercase leading-tight tracking-[-0.01em] sm:col-span-4">
+                {etape.titre}
+              </h2>
+              <p className="text-[0.98rem] leading-relaxed text-encre-500 sm:col-span-6">
+                {etape.detail}
+              </p>
+            </li>
+          ))}
+        </ol>
+      </Section>
+
+      <Section fond="sable" className="py-20">
+        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+          <div>
+            <Etiquette numero="02">Paiement</Etiquette>
+            <TitreSection className="mt-6">
+              Mobile Money
+              <br />
+              d&apos;abord
+            </TitreSection>
+            <p className="mt-6 max-w-md text-[0.98rem] leading-relaxed text-encre-500">
+              Au Bénin, le Mobile Money est le moyen de paiement du quotidien. Nous le traitons
+              donc comme le moyen principal, la carte bancaire venant en complément pour les
+              visiteurs étrangers.
+            </p>
+            <ul className="mt-8 space-y-0">
+              {moyensDisponibles.map((moyen) => (
+                <li
+                  key={moyen.code}
+                  className="flex items-baseline justify-between gap-4 border-b border-encre-900/12 py-4 first:border-t"
+                >
+                  <span className="font-semibold">{moyen.libelle}</span>
+                  <span className="text-[0.85rem] text-encre-500">{moyen.detail}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-6 text-[0.88rem] leading-relaxed text-encre-500">
+              Les transactions passent par un agrégateur béninois agréé. Bike Land ne voit ni ne
+              conserve vos coordonnées bancaires.
+            </p>
+          </div>
+
+          <div
+            className="grid place-items-center overflow-hidden rounded-[1.75rem] px-8 py-16"
+            style={{ background: "linear-gradient(150deg, #f0e5d6 0%, #e3d3bd 100%)" }}
+          >
+            <VeloIllustration
+              categorie="RANDONNEUR"
+              teintes={["#b04726", "#fdfbf7"]}
+              className="w-full max-w-lg"
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section fond="blanc" className="py-20">
+        <div className="grid gap-12 lg:grid-cols-3">
+          {[
+            {
+              titre: "Ce qui est compris",
+              points: [
+                "Le vélo réglé à votre taille",
+                "Casque, antivol, kit de réparation et pompe",
+                "Éclairage avant et arrière",
+                "Assistance téléphonique 7 j / 7",
+                "Un point technique complet au départ",
+              ],
+            },
+            {
+              titre: "Ce qui est en option",
+              points: [
+                "Sacoches supplémentaires",
+                "Assurance sérénité, qui remplace la caution",
+                "Compteur GPS avec nos traces",
+                "Restitution dans une autre ville",
+                "Guide accompagnateur à la journée",
+              ],
+            },
+            {
+              titre: "Ce qui reste à votre charge",
+              points: [
+                "Les hébergements et les repas",
+                "Le transport jusqu'au point de retrait",
+                "Les réparations dues à une négligence",
+                "Le rapatriement au-delà de 60 km",
+              ],
+            },
+          ].map((bloc) => (
+            <div key={bloc.titre} className="reveal">
+              <h2 className="font-display text-[1.15rem] font-bold uppercase tracking-tight">
+                {bloc.titre}
+              </h2>
+              <ul className="mt-5">
+                {bloc.points.map((point) => (
+                  <li
+                    key={point}
+                    className="border-b border-encre-900/12 py-3 text-[0.92rem] leading-relaxed text-encre-500 first:border-t"
+                  >
+                    {point}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-16 flex flex-wrap gap-3">
+          <BoutonLien href="/velos" variante="primaire" taille="lg">
+            Choisir mon vélo
+          </BoutonLien>
+          <BoutonLien href="/contact" variante="contour" taille="lg" className="text-encre-900">
+            Poser une question
+          </BoutonLien>
+        </div>
+      </Section>
+    </>
+  );
+}

@@ -1,0 +1,313 @@
+// Bike Land — schéma de données
+// Cahier des charges §6.1 : PostgreSQL + Prisma.
+// La contrainte métier centrale est l'absence de double réservation :
+// elle est garantie par la transaction sérialisable de src/lib/booking/create.ts
+// et par l'index (bikeId, startDate, endDate) ci-dessous.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- Parc de vélos
+
+enum BikeCategory {
+  RANDONNEUR // vélo de voyage classique, sacoches, longue distance
+  GRAVEL     // mixte route / piste
+  VAE        // vélo à assistance électrique
+  VTC        // vélo tout chemin, polyvalent
+  TANDEM     // deux places
+}
+
+enum BikeSize {
+  S
+  M
+  L
+  XL
+}
+
+enum BikeStatus {
+  DISPONIBLE
+  EN_LOCATION
+  MAINTENANCE
+  RETIRE
+}
+
+model Bike {
+  id          String       @id @default(cuid())
+  slug        String       @unique
+  name        String
+  category    BikeCategory
+  size        BikeSize
+  status      BikeStatus   @default(DISPONIBLE)
+  shortPitch  String
+  description String       @db.Text
+
+  // Tarification de base, en FCFA. Les remises durée sont dans PriceRule.
+  dailyPriceXof Int
+  depositXof    Int     @default(0)
+
+  // Caractéristiques affichées sur la fiche produit (§2.1)
+  weightKg          Float
+  gearCount         Int
+  maxLoadKg         Int
+  suggestedRangeKm  Int
+  assistanceRangeKm Int? // uniquement pour les VAE
+  motorWatts        Int?
+  batteryWh         Int?
+
+  includedEquipment String[] // « équipement inclus » de la fiche produit
+  heroImageUrl      String?
+  galleryImageUrls  String[]
+
+  pickupPointId String?
+  pickupPoint   PickupPoint? @relation(fields: [pickupPointId], references: [id])
+
+  bookingItems     BookingItem[]
+  reviews          Review[]
+  maintenanceLogs  MaintenanceLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, status])
+  @@index([pickupPointId])
+}
+
+// Point de retrait / restitution (§8 : un seul lieu ou plusieurs, à trancher)
+model PickupPoint {
+  id        String   @id @default(cuid())
+  name      String
+  city      String
+  address   String
+  latitude  Float?
+  longitude Float?
+  openingHours String?
+  isActive  Boolean  @default(true)
+
+  bikes    Bike[]
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+}
+
+model MaintenanceLog {
+  id        String   @id @default(cuid())
+  bikeId    String
+  bike      Bike     @relation(fields: [bikeId], references: [id], onDelete: Cascade)
+  label     String
+  notes     String?  @db.Text
+  performedAt DateTime @default(now())
+  nextDueAt   DateTime?
+
+  @@index([bikeId, performedAt])
+}
+
+// ---------------------------------------------------------------- Clients
+
+// Le client ne crée pas de compte (§2.1). La fiche client est constituée
+// automatiquement à chaque réservation, dédoublonnée sur l'email.
+model Customer {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  firstName String
+  lastName  String
+  phone     String?
+  locale    String    @default("fr")
+
+  bookings  Booking[]
+  reviews   Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------- Réservations
+
+enum BookingStatus {
+  EN_ATTENTE_PAIEMENT
+  CONFIRMEE
+  EN_COURS
+  TERMINEE
+  ANNULEE
+}
+
+model Booking {
+  id        String        @id @default(cuid())
+  reference String        @unique // ex. BL-2K4M7Q, communiquée au client
+  status    BookingStatus @default(EN_ATTENTE_PAIEMENT)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  pickupPointId String?
+  pickupPoint   PickupPoint? @relation(fields: [pickupPointId], references: [id])
+
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date // dernier jour de location inclus
+  days      Int
+
+  subtotalXof Int
+  optionsXof  Int @default(0)
+  discountXof Int @default(0)
+  depositXof  Int @default(0)
+  totalXof    Int
+
+  // Accès au suivi de réservation sans authentification (§2.1, §6.1) :
+  // le lien envoyé par email porte un token signé, ce champ n'en stocke
+  // que le hachage.
+  accessTokenHash String  @unique
+  notes           String? @db.Text
+
+  items    BookingItem[]
+  options  BookingOption[]
+  payments Payment[]
+  review   Review?
+
+  confirmedAt DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, startDate])
+  @@index([startDate, endDate])
+}
+
+model BookingItem {
+  id        String  @id @default(cuid())
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bikeId    String
+  bike      Bike    @relation(fields: [bikeId], references: [id])
+
+  // Dates dupliquées depuis la réservation : c'est ce couple qui est
+  // interrogé pour la disponibilité temps réel d'un vélo donné.
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  unitPriceXof  Int
+  lineTotalXof  Int
+
+  @@unique([bookingId, bikeId])
+  @@index([bikeId, startDate, endDate])
+}
+
+model BookingOption {
+  id        String  @id @default(cuid())
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  code      String  // casque, sacoches, assurance, transfert...
+  label     String
+  priceXof  Int
+  quantity  Int     @default(1)
+}
+
+// ---------------------------------------------------------------- Paiement
+
+enum PaymentProvider {
+  FEDAPAY
+  KKIAPAY
+  ESPECES // encaissement au comptoir, saisi par l'administrateur
+}
+
+enum PaymentMethod {
+  MTN_MONEY
+  MOOV_MONEY
+  CARTE_BANCAIRE
+  ESPECES
+}
+
+enum PaymentStatus {
+  INITIE
+  REUSSI
+  ECHOUE
+  REMBOURSE
+}
+
+model Payment {
+  id        String          @id @default(cuid())
+  bookingId String
+  booking   Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  provider  PaymentProvider
+  method    PaymentMethod
+  status    PaymentStatus   @default(INITIE)
+  amountXof Int
+
+  providerReference String? @unique // identifiant de transaction FedaPay / KkiaPay
+  failureReason     String?
+
+  // Caution encaissée puis restituée (indicateur financier §2.3)
+  isDeposit  Boolean   @default(false)
+  refundedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([method])
+}
+
+model Invoice {
+  id        String   @id @default(cuid())
+  bookingId String   @unique
+  number    String   @unique // ex. FA-2026-0042
+  totalXof  Int
+  pdfUrl    String?
+  issuedAt  DateTime @default(now())
+  sentAt    DateTime?
+}
+
+// ---------------------------------------------------------------- Avis (§2.1)
+
+model Review {
+  id        String   @id @default(cuid())
+  bookingId String   @unique
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bikeId    String
+  bike      Bike     @relation(fields: [bikeId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  rating    Int      // 1 à 5
+  title     String?
+  comment   String?  @db.Text
+  isPublished Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([bikeId, isPublished])
+}
+
+// ---------------------------------------------------------------- Tarification
+
+// Règles de tarification par durée / saison / catégorie (§2.2)
+model PriceRule {
+  id        String        @id @default(cuid())
+  label     String
+  category  BikeCategory?
+  minDays   Int           @default(1)
+  maxDays   Int?
+  discountPercent Int     @default(0)
+  seasonStart DateTime?   @db.Date
+  seasonEnd   DateTime?   @db.Date
+  isActive  Boolean       @default(true)
+
+  createdAt DateTime @default(now())
+}
+
+// Demandes issues du formulaire de contact (§2.1)
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String
+  message   String   @db.Text
+  handledAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([handledAt, createdAt])
+}
