@@ -72,12 +72,17 @@ export function VeloIllustration({
       {/* --- Sacoches et porte-bagages, dessinés derrière le cadre --- */}
       {sacoches && (
         <>
-          {/* Porte-bagages, puis la sacoche suspendue en dessous */}
+          {/* Porte-bagages : plateau horizontal et ses deux haubans */}
           <path
-            d={`M${arriereX - 70} 208h122M${arriereX + 52} 208 52 0`}
+            d={
+              `M${arriereX - 70} 208h122` +
+              `M${arriereX - 62} 208l14 34` +
+              `M${arriereX + 44} 208l-10 34`
+            }
             stroke={trait}
             strokeWidth="6"
             strokeLinecap="round"
+            fill="none"
           />
           <rect x={arriereX - 66} y="212" width="112" height="76" rx="9" fill={accent} />
           <rect
