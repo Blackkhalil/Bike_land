@@ -11,5 +11,9 @@ yarn-error.log*
 .env*.local
 .vercel
 next-env.d.ts
+
+# Régénérés par `next dev` à chaque démarrage.
+AGENTS.md
+CLAUDE.md
 *.tsbuildinfo
 /prisma/*.db
