@@ -1,18 +1,28 @@
 /**
- * Calcul du devis de location.
+ * Calcul du devis.
  *
  * Un seul endroit calcule un prix dans tout le projet : le parcours de
- * réservation, l'API et l'espace d'administration appellent tous
- * `calculerDevis`. Le montant affiché au client est donc, par construction,
- * celui qui sera enregistré.
+ * réservation, l'API et l'espace d'exploitation appellent tous
+ * `calculerDevis`. Le montant affiché au client est donc, par
+ * construction, celui qui sera enregistré.
+ *
+ * Le prix ne dépend plus du vélo mais de l'offre choisie :
+ *
+ *  - **road trip** : forfait par personne, quel que soit le vélo ;
+ *  - **location libre** : grille horaire, quel que soit le vélo.
+ *
+ * La tarification journalière (majoration de haute saison, remises de
+ * durée) a été retirée : elle ne correspondait plus à l'activité.
  */
 
-import { optionsLocation, reglesPrix } from "@/data/catalogue";
-import { estHauteSaison, nombreDeJours, type DateISO } from "./dates";
-import type { OptionLocation, Velo } from "./types";
-
-/** Majoration appliquée en saison sèche, période de forte demande (§2.2). */
-export const MAJORATION_HAUTE_SAISON = 0.1;
+import { optionsLocation } from "@/data/catalogue";
+import {
+  CAUTION_LOCATION_LIBRE_XOF,
+  PRIX_ROAD_TRIP_XOF,
+  prixLocationLibre,
+  type CodeOffre,
+} from "@/data/offres";
+import type { OptionLocation } from "./types";
 
 export interface OptionChoisie {
   code: string;
@@ -25,113 +35,102 @@ export interface LigneDevis {
   montantXof: number;
 }
 
+export interface ParametresDevis {
+  offre: CodeOffre;
+  /** Road trip : nombre de participants. Un par défaut. */
+  nombrePersonnes?: number;
+  /** Location libre : durée en heures, telle que publiée dans la grille. */
+  dureeHeures?: number;
+  options?: OptionChoisie[];
+}
+
 export interface Devis {
-  jours: number;
-  prixJourXof: number;
+  offre: CodeOffre;
+  nombrePersonnes: number;
+  dureeHeures: number | null;
   sousTotalXof: number;
-  majorationSaisonXof: number;
-  remiseXof: number;
-  remisePourcent: number;
-  libelleRemise: string | null;
   optionsXof: number;
+  /**
+   * Caution demandée. Elle n'est PAS encaissée en ligne : elle est
+   * remise en espèces au départ, en même temps que la pièce d'identité,
+   * et rendue à la restitution du vélo.
+   */
   cautionXof: number;
   totalXof: number;
-  /** Montant réellement débité maintenant : total hors caution pré-autorisée. */
+  /** Montant réellement débité en ligne : le total, hors caution. */
   aPayerXof: number;
   lignes: LigneDevis[];
   optionsDetaillees: { option: OptionLocation; quantite: number; montantXof: number }[];
 }
 
-export function regleApplicable(jours: number) {
-  return (
-    reglesPrix.find((regle) => jours >= regle.minJours && (regle.maxJours === null || jours <= regle.maxJours)) ??
-    reglesPrix[0]
-  );
+/** Erreur métier : durée hors de la grille publiée. */
+export class DureeNonTarifeeError extends Error {
+  constructor(heures: number) {
+    super(`Aucun tarif publié pour ${heures} heures de location libre.`);
+    this.name = "DureeNonTarifeeError";
+  }
 }
 
-export function calculerDevis(
-  velo: Pick<Velo, "prixJourXof" | "cautionXof">,
-  dateDebut: DateISO,
-  dateFin: DateISO,
-  optionsChoisies: OptionChoisie[] = [],
-  avecAssuranceRemplacantCaution = true,
-): Devis {
-  const jours = Math.max(1, nombreDeJours(dateDebut, dateFin));
-  const base = velo.prixJourXof * jours;
+export function calculerDevis(parametres: ParametresDevis): Devis {
+  const { offre } = parametres;
+  const nombrePersonnes = Math.max(1, Math.min(parametres.nombrePersonnes ?? 1, 12));
 
-  // La majoration ne s'applique qu'aux jours effectivement en haute saison,
-  // pour ne pas pénaliser une location à cheval sur deux périodes.
-  const joursHauteSaison = compterJoursHauteSaison(dateDebut, jours);
-  const majorationSaisonXof = Math.round(velo.prixJourXof * joursHauteSaison * MAJORATION_HAUTE_SAISON);
+  const lignes: LigneDevis[] = [];
+  let sousTotalXof: number;
+  let cautionXof: number;
+  let dureeHeures: number | null = null;
 
-  const sousTotalXof = base + majorationSaisonXof;
+  if (offre === "road-trip") {
+    sousTotalXof = PRIX_ROAD_TRIP_XOF * nombrePersonnes;
+    cautionXof = 0;
+    lignes.push({
+      libelle:
+        nombrePersonnes > 1 ? `Road trip — ${nombrePersonnes} personnes` : "Road trip — 1 personne",
+      detail: `${PRIX_ROAD_TRIP_XOF.toLocaleString("fr-FR")} FCFA par personne, eau et coco compris`,
+      montantXof: sousTotalXof,
+    });
+  } else {
+    dureeHeures = parametres.dureeHeures ?? 1;
+    const prix = prixLocationLibre(dureeHeures);
+    // Une durée hors grille n'est pas arrondie en silence : elle est
+    // refusée. Inventer un prix serait pire que de renvoyer une erreur.
+    if (prix === null) throw new DureeNonTarifeeError(dureeHeures);
 
-  const regle = regleApplicable(jours);
-  const remiseXof = Math.round((sousTotalXof * regle.remisePourcent) / 100);
+    sousTotalXof = prix;
+    cautionXof = CAUTION_LOCATION_LIBRE_XOF;
+    lignes.push({
+      libelle: `Location libre — ${dureeHeures} h`,
+      detail: "Vélo, casque et antivol compris",
+      montantXof: sousTotalXof,
+    });
+  }
 
-  const optionsDetaillees = optionsChoisies
+  const optionsDetaillees = (parametres.options ?? [])
     .map((choix) => {
       const option = optionsLocation.find((o) => o.code === choix.code);
       if (!option || choix.quantite < 1) return null;
       const quantite = option.quantifiable ? Math.min(choix.quantite, 6) : 1;
-      const multiplicateur = option.unite === "jour" ? jours : 1;
-      return {
-        option,
-        quantite,
-        montantXof: option.prixXof * quantite * multiplicateur,
-      };
+      return { option, quantite, montantXof: option.prixXof * quantite };
     })
     .filter((ligne): ligne is NonNullable<typeof ligne> => ligne !== null);
 
   const optionsXof = optionsDetaillees.reduce((total, ligne) => total + ligne.montantXof, 0);
 
-  // L'assurance sérénité couvre la casse et le vol : la caution n'a plus
-  // lieu d'être pré-autorisée (cf. FAQ « Une caution est-elle demandée ? »).
-  const assuranceSouscrite = optionsDetaillees.some((ligne) => ligne.option.code === "assurance");
-  const cautionXof = assuranceSouscrite && avecAssuranceRemplacantCaution ? 0 : velo.cautionXof;
-
-  const totalXof = sousTotalXof - remiseXof + optionsXof;
-
-  const lignes: LigneDevis[] = [
-    {
-      libelle: `${jours} jour${jours > 1 ? "s" : ""} de location`,
-      detail: `${velo.prixJourXof.toLocaleString("fr-FR")} FCFA par jour`,
-      montantXof: base,
-    },
-  ];
-
-  if (majorationSaisonXof > 0) {
-    lignes.push({
-      libelle: "Haute saison",
-      detail: `${joursHauteSaison} jour${joursHauteSaison > 1 ? "s" : ""} entre novembre et mars`,
-      montantXof: majorationSaisonXof,
-    });
-  }
-
-  if (remiseXof > 0) {
-    lignes.push({
-      libelle: regle.libelle,
-      detail: `− ${regle.remisePourcent} % sur la location`,
-      montantXof: -remiseXof,
-    });
-  }
-
   for (const ligne of optionsDetaillees) {
     lignes.push({
       libelle: ligne.option.libelle + (ligne.quantite > 1 ? ` × ${ligne.quantite}` : ""),
-      detail: ligne.option.unite === "jour" ? `${ligne.option.prixXof.toLocaleString("fr-FR")} FCFA / jour` : "Forfait",
+      detail: ligne.option.description,
       montantXof: ligne.montantXof,
     });
   }
 
+  const totalXof = sousTotalXof + optionsXof;
+
   return {
-    jours,
-    prixJourXof: velo.prixJourXof,
+    offre,
+    nombrePersonnes,
+    dureeHeures,
     sousTotalXof,
-    majorationSaisonXof,
-    remiseXof,
-    remisePourcent: regle.remisePourcent,
-    libelleRemise: remiseXof > 0 ? regle.libelle : null,
     optionsXof,
     cautionXof,
     totalXof,
@@ -139,21 +138,4 @@ export function calculerDevis(
     lignes,
     optionsDetaillees,
   };
-}
-
-function compterJoursHauteSaison(dateDebut: DateISO, jours: number): number {
-  let compte = 0;
-  const depart = new Date(`${dateDebut}T00:00:00.000Z`).getTime();
-  for (let i = 0; i < jours; i += 1) {
-    const jour = new Date(depart + i * 86_400_000).toISOString().slice(0, 10);
-    if (estHauteSaison(jour)) compte += 1;
-  }
-  return compte;
-}
-
-/** Prix affiché « à partir de » sur les cartes du catalogue. */
-export function prixIndicatifSemaine(velo: Pick<Velo, "prixJourXof">): number {
-  const regle = regleApplicable(7);
-  const brut = velo.prixJourXof * 7;
-  return brut - Math.round((brut * regle.remisePourcent) / 100);
 }

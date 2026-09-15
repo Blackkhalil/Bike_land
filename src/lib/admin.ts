@@ -1,15 +1,16 @@
 /**
- * Accès à l'espace d'administration.
+ * Accès à l'espace d'exploitation.
  *
- * Le cahier des charges ne décrit pas d'utilisateurs multiples côté
- * exploitant : un mot de passe partagé, défini par variable
- * d'environnement, est proportionné au besoin. Le cookie déposé ne
- * contient pas le mot de passe mais une signature horodatée, ce qui
- * permet de le faire expirer sans base de sessions.
+ * Un seul mot de passe partagé : l'exploitant et le coordinateur de
+ * sortie sont la même personne. Un système de rôles séparés a été écrit
+ * puis retiré — il n'apportait que de la complexité tant qu'une seule
+ * personne tient les deux casquettes. Si un jour quelqu'un est recruté
+ * pour encadrer les sorties, c'est ici qu'il faudra rouvrir le sujet :
+ * un coordinateur n'a pas à voir le chiffre d'affaires ni la base
+ * clients complète, ce que la page APDP du site promet d'ailleurs.
  *
- * Si un jour plusieurs comptes sont nécessaires (plusieurs points de
- * retrait, plusieurs gestionnaires), c'est ici qu'il faudra brancher une
- * vraie table d'utilisateurs.
+ * Le cookie ne contient pas le mot de passe mais une signature
+ * horodatée, ce qui permet de le faire expirer sans base de sessions.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";

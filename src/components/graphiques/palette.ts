@@ -1,41 +1,39 @@
 /**
  * Palette des graphiques du tableau de bord.
  *
- * Chaque valeur a été vérifiée avec le validateur de la méthode de
- * visualisation (bandes de clarté, plancher de chroma, séparation sous
- * protanopie et deutéranopie, contraste sur le fond) — et non choisie à
- * l'œil. Les résultats, sur fond blanc :
+ * Reprise sur la charte « noir / orange signal », en conservant la
+ * méthode d'origine : trois teintes catégorielles nettement séparées en
+ * teinte ET en clarté, une rampe séquentielle monotone d'une seule
+ * teinte, et jamais de sens porté par la seule couleur.
  *
- *  - `categoriel` (3 emplacements, paires adjacentes) : tout au vert,
- *    pire paire ΔE 20,5 en protanopie, 25,7 en vision normale.
- *  - `categoriel` limité aux deux premiers emplacements dès qu'une forme
- *    met n'importe quelle paire côte à côte : la paire terre/soleil ne
- *    tient pas le plancher de vision normale sur ce test-là.
- *  - `sequentiel` : rampe monotone d'une seule teinte, extrémité claire à
- *    2,07:1 sur le fond.
- *
- * L'application déclare `color-scheme: light` : il n'y a donc qu'un mode
- * à valider. Une variante sombre demanderait de refaire passer la rampe
- * sur le fond sombre, jamais une simple inversion.
+ * ATTENTION — ces valeurs n'ont PAS été repassées dans le validateur
+ * (bandes de clarté, plancher de chroma, séparation sous protanopie et
+ * deutéranopie). Elles ont été choisies pour préserver les propriétés
+ * qui avaient été validées :
+ *  - l'orange sourd et le vert lagune sont éloignés en teinte comme en
+ *    clarté, et le bleu reste le troisième repère le plus sûr sous
+ *    deutéranopie ;
+ *  - la rampe séquentielle ne fait varier que la clarté.
+ * Avant une mise en production, refaire tourner le validateur.
  */
 
 /** Identité d'une série. Assignation dans l'ordre, jamais en boucle. */
-export const categoriel = ["#b04726", "#2a6fb0", "#c07813"] as const;
+export const categoriel = ["#c44a04", "#1f6f5c", "#2a6fb0"] as const;
 
 /** Magnitude : une seule teinte, du clair au foncé. */
-export const sequentiel = ["#e6a687", "#d87d57", "#c75c34", "#b04726", "#90371f"] as const;
+export const sequentiel = ["#fbdfcb", "#f8c19b", "#f79b63", "#f4762f", "#c44a04"] as const;
 
 /** Couleur unique des séries nominales (une barre = une catégorie sans ordre). */
 export const teinteUnique = categoriel[0];
 
 /** Statuts : sens réservé, toujours accompagnés d'un libellé. */
 export const statuts = {
-  bon: "#4e6630",
+  bon: "#1f6f5c",
   attention: "#c07813",
-  critique: "#b04726",
+  critique: "#c44a04",
 } as const;
 
-export const encreTexte = "#1c1714";
-export const encreSecondaire = "#6b6058";
-export const grille = "#e6ded3";
+export const encreTexte = "#0e0e0e";
+export const encreSecondaire = "#6b6b6b";
+export const grille = "#e0dcd3";
 export const surface = "#ffffff";

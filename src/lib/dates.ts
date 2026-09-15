@@ -1,7 +1,7 @@
 /**
- * Utilitaires de dates de location.
+ * Utilitaires de dates de réservation.
  *
- * Convention du projet : une date de location est une date *civile* sans
+ * Convention du projet : une date de réservation est une date *civile* sans
  * heure ni fuseau, sérialisée en `YYYY-MM-DD`. On évite ainsi les décalages
  * de un jour entre le serveur (UTC) et le navigateur (UTC+1 au Bénin).
  *

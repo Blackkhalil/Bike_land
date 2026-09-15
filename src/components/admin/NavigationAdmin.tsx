@@ -15,11 +15,11 @@ import { Marque } from "@/components/Marque";
  */
 
 const liens = [
+  { href: "/admin/aujourdhui", libelle: "La sortie du jour" },
   { href: "/admin", libelle: "Tableau de bord", exact: true },
   { href: "/admin/reservations", libelle: "Réservations" },
   { href: "/admin/velos", libelle: "Parc de vélos" },
   { href: "/admin/clients", libelle: "Clients" },
-  { href: "/admin/tarifs", libelle: "Tarifs" },
 ];
 
 export function NavigationAdmin({
@@ -42,14 +42,14 @@ export function NavigationAdmin({
   return (
     <>
       {/* Barre mobile */}
-      <div className="flex items-center justify-between border-b border-encre-900/10 bg-white px-5 py-3 lg:hidden">
+      <div className="flex items-center justify-between border-b border-craie/15 bg-noir-piste px-5 py-3 text-craie lg:hidden">
         <Link href="/admin">
           <Marque taille={26} />
         </Link>
         <button
           type="button"
           onClick={() => setOuvert((etat) => !etat)}
-          className="rounded-full border border-encre-900/20 px-4 py-1.5 text-[0.8rem] font-semibold"
+          className="rounded-full border border-craie/30 px-4 py-1.5 text-[0.8rem] font-semibold"
           aria-expanded={ouvert}
         >
           {ouvert ? "Fermer" : "Menu"}
@@ -60,13 +60,13 @@ export function NavigationAdmin({
         aria-label="Navigation de l'administration"
         className={`${
           ouvert ? "block" : "hidden"
-        } border-b border-encre-900/10 bg-white px-5 py-5 lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-64 lg:border-b-0 lg:border-r lg:px-6 lg:py-7`}
+        } border-b border-craie/15 bg-noir-piste px-5 py-5 text-craie lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-64 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-craie/15 lg:px-6 lg:py-7`}
       >
         <Link href="/admin" className="hidden lg:block">
           <Marque taille={28} />
         </Link>
 
-        <p className="etiquette mt-8 hidden opacity-45 lg:block">Exploitation</p>
+        <p className="mt-8 hidden text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-craie/40 lg:block">Exploitation</p>
         <ul className="mt-3 space-y-1">
           {liens.map((lien) => {
             const actif = lien.exact ? chemin === lien.href : chemin.startsWith(lien.href);
@@ -76,8 +76,8 @@ export function NavigationAdmin({
                   href={lien.href}
                   onClick={() => setOuvert(false)}
                   aria-current={actif ? "page" : undefined}
-                  className={`block rounded-xl px-3.5 py-2.5 text-[0.9rem] font-medium transition-colors ${
-                    actif ? "bg-encre-900 text-sable-50" : "text-encre-700 hover:bg-sable-100"
+                  className={`block rounded-[var(--radius-bouton)] px-3.5 py-2.5 text-[0.9rem] font-medium transition-colors ${
+                    actif ? "bg-orange-signal text-noir-piste" : "text-craie/75 hover:bg-craie/10 hover:text-craie"
                   }`}
                 >
                   {lien.libelle}
@@ -87,12 +87,12 @@ export function NavigationAdmin({
           })}
         </ul>
 
-        <div className="mt-8 space-y-3 border-t border-encre-900/10 pt-5">
+        <div className="mt-8 space-y-3 border-t border-craie/15 pt-5">
           <p
-            className={`rounded-xl px-3.5 py-2.5 text-[0.76rem] leading-relaxed ${
+            className={`rounded-[var(--radius-bouton)] px-3.5 py-2.5 text-[0.76rem] leading-relaxed ${
               modeDonnees === "demo"
-                ? "bg-soleil-300/30 text-terre-800"
-                : "bg-olive-100 text-olive-700"
+                ? "bg-orange-signal/15 text-orange-signal"
+                : "bg-vert-lagune/20 text-vert-lagune-vif"
             }`}
           >
             {modeDonnees === "demo" ? (
@@ -111,7 +111,7 @@ export function NavigationAdmin({
 
           <Link
             href="/"
-            className="block rounded-xl px-3.5 py-2 text-[0.85rem] text-encre-500 transition-colors hover:text-encre-900"
+            className="block rounded-[var(--radius-bouton)] px-3.5 py-2 text-[0.85rem] text-craie/60 transition-colors hover:text-craie"
           >
             ← Retour au site
           </Link>
@@ -120,7 +120,7 @@ export function NavigationAdmin({
             <button
               type="button"
               onClick={deconnecter}
-              className="block w-full rounded-xl px-3.5 py-2 text-left text-[0.85rem] text-encre-500 transition-colors hover:text-encre-900"
+              className="block w-full rounded-[var(--radius-bouton)] px-3.5 py-2 text-left text-[0.85rem] text-craie/60 transition-colors hover:text-craie"
             >
               Se déconnecter
             </button>

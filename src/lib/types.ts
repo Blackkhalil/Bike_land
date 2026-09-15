@@ -8,6 +8,12 @@
 
 import type { DateISO } from "./dates";
 
+/**
+ * Les deux offres. Definie ici et non dans data/offres.ts pour que la
+ * couche de donnees n'ait pas a dependre du contenu editorial.
+ */
+export type CodeOffre = "road-trip" | "location-libre";
+
 export type CategorieVelo = "RANDONNEUR" | "GRAVEL" | "VAE" | "VTC" | "TANDEM";
 export type TailleVelo = "S" | "M" | "L" | "XL";
 export type StatutVelo = "DISPONIBLE" | "EN_LOCATION" | "MAINTENANCE" | "RETIRE";
@@ -41,8 +47,6 @@ export interface Velo {
   statut: StatutVelo;
   accroche: string;
   description: string;
-  prixJourXof: number;
-  cautionXof: number;
   poidsKg: number;
   vitesses: number;
   chargeMaxKg: number;
@@ -54,8 +58,14 @@ export interface Velo {
   pointDeRetraitId: string;
   noteMoyenne: number;
   nombreAvis: number;
-  /** Teintes du visuel généré : le catalogue n'utilise pas de photographie. */
+  /** Teintes du visuel de repli, utilisé tant qu'aucune photo n'existe. */
   teintes: [string, string];
+  /**
+   * Photographie du vélo, servie depuis `public/images`. Absente, le
+   * composant retombe sur l'illustration vectorielle : mieux vaut un
+   * schéma juste qu'une photo d'un autre vélo.
+   */
+  photo?: string;
 }
 
 export interface OptionLocation {
@@ -68,13 +78,6 @@ export interface OptionLocation {
   quantifiable: boolean;
 }
 
-export interface ReglePrix {
-  id: string;
-  libelle: string;
-  minJours: number;
-  maxJours: number | null;
-  remisePourcent: number;
-}
 
 export interface LigneReservation {
   veloId: string;
@@ -116,6 +119,12 @@ export interface Reservation {
   id: string;
   reference: string;
   statut: StatutReservation;
+  /** Offre choisie : elle commande le prix, la caution et les exigences. */
+  offre: CodeOffre;
+  /** Nombre de participants. Toujours 1 en location libre. */
+  nombrePersonnes: number;
+  /** Duree en heures : renseignee en location libre uniquement. */
+  dureeHeures?: number;
   clientId: string;
   client: Client;
   pointDeRetraitId: string;
@@ -161,6 +170,8 @@ export interface Itineraire {
   etapes: { jour: string; titre: string; detail: string }[];
   veloConseille: CategorieVelo;
   teintes: [string, string];
+  /** Photographie du parcours ; repli sur l'illustration si absente. */
+  photo?: string;
 }
 
 export interface MessageContact {

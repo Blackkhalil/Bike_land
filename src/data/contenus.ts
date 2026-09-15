@@ -7,192 +7,146 @@ import type { Avis, Itineraire } from "@/lib/types";
 
 export const itineraires: Itineraire[] = [
   {
-    slug: "route-des-peches",
-    titre: "La Route des Pêches",
-    region: "Cotonou → Ouidah",
-    distanceKm: 42,
-    duree: "1 à 2 jours",
+    slug: "route-des-peches-togbin",
+    photo: "/images/coen-van-de-broek-OFyh9TpMyM8-unsplash.jpg",
+    titre: "La route des Pêches jusqu'à Togbin",
+    region: "Fidjrossè → Togbin",
+    distanceKm: 30,
+    duree: "Environ 3 h",
     niveau: "Facile",
-    denivele: 60,
+    denivele: 25,
     resume:
-      "Le littoral en ligne droite, cocotiers d'un côté et Atlantique de l'autre. Plat du début à la fin, c'est l'itinéraire idéal pour une première sortie ou pour un week-end à deux.",
+      "Le littoral en ligne droite : cocotiers d'un côté, Atlantique de l'autre, et pas une côte du départ à l'arrivée. On roule ensemble jusqu'à la plage de Togbin, on souffle, et on rentre par le même chemin.",
     veloConseille: "VTC",
-    teintes: ["#e2971d", "#f8f2e9"],
+    teintes: ["#f25c05", "#f2efe9"],
     etapes: [
       {
-        jour: "Jour 1",
-        titre: "Cotonou → Avlékété",
+        jour: "Aller",
+        titre: "Fidjrossè → Togbin",
         detail:
-          "28 km de piste sableuse tassée le long de l'océan. Arrêt déjeuner chez les pêcheurs d'Avlékété, poisson braisé les pieds dans le sable.",
+          "15 km de piste sableuse tassée le long de l'océan, à allure de groupe. Le coordinateur ouvre la route et personne ne reste derrière.",
       },
       {
-        jour: "Jour 2",
-        titre: "Avlékété → Ouidah",
+        jour: "Pause",
+        titre: "La plage de Togbin",
         detail:
-          "14 km jusqu'à la Porte du Non-Retour, puis visite du temple des Pythons et de la forêt sacrée de Kpassè. Restitution du vélo au relais d'Ouidah.",
+          "Arrêt sur le sable : coco frais et eau pour tout le monde. Le temps de se baigner si le cœur vous en dit.",
+      },
+      {
+        jour: "Retour",
+        titre: "Togbin → Fidjrossè",
+        detail:
+          "15 km de retour par le littoral, souvent avec le vent dans le dos en fin de matinée.",
       },
     ],
   },
   {
-    slug: "boucle-atacora",
-    titre: "La boucle de l'Atacora",
-    region: "Natitingou → Boukoumbé → Tanougou",
-    distanceKm: 168,
-    duree: "4 jours",
-    niveau: "Sportif",
-    denivele: 2150,
-    resume:
-      "Le seul vrai relief du pays. Villages tata somba, cascade de Tanougou, et des descentes que l'on raconte encore des mois plus tard. À faire en gravel ou en vélo électrique.",
-    veloConseille: "GRAVEL",
-    teintes: ["#4e6630", "#e8eddd"],
-    etapes: [
-      {
-        jour: "Jour 1",
-        titre: "Natitingou → Boukoumbé",
-        detail:
-          "42 km et 700 m de dénivelé sur la route de crête. Nuit chez l'habitant dans une tata somba, l'architecture fortifiée de la région.",
-      },
-      {
-        jour: "Jour 2",
-        titre: "Boukoumbé → Koussoukoingou",
-        detail: "31 km de piste entre les champs de mil, avec la chaîne de l'Atacora en toile de fond.",
-      },
-      {
-        jour: "Jour 3",
-        titre: "Koussoukoingou → cascade de Tanougou",
-        detail: "54 km, la plus longue étape. Baignade méritée sous la cascade en fin de journée.",
-      },
-      {
-        jour: "Jour 4",
-        titre: "Tanougou → Natitingou",
-        detail: "41 km de retour, majoritairement descendants. Restitution à la base Atacora avant 18 h.",
-      },
-    ],
-  },
-  {
-    slug: "lacs-et-cites-lacustres",
-    titre: "Lacs et cités lacustres",
-    region: "Cotonou → Ganvié → Abomey-Calavi",
-    distanceKm: 58,
-    duree: "2 jours",
+    slug: "route-des-peches-amazone",
+    photo: "/images/hannah-carr-I079C4gOe8s-unsplash.jpg",
+    titre: "La route des Pêches jusqu'à l'Amazone",
+    region: "Fidjrossè → l'Amazone",
+    distanceKm: 18,
+    duree: "Environ 2 h",
     niveau: "Facile",
-    denivele: 120,
+    denivele: 15,
     resume:
-      "Un aller-retour vers le lac Nokoué et la cité sur pilotis de Ganvié, avec la traversée en pirogue incluse dans la boucle. Le vélo attend au débarcadère.",
-    veloConseille: "VAE",
-    teintes: ["#c75c34", "#fdf5f1"],
+      "Le circuit le plus court, celui d'une première sortie. On longe la côte vers le centre de Cotonou jusqu'au pied de la statue de l'Amazone, on prend la photo, et on revient.",
+    veloConseille: "VTC",
+    teintes: ["#1f6f5c", "#f2efe9"],
     etapes: [
       {
-        jour: "Jour 1",
-        titre: "Cotonou → Abomey-Calavi → Ganvié",
+        jour: "Aller",
+        titre: "Fidjrossè → l'Amazone",
         detail:
-          "22 km jusqu'au débarcadère, puis pirogue vers Ganvié. Le vélo reste en consigne gardée au relais.",
+          "9 km le long du littoral puis du boulevard de la Marina, jusqu'à la statue. Terrain plat, roulant, sans difficulté.",
       },
       {
-        jour: "Jour 2",
-        titre: "Retour par la berge nord",
-        detail: "36 km de petites routes bordées de palmeraies, loin du trafic de la nationale.",
-      },
-    ],
-  },
-  {
-    slug: "route-royale-abomey",
-    titre: "La route royale d'Abomey",
-    region: "Bohicon → Abomey → Zagnanado",
-    distanceKm: 112,
-    duree: "3 jours",
-    niveau: "Intermédiaire",
-    denivele: 640,
-    resume:
-      "Sur les traces du royaume du Dahomey : palais royaux classés à l'UNESCO, ateliers de tisserands et forêt sacrée. Un itinéraire culturel autant que sportif.",
-    veloConseille: "RANDONNEUR",
-    teintes: ["#90371f", "#f9e6dc"],
-    etapes: [
-      {
-        jour: "Jour 1",
-        titre: "Bohicon → Abomey",
-        detail: "18 km d'échauffement et l'après-midi entière dans les palais royaux.",
+        jour: "Pause",
+        titre: "Au pied de l'Amazone",
+        detail: "Coco frais et eau, le temps des photos devant le monument.",
       },
       {
-        jour: "Jour 2",
-        titre: "Abomey → Zagnanado",
-        detail: "62 km de latérite rouge à travers les villages de potières.",
-      },
-      {
-        jour: "Jour 3",
-        titre: "Zagnanado → Bohicon",
-        detail: "32 km de retour par la vallée de l'Ouémé, sous les fromagers.",
+        jour: "Retour",
+        titre: "L'Amazone → Fidjrossè",
+        detail: "9 km de retour par le même littoral, au rythme du groupe.",
       },
     ],
   },
 ];
 
+// ATTENTION — contenu de démonstration, à remplacer avant l'ouverture.
+// Ces avis sont fictifs. Publier des témoignages inventés attribués à des
+// personnes nommées est une pratique trompeuse, et sanctionnée comme telle
+// dans la plupart des cadres de protection du consommateur. Ils sont ici
+// pour donner sa forme à la page, pas pour être mis en ligne tels quels :
+// dès les premières sorties, remplacez-les par les retours réels de vos
+// clients, avec leur accord.
 export const avisClients: Avis[] = [
   {
     id: "avis-1",
     veloId: "velo-atacora",
     auteur: "Mariam A.",
-    ville: "Porto-Novo",
+    ville: "Fidjrossè, Cotonou",
     note: 5,
-    titre: "Quatre jours sans une seule ampoule aux mains",
+    titre: "Ma première sortie à vélo depuis des années",
     commentaire:
-      "Le vélo était réglé à ma taille avant même mon arrivée — j'avais donné mon gabarit à la réservation. Les sacoches ont tenu sous l'orage entre Bohicon et Abomey.",
-    date: "2026-07-18",
-  },
-  {
-    id: "avis-2",
-    veloId: "velo-ganvie",
-    auteur: "Thomas R.",
-    ville: "Lyon, France",
-    note: 5,
-    titre: "L'électrique a sauvé le voyage de ma compagne",
-    commentaire:
-      "Nous n'avons pas le même niveau. Avec le Ganvié, nous avons enfin roulé ensemble. Batterie rendue à 40 % après 62 km avec du vent de face.",
-    date: "2026-06-02",
-  },
-  {
-    id: "avis-3",
-    veloId: "velo-pendjari",
-    auteur: "Koffi D.",
-    ville: "Natitingou",
-    note: 5,
-    titre: "Une crevaison, un appel, trente minutes",
-    commentaire:
-      "Crevaison à 20 km de Boukoumbé un dimanche. Coup de fil, quelqu'un est venu avec une roue de rechange. C'est ce genre de chose qui fait la différence.",
-    date: "2026-05-24",
+      "Je n'avais pas roulé depuis le lycée. Le coordinateur a réglé la selle à ma taille avant le départ et a calé son allure sur la mienne. On est allés jusqu'à Togbin sans que je me sente à la traîne.",
+    date: "2026-08-30",
   },
   {
     id: "avis-4",
     veloId: "velo-cotonou",
     auteur: "Aïcha B.",
-    ville: "Cotonou",
+    ville: "Akpakpa, Cotonou",
     note: 4,
-    titre: "Simple et rapide",
+    titre: "Réservé et payé depuis mon téléphone",
     commentaire:
-      "Réservation faite depuis mon téléphone en cinq minutes, payée en MTN Money, facture reçue par mail dans la foulée. Le panier avant est un peu petit, c'est mon seul reproche.",
+      "Cinq minutes sur le site, payé en MTN Money, confirmation reçue dans la foulée. Le coco à l'arrivée était le bienvenu. Le panier avant est un peu petit, c'est mon seul reproche.",
     date: "2026-08-11",
-  },
-  {
-    id: "avis-5",
-    veloId: "velo-tandem",
-    auteur: "Élodie et Marc",
-    ville: "Bruxelles, Belgique",
-    note: 5,
-    titre: "Le tandem, la meilleure idée du voyage",
-    commentaire:
-      "On a roulé de Cotonou à Ouidah en riant tout du long. Prise en main immédiate, même sans expérience du tandem.",
-    date: "2026-04-09",
   },
   {
     id: "avis-6",
     veloId: "velo-abomey",
     auteur: "Sylvain K.",
-    ville: "Parakou",
+    ville: "Cadjèhoun, Cotonou",
     note: 5,
-    titre: "La courroie, plus jamais de chaîne",
+    titre: "Le circuit de l'Amazone en famille",
     commentaire:
-      "Trois jours de latérite, zéro entretien, pantalon impeccable. Je vais finir par acheter le même.",
-    date: "2026-03-27",
+      "Parti avec mes deux grands un samedi matin. Deux heures tranquilles le long de la côte, la photo devant la statue, et retour avant la chaleur. On recommence le mois prochain.",
+    date: "2026-08-23",
+  },
+  {
+    id: "avis-5",
+    veloId: "velo-tandem",
+    auteur: "Élodie et Marc",
+    ville: "Haie Vive, Cotonou",
+    note: 5,
+    titre: "Le tandem, la meilleure idée de la sortie",
+    commentaire:
+      "On a roulé jusqu'à Togbin en riant tout du long. Prise en main immédiate, même sans aucune expérience du tandem.",
+    date: "2026-07-19",
+  },
+  {
+    id: "avis-2",
+    veloId: "velo-oueme",
+    auteur: "Rodrigue T.",
+    ville: "Gbédjromédé, Cotonou",
+    note: 5,
+    titre: "Rien à prévoir, tout est fourni",
+    commentaire:
+      "Casque, antivol, kit de réparation, l'eau et le coco : je suis venu les mains dans les poches. Et pas de caution à bloquer sur mon compte, ça change tout.",
+    date: "2026-07-05",
+  },
+  {
+    id: "avis-3",
+    veloId: "velo-tanougou",
+    auteur: "Koffi D.",
+    ville: "Ménontin, Cotonou",
+    note: 5,
+    titre: "Une crevaison, et personne n'est resté planté",
+    commentaire:
+      "Crevaison à mi-parcours sur la piste. Le coordinateur avait la pompe et les rustines, dix minutes plus tard on repartait. C'est ce genre de chose qui fait la différence.",
+    date: "2026-06-21",
   },
 ];
 
@@ -201,7 +155,7 @@ export const etapesLocation = [
     numero: "01",
     titre: "Choisissez votre vélo",
     detail:
-      "Filtrez par type, par taille et par point de retrait. Chaque fiche indique l'autonomie conseillée et l'équipement fourni.",
+      "Filtrez par type, par taille et par point de départ. Chaque fiche indique l'autonomie conseillée et l'équipement fourni.",
   },
   {
     numero: "02",
@@ -217,15 +171,15 @@ export const etapesLocation = [
   },
   {
     numero: "04",
-    titre: "Récupérez et roulez",
+    titre: "Retrouvez le coordinateur",
     detail:
-      "Le vélo vous attend réglé à votre taille. On vérifie ensemble les freins, la pression et l'itinéraire avant le départ.",
+      "Au départ, un coordinateur vous accueille avec votre vélo réglé à votre taille et votre kit complet. Freins, pression et parcours sont vérifiés ensemble avant de partir.",
   },
   {
     numero: "05",
-    titre: "Restituez où vous voulez",
+    titre: "Roulez accompagné, repartez léger",
     detail:
-      "Au même point ou dans une autre ville, avec l'option transfert. La caution est libérée dans les 48 heures.",
+      "Le coordinateur roule avec le groupe et récupère les vélos et les kits à l'arrivée. Rien à rapporter, et aucune caution à récupérer : nous n'en demandons pas.",
   },
 ] as const;
 
@@ -251,12 +205,12 @@ export const faq = [
       {
         question: "Combien de temps à l'avance faut-il réserver ?",
         reponse:
-          "En basse saison, la veille suffit souvent. Entre novembre et mars, et pour les vélos électriques, comptez une à deux semaines : le parc est limité et ces modèles partent vite.",
+          "La veille suffit souvent. Entre novembre et mars, comptez plutôt trois à quatre jours : le parc est volontairement restreint et les week-ends partent vite.",
       },
     ],
   },
   {
-    categorie: "Paiement et caution",
+    categorie: "Paiement",
     questions: [
       {
         question: "Quels moyens de paiement acceptez-vous ?",
@@ -266,7 +220,7 @@ export const faq = [
       {
         question: "Une caution est-elle demandée ?",
         reponse:
-          "Oui, entre 40 000 et 150 000 FCFA selon le vélo. Elle est pré-autorisée au moment de la réservation et libérée dans les 48 heures suivant la restitution. L'option assurance sérénité la remplace entièrement.",
+          "Non, aucune. Toutes nos sorties sont encadrées par un coordinateur qui remet les vélos et les kits au départ et les récupère à l'arrivée : le matériel reste sous notre responsabilité du début à la fin, il n'y a donc rien à bloquer sur votre compte.",
       },
       {
         question: "Quand reçois-je ma facture ?",
@@ -281,12 +235,12 @@ export const faq = [
       {
         question: "Que se passe-t-il en cas de panne ou de crevaison ?",
         reponse:
-          "Chaque vélo part avec un kit de réparation et une pompe. Un numéro d'assistance figure sur votre confirmation : nous intervenons dans un rayon de 60 km autour de nos trois points de retrait, sept jours sur sept.",
+          "Chaque vélo part avec un kit de réparation et une pompe. Un numéro d'assistance figure sur votre confirmation : nous intervenons dans un rayon de 60 km autour de notre point de départ, sur la route des Pêches, sept jours sur sept.",
       },
       {
         question: "Puis-je rendre le vélo dans une autre ville ?",
         reponse:
-          "Oui, entre Cotonou, Ouidah et Natitingou, avec l'option transfert à 12 000 FCFA. Choisissez-la à l'étape des options de votre réservation.",
+          "Pas pour l'instant : nous n'exploitons qu'un seul point de départ, sur la route des Pêches à Cotonou. La restitution dans une autre ville viendra avec l'ouverture de nos road trips longue distance.",
       },
       {
         question: "Les vélos sont-ils adaptés aux enfants ?",
@@ -308,8 +262,8 @@ export const faq = [
 ] as const;
 
 export const chiffresCles = [
-  { valeur: "9", unite: "vélos", detail: "préparés et suivis un par un" },
-  { valeur: "3", unite: "points", detail: "Cotonou, Ouidah, Natitingou" },
-  { valeur: "48 h", unite: "", detail: "pour la libération de la caution" },
+  { valeur: "6", unite: "vélos", detail: "préparés et suivis un par un" },
+  { valeur: "1", unite: "point", detail: "Route des Pêches, Cotonou" },
+  { valeur: "0", unite: "FCFA", detail: "de caution : les sorties sont encadrées" },
   { valeur: "4,8", unite: "/ 5", detail: "sur 222 locations" },
 ] as const;

@@ -53,11 +53,11 @@ export function CadreGraphique({
   className?: string;
 }) {
   return (
-    <figure className={`rounded-[1.25rem] bg-white p-6 ${className}`}>
+    <figure className={`rounded-[var(--radius-carte)] border border-noir-piste/8 bg-white p-6 ${className}`}>
       <figcaption className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h3 className="font-display text-[1rem] font-bold uppercase tracking-tight">{titre}</h3>
-          {sousTitre && <p className="mt-1 text-[0.8rem] text-encre-500">{sousTitre}</p>}
+          <h3 className="titre-editorial text-[1.15rem]">{titre}</h3>
+          {sousTitre && <p className="mt-1 text-[0.8rem] text-gris-cadre">{sousTitre}</p>}
         </div>
         {actions}
       </figcaption>
@@ -86,7 +86,7 @@ export function Infobulle({
   return (
     <div
       role="tooltip"
-      className="pointer-events-none absolute z-10 min-w-[9rem] rounded-xl bg-encre-900 px-3.5 py-2.5 text-sable-50 shadow-lg"
+      className="pointer-events-none absolute z-10 min-w-[9rem] rounded-[var(--radius-bouton)] bg-noir-piste px-3.5 py-2.5 text-craie shadow-lg"
       style={{
         left: versLaGauche ? undefined : x + 12,
         right: versLaGauche ? largeurConteneur - x + 12 : undefined,
@@ -127,13 +127,13 @@ export function TableauDeSecours({
   const [ouvert, setOuvert] = useState(false);
 
   return (
-    <div className="mt-5 border-t border-encre-900/10 pt-3">
+    <div className="mt-5 border-t border-noir-piste/10 pt-3">
       <button
         type="button"
         onClick={() => setOuvert((etat) => !etat)}
         aria-expanded={ouvert}
         aria-controls={identifiant}
-        className="text-[0.76rem] font-semibold uppercase tracking-[0.1em] text-encre-500 transition-colors hover:text-encre-900"
+        className="text-[0.76rem] font-semibold uppercase tracking-[0.1em] text-gris-cadre transition-colors hover:text-noir-piste"
       >
         {ouvert ? "Masquer" : "Voir"} les valeurs
       </button>
@@ -141,7 +141,7 @@ export function TableauDeSecours({
         <table className="w-full border-collapse text-left text-[0.82rem]">
           <caption className="sr-only">{legende}</caption>
           <thead>
-            <tr className="border-b border-encre-900/15">
+            <tr className="border-b border-noir-piste/15">
               {colonnes.map((colonne) => (
                 <th key={colonne} scope="col" className="py-2 pr-4 font-semibold">
                   {colonne}
@@ -150,8 +150,15 @@ export function TableauDeSecours({
             </tr>
           </thead>
           <tbody>
-            {lignes.map((ligne) => (
-              <tr key={String(ligne[0])} className="border-b border-encre-900/8">
+            {/*
+             * Clé sur l'index : `ligne[0]` est l'étiquette affichée (ex. un
+             * mois abrégé), pas un identifiant — deux lignes peuvent la
+             * partager légitimement (même mois, années différentes). La
+             * liste vient d'un tableau figé, jamais réordonné ni filtré en
+             * place, donc l'index reste un identifiant stable.
+             */}
+            {lignes.map((ligne, index) => (
+              <tr key={index} className="border-b border-noir-piste/8">
                 {ligne.map((cellule, index) => (
                   <td
                     key={index}

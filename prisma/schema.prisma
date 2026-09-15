@@ -47,9 +47,11 @@ model Bike {
   shortPitch  String
   description String       @db.Text
 
-  // Tarification de base, en FCFA. Les remises durée sont dans PriceRule.
-  dailyPriceXof Int
-  depositXof    Int     @default(0)
+  // Aucun montant n'est porté par le vélo : ni prix, ni caution. Le tarif
+  // vient de la formule choisie et la caution est un forfait unique de la
+  // location libre (cf. src/data/offres.ts). Les anciennes colonnes
+  // dailyPriceXof et depositXof ont été retirées : elles faisaient croire
+  // à une tarification par machine qui n'existe pas.
 
   // Caractéristiques affichées sur la fiche produit (§2.1)
   weightKg          Float
@@ -128,6 +130,12 @@ model Customer {
 
 // ---------------------------------------------------------------- Réservations
 
+// L'offre commande le prix, la caution et les exigences au depart.
+enum BookingOffer {
+  ROAD_TRIP       // sortie encadree, forfait par personne, sans caution
+  LOCATION_LIBRE  // velo sans accompagnement, grille horaire, caution
+}
+
 enum BookingStatus {
   EN_ATTENTE_PAIEMENT
   CONFIRMEE
@@ -140,6 +148,13 @@ model Booking {
   id        String        @id @default(cuid())
   reference String        @unique // ex. BL-2K4M7Q, communiquée au client
   status    BookingStatus @default(EN_ATTENTE_PAIEMENT)
+
+  // Valeurs par defaut : les reservations anterieures a l'introduction
+  // des deux offres sont toutes des sorties encadrees a une personne.
+  offer       BookingOffer @default(ROAD_TRIP)
+  peopleCount Int          @default(1)
+  /// Duree en heures, renseignee en location libre uniquement.
+  durationHours Int?
 
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id])
@@ -282,22 +297,11 @@ model Review {
   @@index([bikeId, isPublished])
 }
 
-// ---------------------------------------------------------------- Tarification
-
-// Règles de tarification par durée / saison / catégorie (§2.2)
-model PriceRule {
-  id        String        @id @default(cuid())
-  label     String
-  category  BikeCategory?
-  minDays   Int           @default(1)
-  maxDays   Int?
-  discountPercent Int     @default(0)
-  seasonStart DateTime?   @db.Date
-  seasonEnd   DateTime?   @db.Date
-  isActive  Boolean       @default(true)
-
-  createdAt DateTime @default(now())
-}
+// La tarification ne vit plus en base : elle n'a que deux formes, le
+// forfait du road trip et la grille horaire de la location libre, toutes
+// deux déclarées dans src/data/offres.ts. L'ancien modèle PriceRule
+// (remises de durée, majorations de saison, tarifs par catégorie) a été
+// retiré : il décrivait une activité que Bike Land n'exerce pas.
 
 // Demandes issues du formulaire de contact (§2.1)
 model ContactMessage {

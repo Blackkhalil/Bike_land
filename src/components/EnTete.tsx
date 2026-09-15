@@ -4,15 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { BoutonLien } from "./Bouton";
 import { Marque } from "./Marque";
 import { navigationPrincipale, navigationSecondaire } from "@/lib/site";
 
 /**
- * En-tête flottant.
+ * En-tête collant.
  *
- * Sur la page d'accueil il démarre transparent, posé sur le visuel du hero,
- * puis prend un fond opaque dès que la page défile. Ailleurs il est opaque
- * dès le chargement, sans quoi les titres passeraient dessous.
+ * Logo à gauche, navigation centrée, actions à droite — la composition
+ * des références fournies. Transparent au-dessus du héros, il bascule en
+ * noir opaque après 80px de défilement (brief §2).
+ *
+ * Sur mobile, le logo et le bouton « Réserver » restent visibles en
+ * permanence : c'est le CTA principal du site, il ne se cache pas dans
+ * un menu. Le reste de la navigation passe dans le panneau plein écran.
  */
 export function EnTete() {
   const chemin = usePathname();
@@ -23,7 +28,7 @@ export function EnTete() {
   const opaque = defile || !surAccueil || menuOuvert;
 
   useEffect(() => {
-    const auDefilement = () => setDefile(window.scrollY > 24);
+    const auDefilement = () => setDefile(window.scrollY > 80);
     auDefilement();
     window.addEventListener("scroll", auDefilement, { passive: true });
     return () => window.removeEventListener("scroll", auDefilement);
@@ -39,72 +44,70 @@ export function EnTete() {
 
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-colors duration-500 ${
-        opaque ? "bg-sable-50/92 backdrop-blur-xl" : "bg-transparent"
+      className={`fixed inset-x-0 top-0 z-50 text-craie transition-colors duration-300 ${
+        opaque ? "bg-noir-piste" : "bg-transparent"
       }`}
     >
-      <div
-        className={`mx-auto flex h-[72px] max-w-[1400px] items-center justify-between gap-6 px-5 transition-colors duration-500 sm:px-8 ${
-          opaque ? "text-encre-900" : "text-sable-50"
-        }`}
-      >
+      <div className="mx-auto grid h-[72px] max-w-[1280px] grid-cols-[auto_1fr_auto] items-center gap-6 px-5 sm:px-8">
         <Link href="/" aria-label="Bike Land, retour à l'accueil" className="shrink-0">
           <Marque />
         </Link>
 
-        <nav aria-label="Navigation principale" className="hidden items-center gap-8 lg:flex">
-          {navigationPrincipale.map((lien) => (
-            <Link
-              key={lien.href}
-              href={lien.href}
-              className={`lien-souligne text-[0.9rem] font-medium transition-opacity hover:opacity-100 ${
-                chemin?.startsWith(lien.href) ? "opacity-100" : "opacity-70"
-              }`}
-            >
-              {lien.libelle}
-            </Link>
-          ))}
+        <nav aria-label="Navigation principale" className="hidden justify-center gap-9 lg:flex">
+          {navigationPrincipale.map((lien) => {
+            const actif = chemin?.startsWith(lien.href);
+            return (
+              <Link
+                key={lien.href}
+                href={lien.href}
+                aria-current={actif ? "page" : undefined}
+                className={`text-[0.9rem] font-medium transition-colors ${
+                  actif ? "text-orange-signal" : "text-craie hover:text-orange-signal"
+                }`}
+              >
+                {lien.libelle}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="flex items-center gap-3">
           <Link
             href="/reservation/suivi"
-            className="hidden text-[0.9rem] font-medium opacity-70 transition-opacity hover:opacity-100 md:block"
+            className="hidden text-[0.9rem] font-medium text-craie/70 transition-colors hover:text-craie md:block"
           >
             Ma réservation
           </Link>
-          <Link
-            href="/velos"
-            className={`hidden rounded-full px-6 py-2.5 text-[0.875rem] font-semibold transition-colors duration-300 sm:inline-flex ${
-              opaque
-                ? "bg-encre-900 text-sable-50 hover:bg-terre-600"
-                : "bg-sable-50 text-encre-900 hover:bg-white"
-            }`}
-          >
-            Réserver un vélo
-          </Link>
+
+          {/* Au-dessus du héros, l'en-tête est transparent et l'aplat
+              orange passe derrière ce bouton : un bouton orange y
+              deviendrait invisible. Il passe donc en craie tant que
+              l'en-tête n'est pas opaque. */}
+          <BoutonLien href="/velos" variante={opaque ? "primaire" : "clair"} taille="sm">
+            Réserver
+          </BoutonLien>
 
           <button
             type="button"
             onClick={() => setMenuOuvert((ouvert) => !ouvert)}
             aria-expanded={menuOuvert}
             aria-controls="menu-mobile"
-            className="grid h-10 w-10 place-items-center rounded-full border border-current/20 lg:hidden"
+            className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-craie/25 lg:hidden"
           >
             <span className="sr-only">{menuOuvert ? "Fermer le menu" : "Ouvrir le menu"}</span>
             <span className="relative block h-3.5 w-5">
               <span
-                className={`absolute left-0 h-[2px] w-full bg-current transition-all duration-300 ${
+                className={`absolute left-0 h-[2px] w-full bg-current transition-all duration-200 ${
                   menuOuvert ? "top-1.5 rotate-45" : "top-0"
                 }`}
               />
               <span
-                className={`absolute left-0 top-1.5 h-[2px] w-full bg-current transition-opacity duration-200 ${
+                className={`absolute left-0 top-1.5 h-[2px] w-full bg-current transition-opacity duration-150 ${
                   menuOuvert ? "opacity-0" : "opacity-100"
                 }`}
               />
               <span
-                className={`absolute left-0 h-[2px] w-full bg-current transition-all duration-300 ${
+                className={`absolute left-0 h-[2px] w-full bg-current transition-all duration-200 ${
                   menuOuvert ? "top-1.5 -rotate-45" : "top-3"
                 }`}
               />
@@ -116,7 +119,7 @@ export function EnTete() {
       {menuOuvert && (
         <div
           id="menu-mobile"
-          className="border-t border-encre-900/10 bg-sable-50 px-5 pb-10 pt-6 text-encre-900 lg:hidden"
+          className="border-t border-craie/15 bg-noir-piste px-5 pb-10 pt-6 lg:hidden"
         >
           <nav aria-label="Navigation mobile" className="flex flex-col">
             {[...navigationPrincipale, ...navigationSecondaire].map((lien) => (
@@ -126,19 +129,12 @@ export function EnTete() {
                 // La fermeture se fait au clic : un effet sur le chemin
                 // déclencherait un rendu en cascade à chaque navigation.
                 onClick={() => setMenuOuvert(false)}
-                className="titre-editorial border-b border-encre-900/10 py-4 text-[1.6rem]"
+                className="titre-editorial border-b border-craie/12 py-4 text-[1.75rem] text-craie"
               >
                 {lien.libelle}
               </Link>
             ))}
           </nav>
-          <Link
-            href="/velos"
-            onClick={() => setMenuOuvert(false)}
-            className="mt-7 flex items-center justify-center rounded-full bg-terre-600 px-6 py-4 font-semibold text-sable-50"
-          >
-            Réserver un vélo
-          </Link>
         </div>
       )}
     </header>

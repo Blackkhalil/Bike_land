@@ -15,25 +15,37 @@
 import type { DateISO } from "../dates";
 import type {
   Client,
+  CodeOffre,
   MessageContact,
   MoyenPaiement,
   PointDeRetrait,
   Reservation,
   StatutReservation,
+  StatutVelo,
   Velo,
 } from "../types";
 
+/**
+ * Filtre du catalogue.
+ *
+ * Ni catégorie, ni taille, ni prix : le prix ne dépend plus du vélo mais
+ * de la formule choisie, et le coordinateur règle la machine à la
+ * morphologie du client au départ. Un filtre sur ces critères
+ * laisserait croire qu'ils changent quelque chose.
+ */
 export interface FiltreCatalogue {
-  categories?: string[];
-  tailles?: string[];
   pointDeRetraitId?: string;
-  prixMaxXof?: number;
   dateDebut?: DateISO;
   dateFin?: DateISO;
+  /** Réservé à l'administration : inclut les vélos retirés du parc public. */
+  inclureRetires?: boolean;
 }
 
 export interface DemandeReservation {
   veloId: string;
+  offre: CodeOffre;
+  nombrePersonnes?: number;
+  dureeHeures?: number;
   dateDebut: DateISO;
   dateFin: DateISO;
   options: { code: string; quantite: number }[];
@@ -71,6 +83,43 @@ export interface Depot {
     jusqua?: DateISO;
   }): Promise<Reservation[]>;
   listerClients(): Promise<Client[]>;
+
+  /**
+   * Marque le depart effectif d'une reservation : le velo est remis au
+   * client. Fait passer la reservation en EN_COURS.
+   *
+   * C'est le coordinateur qui declenche cela depuis la fiche du jour, au
+   * moment ou il tend le velo. On ne le deduit pas des dates : une
+   * reservation dont la date de depart est passee mais dont le client
+   * n'est jamais venu ne doit pas compter comme sortie.
+   */
+  /**
+   * Confirme une reservation dont le paiement est verifie.
+   *
+   * Appelee par le webhook de l'agregateur, jamais par le navigateur :
+   * c'est la seule porte par laquelle une reservation passe de
+   * EN_ATTENTE_PAIEMENT a CONFIRMEE. Idempotente — un agregateur peut
+   * rejouer sa notification.
+   */
+  confirmerPaiement(
+    reference: string,
+    referenceTransaction?: string,
+  ): Promise<{ reservation: Reservation; dejaConfirmee: boolean } | null>;
+
+  marquerDepart(reference: string): Promise<Reservation | null>;
+
+  /** Marque le retour effectif : la reservation passe en TERMINEE. */
+  marquerRetour(reference: string): Promise<Reservation | null>;
+
+  /**
+   * Met a jour les champs d'un velo modifiables depuis l'admin.
+   *
+   * Volontairement restreint au statut : c'est la seule chose qui change
+   * en cours d'exploitation. Il n'y a plus de prix par velo — il depend
+   * de la formule (cf. src/data/offres.ts) — et le reste se change dans
+   * le catalogue.
+   */
+  majVelo(id: string, champs: { statut?: StatutVelo }): Promise<Velo | null>;
 
   enregistrerMessageContact(
     message: Omit<MessageContact, "id" | "creeLe" | "traiteLe">,

@@ -42,6 +42,11 @@ export const depot: Depot = {
   annulerReservation: async (reference) => (await obtenirDepot()).annulerReservation(reference),
   listerReservations: async (options) => (await obtenirDepot()).listerReservations(options),
   listerClients: async () => (await obtenirDepot()).listerClients(),
+  confirmerPaiement: async (reference, referenceTransaction) =>
+    (await obtenirDepot()).confirmerPaiement(reference, referenceTransaction),
+  marquerDepart: async (reference) => (await obtenirDepot()).marquerDepart(reference),
+  marquerRetour: async (reference) => (await obtenirDepot()).marquerRetour(reference),
+  majVelo: async (id, champs) => (await obtenirDepot()).majVelo(id, champs),
   enregistrerMessageContact: async (message) => (await obtenirDepot()).enregistrerMessageContact(message),
   listerMessagesContact: async () => (await obtenirDepot()).listerMessagesContact(),
 };

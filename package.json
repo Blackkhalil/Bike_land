@@ -5,7 +5,7 @@
   "description": "Bike Land — plateforme de location de vélos pour road trips (Bénin)",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

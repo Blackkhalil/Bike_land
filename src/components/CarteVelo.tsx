@@ -1,12 +1,22 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { VeloIllustration } from "./VeloIllustration";
-import { Etoiles, Pastille } from "./ui";
-import { libellesCategorie } from "@/data/catalogue";
-import { formatXof } from "@/lib/format";
+import { Pastille } from "./ui";
 import type { Velo } from "@/lib/types";
 
-/** Carte du catalogue : visuel, catégorie, taille, prix journalier. */
+/**
+ * Carte du catalogue.
+ *
+ * Elle ne porte ni prix, ni type, ni taille. Le prix dépend de la
+ * formule choisie et non du vélo ; le type et la taille ne changent rien
+ * pour le client, puisque le coordinateur règle la machine à sa
+ * morphologie au départ. Les afficher laisserait croire qu'il faut en
+ * tenir compte.
+ *
+ * Restent le nom, la photo et l'accroche — ce qui aide vraiment à
+ * choisir — plus le seul état qui compte : le vélo est-il disponible.
+ */
 export function CarteVelo({
   velo,
   parametresReservation,
@@ -21,49 +31,36 @@ export function CarteVelo({
   const href = `/velos/${velo.slug}${parametresReservation ? `?${parametresReservation}` : ""}`;
 
   return (
-    <article className={`group relative flex flex-col ${className}`}>
+    <article
+      className={`group flex flex-col overflow-hidden rounded-[var(--radius-carte)] bg-noir-releve ${className}`}
+    >
       <Link href={href} className="flex flex-1 flex-col">
-        <div
-          className="relative grid aspect-5/4 place-items-center overflow-hidden rounded-[1.25rem] px-5"
-          style={{ background: `linear-gradient(155deg, ${velo.teintes[1]} 0%, #ffffff 100%)` }}
-        >
-          <VeloIllustration
-            categorie={velo.categorie}
-            teintes={velo.teintes}
-            className="w-[112%] max-w-none transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-1.5 group-hover:scale-[1.03]"
-          />
-          <div className="absolute left-4 top-4 flex flex-wrap gap-2">
-            <Pastille ton="sombre">{libellesCategorie[velo.categorie]}</Pastille>
-            {indisponible && <Pastille ton="alerte">En entretien</Pastille>}
-          </div>
-          <span className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-white/85 text-[0.72rem] font-bold">
-            {velo.taille}
-          </span>
+        <div className="relative grid aspect-4/3 place-items-center overflow-hidden bg-craie">
+          {velo.photo ? (
+            <Image
+              src={velo.photo}
+              alt={velo.nom}
+              fill
+              sizes="(min-width: 1024px) 320px, (min-width: 640px) 50vw, 100vw"
+              className="object-cover"
+            />
+          ) : (
+            <VeloIllustration
+              categorie={velo.categorie}
+              teintes={velo.teintes}
+              className="w-[110%] max-w-none px-5"
+            />
+          )}
+          {indisponible && (
+            <div className="absolute left-3 top-3">
+              <Pastille ton="alerte">En entretien</Pastille>
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-1 flex-col pt-5">
-          <div className="flex items-baseline justify-between gap-4">
-            <h3 className="font-display text-[1.3rem] font-extrabold uppercase leading-none tracking-[-0.02em]">
-              {velo.nom}
-            </h3>
-            <p className="shrink-0 font-display text-[1.05rem] font-bold text-terre-700">
-              {formatXof(velo.prixJourXof)}
-              <span className="text-[0.72rem] font-medium text-encre-500"> / jour</span>
-            </p>
-          </div>
-
-          <p className="mt-2 flex-1 text-[0.9rem] leading-relaxed text-encre-500">{velo.accroche}</p>
-
-          <div className="mt-4 flex items-center gap-3 border-t border-encre-900/12 pt-4 text-[0.78rem] text-encre-500">
-            <Etoiles note={velo.noteMoyenne} className="text-soleil-500" />
-            <span className="tabular-nums">
-              {velo.noteMoyenne.toLocaleString("fr-FR", { minimumFractionDigits: 1 })}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span>{velo.nombreAvis} avis</span>
-            <span aria-hidden="true">·</span>
-            <span>{velo.autonomieConseilleeKm} km / jour</span>
-          </div>
+        <div className="flex flex-1 flex-col p-5">
+          <h3 className="titre-editorial text-[1.4rem] text-craie">{velo.nom}</h3>
+          <p className="mt-2 flex-1 text-[0.9rem] leading-relaxed text-craie/60">{velo.accroche}</p>
         </div>
       </Link>
     </article>

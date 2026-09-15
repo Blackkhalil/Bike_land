@@ -25,9 +25,9 @@ export function PageLegale({
           {titre}
         </TitreSection>
         {sousTitre && (
-          <p className="mt-5 text-[1rem] leading-relaxed text-encre-500">{sousTitre}</p>
+          <p className="mt-5 text-[1rem] leading-relaxed text-gris-cadre">{sousTitre}</p>
         )}
-        <p className="mt-4 text-[0.82rem] text-encre-500">Dernière mise à jour : {miseAJour}</p>
+        <p className="mt-4 text-[0.82rem] text-gris-cadre">Dernière mise à jour : {miseAJour}</p>
 
         <div className="mt-12 space-y-10">{children}</div>
       </div>
@@ -37,9 +37,9 @@ export function PageLegale({
 
 export function ArticleLegal({ titre, children }: { titre: string; children: ReactNode }) {
   return (
-    <section className="border-t border-encre-900/12 pt-7">
+    <section className="border-t border-noir-piste/12 pt-7">
       <h2 className="font-display text-[1.1rem] font-bold uppercase tracking-tight">{titre}</h2>
-      <div className="mt-4 space-y-3 text-[0.95rem] leading-relaxed text-encre-700">{children}</div>
+      <div className="mt-4 space-y-3 text-[0.95rem] leading-relaxed text-noir-releve">{children}</div>
     </section>
   );
 }

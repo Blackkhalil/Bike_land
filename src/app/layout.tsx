@@ -1,21 +1,24 @@
 import type { Metadata, Viewport } from "next";
-import { Bricolage_Grotesque, Outfit } from "next/font/google";
+import { Inter, Oswald } from "next/font/google";
 
 import { site } from "@/lib/site";
 import "./globals.css";
 
-// Grotesque humaniste pour les titres : la typographie « lisible, arrondie,
-// humaine » demandée au §4.1, qui tient aussi en très grand corps.
-const bricolage = Bricolage_Grotesque({
+// Titres : grotesque condensée à graisse lourde (brief §2). Oswald tient
+// le très grand corps sans s'étaler en largeur — ce qui compte quand le
+// titre doit déborder de son bloc — et garde une bas-de-casse lisible,
+// puisque la casse phrase est imposée et les capitales proscrites.
+const oswald = Oswald({
   subsets: ["latin"],
-  variable: "--font-bricolage",
+  variable: "--font-oswald",
   display: "swap",
-  weight: ["400", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const outfit = Outfit({
+// Texte courant : sans-serif neutre, lisible en petit corps.
+const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-outfit",
+  variable: "--font-inter",
   display: "swap",
 });
 
@@ -28,10 +31,10 @@ export const metadata: Metadata = {
   description: site.description,
   keywords: [
     "location vélo Bénin",
-    "road trip vélo",
+    "location vélo Cotonou",
+    "road trip vélo Bénin",
+    "vélo route des Pêches",
     "cyclotourisme Bénin",
-    "vélo électrique Cotonou",
-    "gravel Atacora",
   ],
   openGraph: {
     type: "website",
@@ -44,7 +47,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1c1714",
+  themeColor: "#0e0e0e",
   width: "device-width",
   initialScale: 1,
 };
@@ -58,7 +61,7 @@ export const viewport: Viewport = {
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr" className={`${bricolage.variable} ${outfit.variable}`}>
+    <html lang="fr-BJ" className={`${oswald.variable} ${inter.variable}`}>
       <body className="min-h-screen antialiased">{children}</body>
     </html>
   );

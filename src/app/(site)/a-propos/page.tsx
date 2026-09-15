@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 
 import { BoutonLien } from "@/components/Bouton";
-import { PaysageIllustration } from "@/components/PaysageIllustration";
-import { Etiquette, Section, TitreSection } from "@/components/ui";
+import { Section, TitreSection } from "@/components/ui";
 import { chiffresCles } from "@/data/contenus";
 import { depot } from "@/lib/db";
 import { site } from "@/lib/site";
@@ -10,7 +10,7 @@ import { site } from "@/lib/site";
 export const metadata: Metadata = {
   title: "À propos",
   description:
-    "Bike Land, atelier de location de vélos pour road trips au Bénin : notre histoire, nos valeurs, nos trois points de retrait à Cotonou, Ouidah et Natitingou.",
+    "Bike Land, atelier de location de vélos sur la route des Pêches à Cotonou : notre histoire, nos valeurs, notre point de départ.",
   alternates: { canonical: "/a-propos" },
 };
 
@@ -18,12 +18,12 @@ const valeurs = [
   {
     titre: "Peu de vélos, bien suivis",
     detail:
-      "Neuf machines, pas quatre-vingts. Chacune a son carnet d'entretien et son mécanicien référent. C'est ce qui nous permet de promettre qu'un vélo qui sort est un vélo qui roule.",
+      "Une poignée de machines, pas quatre-vingts. Chacune a son carnet d'entretien et son mécanicien référent. C'est ce qui nous permet de promettre qu'un vélo qui sort est un vélo qui roule.",
   },
   {
     titre: "Le prix affiché est le prix payé",
     detail:
-      "Pas de frais de dossier, pas de supplément découvert au comptoir. Les remises de durée s'appliquent d'elles-mêmes, et la caution est annoncée avant le paiement.",
+      "Pas de frais de dossier, pas de supplément découvert au comptoir. Le road trip est au forfait, la location libre à l'heure : dans les deux cas, le prix affiché est le prix payé.",
   },
   {
     titre: "On répond, vraiment",
@@ -42,61 +42,65 @@ export default async function PageAPropos() {
 
   return (
     <>
-      <Section fond="sable" className="pb-16 pt-32 sm:pt-40">
-        <Etiquette numero="01">Qui nous sommes</Etiquette>
-        <TitreSection as="h1" taille="lg" className="mt-6 max-w-4xl">
+      <Section fond="noir" className="pb-16 pt-32 sm:pt-40">
+        <TitreSection as="h1" taille="lg" className=" max-w-4xl">
           Un atelier,
           <br />
           pas une plateforme
         </TitreSection>
-        <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-encre-500">
+        <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-craie/70">
           Bike Land est né d&apos;un constat simple : il est plus facile de louer une voiture à
           Cotonou qu&apos;un vélo capable de tenir quatre jours de piste. Nous avons ouvert
           l&apos;atelier que nous aurions voulu trouver.
         </p>
       </Section>
 
-      <Section fond="sable" className="pb-20">
-        <div className="overflow-hidden rounded-[1.75rem]">
-          <PaysageIllustration ambiance="savane" teintes={["#c07813", "#f8f2e9"]} className="w-full" />
+      <Section fond="craie" className="pb-20">
+        <div className="relative aspect-16/9 overflow-hidden">
+          <Image
+            src="/images/streetsh-vZAk_n9Plfc-unsplash.jpg"
+            alt="Un vélo prêt à partir devant l'atelier"
+            fill
+            sizes="(min-width: 1280px) 1200px, 100vw"
+            className="object-cover"
+          />
         </div>
 
-        <dl className="mt-12 grid gap-8 border-t border-encre-900/12 pt-10 sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="mt-12 grid gap-8 border-t border-noir-piste/12 pt-10 sm:grid-cols-2 lg:grid-cols-4">
           {chiffresCles.map((chiffre) => (
             <div key={chiffre.detail}>
-              <dt className="font-display text-[3rem] font-extrabold leading-none text-terre-600">
+              <dt className="font-display text-[3rem] font-extrabold leading-none text-orange-sourd">
                 {chiffre.valeur}
                 <span className="text-[1.2rem]">{chiffre.unite}</span>
               </dt>
-              <dd className="mt-3 text-[0.9rem] leading-relaxed text-encre-500">{chiffre.detail}</dd>
+              <dd className="mt-3 text-[0.9rem] leading-relaxed text-gris-cadre">{chiffre.detail}</dd>
             </div>
           ))}
         </dl>
       </Section>
 
-      <Section fond="blanc" className="py-20">
+      <Section fond="craie" className="py-20">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-10">
           <div className="lg:col-span-5">
-            <Etiquette numero="02">Notre façon de faire</Etiquette>
-            <TitreSection className="mt-6">
+            <TitreSection>
               Quatre principes,
               <br />
               tenus
             </TitreSection>
           </div>
           <div className="lg:col-span-7">
-            <ol className="border-t border-encre-900/12">
+            <ol className="border-t border-noir-piste/12">
               {valeurs.map((valeur, index) => (
-                <li key={valeur.titre} className="reveal border-b border-encre-900/12 py-7">
+                <li key={valeur.titre} className="reveal border-b border-noir-piste/12 py-7">
                   <div className="flex items-baseline gap-4">
-                    <span className="font-display text-[0.75rem] font-bold tabular-nums text-terre-600">
+                    <span className="font-display text-[0.75rem] font-bold tabular-nums text-orange-sourd">
                       0{index + 1}
                     </span>
                     <div>
                       <h3 className="font-display text-[1.15rem] font-bold uppercase leading-tight">
                         {valeur.titre}
                       </h3>
-                      <p className="mt-2.5 text-[0.95rem] leading-relaxed text-encre-500">
+                      <p className="mt-2.5 text-[0.95rem] leading-relaxed text-gris-cadre">
                         {valeur.detail}
                       </p>
                     </div>
@@ -108,19 +112,22 @@ export default async function PageAPropos() {
         </div>
       </Section>
 
-      <Section fond="sable" className="py-20">
-        <Etiquette numero="03">Où nous trouver</Etiquette>
-        <TitreSection className="mt-6">Trois points de retrait</TitreSection>
+      <Section fond="craie" className="py-20">
+        <TitreSection>Notre point de départ</TitreSection>
+        <p className="mt-4 max-w-lg text-[0.95rem] leading-relaxed text-gris-cadre">
+          Un seul point pour l&apos;instant, le temps de bien connaître chaque vélo. D&apos;autres
+          suivront avec l&apos;ouverture de nos road trips longue distance.
+        </p>
 
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
+        <div className="mt-10 grid gap-6 sm:max-w-sm">
           {points.map((point) => (
-            <div key={point.id} className="rounded-[1.25rem] bg-white p-7">
-              <p className="etiquette text-terre-600">{point.ville}</p>
+            <div key={point.id} className="rounded-[var(--radius-carte)] bg-white p-7">
+              <p className="etiquette text-orange-sourd">{point.ville}</p>
               <h3 className="mt-3 font-display text-[1.3rem] font-extrabold uppercase leading-none">
                 {point.nom}
               </h3>
-              <p className="mt-4 text-[0.92rem] leading-relaxed text-encre-500">{point.adresse}</p>
-              <p className="mt-3 border-t border-encre-900/12 pt-3 text-[0.85rem] text-encre-500">
+              <p className="mt-4 text-[0.92rem] leading-relaxed text-gris-cadre">{point.adresse}</p>
+              <p className="mt-3 border-t border-noir-piste/12 pt-3 text-[0.85rem] text-gris-cadre">
                 {point.horaires}
               </p>
             </div>
@@ -133,7 +140,7 @@ export default async function PageAPropos() {
           </BoutonLien>
           <a
             href={`tel:${site.telephoneLien}`}
-            className="lien-souligne font-display text-[1.2rem] font-bold text-terre-700"
+            className="lien-souligne font-display text-[1.2rem] font-bold text-orange-sourd"
           >
             {site.telephone}
           </a>

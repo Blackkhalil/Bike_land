@@ -1,12 +1,18 @@
 import type { Metadata } from "next";
 
 import { ArticleLegal, PageLegale } from "@/components/PageLegale";
+import {
+  CAUTION_LOCATION_LIBRE_XOF,
+  DUREE_MAX_LOCATION_LIBRE,
+  PRIX_ROAD_TRIP_XOF,
+} from "@/data/offres";
+import { formatXof } from "@/lib/format";
 import { site } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Conditions générales de vente",
   description:
-    "Conditions de location Bike Land : réservation, paiement, caution, annulation, responsabilité et assurance.",
+    "Conditions de location Bike Land : réservation, paiement, sorties encadrées, annulation et responsabilité.",
   alternates: { canonical: "/cgv" },
 };
 
@@ -20,8 +26,8 @@ export default function PageCGV() {
       <ArticleLegal titre="Article 1 — Objet">
         <p>
           Les présentes conditions régissent la location de cycles proposée par {site.nom} aux
-          particuliers et aux professionnels, au départ de ses points de retrait situés à Cotonou,
-          Ouidah et Natitingou.
+          particuliers et aux professionnels, au départ de la route
+          des Pêches, à Cotonou.
         </p>
       </ArticleLegal>
 
@@ -37,25 +43,35 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 3 — Tarifs et paiement">
+      <ArticleLegal titre="Article 3 — Offres et tarifs">
         <p>
-          Les prix sont indiqués en francs CFA (XOF), toutes taxes comprises. Les remises de durée
-          sont appliquées automatiquement. Une majoration de haute saison de 10 % s&apos;applique
-          aux jours situés entre le 1<sup>er</sup> novembre et le 31 mars.
+          {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
+          en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, au forfait de{" "}
+          {formatXof(PRIX_ROAD_TRIP_XOF)} par personne, eau et coco compris. La{" "}
+          <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
+          accompagnement, facturée à l&apos;heure selon la grille publiée sur le site, de une à{" "}
+          {DUREE_MAX_LOCATION_LIBRE} heures.
         </p>
         <p>
-          Le paiement s&apos;effectue par Mobile Money (MTN Money, Moov Money) ou par carte
-          bancaire, via un prestataire agréé. Aucune coordonnée bancaire n&apos;est conservée par{" "}
-          {site.nom}.
+          Les prix sont indiqués en francs CFA (XOF), toutes taxes comprises. Le paiement
+          s&apos;effectue par Mobile Money (MTN Money, Moov Money) ou par carte bancaire, via un
+          prestataire agréé. Aucune coordonnée bancaire n&apos;est conservée par {site.nom}.
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 4 — Caution">
+      <ArticleLegal titre="Article 4 — Caution et garanties">
         <p>
-          Une caution, dont le montant figure sur la fiche de chaque vélo, est pré-autorisée lors
-          de la réservation. Elle est libérée dans les 48 heures suivant la restitution, après
-          contrôle de l&apos;état du vélo. La souscription de l&apos;assurance sérénité dispense
-          de caution.
+          <strong>Road trip.</strong> Aucune caution n&apos;est demandée et aucun montant
+          n&apos;est pré-autorisé. La sortie est encadrée par un coordinateur de {site.nom}, qui
+          remet les vélos et les kits au départ et les récupère à l&apos;arrivée : le matériel
+          demeure sous la garde de {site.nom} pendant toute la durée de la sortie.
+        </p>
+        <p>
+          <strong>Location libre.</strong> Le vélo quittant la garde de {site.nom}, le locataire
+          remet au départ une caution de {formatXof(CAUTION_LOCATION_LIBRE_XOF)}, restituée
+          intégralement lors de la restitution du vélo en bon état. Le locataire présente en
+          outre une pièce d&apos;identité en cours de validité, qui lui est rendue au retour du
+          vélo et dont aucune copie n&apos;est conservée, et signe un engagement de restitution.
         </p>
       </ArticleLegal>
 
@@ -78,13 +94,13 @@ export default function PageCGV() {
 
       <ArticleLegal titre="Article 6 — Retrait et restitution">
         <p>
-          Le vélo est remis en état de fonctionnement, réglé à la taille du locataire, après un
-          point de contrôle contradictoire. Il est restitué au point convenu, avant l&apos;heure
-          de fermeture du dernier jour de location.
+          Le vélo est remis par le coordinateur en état de fonctionnement, réglé à la taille du
+          locataire, après un point de contrôle contradictoire. Il est récupéré par ce même
+          coordinateur à la fin de la sortie, en même temps que le kit remis au départ.
         </p>
         <p>
-          Un retard de restitution non signalé donne lieu à la facturation d&apos;une journée
-          supplémentaire par tranche entamée de 24 heures.
+          Le locataire qui quitte le groupe sans restituer le matériel au coordinateur en demeure
+          responsable jusqu&apos;à sa remise effective, dans les conditions de l&apos;article 8.
         </p>
       </ArticleLegal>
 
@@ -101,11 +117,11 @@ export default function PageCGV() {
         <p>
           L&apos;usure normale est à la charge de {site.nom}. Les dégradations résultant d&apos;une
           négligence, ainsi que le vol sans effraction, sont à la charge du locataire, dans la
-          limite de la caution ou de la valeur de remplacement.
+          limite de la valeur de remplacement du matériel concerné.
         </p>
         <p>
           Une assistance téléphonique est assurée sept jours sur sept pendant la location. Un
-          dépannage sur place est organisé dans un rayon de 60 km autour des points de retrait.
+          dépannage sur place est organisé dans un rayon de 60 km autour des points de départ.
         </p>
       </ArticleLegal>
 

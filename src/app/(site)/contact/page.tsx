@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 
 import { Accordeon } from "@/components/Accordeon";
 import { FormulaireContact } from "@/components/FormulaireContact";
-import { Etiquette, Section, TitreSection } from "@/components/ui";
+import { Section, TitreSection } from "@/components/ui";
 import { faq } from "@/data/contenus";
 import { site } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Contact & FAQ",
   description:
-    "Questions fréquentes sur la location, le paiement Mobile Money, la caution et l'assistance — et un formulaire pour tout le reste.",
+    "Questions fréquentes sur la location, le paiement Mobile Money, les sorties encadrées et l'assistance — et un formulaire pour tout le reste.",
   alternates: { canonical: "/contact" },
 };
 
@@ -35,43 +35,42 @@ export default function PageContact() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(donneesStructurees) }}
       />
 
-      <Section fond="sable" className="pb-16 pt-32 sm:pt-40">
-        <Etiquette numero="01">Contact</Etiquette>
-        <TitreSection as="h1" taille="lg" className="mt-6 max-w-3xl">
+      <Section fond="noir" className="pb-16 pt-32 sm:pt-40">
+        <TitreSection as="h1" taille="lg" className=" max-w-3xl">
           Une question ?
           <br />
           Quelqu&apos;un répond
         </TitreSection>
       </Section>
 
-      <Section fond="sable" className="pb-20">
+      <Section fond="craie" className="pb-20">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-10">
           <div className="lg:col-span-5">
             <div className="space-y-8">
               <div>
-                <p className="etiquette opacity-55">Par téléphone</p>
+                <p className="etiquette opacity-75">Par téléphone</p>
                 <a
                   href={`tel:${site.telephoneLien}`}
-                  className="lien-souligne mt-2 block font-display text-[1.5rem] font-extrabold text-terre-700"
+                  className="lien-souligne mt-2 block font-display text-[1.5rem] font-extrabold text-orange-sourd"
                 >
                   {site.telephone}
                 </a>
-                <p className="mt-2 text-[0.88rem] text-encre-500">{site.horaires}</p>
+                <p className="mt-2 text-[0.88rem] text-gris-cadre">{site.horaires}</p>
               </div>
 
               <div>
-                <p className="etiquette opacity-55">Par email</p>
+                <p className="etiquette opacity-75">Par email</p>
                 <a
                   href={`mailto:${site.email}`}
                   className="lien-souligne mt-2 block font-display text-[1.15rem] font-bold"
                 >
                   {site.email}
                 </a>
-                <p className="mt-2 text-[0.88rem] text-encre-500">Réponse sous 24 h ouvrées</p>
+                <p className="mt-2 text-[0.88rem] text-gris-cadre">Réponse sous 24 h ouvrées</p>
               </div>
 
               <div>
-                <p className="etiquette opacity-55">À l&apos;atelier</p>
+                <p className="etiquette opacity-75">À l&apos;atelier</p>
                 <p className="mt-2 text-[0.95rem] leading-relaxed">
                   {site.adresse.ligne}
                   <br />
@@ -80,7 +79,7 @@ export default function PageContact() {
               </div>
 
               <div>
-                <p className="etiquette opacity-55">Sur les réseaux</p>
+                <p className="etiquette opacity-75">Sur les réseaux</p>
                 <ul className="mt-3 flex flex-wrap gap-2">
                   {site.reseaux.map((reseau) => (
                     <li key={reseau.nom}>
@@ -88,7 +87,7 @@ export default function PageContact() {
                         href={reseau.url}
                         target="_blank"
                         rel="noreferrer noopener"
-                        className="inline-flex rounded-full border border-encre-900/20 px-4 py-2 text-[0.85rem] transition-colors hover:border-encre-900/50"
+                        className="inline-flex rounded-full border border-noir-piste/20 px-4 py-2 text-[0.85rem] transition-colors hover:border-noir-piste/50"
                       >
                         {reseau.nom}
                       </a>
@@ -105,14 +104,13 @@ export default function PageContact() {
         </div>
       </Section>
 
-      <Section fond="blanc" className="py-20" id="faq">
-        <Etiquette numero="02">Questions fréquentes</Etiquette>
-        <TitreSection className="mt-6">Ce qu&apos;on nous demande</TitreSection>
+      <Section fond="craie" className="py-20" id="faq">
+        <TitreSection>Ce qu&apos;on nous demande</TitreSection>
 
         <div className="mt-12 space-y-14">
           {faq.map((groupe) => (
             <div key={groupe.categorie}>
-              <h3 className="font-display text-[1.15rem] font-bold uppercase tracking-tight text-terre-700">
+              <h3 className="font-display text-[1.15rem] font-bold uppercase tracking-tight text-orange-sourd">
                 {groupe.categorie}
               </h3>
               <Accordeon

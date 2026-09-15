@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { ConflitDisponibiliteError, depot } from "@/lib/db";
-import { envoyerConfirmation, envoyerFacture } from "@/lib/email";
+import {
+  envoyerConfirmation,
+  envoyerFacture,
+  envoyerNotificationAdmin,
+  envoyerReceptionDemande,
+} from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
 import { site } from "@/lib/site";
@@ -48,6 +53,9 @@ export async function POST(requete: Request) {
   try {
     const resultat = await depot.creerReservation({
       veloId: velo.id,
+      offre: donnees.offre,
+      nombrePersonnes: donnees.nombrePersonnes,
+      dureeHeures: donnees.dureeHeures,
       dateDebut: donnees.dateDebut,
       dateFin: donnees.dateFin,
       options: donnees.options,
@@ -76,12 +84,41 @@ export async function POST(requete: Request) {
     const lienSuivi = `${site.url}/reservation/${token}`;
     const facture = numeroDeFacture(reservation);
 
-    // Les emails ne doivent jamais faire échouer une réservation déjà
-    // enregistrée et payée : on les tente, on journalise en cas d'échec.
-    await Promise.allSettled([
-      envoyerConfirmation(reservation, lienSuivi),
-      envoyerFacture(reservation, facture, lienSuivi),
-    ]);
+    // La réservation vient d'être créée EN ATTENTE DE PAIEMENT. Elle
+    // n'est confirmée, et les emails envoyés, que lorsque l'encaissement
+    // est réellement abouti :
+    //
+    //  - en mode démonstration, `encaisser` répond REUSSI tout de suite,
+    //    on confirme donc ici ;
+    //  - avec un vrai agrégateur, il répond EN_ATTENTE et redirige le
+    //    client vers sa page de paiement. C'est alors le webhook signé
+    //    qui confirmera, une fois l'argent reçu.
+    //
+    // Confirmer ici sans vérifier reviendrait à donner un vélo à qui
+    // n'a pas payé.
+    let confirmee = false;
+    if (paiement.statut === "REUSSI") {
+      const resultat = await depot.confirmerPaiement(
+        reservation.reference,
+        paiement.referenceTransaction,
+      );
+      confirmee = Boolean(resultat && !resultat.dejaConfirmee);
+      if (resultat && !resultat.dejaConfirmee) {
+        // Les emails ne doivent jamais faire échouer une réservation
+        // déjà enregistrée et payée : on les tente, on journalise.
+        await Promise.allSettled([
+          envoyerConfirmation(resultat.reservation, lienSuivi),
+          envoyerFacture(resultat.reservation, facture, lienSuivi),
+          envoyerNotificationAdmin(resultat.reservation),
+        ]);
+      }
+    } else {
+      // Paiement pas encore abouti : le client part chez l'agregateur.
+      // On lui envoie tout de suite son lien de suivi, car c'est le seul
+      // moment ou le jeton existe en clair — la base n'en garde que le
+      // hache, et le webhook qui confirmera ne pourra pas le reconstituer.
+      await Promise.allSettled([envoyerReceptionDemande(reservation, lienSuivi)]);
+    }
 
     return NextResponse.json(
       {
@@ -89,6 +126,7 @@ export async function POST(requete: Request) {
         token,
         lienSuivi,
         facture,
+        confirmee,
         paiement: {
           statut: paiement.statut,
           fournisseur: paiement.fournisseur,

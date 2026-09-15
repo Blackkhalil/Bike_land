@@ -1,90 +1,61 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 
 import { CarteVelo } from "@/components/CarteVelo";
-import { FiltresCatalogue } from "@/components/FiltresCatalogue";
-import { Etiquette, Section, TitreSection } from "@/components/ui";
+import { Section, TitreSection } from "@/components/ui";
 import { depot } from "@/lib/db";
-import { estDateISOValide } from "@/lib/dates";
 
 export const metadata: Metadata = {
   title: "Nos vélos",
   description:
-    "Le parc Bike Land : randonneurs, gravels, vélos à assistance électrique, tout chemin et tandem. Filtrez par type, taille, point de retrait et dates disponibles.",
+    "Le parc Bike Land, sur la route des Pêches à Cotonou. Choisissez un vélo et une date ; la formule se choisit à l'étape suivante.",
   alternates: { canonical: "/velos" },
 };
 
-/** Le filtre par dates dépend des réservations : la page ne peut pas être figée. */
+/** Le parc dépend des réservations en cours : la page ne peut pas être figée. */
 export const dynamic = "force-dynamic";
 
-type Parametres = Promise<Record<string, string | string[] | undefined>>;
-
-export default async function PageCatalogue({ searchParams }: { searchParams: Parametres }) {
-  const parametres = await searchParams;
-
-  const enListe = (valeur: string | string[] | undefined): string[] =>
-    valeur === undefined ? [] : Array.isArray(valeur) ? valeur : [valeur];
-
-  const debut = typeof parametres.debut === "string" && estDateISOValide(parametres.debut)
-    ? parametres.debut
-    : undefined;
-  const fin = typeof parametres.fin === "string" && estDateISOValide(parametres.fin)
-    ? parametres.fin
-    : undefined;
-  // Les deux dates ne comptent qu'ensemble, et dans le bon ordre.
-  const periodeValide = debut && fin && debut <= fin;
-
-  const [velos, points] = await Promise.all([
-    depot.listerVelos({
-      categories: enListe(parametres.categorie),
-      tailles: enListe(parametres.taille),
-      pointDeRetraitId: typeof parametres.point === "string" ? parametres.point : undefined,
-      dateDebut: periodeValide ? debut : undefined,
-      dateFin: periodeValide ? fin : undefined,
-    }),
-    depot.listerPointsDeRetrait(),
-  ]);
-
-  const parametresReservation = periodeValide ? `debut=${debut}&fin=${fin}` : undefined;
+/**
+ * Le catalogue.
+ *
+ * Aucun filtre : ni type de vélo, ni taille, ni point de départ.
+ *
+ * Avec sept vélos sur un seul point, filtrer n'aide personne. Surtout,
+ * ni le type ni la taille ne changent quoi que ce soit : le prix dépend
+ * de la formule et non du vélo, et le coordinateur règle la machine à la
+ * morphologie du client au départ. Afficher ces critères laisserait
+ * croire qu'ils comptent.
+ *
+ * Le visiteur choisit un vélo, puis une date. C'est tout.
+ */
+export default async function PageCatalogue() {
+  const velos = await depot.listerVelos();
 
   return (
-    <Section fond="sable" className="pb-24 pt-32 sm:pt-40">
+    <Section fond="noir" className="pb-24 pt-32 sm:pt-40">
       <div>
-        <Etiquette numero="01">Le parc</Etiquette>
-        <TitreSection className="mt-6 max-w-3xl" as="h1">
-          Neuf vélos préparés
+        <TitreSection className="max-w-3xl" as="h1">
+          {velos.length} vélos préparés
           <br />
-          pour l&apos;itinérance
+          pour la route des Pêches
         </TitreSection>
-        <p className="mt-6 max-w-xl text-[0.98rem] leading-relaxed text-encre-500">
-          Indiquez vos dates pour ne voir que les vélos réellement libres. La disponibilité
-          est calculée sur le parc physique : un vélo déjà loué n&apos;apparaît pas.
+        <p className="mt-6 max-w-xl text-[0.98rem] leading-relaxed text-craie/70">
+          Choisissez le vélo qui vous plaît, puis votre date. Il sera réglé à votre taille au
+          départ, et un coordinateur vérifie freins et pression avant que vous partiez.
         </p>
       </div>
 
-      <div className="mt-12">
-        <Suspense fallback={<div className="h-40 border-y border-encre-900/12" />}>
-          <FiltresCatalogue points={points} nombreResultats={velos.length} />
-        </Suspense>
-      </div>
-
       {velos.length === 0 ? (
-        <div className="mt-16 rounded-[1.25rem] bg-white px-8 py-16 text-center">
-          <p className="titre-editorial text-[1.6rem]">Aucun vélo sur ces critères</p>
-          <p className="mx-auto mt-4 max-w-md text-[0.95rem] leading-relaxed text-encre-500">
-            Élargissez la période ou retirez un filtre. Si vos dates sont fermes, écrivez-nous :
-            nous pouvons parfois avancer un retour ou proposer un modèle équivalent.
+        <div className="mt-16 rounded-[var(--radius-carte)] bg-white px-8 py-16 text-center">
+          <p className="titre-editorial text-[1.6rem]">Aucun vélo disponible</p>
+          <p className="mx-auto mt-4 max-w-md text-[0.95rem] leading-relaxed text-gris-cadre">
+            Tout le parc est momentanément à l&apos;atelier. Écrivez-nous, nous vous dirons quand
+            les vélos repartent.
           </p>
         </div>
       ) : (
-        <div className="mt-14 grid gap-x-6 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {velos.map((velo) => (
-            <CarteVelo
-              key={velo.id}
-              velo={velo}
-              parametresReservation={parametresReservation}
-              className="reveal"
-            />
+            <CarteVelo key={velo.id} velo={velo} />
           ))}
         </div>
       )}

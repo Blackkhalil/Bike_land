@@ -1,42 +1,87 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { FlecheDiagonale } from "./Bouton";
-
 /**
  * Petites briques de mise en page partagées par toutes les sections.
  * Elles portent l'essentiel du rythme visuel : étiquette numérotée,
  * grand titre éditorial, filet horizontal fin.
  */
 
+/**
+ * Fonds de section.
+ *
+ * Les quatre premiers sont la nouvelle charte. Les quatre derniers
+ * (`sable`, `blanc`, `encre`, `olive`) sont des ALIAS DE MIGRATION vers
+ * l'ancienne charte : ils permettent aux pages pas encore reprises de
+ * continuer à compiler et à s'afficher correctement. À supprimer une
+ * fois toutes les pages passées aux nouveaux noms.
+ */
+type FondSection =
+  | "noir"
+  | "noir-releve"
+  | "craie"
+  | "lagune"
+  | "transparent"
+  | "sable"
+  | "blanc"
+  | "encre"
+  | "olive";
+
+/**
+ * Section pleine largeur.
+ *
+ * L'alternance franche sombre / clair est le moteur visuel du site : les
+ * fonds vont toujours bord à bord, seul le contenu est contraint à la
+ * grille (1280px, brief §2). `bordAbord` relâche cette contrainte pour
+ * les héros et les aplats de couleur, qui doivent casser la grille.
+ *
+ * `lagune` est réservé à l'univers « tours » : c'est ce qui permet de
+ * distinguer les deux offres d'un coup d'œil, sans lire.
+ */
 export function Section({
   children,
   className = "",
-  fond = "sable",
+  fond = "noir",
+  bordAbord = false,
   id,
 }: {
   children: ReactNode;
   className?: string;
-  fond?: "sable" | "blanc" | "encre" | "olive" | "transparent";
+  fond?: FondSection;
+  bordAbord?: boolean;
   id?: string;
 }) {
   const fonds = {
-    sable: "bg-sable-50 text-encre-900",
-    blanc: "bg-white text-encre-900",
-    encre: "bg-encre-900 text-sable-100",
-    olive: "bg-olive-800 text-olive-50",
+    noir: "bg-noir-piste text-craie",
+    "noir-releve": "bg-noir-releve text-craie",
+    craie: "bg-craie text-noir-piste",
+    lagune: "bg-vert-lagune text-craie",
     transparent: "",
+    // Alias de migration — voir FondSection.
+    sable: "bg-craie text-noir-piste",
+    blanc: "bg-craie text-noir-piste",
+    encre: "bg-noir-piste text-craie",
+    olive: "bg-vert-lagune text-craie",
   } as const;
 
   return (
     <section id={id} className={`${fonds[fond]} ${className}`}>
-      <div className="mx-auto max-w-[1400px] px-5 sm:px-8">{children}</div>
+      {bordAbord ? children : <div className="mx-auto max-w-[1280px] px-5 sm:px-8">{children}</div>}
     </section>
   );
 }
 
+/**
+ * @deprecated Le brief §2 proscrit les « eyebrows » en capitales espacées
+ * au-dessus des titres, ainsi que la numérotation 01/02/03 sur des
+ * contenus qui ne sont pas une séquence.
+ *
+ * Le composant est conservé le temps de la migration pour que les
+ * sections pas encore reprises restent lisibles : il rend désormais un
+ * simple intertitre gris, et ignore volontairement `numero`. Chaque lot
+ * supprime ses usages ; le composant part avec le dernier.
+ */
 export function Etiquette({
-  numero,
   children,
   className = "",
 }: {
@@ -44,12 +89,7 @@ export function Etiquette({
   children: ReactNode;
   className?: string;
 }) {
-  return (
-    <p className={`etiquette flex items-center gap-3 opacity-55 ${className}`}>
-      {numero && <span className="tabular-nums">({numero})</span>}
-      <span>{children}</span>
-    </p>
-  );
+  return <p className={`etiquette ${className}`}>{children}</p>;
 }
 
 export function TitreSection({
@@ -76,6 +116,11 @@ export function Filet({ className = "" }: { className?: string }) {
   return <hr className={`border-0 border-t border-current/15 ${className}`} />;
 }
 
+/**
+ * Lien d'action secondaire. Sans flèche accolée : le brief §2 la range
+ * parmi les tics à éviter. Le soulignement au survol suffit à signaler
+ * l'interaction.
+ */
 export function LienFleche({
   href,
   children,
@@ -88,30 +133,29 @@ export function LienFleche({
   return (
     <Link
       href={href}
-      className={`group inline-flex items-center gap-1.5 text-[0.8rem] font-semibold uppercase tracking-[0.12em] ${className}`}
+      className={`lien-souligne inline-flex items-center text-[0.8rem] font-semibold uppercase tracking-[0.08em] ${className}`}
     >
       {children}
-      <FlecheDiagonale />
     </Link>
   );
 }
 
-/** Cadre « photo » : une bordure blanche épaisse, façon tirage papier. */
+/**
+ * Cadre d'image. À plat, arêtes vives, sans rotation ni ombre portée :
+ * le brief §2 exclut les ombres molles et les angles arrondis.
+ */
 export function CadrePhoto({
   children,
   className = "",
-  rotation = 0,
 }: {
   children: ReactNode;
   className?: string;
+  /** @deprecated L'inclinaison décorative a été retirée. */
   rotation?: number;
 }) {
   return (
-    <div
-      className={`rounded-[6px] bg-white p-2.5 shadow-[0_18px_50px_-24px_rgba(42,35,30,0.45)] ${className}`}
-      style={rotation ? { transform: `rotate(${rotation}deg)` } : undefined}
-    >
-      <div className="overflow-hidden rounded-[3px]">{children}</div>
+    <div className={`bg-craie p-2 ${className}`}>
+      <div className="overflow-hidden">{children}</div>
     </div>
   );
 }
@@ -144,17 +188,19 @@ export function Pastille({
   ton?: "neutre" | "succes" | "alerte" | "info" | "sombre";
   className?: string;
 }) {
+  // Angles droits, à-plats francs. L'orange n'apparaît pas ici : une
+  // pastille n'est pas cliquable, et l'orange est réservé au signal.
   const tons = {
-    neutre: "bg-sable-200 text-encre-700",
-    succes: "bg-olive-100 text-olive-700",
-    alerte: "bg-soleil-300/45 text-terre-800",
-    info: "bg-terre-100 text-terre-700",
-    sombre: "bg-encre-900 text-sable-50",
+    neutre: "bg-craie-ombre text-noir-piste",
+    succes: "bg-vert-lagune text-craie",
+    alerte: "bg-noir-piste text-craie",
+    info: "bg-noir-releve text-craie",
+    sombre: "bg-noir-piste text-craie",
   } as const;
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.1em] ${tons[ton]} ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.08em] ${tons[ton]} ${className}`}
     >
       {children}
     </span>

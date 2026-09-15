@@ -9,6 +9,7 @@ import { Courbe } from "@/components/graphiques/Courbe";
 import { Jauge, TuileStat } from "@/components/graphiques/TuileStat";
 import { SelecteurPeriode } from "@/components/admin/SelecteurPeriode";
 import { depot } from "@/lib/db";
+import { aujourdhui, nombreDeJours } from "@/lib/dates";
 import { formatDate, formatNombre, formatXof } from "@/lib/format";
 import {
   calculerStatistiques,
@@ -22,6 +23,66 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
 
 const granularitesValides: Granularite[] = ["jour", "semaine", "mois", "annee"];
 
+/**
+ * Titre de bloc du tableau de bord.
+ *
+ * Volontairement un vrai titre lisible, et non une étiquette grise en
+ * petites capitales : l'exploitant doit balayer la page et comprendre
+ * chaque bloc sans effort. Le sous-titre dit, en français courant, à
+ * quelle question le bloc répond.
+ */
+function TitreBloc({
+  id,
+  titre,
+  question,
+  action,
+}: {
+  id: string;
+  titre: string;
+  question: string;
+  action?: { href: string; libelle: string };
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 id={id} className="titre-editorial text-[1.5rem]">
+          {titre}
+        </h2>
+        <p className="mt-1.5 text-[0.88rem] text-gris-cadre">{question}</p>
+      </div>
+      {action && (
+        <Link
+          href={action.href}
+          className="lien-souligne text-[0.85rem] font-semibold text-orange-sourd"
+        >
+          {action.libelle}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tableau de bord de l'exploitation.
+ *
+ * L'écran est ordonné comme la journée de l'exploitant, et non comme un
+ * rapport financier : d'abord ce qu'il y a à faire aujourd'hui, ensuite
+ * seulement les chiffres.
+ *
+ * Deux principes tiennent tout le reste :
+ *
+ *  1. **L'état fait foi, jamais la date.** Un vélo est « à remettre »
+ *     parce qu'il est payé et pas encore sorti, pas parce que la date du
+ *     jour est arrivée. La fiche du jour et la liste des réservations
+ *     appliquent la même règle : sans cela les trois écrans annonceraient
+ *     des nombres différents pour la même réalité.
+ *
+ *  2. **Les deux formules ne se mesurent pas pareil.** Le road trip se
+ *     facture au participant, la location libre à l'heure. On ne les
+ *     additionne donc jamais : chacune garde son volume et son unité.
+ *
+ * Aucun calcul métier ici — tout vient de `calculerStatistiques`.
+ */
 export default async function PageTableauDeBord({ searchParams }: { searchParams: Recherche }) {
   const parametres = await searchParams;
   const demandee = typeof parametres.periode === "string" ? parametres.periode : "mois";
@@ -29,31 +90,59 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
     ? (demandee as Granularite)
     : "mois";
 
-  const [reservations, velos, clients, points] = await Promise.all([
+  const [reservations, velos, clients] = await Promise.all([
     depot.listerReservations(),
     depot.listerVelos(),
     depot.listerClients(),
-    depot.listerPointsDeRetrait(),
   ]);
 
   const periode = construirePeriode(granularite);
-  const stats = calculerStatistiques(reservations, velos, clients, points, periode);
+  const stats = calculerStatistiques(reservations, velos, clients, periode);
 
   const totalClients = stats.nouveauxClients + stats.clientsRecurrents;
+  const joursCompares = nombreDeJours(stats.fenetreCourante.debut, stats.fenetreCourante.fin);
+
+  // Ce qui se passe aujourd'hui ouvre la page : c'est la première chose
+  // que l'exploitant regarde en arrivant à l'atelier, avant tout
+  // indicateur de performance.
+  const jour = aujourdhui();
+  const actives = reservations.filter((r) => r.statut !== "ANNULEE");
+
+  // Ce qui reste réellement à faire, déduit de l'état et non des dates —
+  // exactement comme la fiche du jour, sinon les deux écrans annoncent
+  // des chiffres différents. Un vélo déjà remis n'est plus « à préparer »,
+  // et un vélo qui n'est pas encore parti n'est pas « attendu au retour ».
+  const departsDuJour = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
+  const retoursDuJour = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
+  const aPayer = reservations.filter((r) => r.statut === "EN_ATTENTE_PAIEMENT");
+
+  // Ce que le coordinateur doit préparer et réclamer aujourd'hui : les
+  // cocos et les eaux d'un côté, les pièces d'identité et les cautions de
+  // l'autre. Les deux formules ne demandent pas les mêmes gestes.
+  const participantsDuJour = departsDuJour
+    .filter((r) => r.offre === "road-trip")
+    .reduce((total, r) => total + r.nombrePersonnes, 0);
+  const cautionsAcollecter = departsDuJour
+    .filter((r) => r.offre === "location-libre")
+    .reduce((total, r) => total + r.cautionXof, 0);
 
   return (
-    <div>
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <div className="pb-10">
+      <header className="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="etiquette opacity-55">Exploitation</p>
-          <h1 className="titre-editorial mt-3 text-[2rem]">Tableau de bord</h1>
-          <p className="mt-2 max-w-2xl text-[0.88rem] leading-relaxed text-encre-500">
-            {periode.libelle} — du {formatDate(stats.fenetreCourante.debut)} au{" "}
-            {formatDate(stats.fenetreCourante.fin)}
-            {stats.periodeEnCours && " (période en cours)"}, comparé aux{" "}
-            {formatDate(stats.periodePrecedente.debut)} – {formatDate(stats.periodePrecedente.fin)}.
-            {stats.periodeEnCours &&
-              " Les deux fenêtres couvrent le même nombre de jours, pour que la comparaison ait un sens."}
+          <h1 className="titre-editorial text-[2.2rem]">Tableau de bord</h1>
+          <p className="mt-2 max-w-2xl text-[0.9rem] leading-relaxed text-gris-cadre">
+            Vous regardez{" "}
+            <strong className="text-noir-piste">{periode.libelle.toLowerCase()}</strong>, du{" "}
+            {formatDate(stats.fenetreCourante.debut)} au {formatDate(stats.fenetreCourante.fin)}.
+            {stats.periodeEnCours && (
+              <>
+                {" "}
+                La période n&apos;est pas terminée : elle est comparée aux {joursCompares} mêmes
+                jours de la période précédente, et non à une période entière — sinon la
+                comparaison montrerait une chute qui n&apos;existe pas.
+              </>
+            )}
           </p>
         </div>
 
@@ -63,152 +152,259 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           </Suspense>
           <a
             href={`/api/admin/export?periode=${granularite}`}
-            className="rounded-full bg-encre-900 px-5 py-2.5 text-[0.82rem] font-semibold text-sable-50 transition-colors hover:bg-terre-600"
+            className="rounded-full bg-noir-piste px-5 py-2.5 text-[0.82rem] font-semibold text-craie transition-colors hover:bg-orange-signal hover:text-noir-piste"
           >
             Exporter en CSV
           </a>
         </div>
       </header>
 
-      {/* ------------------------------------------------ Indicateurs financiers */}
-      <section className="mt-10" aria-labelledby="titre-financier">
-        <h2 id="titre-financier" className="etiquette opacity-55">
-          Indicateurs financiers
-        </h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {/* ------------------------------------------------------ Aujourd'hui */}
+      <section className="mt-12" aria-labelledby="titre-aujourdhui">
+        <TitreBloc
+          id="titre-aujourdhui"
+          titre="Aujourd'hui"
+          question="Ce que vous avez à faire dans la journée."
+          action={{ href: "/admin/reservations", libelle: "Voir les réservations" }}
+        />
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <TuileStat
-            libelle="Chiffre d'affaires"
-            valeur={formatXof(stats.chiffreAffaires.valeur)}
-            indicateur={stats.chiffreAffaires}
-            aide="Pas de période précédente comparable"
+            libelle="Départs à préparer"
+            valeur={formatNombre(departsDuJour.length)}
+            aide={
+              departsDuJour.length === 0
+                ? "Aucun vélo n'attend d'être remis."
+                : "Vélos payés à sortir et à régler, client pas encore servi."
+            }
           />
           <TuileStat
-            libelle="Revenu moyen par réservation"
-            valeur={formatXof(stats.revenuMoyenParReservation.valeur)}
-            indicateur={stats.revenuMoyenParReservation}
+            libelle="Retours attendus"
+            valeur={formatNombre(retoursDuJour.length)}
+            aide={
+              retoursDuJour.length === 0
+                ? "Aucun vélo dehors dont le retour soit échu."
+                : "Vélos sortis à récupérer et à contrôler."
+            }
           />
           <TuileStat
-            libelle="Cautions encaissées"
-            valeur={formatXof(stats.cautionsEncaissees)}
-            aide={`Dont ${formatXof(stats.cautionsRestituees)} déjà restituées`}
+            libelle="Paiements en attente"
+            valeur={formatNombre(aPayer.length)}
+            aide={
+              aPayer.length === 0
+                ? "Toutes les réservations sont réglées."
+                : "Réservations enregistrées mais pas encore payées."
+            }
           />
           <TuileStat
-            libelle="Réservations facturées"
-            valeur={formatNombre(stats.nombreReservations.valeur)}
-            indicateur={stats.nombreReservations}
+            libelle="Cocos et eaux à prévoir"
+            valeur={formatNombre(participantsDuJour)}
+            aide={
+              participantsDuJour === 0
+                ? "Aucun road trip au départ aujourd'hui."
+                : "Un coco et une eau par participant au road trip."
+            }
+          />
+          <TuileStat
+            libelle="Cautions à encaisser"
+            valeur={formatXof(cautionsAcollecter)}
+            aide={
+              cautionsAcollecter === 0
+                ? "Aucune location libre au départ aujourd'hui."
+                : "En espèces au départ, avec la pièce d'identité. À rendre au retour du vélo."
+            }
+          />
+          <TuileStat
+            libelle="Vélos disponibles"
+            valeur={`${formatNombre(stats.velosDisponibles)} sur ${velos.length}`}
+            aide="Ni sortis, ni immobilisés à l'atelier."
           />
         </div>
       </section>
 
-      {/* --------------------------------------------------------- Graphiques */}
-      <section className="mt-10 grid gap-4 lg:grid-cols-2" aria-label="Évolution">
-        <Courbe
-          titre="Chiffre d'affaires par mois"
-          sousTitre="Douze derniers mois, réservations non annulées"
-          points={stats.evolutionChiffreAffaires}
-          dernierPointPartiel={stats.periodeEnCours}
+      {/* -------------------------------------------------- Les deux formules */}
+      <section className="mt-12" aria-labelledby="titre-formules">
+        <TitreBloc
+          id="titre-formules"
+          titre="Les deux formules"
+          question="Laquelle fait tourner l'activité sur la période."
         />
-        <Colonnes
-          titre="Saisonnalité des réservations"
-          sousTitre="Nombre de départs par mois"
-          points={stats.saisonnalite}
-          uniteInfobulle="Réservations"
-        />
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          {stats.parOffre.map((offre) => (
+            <div
+              key={offre.code}
+              className="rounded-[var(--radius-carte)] border border-noir-piste/8 bg-white p-6"
+            >
+              <p className="text-[0.85rem] font-medium text-gris-cadre">{offre.nom}</p>
+              <p className="mt-2 font-display text-[2.1rem] leading-none tabular-nums text-noir-piste">
+                {formatXof(offre.chiffreAffaires)}
+              </p>
+              <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-2 text-[0.85rem]">
+                <div>
+                  <dt className="text-gris-cadre">Réservations</dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums">
+                    {formatNombre(offre.reservations)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-gris-cadre">
+                    {offre.code === "road-trip" ? "Participants" : "Heures vendues"}
+                  </dt>
+                  <dd className="mt-0.5 font-semibold tabular-nums">
+                    {formatNombre(offre.volume)}
+                  </dd>
+                </div>
+              </dl>
+              {offre.reservations === 0 && (
+                <p className="mt-4 text-[0.8rem] leading-relaxed text-gris-cadre">
+                  Aucune réservation sur cette formule pendant la période.
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
       </section>
 
-      {/* ------------------------------------------- Indicateurs de réservation */}
-      <section className="mt-10" aria-labelledby="titre-reservation">
-        <h2 id="titre-reservation" className="etiquette opacity-55">
-          Indicateurs de réservation
-        </h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Jauge
-            libelle="Taux d'occupation du parc"
-            pourcentage={stats.tauxOccupation}
-            detail={`Sur ${velos.length} vélos et ${stats.fenetreCourante.libelle.toLowerCase()}`}
+      {/* ----------------------------------------------------------- Argent */}
+      <section className="mt-12" aria-labelledby="titre-argent">
+        <TitreBloc
+          id="titre-argent"
+          titre="L'argent"
+          question="Ce que la période a rapporté, et si c'est mieux qu'avant."
+        />
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <TuileStat
+            libelle="Chiffre d'affaires"
+            valeur={formatXof(stats.chiffreAffaires.valeur)}
+            indicateur={stats.chiffreAffaires}
+            aide="Aucune période précédente à comparer."
           />
           <TuileStat
-            libelle="Durée moyenne de location"
-            valeur={`${formatNombre(stats.dureeMoyenne.valeur, 1)} j`}
-            indicateur={stats.dureeMoyenne}
+            libelle="Panier moyen"
+            valeur={formatXof(stats.revenuMoyenParReservation.valeur)}
+            indicateur={stats.revenuMoyenParReservation}
+            aide="Montant moyen d'une réservation."
+          />
+          <TuileStat
+            libelle="Réservations payées"
+            valeur={formatNombre(stats.nombreReservations.valeur)}
+            indicateur={stats.nombreReservations}
+            aide="Annulations exclues."
+          />
+          {/* Les cautions ne sont jamais encaissées en ligne : elles ne
+              font pas partie du chiffre d'affaires. Mais l'exploitant doit
+              savoir combien de liquide est sorti et reste à rendre. */}
+          <TuileStat
+            libelle="Cautions en circulation"
+            valeur={formatXof(stats.cautionsEnCirculation)}
+            aide={
+              stats.cautionsEnCirculation === 0
+                ? "Aucun vélo dehors en location libre."
+                : "Espèces détenues pour des vélos encore dehors. À rendre au retour, hors chiffre d'affaires."
+            }
+          />
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------ Exploitation */}
+      <section className="mt-12" aria-labelledby="titre-exploitation">
+        <TitreBloc
+          id="titre-exploitation"
+          titre="Comment tournent les vélos"
+          question="Si le parc travaille assez, et si les clients vont au bout."
+          action={{ href: "/admin/velos", libelle: "Gérer le parc" }}
+        />
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <Jauge
+            libelle="Taux d'occupation"
+            pourcentage={stats.tauxOccupation}
+            detail={`Part des journées-vélo utilisées sur la période, pour un parc de ${velos.length} vélos. 100 % signifierait que chaque vélo sort chaque jour.`}
+          />
+          <TuileStat
+            libelle="Participants emmenés"
+            valeur={formatNombre(stats.participants.valeur)}
+            indicateur={stats.participants}
+            aide="Personnes parties en road trip sur la période."
+          />
+          <TuileStat
+            libelle="Heures vendues"
+            valeur={`${formatNombre(stats.heuresVendues.valeur)} h`}
+            indicateur={stats.heuresVendues}
+            aide="Total des heures de location libre sur la période."
           />
           <TuileStat
             libelle="Taux d'annulation"
             valeur={`${formatNombre(stats.tauxAnnulation.valeur, 1)} %`}
             indicateur={stats.tauxAnnulation}
-            aide="Aucune annulation sur les deux fenêtres comparées"
+            aide="Aucune annulation sur les deux périodes comparées."
             baisseSouhaitable
+          />
+          <TuileStat
+            libelle="Vélos immobilisés"
+            valeur={formatNombre(stats.velosEnEntretien)}
+            aide="À l'atelier, donc non réservables."
           />
           <TuileStat
             libelle="Note moyenne"
             valeur={stats.noteMoyenne !== null ? `${formatNombre(stats.noteMoyenne, 2)} / 5` : "—"}
-            aide={`${stats.nombreAvis} avis sur la période`}
+            aide={`${stats.nombreAvis} avis laissés sur la période.`}
           />
         </div>
       </section>
 
-      {/* ------------------------------------------ Paiements, parc et clients */}
-      <section className="mt-10 grid gap-4 lg:grid-cols-3" aria-label="Répartitions">
-        <BarresHorizontales
-          titre="Moyens de paiement"
-          sousTitre="Montant encaissé, hors cautions"
-          points={stats.repartitionPaiements}
-          format="xof"
-          uniteInfobulle="Montant"
+      {/* --------------------------------------------------------- Tendances */}
+      <section className="mt-12" aria-labelledby="titre-tendances">
+        <TitreBloc
+          id="titre-tendances"
+          titre="Sur douze mois"
+          question="La tendance de fond, indépendante de la période choisie plus haut."
         />
-        <BarresHorizontales
-          titre="Vélos les plus loués"
-          sousTitre="Nombre de locations sur la période"
-          points={stats.velosLesPlusLoues}
-          format="nombre"
-          uniteInfobulle="Locations"
-          limite={6}
-        />
-        <div className="space-y-4">
-          <BarresHorizontales
-            titre="Origine des réservations"
-            sousTitre="Par point de retrait"
-            points={stats.originesReservations}
-            format="nombre"
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <Courbe
+            titre="Chiffre d'affaires par mois"
+            sousTitre="Douze derniers mois, annulations exclues"
+            points={stats.evolutionChiffreAffaires}
+            dernierPointPartiel={stats.periodeEnCours}
+          />
+          <Colonnes
+            titre="Départs par mois"
+            sousTitre="Combien de locations commencent chaque mois"
+            points={stats.saisonnalite}
             uniteInfobulle="Réservations"
           />
-          <BarreEmpilee
-            titre="Clients de la période"
-            sousTitre={`${totalClients} client${totalClients > 1 ? "s" : ""} ayant réservé`}
-            segments={[
-              { clef: "nouveaux", etiquette: "Nouveaux clients", valeur: stats.nouveauxClients },
-              { clef: "recurrents", etiquette: "Clients récurrents", valeur: stats.clientsRecurrents },
-            ]}
-            format="nombre"
-          />
         </div>
       </section>
 
-      {/* -------------------------------------------------- État du parc à date */}
-      <section className="mt-10" aria-labelledby="titre-parc">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <h2 id="titre-parc" className="etiquette opacity-55">
-            État du parc aujourd&apos;hui
-          </h2>
-          <Link href="/admin/velos" className="lien-souligne text-[0.82rem] font-semibold text-terre-700">
-            Gérer le parc
-          </Link>
-        </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <TuileStat
-            libelle="Vélos disponibles"
-            valeur={formatNombre(stats.velosDisponibles)}
-            aide="Prêts à partir, non réservés aujourd'hui"
+      {/* ------------------------------------------------------ Répartitions */}
+      <section className="mt-12" aria-labelledby="titre-repartitions">
+        <TitreBloc
+          id="titre-repartitions"
+          titre="Qui paie quoi, et avec quel vélo"
+          question="Les répartitions sur la période choisie."
+        />
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <BarresHorizontales
+            titre="Moyens de paiement"
+            sousTitre="Montant encaissé par moyen"
+            points={stats.repartitionPaiements}
+            format="xof"
+            uniteInfobulle="Montant"
           />
-          <TuileStat
-            libelle="Vélos en location"
-            valeur={formatNombre(stats.velosEnLocation)}
-            aide="Sortis, retour prévu selon calendrier"
+          <BarresHorizontales
+            titre="Vélos les plus loués"
+            sousTitre="Nombre de sorties sur la période"
+            points={stats.velosLesPlusLoues}
+            format="nombre"
+            uniteInfobulle="Locations"
+            limite={6}
           />
-          <TuileStat
-            libelle="Vélos en entretien"
-            valeur={formatNombre(stats.velosEnEntretien)}
-            aide="Retirés temporairement de la réservation"
+          <BarreEmpilee
+            titre="Nouveaux ou habitués"
+            sousTitre={`${totalClients} client${totalClients > 1 ? "s" : ""} ont réservé`}
+            segments={[
+              { clef: "nouveaux", etiquette: "Première location", valeur: stats.nouveauxClients },
+              { clef: "recurrents", etiquette: "Déjà venus", valeur: stats.clientsRecurrents },
+            ]}
+            format="nombre"
           />
         </div>
       </section>

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { TunnelReservation } from "@/components/reservation/TunnelReservation";
-import { Etiquette, Section, TitreSection } from "@/components/ui";
+import { Section, TitreSection } from "@/components/ui";
 import { optionsLocation } from "@/data/catalogue";
+import type { CodeOffre } from "@/lib/types";
 import { depot } from "@/lib/db";
 import { aujourdhui, estDateISOValide } from "@/lib/dates";
 
@@ -22,6 +23,16 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   const parametres = await searchParams;
 
   const slug = typeof parametres.velo === "string" ? parametres.velo : null;
+  // L'offre vient de l'URL mais n'est jamais crue sur parole : le prix
+  // est recalcule cote serveur a la creation, et la validation Zod
+  // refuse toute duree hors grille.
+  const offre: CodeOffre = parametres.offre === "location-libre" ? "location-libre" : "road-trip";
+  const heuresBrutes = Number(parametres.heures);
+  const dureeHeures = Number.isInteger(heuresBrutes) ? heuresBrutes : 2;
+  const personnesBrutes = Number(parametres.personnes);
+  const nombrePersonnes =
+    Number.isInteger(personnesBrutes) && personnesBrutes > 0 ? Math.min(personnesBrutes, 12) : 1;
+
   const debut = typeof parametres.debut === "string" ? parametres.debut : null;
   const fin = typeof parametres.fin === "string" ? parametres.fin : null;
 
@@ -52,9 +63,8 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   ).filter((code) => optionsLocation.some((option) => option.code === code));
 
   return (
-    <Section fond="sable" className="pb-24 pt-32 sm:pt-40">
-      <Etiquette numero="01">Réservation</Etiquette>
-      <TitreSection as="h1" className="mt-6">
+    <Section fond="craie" className="pb-24 pt-32 sm:pt-40">
+      <TitreSection as="h1">
         Plus que quelques minutes
       </TitreSection>
 
@@ -63,21 +73,24 @@ export default async function PageReservation({ searchParams }: { searchParams: 
           <TunnelReservation
             velo={velo}
             point={points.find((point) => point.id === velo.pointDeRetraitId)}
+            offre={offre}
+            dureeHeures={dureeHeures}
+            nombrePersonnes={nombrePersonnes}
             dateDebut={debut}
             dateFin={fin}
             optionsInitiales={optionsDemandees}
           />
         </div>
       ) : (
-        <div className="mt-12 max-w-xl rounded-[1.5rem] bg-white p-8">
+        <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
           <p className="titre-editorial text-[1.4rem]">Ce vélo n&apos;est plus libre</p>
-          <p className="mt-4 text-[0.95rem] leading-relaxed text-encre-500">
+          <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
             Quelqu&apos;un a réservé le {velo.nom} sur cette période pendant que vous
             choisissiez vos options. Aucun montant n&apos;a été prélevé.
           </p>
           <Link
             href={`/velos?debut=${debut}&fin=${fin}`}
-            className="mt-6 inline-flex rounded-full bg-encre-900 px-6 py-3 text-sm font-semibold text-sable-50"
+            className="mt-6 inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
           >
             Voir les vélos libres sur ces dates
           </Link>

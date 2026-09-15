@@ -17,6 +17,7 @@ import type {
   MoyenPaiement,
   Reservation,
   StatutReservation,
+  Velo,
 } from "../types";
 
 /** Générateur mulberry32 : rapide, reproductible, suffisant pour du jeu d'essai. */
@@ -104,6 +105,44 @@ export function construireHistorique(aujourdHuiISO: DateISO): HistoriqueDemo {
     }
   }
 
+  // La fiche du jour est l'écran que l'exploitant ouvre en premier. Comme
+  // toutes les sorties tiennent désormais dans la journée, un tirage
+  // aléatoire laisse souvent la date du jour vide, et l'écran paraît alors
+  // cassé alors qu'il fonctionne. On garantit donc quelques mouvements
+  // aujourd'hui : un départ par formule, et un vélo déjà dehors à rendre.
+  const parcDemo = velos.filter((velo) => velo.statut !== "RETIRE");
+  const dejaPris = new Set(
+    reservations
+      .filter((r) => r.dateDebut === aujourdHuiISO && r.statut !== "ANNULEE")
+      .flatMap((r) => r.lignes.map((ligne) => ligne.veloId)),
+  );
+  const libresAujourdhui = parcDemo.filter((velo) => !dejaPris.has(velo.id));
+
+  const mouvements: { offre: "road-trip" | "location-libre"; statut: StatutReservation }[] = [
+    { offre: "road-trip", statut: "CONFIRMEE" },
+    { offre: "location-libre", statut: "CONFIRMEE" },
+    { offre: "location-libre", statut: "EN_COURS" },
+  ];
+
+  for (const [rang, mouvement] of mouvements.entries()) {
+    const velo = libresAujourdhui[rang];
+    if (!velo) break;
+    const reservation = fabriquerReservation({
+      hasard,
+      jourReservation: ajouterJours(aujourdHuiISO, -3),
+      aujourdHuiISO,
+      occupation,
+      clients,
+      clientsParEmail,
+      index: compteur,
+      impose: { velo, dateDebut: aujourdHuiISO, ...mouvement },
+    });
+    if (reservation) {
+      reservations.push(reservation);
+      compteur += 1;
+    }
+  }
+
   return { clients, reservations };
 }
 
@@ -115,17 +154,26 @@ function fabriquerReservation(contexte: {
   clients: Client[];
   clientsParEmail: Map<string, Client>;
   index: number;
+  /** Force un vélo, une date, une formule et un statut (mouvements du jour). */
+  impose?: {
+    velo: Velo;
+    dateDebut: DateISO;
+    offre: "road-trip" | "location-libre";
+    statut: StatutReservation;
+  };
 }): Reservation | null {
-  const { hasard, jourReservation, aujourdHuiISO, occupation, clients, clientsParEmail, index } = contexte;
+  const { hasard, jourReservation, aujourdHuiISO, occupation, clients, clientsParEmail, index, impose } =
+    contexte;
 
   const veloxDisponibles = velos.filter((velo) => velo.statut !== "RETIRE");
-  const velo = veloxDisponibles[Math.floor(hasard() * veloxDisponibles.length)];
+  const velo = impose?.velo ?? veloxDisponibles[Math.floor(hasard() * veloxDisponibles.length)];
 
   // Délai entre la réservation et le départ : de la veille à deux mois.
   const delai = Math.floor(hasard() ** 2 * 55) + 1;
-  const dateDebut = ajouterJours(jourReservation, delai);
-  const jours = choisirDuree(hasard);
-  const dateFin = ajouterJours(dateDebut, jours - 1);
+  const dateDebut = impose?.dateDebut ?? ajouterJours(jourReservation, delai);
+  // Toute sortie tient dans la journée, road trip comme location libre :
+  // la date de fin est donc toujours la date de départ.
+  const dateFin = dateDebut;
 
   if (dateFin > ajouterJours(aujourdHuiISO, 60)) return null;
 
@@ -134,11 +182,23 @@ function fabriquerReservation(contexte: {
   if (chevauche) return null;
 
   const optionsChoisies = choisirOptions(hasard);
-  const devis = calculerDevis(velo, dateDebut, dateFin, optionsChoisies);
+
+  // Mélange des deux formules, à peu près deux tiers de road trips : sans
+  // cela le tableau de bord montrerait une colonne systématiquement vide
+  // et donnerait l'impression que la location libre ne marche pas.
+  const estRoadTrip = impose ? impose.offre === "road-trip" : hasard() < 0.65;
+  const nombrePersonnes = estRoadTrip ? choisirParticipants(hasard) : 1;
+  const dureeHeures = estRoadTrip ? undefined : choisirDuree(hasard);
+  const devis = calculerDevis({
+    offre: estRoadTrip ? "road-trip" : "location-libre",
+    nombrePersonnes,
+    dureeHeures,
+    options: optionsChoisies,
+  });
 
   const client = obtenirClient(hasard, clients, clientsParEmail, jourReservation);
   const moyen = choisirMoyenPaiement(hasard);
-  const statut = deduireStatut(hasard, dateDebut, dateFin, aujourdHuiISO);
+  const statut = impose?.statut ?? deduireStatut(hasard, dateDebut, dateFin, aujourdHuiISO);
 
   if (statut !== "ANNULEE") {
     creneaux.push({ debut: dateDebut, fin: dateFin });
@@ -150,18 +210,21 @@ function fabriquerReservation(contexte: {
     id: `res-demo-${index + 1}`,
     reference,
     statut,
+    offre: devis.offre,
+    nombrePersonnes: devis.nombrePersonnes,
+    dureeHeures: devis.dureeHeures ?? undefined,
     clientId: client.id,
     client,
     pointDeRetraitId: velo.pointDeRetraitId,
     dateDebut,
     dateFin,
-    jours: devis.jours,
+    jours: nombreDeJours(dateDebut, dateFin),
     lignes: [
       {
         veloId: velo.id,
         veloNom: velo.nom,
         veloSlug: velo.slug,
-        prixUnitaireXof: velo.prixJourXof,
+        prixUnitaireXof: devis.sousTotalXof,
         totalLigneXof: devis.sousTotalXof,
       },
     ],
@@ -173,7 +236,7 @@ function fabriquerReservation(contexte: {
     })),
     sousTotalXof: devis.sousTotalXof,
     optionsXof: devis.optionsXof,
-    remiseXof: devis.remiseXof,
+    remiseXof: 0,
     cautionXof: devis.cautionXof,
     totalXof: devis.totalXof,
     paiements:
@@ -214,12 +277,29 @@ function fabriquerReservation(contexte: {
   return reservation;
 }
 
+/**
+ * Durée d'une location libre, en heures et dans la grille publiée.
+ *
+ * Pondérée vers les sorties courtes : c'est ce qu'on observe sur une
+ * piste côtière, où l'on vient rouler une ou deux heures en fin de
+ * journée bien plus souvent qu'une demi-journée entière.
+ */
 function choisirDuree(hasard: () => number): number {
   const tirage = hasard();
-  if (tirage < 0.3) return 1 + Math.floor(hasard() * 2); // 1 – 2 jours
-  if (tirage < 0.68) return 3 + Math.floor(hasard() * 4); // 3 – 6 jours
-  if (tirage < 0.93) return 7 + Math.floor(hasard() * 5); // 7 – 11 jours
-  return 14 + Math.floor(hasard() * 5); // grand raid
+  if (tirage < 0.34) return 1;
+  if (tirage < 0.64) return 2;
+  if (tirage < 0.84) return 3;
+  if (tirage < 0.95) return 4;
+  return 5;
+}
+
+/** Participants d'un road trip : le plus souvent seul ou à deux. */
+function choisirParticipants(hasard: () => number): number {
+  const tirage = hasard();
+  if (tirage < 0.42) return 1;
+  if (tirage < 0.76) return 2;
+  if (tirage < 0.92) return 3;
+  return 4;
 }
 
 function choisirOptions(hasard: () => number): { code: string; quantite: number }[] {

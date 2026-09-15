@@ -13,7 +13,7 @@ import {
 
 /**
  * Barres horizontales pour catégories nominales aux noms longs
- * (moyens de paiement, vélos, points de retrait).
+ * (moyens de paiement, vélos, points de départ).
  *
  * Une seule teinte, la valeur écrite au bout de la barre : la longueur
  * porte la magnitude, le libellé porte l'identité. Aucun besoin de
@@ -44,7 +44,7 @@ export function BarresHorizontales({
   return (
     <CadreGraphique titre={titre} sousTitre={sousTitre} actions={actions}>
       {affiches.length === 0 ? (
-        <p className="py-10 text-center text-[0.9rem] text-encre-500">Aucune donnée sur la période.</p>
+        <p className="py-10 text-center text-[0.9rem] text-gris-cadre">Aucune donnée sur la période.</p>
       ) : (
         <ul className="space-y-3.5">
           {affiches.map((point) => {
@@ -59,7 +59,7 @@ export function BarresHorizontales({
                   <span className="truncate">{point.etiquette}</span>
                   <span className="shrink-0 font-semibold tabular-nums">{formater(point.valeur)}</span>
                 </div>
-                <div className="mt-1.5 h-2.5 w-full rounded-full bg-sable-200">
+                <div className="mt-1.5 h-2.5 w-full rounded-full bg-craie-ombre">
                   <div
                     className="h-2.5 rounded-full transition-opacity duration-150"
                     style={{

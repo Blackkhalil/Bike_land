@@ -47,7 +47,7 @@ export function Courbe({
   if (points.length === 0) {
     return (
       <CadreGraphique titre={titre} sousTitre={sousTitre} actions={actions}>
-        <p className="py-12 text-center text-[0.9rem] text-encre-500">Aucune donnée sur la période.</p>
+        <p className="py-12 text-center text-[0.9rem] text-gris-cadre">Aucune donnée sur la période.</p>
       </CadreGraphique>
     );
   }
@@ -191,7 +191,7 @@ export function Courbe({
       </div>
 
       {dernierPointPartiel && (
-        <p className="mt-3 text-[0.76rem] text-encre-500">
+        <p className="mt-3 text-[0.76rem] text-gris-cadre">
           Le dernier mois est en cours : son segment est tracé en pointillé, et le total qu&apos;il
           affiche est encore partiel.
         </p>

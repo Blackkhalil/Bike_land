@@ -47,13 +47,13 @@ export function FormulaireContact() {
 
   if (etat === "envoye") {
     return (
-      <div className="rounded-[1.5rem] bg-white p-8">
-        <p className="titre-editorial text-[1.5rem] text-olive-600">Message envoyé</p>
-        <p className="mt-4 text-[0.95rem] leading-relaxed text-encre-500">
+      <div className="rounded-[var(--radius-bloc)] bg-white p-8">
+        <p className="titre-editorial text-[1.5rem] text-vert-lagune">Message envoyé</p>
+        <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
           Nous répondons sous 24 heures ouvrées. Un accusé de réception vient de partir vers
           votre adresse — vérifiez vos courriers indésirables si vous ne le voyez pas.
         </p>
-        <Bouton variante="contour" className="mt-6 text-encre-900" onClick={() => setEtat("repos")}>
+        <Bouton variante="contour" className="mt-6 text-noir-piste" onClick={() => setEtat("repos")}>
           Écrire un autre message
         </Bouton>
       </div>
@@ -61,7 +61,7 @@ export function FormulaireContact() {
   }
 
   return (
-    <form onSubmit={soumettre} className="rounded-[1.5rem] bg-white p-6 sm:p-8" noValidate>
+    <form onSubmit={soumettre} className="rounded-[var(--radius-bloc)] bg-white p-6 sm:p-8" noValidate>
       <div className="grid gap-5 sm:grid-cols-2">
         <Champ
           libelle="Votre nom"
@@ -90,18 +90,18 @@ export function FormulaireContact() {
       </div>
 
       <label className="mt-5 block">
-        <span className="etiquette opacity-55">Votre message</span>
+        <span className="etiquette opacity-75">Votre message</span>
         <textarea
           value={champs.message}
           onChange={(evenement) => modifier("message")(evenement.target.value)}
           rows={6}
           maxLength={2000}
           aria-invalid={erreurs.message ? true : undefined}
-          className={`mt-2 w-full rounded-2xl border bg-sable-50 px-4 py-3 text-[0.95rem] outline-none transition-colors focus:border-terre-500 ${
-            erreurs.message ? "border-terre-500" : "border-encre-900/15"
+          className={`mt-2 w-full rounded-[var(--radius-carte)] border bg-craie px-4 py-3 text-[0.95rem] outline-none transition-colors focus:border-orange-signal ${
+            erreurs.message ? "border-orange-signal" : "border-noir-piste/15"
           }`}
         />
-        {erreurs.message && <span className="mt-1.5 block text-[0.8rem] text-terre-700">{erreurs.message}</span>}
+        {erreurs.message && <span className="mt-1.5 block text-[0.8rem] text-orange-sourd">{erreurs.message}</span>}
       </label>
 
       {/* Champ piège : masqué aux humains et aux lecteurs d'écran. */}
@@ -118,7 +118,7 @@ export function FormulaireContact() {
       </div>
 
       {etat === "erreur" && Object.keys(erreurs).length === 0 && (
-        <p role="alert" className="mt-5 text-[0.88rem] text-terre-700">
+        <p role="alert" className="mt-5 text-[0.88rem] text-orange-sourd">
           Le message n&apos;a pas pu être envoyé. Réessayez, ou appelez-nous directement.
         </p>
       )}
@@ -127,7 +127,7 @@ export function FormulaireContact() {
         {etat === "envoi" ? "Envoi…" : "Envoyer le message"}
       </Bouton>
 
-      <p className="mt-4 text-[0.8rem] leading-relaxed text-encre-500">
+      <p className="mt-4 text-[0.8rem] leading-relaxed text-gris-cadre">
         Vos données servent uniquement à répondre à votre demande. Vous pouvez en demander la
         suppression à tout moment.
       </p>
@@ -153,7 +153,7 @@ function Champ({
   const identifiant = `contact-${libelle.toLowerCase().replace(/[^a-z]/g, "")}`;
   return (
     <div>
-      <label htmlFor={identifiant} className="etiquette opacity-55">
+      <label htmlFor={identifiant} className="etiquette opacity-75">
         {libelle}
       </label>
       <input
@@ -163,11 +163,11 @@ function Champ({
         autoComplete={autoComplete}
         aria-invalid={erreur ? true : undefined}
         onChange={(evenement) => onChange(evenement.target.value)}
-        className={`mt-2 w-full rounded-full border bg-sable-50 px-5 py-3 text-[0.95rem] outline-none transition-colors focus:border-terre-500 ${
-          erreur ? "border-terre-500" : "border-encre-900/15"
+        className={`mt-2 w-full rounded-full border bg-craie px-5 py-3 text-[0.95rem] outline-none transition-colors focus:border-orange-signal ${
+          erreur ? "border-orange-signal" : "border-noir-piste/15"
         }`}
       />
-      {erreur && <p className="mt-1.5 text-[0.8rem] text-terre-700">{erreur}</p>}
+      {erreur && <p className="mt-1.5 text-[0.8rem] text-orange-sourd">{erreur}</p>}
     </div>
   );
 }

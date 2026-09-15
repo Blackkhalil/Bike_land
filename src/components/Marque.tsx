@@ -28,7 +28,9 @@ export function Marque({ className = "", taille = 34 }: { className?: string; ta
           />
         ))}
       </svg>
-      <span className="font-display text-[1.35rem] font-extrabold uppercase leading-none tracking-[-0.04em]">
+      {/* Le nom reste en capitales : c'est une marque déposée, pas un
+          titre de section — l'interdit du brief §2 porte sur les titres. */}
+      <span className="font-display text-[1.3rem] font-bold uppercase leading-none tracking-[0.02em]">
         Bike&nbsp;Land
       </span>
     </span>

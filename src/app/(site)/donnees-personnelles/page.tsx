@@ -38,7 +38,7 @@ export default function PageDonneesPersonnelles() {
             facture et le lien de suivi, vous joindre en cas d&apos;imprévu.
           </li>
           <li>
-            <strong>Réservation</strong> — vélo, dates, options, point de retrait, montant.
+            <strong>Réservation</strong> — vélo, dates, options, point de départ, montant.
             Finalité : exécuter la location et tenir la comptabilité.
           </li>
           <li>

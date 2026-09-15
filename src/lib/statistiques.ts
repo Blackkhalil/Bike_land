@@ -16,7 +16,8 @@ import {
   periodesSeChevauchent,
   type DateISO,
 } from "./dates";
-import type { Client, MoyenPaiement, PointDeRetrait, Reservation, Velo } from "./types";
+import { OFFRES } from "@/data/offres";
+import type { Client, CodeOffre, MoyenPaiement, Reservation, Velo } from "./types";
 
 export type Granularite = "jour" | "semaine" | "mois" | "annee";
 
@@ -55,17 +56,39 @@ export interface Statistiques {
   // --- Indicateurs financiers
   chiffreAffaires: IndicateurCompare;
   revenuMoyenParReservation: IndicateurCompare;
-  cautionsEncaissees: number;
-  cautionsRestituees: number;
   repartitionPaiements: Serie[];
+  /**
+   * Cautions actuellement entre les mains du coordinateur : locations
+   * libres parties et pas encore rendues. C'est de l'argent liquide à
+   * rendre, pas du chiffre d'affaires — d'où sa place à part.
+   */
+  cautionsEnCirculation: number;
 
   // --- Indicateurs de réservation
   nombreReservations: IndicateurCompare;
   tauxOccupation: number;
-  dureeMoyenne: IndicateurCompare;
   tauxAnnulation: IndicateurCompare;
   saisonnalite: Serie[];
   evolutionChiffreAffaires: Serie[];
+
+  /**
+   * Répartition entre les deux formules. C'est la lecture principale de
+   * l'activité : le road trip se facture au participant, la location
+   * libre à l'heure, et les deux ne se pilotent pas de la même façon.
+   */
+  parOffre: {
+    code: CodeOffre;
+    nom: string;
+    reservations: number;
+    chiffreAffaires: number;
+    /** Participants pour le road trip, heures vendues pour la location libre. */
+    volume: number;
+    uniteVolume: string;
+  }[];
+  /** Total de participants emmenés en road trip sur la période. */
+  participants: IndicateurCompare;
+  /** Total d'heures vendues en location libre sur la période. */
+  heuresVendues: IndicateurCompare;
 
   // --- Indicateurs sur le parc
   velosLesPlusLoues: Serie[];
@@ -76,7 +99,6 @@ export interface Statistiques {
   // --- Indicateurs clients
   nouveauxClients: number;
   clientsRecurrents: number;
-  originesReservations: Serie[];
   noteMoyenne: number | null;
   nombreAvis: number;
 }
@@ -139,7 +161,6 @@ export function calculerStatistiques(
   reservations: Reservation[],
   velos: Velo[],
   clients: Client[],
-  points: PointDeRetrait[],
   periode: Periode,
 ): Statistiques {
   const maintenant = aujourdhui();
@@ -168,13 +189,37 @@ export function calculerStatistiques(
   const moyenne = facturees.length ? Math.round(ca / facturees.length) : 0;
   const moyenneAvant = factureesAvant.length ? Math.round(caAvant / factureesAvant.length) : 0;
 
-  // --- Cautions : encaissées sur la période, restituées quand remboursées.
   const paiements = facturees.flatMap((r) => r.paiements);
-  const cautionsEncaissees = somme(
-    paiements.filter((p) => p.estCaution && p.statut !== "ECHOUE").map((p) => p.montantXof),
-  );
-  const cautionsRestituees = somme(
-    paiements.filter((p) => p.estCaution && p.statut === "REMBOURSE").map((p) => p.montantXof),
+
+  // --- Répartition par formule. Le volume ne se compte pas de la même
+  //     façon des deux côtés : le road trip se facture au participant,
+  //     la location libre à l'heure. Les additionner n'aurait aucun sens,
+  //     on les garde donc côte à côte avec leur unité.
+  const participantsDe = (liste: Reservation[]) =>
+    somme(liste.filter((r) => r.offre === "road-trip").map((r) => r.nombrePersonnes));
+  const heuresDe = (liste: Reservation[]) =>
+    somme(liste.filter((r) => r.offre === "location-libre").map((r) => r.dureeHeures ?? 0));
+
+  const parOffre = OFFRES.map((offre) => {
+    const lignes = facturees.filter((r) => r.offre === offre.code);
+    const roadTrip = offre.code === "road-trip";
+    return {
+      code: offre.code,
+      nom: offre.nom,
+      reservations: lignes.length,
+      chiffreAffaires: somme(lignes.map((r) => r.totalXof)),
+      volume: roadTrip ? participantsDe(lignes) : heuresDe(lignes),
+      uniteVolume: roadTrip ? "participants" : "heures",
+    };
+  });
+
+  // --- Cautions en circulation : locations libres sorties et pas encore
+  //     rendues. Cet argent est en espèces chez le coordinateur, il n'est
+  //     jamais encaissé en ligne — ce n'est donc pas du chiffre d'affaires.
+  const cautionsEnCirculation = somme(
+    reservations
+      .filter((r) => r.statut === "EN_COURS" && r.offre === "location-libre")
+      .map((r) => r.cautionXof),
   );
 
   // --- Répartition par moyen de paiement, hors cautions pour ne pas
@@ -203,9 +248,10 @@ export function calculerStatistiques(
   }
   const tauxOccupation = capacite > 0 ? (joursLoues / capacite) * 100 : 0;
 
-  const duree = moyenneDe(facturees.map((r) => r.jours));
-  const dureeAvant = moyenneDe(factureesAvant.map((r) => r.jours));
-
+  // La durée moyenne en jours a été retirée : toutes les sorties tiennent
+  // désormais dans la journée, elle valait donc 1,0 en permanence. Ce qui
+  // varie, et qu'on mesure à la place, ce sont les participants emmenés et
+  // les heures vendues.
   const tauxAnnulation = courantes.length
     ? (courantes.filter((r) => r.statut === "ANNULEE").length / courantes.length) * 100
     : 0;
@@ -294,13 +340,8 @@ export function calculerStatistiques(
   }
   const clientsRecurrents = clientsDeLaPeriode.size - nouveauxClients;
 
-  const parPoint = new Map<string, number>();
-  for (const reservation of facturees) {
-    parPoint.set(reservation.pointDeRetraitId, (parPoint.get(reservation.pointDeRetraitId) ?? 0) + 1);
-  }
-  const originesReservations = points
-    .map((point) => ({ clef: point.id, etiquette: point.ville, valeur: parPoint.get(point.id) ?? 0 }))
-    .sort((a, b) => b.valeur - a.valeur);
+  // La répartition par point de départ a été retirée : il n'y en a qu'un,
+  // sur la route des Pêches. Un graphique à une seule barre n'apprend rien.
 
   const notes = facturees.map((r) => r.note).filter((note): note is number => typeof note === "number");
 
@@ -311,13 +352,14 @@ export function calculerStatistiques(
     periodePrecedente: precedente,
     chiffreAffaires: comparer(ca, caAvant),
     revenuMoyenParReservation: comparer(moyenne, moyenneAvant),
-    cautionsEncaissees,
-    cautionsRestituees,
     repartitionPaiements,
+    cautionsEnCirculation,
     nombreReservations: comparer(facturees.length, factureesAvant.length),
     tauxOccupation,
-    dureeMoyenne: comparer(duree, dureeAvant),
     tauxAnnulation: comparer(tauxAnnulation, tauxAnnulationAvant),
+    parOffre,
+    participants: comparer(participantsDe(facturees), participantsDe(factureesAvant)),
+    heuresVendues: comparer(heuresDe(facturees), heuresDe(factureesAvant)),
     saisonnalite,
     evolutionChiffreAffaires,
     velosLesPlusLoues,
@@ -326,7 +368,6 @@ export function calculerStatistiques(
     velosEnEntretien,
     nouveauxClients,
     clientsRecurrents: Math.max(clientsRecurrents, 0),
-    originesReservations,
     noteMoyenne: notes.length ? Number((somme(notes) / notes.length).toFixed(2)) : null,
     nombreAvis: notes.length,
   };
@@ -350,48 +391,68 @@ function moyenneDe(valeurs: number[]): number {
 
 function etiquetteMois(mois: string): string {
   const [annee, numero] = mois.split("-").map(Number);
-  return new Intl.DateTimeFormat("fr-FR", { month: "short", timeZone: "UTC" })
+  const libelle = new Intl.DateTimeFormat("fr-FR", { month: "short", timeZone: "UTC" })
     .format(new Date(Date.UTC(annee, numero - 1, 1)))
     .replace(".", "");
+  // La fenêtre glissante de 12 mois couvre presque toujours 13 mois
+  // calendaires : sans l'année, le mois de bord (ex. « sept ») apparaît deux
+  // fois et devient ambigu sur le graphique comme dans son repli textuel.
+  return `${libelle} ${String(annee).slice(2)}`;
 }
 
-/** Export comptable (§2.3) : une ligne par réservation, séparateur point-virgule. */
+/**
+ * Export comptable : une ligne par réservation, séparateur point-virgule.
+ *
+ * La colonne `jours` a été retirée — toutes les sorties tiennent dans la
+ * journée — au profit de ce qui détermine réellement le montant :
+ * la formule, le nombre de participants (road trip) et la durée en heures
+ * (location libre).
+ *
+ * `caution_especes_xof` porte ce nom pour lever toute ambiguïté
+ * comptable : cette somme n'est jamais encaissée en ligne, elle est
+ * remise en liquide au départ et rendue au retour du vélo. Elle ne fait
+ * donc pas partie du chiffre d'affaires.
+ */
 export function exporterCsv(reservations: Reservation[]): string {
   const entetes = [
     "reference",
     "statut",
+    "offre",
+    "nombre_personnes",
+    "duree_heures",
     "client",
     "email",
+    "telephone",
     "velo",
     "date_debut",
-    "date_fin",
-    "jours",
     "sous_total_xof",
     "options_xof",
-    "remise_xof",
     "total_xof",
-    "caution_xof",
+    "caution_especes_xof",
     "moyen_paiement",
     "cree_le",
+    "confirme_le",
   ];
 
   const lignes = reservations.map((reservation) =>
     [
       reservation.reference,
       reservation.statut,
+      reservation.offre,
+      reservation.offre === "road-trip" ? reservation.nombrePersonnes : "",
+      reservation.offre === "location-libre" ? (reservation.dureeHeures ?? "") : "",
       `${reservation.client.prenom} ${reservation.client.nom}`,
       reservation.client.email,
+      reservation.client.telephone ?? "",
       reservation.lignes.map((ligne) => ligne.veloNom).join(" + "),
       reservation.dateDebut,
-      reservation.dateFin,
-      reservation.jours,
       reservation.sousTotalXof,
       reservation.optionsXof,
-      reservation.remiseXof,
       reservation.totalXof,
       reservation.cautionXof,
       reservation.paiements.find((p) => !p.estCaution)?.moyen ?? "",
       reservation.creeLe.slice(0, 10),
+      reservation.confirmeLe?.slice(0, 10) ?? "",
     ]
       .map(echapperCsv)
       .join(";"),

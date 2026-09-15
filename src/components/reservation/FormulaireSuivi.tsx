@@ -45,8 +45,8 @@ export function FormulaireSuivi() {
   };
 
   return (
-    <form onSubmit={ouvrir} className="rounded-[1.5rem] bg-white p-6 sm:p-7">
-      <label htmlFor="lien-suivi" className="etiquette opacity-55">
+    <form onSubmit={ouvrir} className="rounded-[var(--radius-bloc)] bg-white p-6 sm:p-7">
+      <label htmlFor="lien-suivi" className="etiquette opacity-75">
         Lien de suivi reçu par email
       </label>
       <input
@@ -56,12 +56,12 @@ export function FormulaireSuivi() {
         placeholder="https://bikeland.bj/reservation/BL-XXXXXX…"
         aria-invalid={erreur ? true : undefined}
         aria-describedby={erreur ? "erreur-suivi" : undefined}
-        className={`mt-2 w-full rounded-full border bg-sable-50 px-5 py-3 text-[0.95rem] outline-none transition-colors focus:border-terre-500 ${
-          erreur ? "border-terre-500" : "border-encre-900/15"
+        className={`mt-2 w-full rounded-full border bg-craie px-5 py-3 text-[0.95rem] outline-none transition-colors focus:border-orange-signal ${
+          erreur ? "border-orange-signal" : "border-noir-piste/15"
         }`}
       />
       {erreur && (
-        <p id="erreur-suivi" role="alert" className="mt-2 text-[0.85rem] text-terre-700">
+        <p id="erreur-suivi" role="alert" className="mt-2 text-[0.85rem] text-orange-sourd">
           {erreur}
         </p>
       )}

@@ -79,3 +79,23 @@ export function formatPourcentage(valeur: number, decimales = 0): string {
 function versDate(valeur: string | Date): Date {
   return typeof valeur === "string" ? new Date(`${valeur.slice(0, 10)}T00:00:00Z`) : valeur;
 }
+
+/**
+ * Résume une réservation en une ligne : sa formule et ce qui la
+ * dimensionne.
+ *
+ * Remplace l'ancien « N jours », qui ne veut plus rien dire — toutes les
+ * sorties tiennent dans la journée. Ce qui distingue deux réservations,
+ * c'est désormais la formule, et le nombre de participants ou la durée.
+ */
+export function resumeOffre(reservation: {
+  offre: "road-trip" | "location-libre";
+  nombrePersonnes: number;
+  dureeHeures?: number;
+}): string {
+  if (reservation.offre === "road-trip") {
+    const n = reservation.nombrePersonnes;
+    return `Road trip · ${n} personne${n > 1 ? "s" : ""}`;
+  }
+  return `Location libre · ${reservation.dureeHeures ?? "?"} h`;
+}

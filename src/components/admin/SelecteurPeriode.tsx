@@ -40,8 +40,8 @@ export function SelecteurPeriode({ actuelle }: { actuelle: Granularite }) {
           aria-pressed={actuelle === option.valeur}
           className={`rounded-full px-4 py-1.5 text-[0.82rem] font-semibold transition-colors ${
             actuelle === option.valeur
-              ? "bg-encre-900 text-sable-50"
-              : "text-encre-500 hover:text-encre-900"
+              ? "bg-noir-piste text-craie"
+              : "text-gris-cadre hover:text-noir-piste"
           }`}
         >
           {option.libelle}

@@ -8,7 +8,7 @@
  */
 
 import { site } from "./site";
-import { formatDate, formatXof } from "./format";
+import { formatDate, formatXof, resumeOffre } from "./format";
 import type { Reservation } from "./types";
 
 interface Message {
@@ -49,22 +49,100 @@ export async function envoyer(message: Message): Promise<{ envoye: boolean; rais
   return { envoye: true };
 }
 
+/** Ce que la reservation demande au client, selon l'offre choisie. */
+function detailsOffre(reservation: Reservation): [string, string][] {
+  if (reservation.offre === "location-libre") {
+    return [
+      ["Formule", "Location libre"],
+      ["Durée", `${reservation.dureeHeures} h`],
+    ];
+  }
+  return [
+    ["Formule", "Road trip encadré"],
+    [
+      "Participants",
+      `${reservation.nombrePersonnes} personne${reservation.nombrePersonnes > 1 ? "s" : ""}`,
+    ],
+  ];
+}
+
+/**
+ * Ce qu'il faut prevoir au depart.
+ *
+ * La caution de la location libre se remet EN ESPECES au depart et se
+ * recupere a la restitution du velo : elle n'est ni prelevee en ligne,
+ * ni pre-autorisee sur un compte.
+ */
+function aPrevoir(reservation: Reservation): string[] {
+  if (reservation.offre === "location-libre") {
+    return [
+      `Une caution de ${formatXof(reservation.cautionXof)} en espèces, rendue quand vous rapportez le vélo.`,
+      "Une pièce d'identité (CIP), qui vous est rendue au retour du vélo.",
+      "La signature de l'engagement de restitution, sur place.",
+    ];
+  }
+  return [
+    "Rien à apporter : casque, antivol et kit sont fournis au départ.",
+    "Aucune caution n'est demandée : un coordinateur encadre la sortie et récupère le vélo à l'arrivée.",
+  ];
+}
+
+/**
+ * Accuse de reception, envoye des l'enregistrement.
+ *
+ * C'est le SEUL email qui porte le lien de suivi personnel : le jeton
+ * n'existe qu'a la creation, et la base n'en stocke que le hache. Le
+ * webhook de paiement, qui confirme ensuite, ne peut donc pas le
+ * reconstituer — et c'est voulu : une fuite de la base ne doit pas
+ * permettre de forger un lien vers une reservation.
+ */
+export async function envoyerReceptionDemande(reservation: Reservation, lienSuivi: string) {
+  return envoyer({
+    destinataire: reservation.client.email,
+    sujet: `Votre demande ${reservation.reference} est enregistrée`,
+    texte: [
+      `Bonjour ${reservation.client.prenom},`,
+      "",
+      `Votre demande est enregistrée sous la référence ${reservation.reference}.`,
+      "Elle sera confirmée dès réception de votre paiement.",
+      "",
+      `Conservez ce lien, il est le seul moyen de retrouver votre réservation :`,
+      lienSuivi,
+      "",
+      `L'équipe ${site.nom} — ${site.telephone}`,
+    ].join("\n"),
+    html: gabarit({
+      titre: "Demande enregistrée",
+      intro: `Bonjour ${reservation.client.prenom}, nous confirmons dès réception du paiement.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ...detailsOffre(reservation),
+        ["Date", formatDate(reservation.dateDebut)],
+        ["Montant à régler", formatXof(reservation.totalXof)],
+      ],
+      action: { libelle: "Suivre ma demande", url: lienSuivi },
+      pied: "Conservez ce lien : il vous est personnel et donne accès à votre réservation sans mot de passe.",
+    }),
+  });
+}
+
 export async function envoyerConfirmation(reservation: Reservation, lienSuivi: string) {
   const velo = reservation.lignes[0];
-  const sujet = `Votre réservation ${reservation.reference} est confirmée`;
+  const prevoir = aPrevoir(reservation);
 
   const texte = [
     `Bonjour ${reservation.client.prenom},`,
     "",
-    `Votre réservation est confirmée. Référence : ${reservation.reference}.`,
+    `Votre paiement est reçu, votre réservation est confirmée.`,
+    `Référence : ${reservation.reference}`,
     `Vélo : ${velo?.veloNom}`,
-    `Du ${formatDate(reservation.dateDebut)} au ${formatDate(reservation.dateFin)} (${reservation.jours} jours)`,
+    `Date : ${formatDate(reservation.dateDebut)}`,
     `Montant réglé : ${formatXof(reservation.totalXof)}`,
-    reservation.cautionXof > 0
-      ? `Caution pré-autorisée : ${formatXof(reservation.cautionXof)}, libérée sous 48 h après le retour.`
-      : "Assurance sérénité souscrite : aucune caution retenue.",
     "",
-    `Suivre ou modifier votre réservation : ${lienSuivi}`,
+    "À prévoir au départ :",
+    ...prevoir.map((ligne) => `  - ${ligne}`),
+    "",
+    `Retrouvez votre réservation avec le lien reçu à l'enregistrement, ou sur ${lienSuivi}`,
     "",
     `À bientôt sur la route,`,
     `L'équipe ${site.nom} — ${site.telephone}`,
@@ -72,24 +150,27 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
 
   return envoyer({
     destinataire: reservation.client.email,
-    sujet,
+    sujet: `Votre réservation ${reservation.reference} est confirmée`,
     texte,
     html: gabarit({
       titre: "Réservation confirmée",
-      intro: `Bonjour ${reservation.client.prenom}, votre vélo vous attend.`,
+      intro: `Bonjour ${reservation.client.prenom}, votre paiement est reçu.`,
       lignes: [
         ["Référence", reservation.reference],
         ["Vélo", velo?.veloNom ?? "—"],
-        ["Départ", formatDate(reservation.dateDebut)],
-        ["Retour", formatDate(reservation.dateFin)],
-        ["Durée", `${reservation.jours} jour${reservation.jours > 1 ? "s" : ""}`],
+        ...detailsOffre(reservation),
+        ["Date", formatDate(reservation.dateDebut)],
         ["Montant réglé", formatXof(reservation.totalXof)],
         ...(reservation.cautionXof > 0
-          ? ([["Caution", `${formatXof(reservation.cautionXof)} (libérée sous 48 h)`]] as [string, string][])
+          ? ([
+              [
+                "Caution",
+                `${formatXof(reservation.cautionXof)} en espèces au départ, rendue au retour du vélo`,
+              ],
+            ] as [string, string][])
           : []),
       ],
-      action: { libelle: "Suivre ma réservation", url: lienSuivi },
-      pied: "Ce lien vous est personnel : il donne accès à votre réservation sans mot de passe.",
+      pied: `À prévoir au départ : ${prevoir.join(" ")}`,
     }),
   });
 }
@@ -122,6 +203,58 @@ export async function envoyerFacture(reservation: Reservation, numeroFacture: st
   });
 }
 
+/**
+ * Notification à l'exploitant : un vélo vient d'être réservé.
+ *
+ * Destinataire configurable (plusieurs personnes consultent parfois la
+ * même boîte que le contact public) ; à défaut, on retombe sur l'adresse
+ * publique du site plutôt que de rester silencieux.
+ */
+export async function envoyerNotificationAdmin(reservation: Reservation) {
+  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const velos = reservation.lignes.map((ligne) => ligne.veloNom).join(", ") || "—";
+  const contact = reservation.client.telephone || reservation.client.email;
+  const lienAdmin = `${site.url}/admin/reservations?reference=${reservation.reference}`;
+
+  return envoyer({
+    destinataire,
+    sujet: `Nouvelle réservation ${reservation.reference} — ${velos}`,
+    texte: [
+      `Nouvelle réservation reçue.`,
+      "",
+      `Référence : ${reservation.reference}`,
+      `Client : ${reservation.client.prenom} ${reservation.client.nom} (${contact})`,
+      `Vélo : ${velos}`,
+      `Date : ${formatDate(reservation.dateDebut)}`,
+      `Formule : ${resumeOffre(reservation)}`,
+      reservation.cautionXof > 0
+        ? `À réclamer au départ : pièce d'identité, engagement signé et caution de ${formatXof(reservation.cautionXof)} en espèces.`
+        : `À prévoir : ${reservation.nombrePersonnes} coco${reservation.nombrePersonnes > 1 ? "s" : ""} et ${reservation.nombrePersonnes} eau${reservation.nombrePersonnes > 1 ? "x" : ""}.`,
+      `Montant : ${formatXof(reservation.totalXof)}`,
+      reservation.message ? `Message du client : ${reservation.message}` : "",
+      "",
+      `Voir dans l'administration : ${lienAdmin}`,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    html: gabarit({
+      titre: "Nouvelle réservation",
+      intro: `${reservation.client.prenom} ${reservation.client.nom} vient de réserver.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ["Client", `${reservation.client.prenom} ${reservation.client.nom}`],
+        ["Contact", contact],
+        ["Vélo", velos],
+        ["Départ", formatDate(reservation.dateDebut)],
+        ["Retour", formatDate(reservation.dateFin)],
+        ["Montant", formatXof(reservation.totalXof)],
+      ],
+      action: { libelle: "Voir la réservation", url: lienAdmin },
+      pied: reservation.message ? `Message du client : « ${reservation.message} »` : undefined,
+    }),
+  });
+}
+
 export async function envoyerAccuseContact(nom: string, email: string) {
   return envoyer({
     destinataire: email,
@@ -150,31 +283,31 @@ function gabarit(contenu: {
     .map(
       ([libelle, valeur]) =>
         `<tr>
-           <td style="padding:10px 0;color:#6b6058;font-size:14px;border-bottom:1px solid #f0e5d6">${libelle}</td>
-           <td style="padding:10px 0;text-align:right;font-size:14px;font-weight:600;color:#1c1714;border-bottom:1px solid #f0e5d6">${valeur}</td>
+           <td style="padding:10px 0;color:#6b6b6b;font-size:14px;border-bottom:1px solid #e0dcd3">${libelle}</td>
+           <td style="padding:10px 0;text-align:right;font-size:14px;font-weight:600;color:#0e0e0e;border-bottom:1px solid #e0dcd3">${valeur}</td>
          </tr>`,
     )
     .join("");
 
   const action = contenu.action
-    ? `<a href="${contenu.action.url}" style="display:inline-block;margin-top:28px;background:#b04726;color:#fdfbf7;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:600;font-size:15px">${contenu.action.libelle}</a>`
+    ? `<a href="${contenu.action.url}" style="display:inline-block;margin-top:28px;background:#f25c05;color:#f2efe9;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:600;font-size:15px">${contenu.action.libelle}</a>`
     : "";
 
   return `<!doctype html>
-<html lang="fr"><body style="margin:0;background:#fdfbf7;font-family:Helvetica,Arial,sans-serif;color:#1c1714">
+<html lang="fr"><body style="margin:0;background:#f2efe9;font-family:Helvetica,Arial,sans-serif;color:#0e0e0e">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:20px;padding:36px">
         <tr><td>
-          <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#b04726;font-weight:700">${site.nom}</p>
+          <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#f25c05;font-weight:700">${site.nom}</p>
           <h1 style="margin:14px 0 0;font-size:26px;line-height:1.15;text-transform:uppercase;letter-spacing:-0.5px">${contenu.titre}</h1>
-          <p style="margin:14px 0 26px;font-size:15px;line-height:1.6;color:#6b6058">${contenu.intro}</p>
+          <p style="margin:14px 0 26px;font-size:15px;line-height:1.6;color:#6b6b6b">${contenu.intro}</p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${lignes}</table>
           ${action}
-          ${contenu.pied ? `<p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#6b6058">${contenu.pied}</p>` : ""}
+          ${contenu.pied ? `<p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#6b6b6b">${contenu.pied}</p>` : ""}
         </td></tr>
       </table>
-      <p style="max-width:520px;margin:20px auto 0;font-size:12px;color:#6b6058;text-align:center">
+      <p style="max-width:520px;margin:20px auto 0;font-size:12px;color:#6b6b6b;text-align:center">
         ${site.nom} · ${site.adresse.ligne}, ${site.adresse.ville}, ${site.adresse.pays} · ${site.telephone}
       </p>
     </td></tr>

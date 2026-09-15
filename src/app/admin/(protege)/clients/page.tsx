@@ -8,6 +8,21 @@ export const metadata: Metadata = { title: "Clients" };
 
 type Recherche = Promise<Record<string, string | string[] | undefined>>;
 
+/**
+ * La base clients.
+ *
+ * Elle n'est jamais saisie : elle se constitue toute seule, une fiche par
+ * adresse email rencontrée lors d'une réservation. Le client n'ouvre
+ * aucun compte et ne choisit aucun mot de passe — c'est un parti pris du
+ * parcours de réservation, et cet écran en est la conséquence.
+ *
+ * « Total dépensé » ne compte que ce qui a été réellement payé en ligne :
+ * les cautions de location libre, remises en espèces au départ et rendues
+ * au retour, n'y figurent pas — ce n'est pas du chiffre d'affaires.
+ *
+ * Le pavé de bas de page rappelle les durées de conservation : ce sont
+ * des obligations, pas une décoration.
+ */
 export default async function PageClientsAdmin({ searchParams }: { searchParams: Recherche }) {
   const parametres = await searchParams;
   const recherche = typeof parametres.q === "string" ? parametres.q.trim().toLowerCase() : "";
@@ -46,9 +61,9 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
     <div>
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="etiquette opacity-55">Exploitation</p>
+          <p className="etiquette opacity-75">Exploitation</p>
           <h1 className="titre-editorial mt-3 text-[2rem]">Clients</h1>
-          <p className="mt-2 max-w-2xl text-[0.88rem] leading-relaxed text-encre-500">
+          <p className="mt-2 max-w-2xl text-[0.88rem] leading-relaxed text-gris-cadre">
             {formatNombre(fiches.length)} clients, dont {formatNombre(recurrents)} sont revenus au
             moins une fois. La fiche se crée automatiquement à la première réservation : aucun
             compte n&apos;est demandé au client.
@@ -62,22 +77,22 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
             defaultValue={recherche}
             placeholder="Nom ou email"
             aria-label="Rechercher un client"
-            className="h-9 w-56 rounded-full border border-encre-900/20 px-4 text-[0.85rem]"
+            className="h-9 w-56 rounded-full border border-noir-piste/20 px-4 text-[0.85rem]"
           />
           <button
             type="submit"
-            className="h-9 rounded-full bg-encre-900 px-5 text-[0.82rem] font-semibold text-sable-50"
+            className="h-9 rounded-full bg-noir-piste px-5 text-[0.82rem] font-semibold text-craie"
           >
             Chercher
           </button>
         </form>
       </header>
 
-      <div className="mt-8 overflow-x-auto rounded-[1.25rem] bg-white p-6">
+      <div className="mt-8 overflow-x-auto rounded-[var(--radius-carte)] bg-white p-6">
         <table className="w-full min-w-[48rem] border-collapse text-left text-[0.85rem]">
           <caption className="sr-only">Base clients constituée à partir des réservations</caption>
           <thead>
-            <tr className="border-b border-encre-900/15 text-[0.72rem] uppercase tracking-[0.1em] text-encre-500">
+            <tr className="border-b border-noir-piste/15 text-[0.72rem] uppercase tracking-[0.1em] text-gris-cadre">
               <th scope="col" className="py-3 pr-4 font-semibold">Client</th>
               <th scope="col" className="py-3 pr-4 font-semibold">Contact</th>
               <th scope="col" className="py-3 pr-4 text-right font-semibold">Locations</th>
@@ -88,11 +103,11 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
           </thead>
           <tbody>
             {fiches.slice(0, 80).map((fiche) => (
-              <tr key={fiche.client.id} className="border-b border-encre-900/8">
+              <tr key={fiche.client.id} className="border-b border-noir-piste/8">
                 <td className="py-3 pr-4 font-semibold">
                   {fiche.client.prenom} {fiche.client.nom}
                 </td>
-                <td className="py-3 pr-4 text-encre-500">
+                <td className="py-3 pr-4 text-gris-cadre">
                   {fiche.client.email}
                   {fiche.client.telephone && (
                     <span className="block text-[0.78rem]">{fiche.client.telephone}</span>
@@ -118,13 +133,13 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
         </table>
 
         {fiches.length === 0 && (
-          <p className="py-10 text-center text-[0.9rem] text-encre-500">
+          <p className="py-10 text-center text-[0.9rem] text-gris-cadre">
             Aucun client ne correspond à cette recherche.
           </p>
         )}
       </div>
 
-      <p className="mt-6 rounded-[1.25rem] border border-encre-900/12 p-6 text-[0.85rem] leading-relaxed text-encre-500">
+      <p className="mt-6 rounded-[var(--radius-carte)] border border-noir-piste/12 p-6 text-[0.85rem] leading-relaxed text-gris-cadre">
         Ces données sont conservées trois ans après la dernière location, et les pièces
         comptables dix ans. Toute demande de suppression reçue à l&apos;adresse de contact doit
         être traitée sous trente jours, conformément à la réglementation béninoise sur les

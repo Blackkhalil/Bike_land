@@ -1,79 +1,166 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------
-   Bike Land — jetons de design
-   Cahier des charges §4.1 : « chaleureux et convivial, tons naturels
-   et accueillants — terracotta, beige, vert olive, touches vives
-   type orange/jaune évoquant l'aventure ».
+   Bike Land — direction artistique « noir / orange signal »
+   Cf. BIKE_LAND_DESIGN_BRIEF.md §2.
+
+   Principes qui commandent tout ce fichier :
+   - fond noir dominant, sections claires en alternance franche ;
+   - l'orange est un SIGNAL : cliquable ou prix, jamais décoratif ;
+   - le vert lagune sépare l'univers « tours » de l'univers « location » ;
+   - arrondis proportionnels : 10px pour les contrôles, 16px pour les
+     cartes, 24px pour les grands blocs ;
+   - aucun dégradé décoratif, aucune ombre portée molle.
    ------------------------------------------------------------------ */
 
 @theme {
-  /* Terracotta : couleur d'action, boutons primaires, chiffres clés */
-  --color-terre-50: #fdf5f1;
-  --color-terre-100: #f9e6dc;
-  --color-terre-200: #f2cbb8;
-  --color-terre-300: #e6a687;
-  --color-terre-400: #d87d57;
-  --color-terre-500: #c75c34;
-  --color-terre-600: #b04726;
-  --color-terre-700: #90371f;
-  --color-terre-800: #6d2b18;
-  --color-terre-900: #4b1f13;
+  /* --- Palette ---------------------------------------------------- */
+  --color-noir-piste: #0e0e0e; /* fond principal */
+  --color-noir-releve: #1a1a1a; /* surfaces surélevées sur fond noir */
+  --color-craie: #f2efe9; /* fond des sections claires, texte sur noir */
+  --color-orange-signal: #f25c05; /* accent unique : CTA, prix, actif */
+  --color-vert-lagune: #1f6f5c; /* accent secondaire, réservé aux tours */
+  --color-gris-cadre: #6b6b6b; /* texte secondaire, bordures */
 
-  /* Sable : fonds de page, cartes, respiration */
-  --color-sable-50: #fdfbf7;
-  --color-sable-100: #f8f2e9;
-  --color-sable-200: #f0e5d6;
-  --color-sable-300: #e3d3bd;
-  --color-sable-400: #d0b998;
-  --color-sable-500: #b89b73;
+  /* Dérivées strictement utilitaires : états de survol et séparateurs.
+     Aucune n'introduit de teinte nouvelle. */
+  --color-orange-vif: #ff6a12;
+  --color-orange-sourd: #c44a04;
+  --color-craie-ombre: #e0dcd3;
+  --color-vert-lagune-vif: #268a72;
 
-  /* Olive : sections calmes, badges, texte secondaire sur fond clair */
-  --color-olive-50: #f5f7f0;
-  --color-olive-100: #e8eddd;
-  --color-olive-200: #d0dbbb;
-  --color-olive-300: #adbf8e;
-  --color-olive-400: #87a063;
-  --color-olive-500: #67813f;
-  --color-olive-600: #4e6630;
-  --color-olive-700: #3d4f27;
-  --color-olive-800: #2e3b1f;
-  --color-olive-900: #1f2716;
+  /* --- Typographie ------------------------------------------------ */
+  /* Titres : grotesque condensée lourde, en casse phrase (jamais de
+     capitales). Texte : sans-serif neutre lisible en petit corps. */
+  --font-display: var(--font-oswald), "Arial Narrow", "Helvetica Neue", sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* Soleil : accent aventure, surlignages, états actifs */
-  --color-soleil-300: #f7cf7a;
-  --color-soleil-400: #f0b445;
-  --color-soleil-500: #e2971d;
-  --color-soleil-600: #c07813;
-
-  /* Encre : noir chaud, jamais #000 */
-  --color-encre-500: #6b6058;
-  --color-encre-700: #3a322c;
-  --color-encre-800: #2a231e;
-  --color-encre-900: #1c1714;
-
-  --font-display: var(--font-bricolage), "Trebuchet MS", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-
-  --radius-card: 1.5rem;
+  /* --- Formes ----------------------------------------------------- */
+  /* Échelle de rayons, du plus petit au plus grand. Trois valeurs
+     seulement : au-delà, les arrondis se contredisent d'un bloc à
+     l'autre et le site perd son unité. La règle est proportionnelle —
+     plus la surface est grande, plus son rayon l'est. */
+  --radius-bouton: 10px;  /* boutons, puces, badges, champs de saisie */
+  --radius-carte: 16px;   /* cartes, encarts, tuiles de statistiques */
+  --radius-bloc: 24px;    /* grands visuels, panneaux pleine largeur */
 
   --ease-doux: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 :root {
   color-scheme: light;
-  --page: var(--color-sable-50);
+  --page: var(--color-noir-piste);
 }
 
 html {
   -webkit-text-size-adjust: 100%;
-  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--page);
+  color: var(--color-craie);
+  font-family: var(--font-sans);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* L'encre par défaut du site est CLAIRE, parce que le fond par défaut est
+   noir. Conséquence : tout bloc clair posé sur une section sombre — un
+   encart blanc, une carte, le calendrier de réservation — hérite de cette
+   encre claire et devient blanc sur blanc.
+
+   Cette règle rétablit l'encre sombre sur les surfaces claires. Elle est
+   écrite dans `:where()`, dont la spécificité est nulle : n'importe quelle
+   classe `text-*` posée sur l'élément l'emporte toujours. C'est donc un
+   filet de sécurité, jamais une contrainte — et il couvre aussi les blocs
+   clairs qui seront ajoutés plus tard. */
+:where(
+  [class~="bg-white"],
+  [class~="bg-white/60"],
+  [class~="bg-craie"],
+  [class~="bg-craie-ombre"]
+) {
+  color: var(--color-noir-piste);
+}
+
+/* ------------------------------------------------------------------
+   Primitives typographiques
+   ------------------------------------------------------------------ */
+
+/* Le grand titre : condensé, lourd, interlettrage serré, CASSE PHRASE.
+   Il est traité comme un élément graphique — il peut déborder, être
+   coupé par une image, sortir de la grille. */
+.titre-editorial {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 0.94;
+  text-wrap: balance;
+}
+
+/* Ancienne étiquette « eyebrow » en capitales espacées : le brief §2 la
+   proscrit explicitement. Neutralisée ici pour que les composants qui
+   l'utilisent encore dégradent proprement, en attendant leur reprise. */
+.etiquette {
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  /* Volontairement `inherit` et non un gris fixe : l'étiquette sert aussi
+     bien sur fond clair que sur fond noir. Le gris #6b6b6b tenait sur la
+     craie mais tombait à 3,6:1 sur le noir — et à 1,9:1 une fois dimmé par
+     les `opacity-*` des pages, donc illisible. En héritant, elle reste
+     toujours dans le bon sens de contraste. */
+  color: inherit;
+}
+
+.lien-souligne {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0% 1px;
+  transition: background-size 0.25s ease;
+}
+.lien-souligne:hover {
+  background-size: 100% 1px;
+}
+
+/* ------------------------------------------------------------------
+   Mouvement — un seul moment orchestré sur la page (l'entrée du héros).
+   Les apparitions au scroll section par section sont supprimées : la
+   classe .reveal devient volontairement inerte, les éléments qui la
+   portent encore restent simplement visibles.
+   ------------------------------------------------------------------ */
+
+@keyframes entree-heros-objet {
+  from {
+    opacity: 0;
+    transform: translateX(6%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes entree-heros-aplat {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+.heros-objet {
+  animation: entree-heros-objet 0.9s var(--ease-doux) both;
+}
+
+.heros-aplat {
+  transform-origin: top;
+  animation: entree-heros-aplat 0.7s var(--ease-doux) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
   *,
   *::before,
   *::after {
@@ -83,81 +170,14 @@ html {
   }
 }
 
-body {
-  background: var(--page);
-  color: var(--color-encre-900);
-  font-family: var(--font-sans);
-  font-synthesis-weight: none;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* ------------------------------------------------------------------
-   Primitives typographiques
-   ------------------------------------------------------------------ */
-
-/* Le grand titre éditorial : casse haute, interlettrage resserré,
-   interligne courte — il doit tenir comme un bloc plein. */
-.titre-editorial {
-  font-family: var(--font-display);
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: -0.03em;
-  line-height: 0.92;
-  text-wrap: balance;
-}
-
-/* Étiquette de section : petites capitales espacées, souvent numérotées. */
-.etiquette {
-  font-family: var(--font-sans);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.lien-souligne {
-  background-image: linear-gradient(currentColor, currentColor);
-  background-position: 0 100%;
-  background-repeat: no-repeat;
-  background-size: 0% 1px;
-  transition: background-size 0.35s var(--ease-doux);
-}
-.lien-souligne:hover {
-  background-size: 100% 1px;
-}
-
-/* Grain léger : réchauffe les aplats de sable et évite l'effet « plastique ». */
-.grain::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-/* Apparition à l'entrée dans le viewport, pilotée par IntersectionObserver. */
-.reveal {
-  opacity: 0;
-  transform: translateY(18px);
-  transition:
-    opacity 0.7s var(--ease-doux),
-    transform 0.7s var(--ease-doux);
-}
-.reveal[data-visible="true"] {
-  opacity: 1;
-  transform: none;
-}
-
 ::selection {
-  background: var(--color-soleil-300);
-  color: var(--color-encre-900);
+  background: var(--color-orange-signal);
+  color: var(--color-craie);
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-terre-600);
-  outline-offset: 3px;
-  border-radius: 2px;
+  outline: 2px solid var(--color-orange-signal);
+  outline-offset: 2px;
 }
 
 /* Masque les flèches des input[type=number] dans les formulaires d'options. */

@@ -48,13 +48,13 @@ export function AnnulerReservation({
   };
 
   return (
-    <div className="rounded-[1.25rem] border border-encre-900/12 p-6">
-      <p className="etiquette opacity-55">Annulation</p>
-      <p className="mt-3 text-[0.9rem] leading-relaxed text-encre-500">
+    <div className="rounded-[var(--radius-carte)] border border-noir-piste/12 p-6">
+      <p className="etiquette opacity-75">Annulation</p>
+      <p className="mt-3 text-[0.9rem] leading-relaxed text-gris-cadre">
         {gratuite ? (
           <>
             L&apos;annulation de la réservation {reference} est gratuite jusqu&apos;au{" "}
-            <strong className="text-encre-900">{dateLimite}</strong> inclus. Au-delà, 50 % du
+            <strong className="text-noir-piste">{dateLimite}</strong> inclus. Au-delà, 50 % du
             montant reste dû.
           </>
         ) : (
@@ -66,14 +66,14 @@ export function AnnulerReservation({
       </p>
 
       {erreur && (
-        <p role="alert" className="mt-4 text-[0.85rem] text-terre-700">
+        <p role="alert" className="mt-4 text-[0.85rem] text-orange-sourd">
           {erreur}
         </p>
       )}
 
       <div className="mt-5 flex flex-wrap gap-3">
         {!confirmation ? (
-          <Bouton variante="contour" className="text-encre-900" onClick={() => setConfirmation(true)}>
+          <Bouton variante="contour" className="text-noir-piste" onClick={() => setConfirmation(true)}>
             Annuler ma réservation
           </Bouton>
         ) : (
@@ -81,7 +81,7 @@ export function AnnulerReservation({
             <Bouton variante="primaire" onClick={annuler} disabled={enCours}>
               {enCours ? "Annulation…" : "Oui, annuler définitivement"}
             </Bouton>
-            <Bouton variante="contour" className="text-encre-900" onClick={() => setConfirmation(false)}>
+            <Bouton variante="contour" className="text-noir-piste" onClick={() => setConfirmation(false)}>
               Finalement, non
             </Bouton>
           </>

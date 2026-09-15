@@ -14,7 +14,7 @@
 
 import { PrismaClient } from "@prisma/client";
 
-import { optionsLocation, pointsDeRetrait, reglesPrix, velos } from "../src/data/catalogue";
+import { optionsLocation, pointsDeRetrait, velos } from "../src/data/catalogue";
 
 const prisma = new PrismaClient();
 
@@ -52,8 +52,6 @@ async function main() {
       status: velo.statut,
       shortPitch: velo.accroche,
       description: velo.description,
-      dailyPriceXof: velo.prixJourXof,
-      depositXof: velo.cautionXof,
       weightKg: velo.poidsKg,
       gearCount: velo.vitesses,
       maxLoadKg: velo.chargeMaxKg,
@@ -72,26 +70,6 @@ async function main() {
     });
   }
   console.info(`  ${velos.length} vélos`);
-
-  for (const regle of reglesPrix) {
-    await prisma.priceRule.upsert({
-      where: { id: regle.id },
-      create: {
-        id: regle.id,
-        label: regle.libelle,
-        minDays: regle.minJours,
-        maxDays: regle.maxJours,
-        discountPercent: regle.remisePourcent,
-      },
-      update: {
-        label: regle.libelle,
-        minDays: regle.minJours,
-        maxDays: regle.maxJours,
-        discountPercent: regle.remisePourcent,
-      },
-    });
-  }
-  console.info(`  ${reglesPrix.length} règles de tarification`);
 
   // Les options de location restent définies dans le code : elles font
   // partie de l'offre commerciale affichée, pas des données d'exploitation.

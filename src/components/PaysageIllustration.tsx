@@ -100,7 +100,7 @@ export function PaysageIllustration({
           <g key={x} opacity="0.85">
             <path
               d={`M${x} 400q${index ? 8 : -8} -60 ${index ? -4 : 4} -104`}
-              stroke="#2a231e"
+              stroke="#0e0e0e"
               strokeWidth="7"
               fill="none"
               strokeLinecap="round"
@@ -111,7 +111,7 @@ export function PaysageIllustration({
                 <path
                   key={`${sens}-${rang}`}
                   d={`M${x + (index ? -4 : 4)} 296q${sens * (34 + rang * 16)} ${-18 + rang * 22} ${sens * (56 + rang * 12)} ${6 + rang * 20}`}
-                  stroke="#2a231e"
+                  stroke="#0e0e0e"
                   strokeWidth="6"
                   fill="none"
                   strokeLinecap="round"
@@ -130,7 +130,7 @@ export function PaysageIllustration({
 /** Silhouette de cycliste, réduite à l'essentiel : roues, cadre, buste. */
 function Cycliste({ x, y }: { x: number; y: number }) {
   return (
-    <g transform={`translate(${x} ${y})`} stroke="#1c1714" fill="none" strokeLinecap="round">
+    <g transform={`translate(${x} ${y})`} stroke="#0e0e0e" fill="none" strokeLinecap="round">
       <circle cx="-24" cy="0" r="17" strokeWidth="3.6" />
       <circle cx="24" cy="0" r="17" strokeWidth="3.6" />
       <path d="M-24 0 -6-24h22l14 24" strokeWidth="3.2" />
@@ -139,7 +139,7 @@ function Cycliste({ x, y }: { x: number; y: number }) {
       <path d="M16-24h12" strokeWidth="3.6" />
       {/* Cycliste */}
       <path d="M-6-30 4-46l16-2" strokeWidth="4.4" />
-      <circle cx="26" cy="-54" r="7" strokeWidth="4" fill="#1c1714" />
+      <circle cx="26" cy="-54" r="7" strokeWidth="4" fill="#0e0e0e" />
       <path d="M4-46 0-24" strokeWidth="4" />
       <path d="M4-46 22-38" strokeWidth="4" />
     </g>

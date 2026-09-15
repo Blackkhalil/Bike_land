@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { BoutonLien } from "@/components/Bouton";
 import { VeloIllustration } from "@/components/VeloIllustration";
-import { Etiquette, Section, TitreSection } from "@/components/ui";
+import { Section, TitreSection } from "@/components/ui";
 import { etapesLocation } from "@/data/contenus";
 import { moyensDisponibles } from "@/lib/paiement";
 
@@ -16,33 +16,32 @@ export const metadata: Metadata = {
 export default function PageCommentCaMarche() {
   return (
     <>
-      <Section fond="sable" className="pb-16 pt-32 sm:pt-40">
-        <Etiquette numero="01">Le parcours</Etiquette>
-        <TitreSection as="h1" taille="lg" className="mt-6 max-w-4xl">
+      <Section fond="noir" className="pb-16 pt-32 sm:pt-40">
+        <TitreSection as="h1" taille="lg" className=" max-w-4xl">
           De l&apos;envie
           <br />
           au départ, en cinq étapes
         </TitreSection>
-        <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-encre-500">
+        <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-craie/70">
           Nous avons retiré tout ce qui pouvait l&apos;être : pas de compte à créer, pas de
           dossier à constituer, pas de photocopie de passeport. Il reste le vélo et la route.
         </p>
       </Section>
 
-      <Section fond="blanc" className="py-20">
-        <ol className="border-t border-encre-900/12">
+      <Section fond="craie" className="py-20">
+        <ol className="border-t border-noir-piste/12">
           {etapesLocation.map((etape) => (
             <li
               key={etape.numero}
-              className="reveal grid gap-4 border-b border-encre-900/12 py-9 sm:grid-cols-12 sm:gap-8"
+              className="reveal grid gap-4 border-b border-noir-piste/12 py-9 sm:grid-cols-12 sm:gap-8"
             >
-              <p className="font-display text-[2.2rem] font-extrabold leading-none tabular-nums text-terre-200 sm:col-span-2">
+              <p className="font-display text-[2.2rem] font-extrabold leading-none tabular-nums text-orange-sourd/70 sm:col-span-2">
                 {etape.numero}
               </p>
               <h2 className="font-display text-[1.25rem] font-bold uppercase leading-tight tracking-[-0.01em] sm:col-span-4">
                 {etape.titre}
               </h2>
-              <p className="text-[0.98rem] leading-relaxed text-encre-500 sm:col-span-6">
+              <p className="text-[0.98rem] leading-relaxed text-gris-cadre sm:col-span-6">
                 {etape.detail}
               </p>
             </li>
@@ -50,16 +49,15 @@ export default function PageCommentCaMarche() {
         </ol>
       </Section>
 
-      <Section fond="sable" className="py-20">
+      <Section fond="craie" className="py-20">
         <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
           <div>
-            <Etiquette numero="02">Paiement</Etiquette>
-            <TitreSection className="mt-6">
+            <TitreSection>
               Mobile Money
               <br />
               d&apos;abord
             </TitreSection>
-            <p className="mt-6 max-w-md text-[0.98rem] leading-relaxed text-encre-500">
+            <p className="mt-6 max-w-md text-[0.98rem] leading-relaxed text-gris-cadre">
               Au Bénin, le Mobile Money est le moyen de paiement du quotidien. Nous le traitons
               donc comme le moyen principal, la carte bancaire venant en complément pour les
               visiteurs étrangers.
@@ -68,60 +66,58 @@ export default function PageCommentCaMarche() {
               {moyensDisponibles.map((moyen) => (
                 <li
                   key={moyen.code}
-                  className="flex items-baseline justify-between gap-4 border-b border-encre-900/12 py-4 first:border-t"
+                  className="flex items-baseline justify-between gap-4 border-b border-noir-piste/12 py-4 first:border-t"
                 >
                   <span className="font-semibold">{moyen.libelle}</span>
-                  <span className="text-[0.85rem] text-encre-500">{moyen.detail}</span>
+                  <span className="text-[0.85rem] text-gris-cadre">{moyen.detail}</span>
                 </li>
               ))}
             </ul>
-            <p className="mt-6 text-[0.88rem] leading-relaxed text-encre-500">
+            <p className="mt-6 text-[0.88rem] leading-relaxed text-gris-cadre">
               Les transactions passent par un agrégateur béninois agréé. Bike Land ne voit ni ne
               conserve vos coordonnées bancaires.
             </p>
           </div>
 
           <div
-            className="grid place-items-center overflow-hidden rounded-[1.75rem] px-8 py-16"
-            style={{ background: "linear-gradient(150deg, #f0e5d6 0%, #e3d3bd 100%)" }}
+            className="grid place-items-center overflow-hidden rounded-[var(--radius-bloc)] px-8 py-16"
+            style={{ background: "#e0dcd3" }}
           >
             <VeloIllustration
               categorie="RANDONNEUR"
-              teintes={["#b04726", "#fdfbf7"]}
+              teintes={["#c44a04", "#f2efe9"]}
               className="w-full max-w-lg"
             />
           </div>
         </div>
       </Section>
 
-      <Section fond="blanc" className="py-20">
+      <Section fond="craie" className="py-20">
         <div className="grid gap-12 lg:grid-cols-3">
           {[
             {
               titre: "Ce qui est compris",
               points: [
+                "Un coordinateur qui encadre toute la sortie",
                 "Le vélo réglé à votre taille",
                 "Casque, antivol, kit de réparation et pompe",
                 "Éclairage avant et arrière",
-                "Assistance téléphonique 7 j / 7",
-                "Un point technique complet au départ",
+                "Une eau de coco au départ",
+                "Un point technique complet avant de rouler",
               ],
             },
             {
               titre: "Ce qui est en option",
               points: [
                 "Sacoches supplémentaires",
-                "Assurance sérénité, qui remplace la caution",
                 "Compteur GPS avec nos traces",
-                "Restitution dans une autre ville",
-                "Guide accompagnateur à la journée",
               ],
             },
             {
               titre: "Ce qui reste à votre charge",
               points: [
                 "Les hébergements et les repas",
-                "Le transport jusqu'au point de retrait",
+                "Le transport jusqu'au point de départ",
                 "Les réparations dues à une négligence",
                 "Le rapatriement au-delà de 60 km",
               ],
@@ -135,7 +131,7 @@ export default function PageCommentCaMarche() {
                 {bloc.points.map((point) => (
                   <li
                     key={point}
-                    className="border-b border-encre-900/12 py-3 text-[0.92rem] leading-relaxed text-encre-500 first:border-t"
+                    className="border-b border-noir-piste/12 py-3 text-[0.92rem] leading-relaxed text-gris-cadre first:border-t"
                   >
                     {point}
                   </li>
@@ -149,7 +145,7 @@ export default function PageCommentCaMarche() {
           <BoutonLien href="/velos" variante="primaire" taille="lg">
             Choisir mon vélo
           </BoutonLien>
-          <BoutonLien href="/contact" variante="contour" taille="lg" className="text-encre-900">
+          <BoutonLien href="/contact" variante="contour" taille="lg" className="text-noir-piste">
             Poser une question
           </BoutonLien>
         </div>

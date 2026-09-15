@@ -9,13 +9,26 @@
 import { z } from "zod";
 
 import { optionsLocation } from "@/data/catalogue";
+import { GRILLE_HORAIRE } from "@/data/offres";
 import { estDateISOValide } from "./dates";
 
 const dateISO = z
   .string()
   .refine(estDateISOValide, { message: "Date attendue au format AAAA-MM-JJ." });
 
-const codesOptions = optionsLocation.map((option) => option.code) as [string, ...string[]];
+const DUREES_TARIFEES = GRILLE_HORAIRE.map((palier) => palier.heures);
+
+// `z.enum` exige au moins une valeur. Aucune option n'etant proposee
+// aujourd'hui, le schema n'accepte tout simplement aucune option — et
+// reste pret si l'on en rajoute un jour.
+const codesOptions = optionsLocation.map((option) => option.code);
+const schemaOption =
+  codesOptions.length > 0
+    ? z.object({
+        code: z.enum(codesOptions as [string, ...string[]]),
+        quantite: z.number().int().min(1).max(6),
+      })
+    : z.never();
 
 export const schemaDisponibilite = z.object({
   veloId: z.string().min(1),
@@ -26,12 +39,20 @@ export const schemaDisponibilite = z.object({
 export const schemaReservation = z
   .object({
     veloId: z.string().min(1, "Vélo manquant."),
+    offre: z.enum(["road-trip", "location-libre"]),
+    nombrePersonnes: z.number().int().min(1).max(12).default(1),
+    // La durée n'est acceptée que si elle figure dans la grille
+    // publiée : aucun tarif ne doit pouvoir être inventé par l'appelant.
+    dureeHeures: z
+      .number()
+      .int()
+      .refine((h) => DUREES_TARIFEES.includes(h), {
+        message: "Durée non proposée.",
+      })
+      .optional(),
     dateDebut: dateISO,
     dateFin: dateISO,
-    options: z
-      .array(z.object({ code: z.enum(codesOptions), quantite: z.number().int().min(1).max(6) }))
-      .max(8)
-      .default([]),
+    options: z.array(schemaOption).max(8).default([]),
     client: z.object({
       prenom: z.string().trim().min(2, "Prénom trop court.").max(60),
       nom: z.string().trim().min(2, "Nom trop court.").max(60),
@@ -49,6 +70,17 @@ export const schemaReservation = z
       errorMap: () => ({ message: "Les conditions générales doivent être acceptées." }),
     }),
   })
+  .refine(
+    (valeurs) =>
+      valeurs.offre === "road-trip"
+        ? valeurs.dureeHeures === undefined
+        : valeurs.dureeHeures !== undefined,
+    {
+      message:
+        "La location libre exige une durée ; le road trip n'en prend pas.",
+      path: ["dureeHeures"],
+    },
+  )
   .refine((valeurs) => valeurs.dateDebut <= valeurs.dateFin, {
     message: "La date de retour doit suivre la date de départ.",
     path: ["dateFin"],

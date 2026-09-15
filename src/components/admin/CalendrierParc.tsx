@@ -34,13 +34,13 @@ export function CalendrierParc({
   const actives = reservations.filter((reservation) => reservation.statut !== "ANNULEE");
 
   return (
-    <div className="rounded-[1.25rem] bg-white p-6">
+    <div className="rounded-[var(--radius-carte)] bg-white p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-[1rem] font-bold uppercase tracking-tight">
             Calendrier du parc
           </h2>
-          <p className="mt-1 text-[0.8rem] text-encre-500">
+          <p className="mt-1 text-[0.8rem] text-gris-cadre">
             {formatDateCourte(jours[0])} – {formatDateCourte(jours[jours.length - 1])}
           </p>
         </div>
@@ -48,7 +48,7 @@ export function CalendrierParc({
           <button
             type="button"
             onClick={() => setDecalage((valeur) => valeur - nombreDeJours)}
-            className="rounded-full border border-encre-900/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-sable-100"
+            className="rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie"
           >
             ‹ Précédent
           </button>
@@ -56,14 +56,14 @@ export function CalendrierParc({
             type="button"
             onClick={() => setDecalage(0)}
             disabled={decalage === 0}
-            className="rounded-full border border-encre-900/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-sable-100 disabled:opacity-35"
+            className="rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie disabled:opacity-35"
           >
             Aujourd&apos;hui
           </button>
           <button
             type="button"
             onClick={() => setDecalage((valeur) => valeur + nombreDeJours)}
-            className="rounded-full border border-encre-900/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-sable-100"
+            className="rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie"
           >
             Suivant ›
           </button>
@@ -73,7 +73,7 @@ export function CalendrierParc({
       <div className="mt-6 overflow-x-auto">
         <div style={{ minWidth: 180 + jours.length * LARGEUR_JOUR }}>
           {/* En-tête des jours */}
-          <div className="flex border-b border-encre-900/12 pb-2">
+          <div className="flex border-b border-noir-piste/12 pb-2">
             <div className="w-[180px] shrink-0" />
             {jours.map((jour) => {
               const jourSemaine = new Date(`${jour}T00:00:00Z`).getUTCDay();
@@ -83,7 +83,7 @@ export function CalendrierParc({
                   key={jour}
                   style={{ width: LARGEUR_JOUR }}
                   className={`shrink-0 text-center text-[0.68rem] leading-tight ${
-                    weekend ? "text-terre-600" : "text-encre-500"
+                    weekend ? "text-orange-signal" : "text-gris-cadre"
                   }`}
                 >
                   <span className="block">
@@ -115,11 +115,11 @@ export function CalendrierParc({
               .filter((creneau) => creneau.indexDebut >= 0 && creneau.indexFin >= creneau.indexDebut);
 
             return (
-              <div key={velo.id} className="flex items-center border-b border-encre-900/8">
+              <div key={velo.id} className="flex items-center border-b border-noir-piste/8">
                 <div className="w-[180px] shrink-0 py-2.5 pr-4">
                   <p className="truncate text-[0.85rem] font-semibold">{velo.nom}</p>
-                  <p className="text-[0.72rem] text-encre-500">
-                    {velo.taille} · {velo.statut === "MAINTENANCE" ? "en entretien" : "en service"}
+                  <p className="text-[0.72rem] text-gris-cadre">
+                    {velo.statut === "MAINTENANCE" ? "en entretien" : "en service"}
                   </p>
                 </div>
 
@@ -128,13 +128,13 @@ export function CalendrierParc({
                     <div
                       key={jour}
                       style={{ width: LARGEUR_JOUR }}
-                      className="shrink-0 border-l border-encre-900/6"
+                      className="shrink-0 border-l border-noir-piste/6"
                     />
                   ))}
 
                   {velo.statut === "MAINTENANCE" && (
                     <div
-                      className="absolute inset-y-2 left-0 rounded-lg bg-sable-300/70 px-2 text-[0.7rem] leading-7"
+                      className="absolute inset-y-2 left-0 rounded-[var(--radius-bouton)] bg-craie-ombre/70 px-2 text-[0.7rem] leading-7"
                       style={{ width: jours.length * LARGEUR_JOUR - 2 }}
                     >
                       Immobilisé — atelier
@@ -146,8 +146,8 @@ export function CalendrierParc({
                       key={creneau.reservation.id}
                       href={`/admin/reservations?reference=${creneau.reservation.reference}`}
                       title={`${creneau.reservation.reference} — ${creneau.reservation.client.prenom} ${creneau.reservation.client.nom}`}
-                      className={`absolute inset-y-2 flex items-center overflow-hidden rounded-lg px-2 text-[0.7rem] font-semibold text-sable-50 transition-opacity hover:opacity-85 ${
-                        creneau.reservation.statut === "EN_COURS" ? "bg-terre-600" : "bg-encre-700"
+                      className={`absolute inset-y-2 flex items-center overflow-hidden rounded-[var(--radius-bouton)] px-2 text-[0.7rem] font-semibold text-craie transition-opacity hover:opacity-85 ${
+                        creneau.reservation.statut === "EN_COURS" ? "bg-orange-signal" : "bg-noir-releve"
                       }`}
                       style={{
                         left: creneau.indexDebut * LARGEUR_JOUR + 2,
@@ -166,15 +166,15 @@ export function CalendrierParc({
         </div>
       </div>
 
-      <p className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.75rem] text-encre-500">
+      <p className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.75rem] text-gris-cadre">
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded bg-terre-600" /> Location en cours
+          <span className="h-3 w-3 rounded bg-orange-signal" /> Location en cours
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded bg-encre-700" /> Réservation à venir
+          <span className="h-3 w-3 rounded bg-noir-releve" /> Réservation à venir
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded bg-sable-300" /> Immobilisé à l&apos;atelier
+          <span className="h-3 w-3 rounded bg-craie-ombre" /> Immobilisé à l&apos;atelier
         </span>
       </p>
     </div>

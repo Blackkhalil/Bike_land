@@ -13,7 +13,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { chemin: "/velos", priorite: 0.9, frequence: "daily" as const },
     { chemin: "/itineraires", priorite: 0.8, frequence: "monthly" as const },
     { chemin: "/comment-ca-marche", priorite: 0.7, frequence: "monthly" as const },
-    { chemin: "/tarifs", priorite: 0.8, frequence: "monthly" as const },
     { chemin: "/a-propos", priorite: 0.6, frequence: "yearly" as const },
     { chemin: "/contact", priorite: 0.7, frequence: "monthly" as const },
     { chemin: "/reservation/suivi", priorite: 0.4, frequence: "yearly" as const },

@@ -11,7 +11,7 @@ export default async function LayoutAdminProtege({ children }: { children: React
   if (!(await sessionAdminValide())) redirect("/admin/connexion");
 
   return (
-    <div className="min-h-screen bg-sable-100">
+    <div className="min-h-screen bg-craie text-noir-piste">
       <NavigationAdmin protege={modeAcces() === "protege"} modeDonnees={modeDonnees()} />
       <div className="mx-auto max-w-[1500px] px-5 py-8 sm:px-8 lg:pl-[17.5rem]">{children}</div>
     </div>

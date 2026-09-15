@@ -34,7 +34,7 @@ export function BarreEmpilee({
   return (
     <CadreGraphique titre={titre} sousTitre={sousTitre}>
       {total === 0 ? (
-        <p className="py-8 text-center text-[0.9rem] text-encre-500">Aucune donnée sur la période.</p>
+        <p className="py-8 text-center text-[0.9rem] text-gris-cadre">Aucune donnée sur la période.</p>
       ) : (
         <>
           <div className="flex h-4 w-full gap-[2px] overflow-hidden rounded-full">
@@ -61,7 +61,7 @@ export function BarreEmpilee({
                 />
                 <span>{segment.etiquette}</span>
                 <span className="ml-auto font-semibold tabular-nums">{formater(segment.valeur)}</span>
-                <span className="w-12 shrink-0 text-right tabular-nums text-encre-500">
+                <span className="w-12 shrink-0 text-right tabular-nums text-gris-cadre">
                   {Math.round((segment.valeur / total) * 100)} %
                 </span>
               </li>

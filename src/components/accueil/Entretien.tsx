@@ -19,14 +19,14 @@ const volets = [
       "Nos gravels roulent en tubeless, les autres vélos en chambre renforcée anti-épines. Chaque vélo part avec une chambre de rechange, des démonte-pneus et une pompe. Un tutoriel de deux minutes est fait au départ à qui le souhaite.",
   },
   {
-    titre: "Batteries et recharge",
+    titre: "Freins et transmission",
     contenu:
-      "Les batteries sont testées en capacité réelle tous les trois mois et remplacées dès qu'elles passent sous 80 % de leur capacité d'origine. Un chargeur rapide est fourni ; une seconde batterie est disponible en option sur les étapes longues.",
+      "Plaquettes, câbles et dérailleur sont contrôlés après chaque location et réglés au dixième de tour si besoin. Une chaîne qui saute ou un frein qui mord mal, c'est un vélo qui ne repart pas tant que ce n'est pas corrigé.",
   },
   {
     titre: "Assistance en route",
     contenu:
-      "Un numéro unique, joignable sept jours sur sept pendant votre location. Nous intervenons dans un rayon de 60 km autour de Cotonou, Ouidah et Natitingou, ou nous organisons un dépannage local ailleurs.",
+      "Un numéro unique, joignable sept jours sur sept pendant votre location. Nous intervenons dans un rayon de 60 km autour de notre point de départ, sur la route des Pêches.",
   },
 ];
 
@@ -41,7 +41,7 @@ export function Entretien() {
             <br />
             sans vous trahir
           </TitreSection>
-          <p className="mt-6 max-w-md text-[0.95rem] leading-relaxed text-encre-500">
+          <p className="mt-6 max-w-md text-[0.95rem] leading-relaxed text-gris-cadre">
             Un road trip s&apos;arrête rarement à cause du cycliste : il s&apos;arrête à cause
             du vélo. C&apos;est pour cette raison que nous en louons peu, et que nous les suivons
             un par un.
@@ -50,22 +50,22 @@ export function Entretien() {
         </div>
 
         <div
-          className="reveal relative grid place-items-center overflow-hidden rounded-[1.75rem] px-8 py-16"
+          className="reveal relative grid place-items-center overflow-hidden rounded-[var(--radius-bloc)] px-8 py-16"
           data-delai="140"
-          style={{ background: "linear-gradient(150deg, #3d4f27 0%, #2e3b1f 55%, #1f2716 100%)" }}
+          style={{ background: "#1f6f5c" }}
         >
           <VeloIllustration
             categorie="GRAVEL"
-            teintes={["#f0b445", "#e8eddd"]}
+            teintes={["#f25c05", "#f2efe9"]}
             className="w-full max-w-xl"
           />
-          <dl className="mt-10 grid w-full max-w-md grid-cols-3 gap-4 text-olive-50">
+          <dl className="mt-10 grid w-full max-w-md grid-cols-3 gap-4 text-vert-lagune/10">
             {[
               { valeur: "48 h", detail: "révision complète entre deux locations" },
               { valeur: "7 j / 7", detail: "assistance téléphonique" },
               { valeur: "60 km", detail: "rayon de dépannage" },
             ].map((item) => (
-              <div key={item.valeur} className="border-t border-olive-50/25 pt-3">
+              <div key={item.valeur} className="border-t border-vert-lagune/25 pt-3">
                 <dt className="font-display text-[1.35rem] font-extrabold leading-none">{item.valeur}</dt>
                 <dd className="mt-2 text-[0.72rem] leading-snug opacity-65">{item.detail}</dd>
               </div>

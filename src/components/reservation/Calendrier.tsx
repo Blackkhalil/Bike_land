@@ -87,16 +87,16 @@ export function Calendrier({
           type="button"
           onClick={() => setMoisAffiche(decalerMois(moisAffiche, -1))}
           disabled={!peutReculer}
-          className="grid h-8 w-8 place-items-center rounded-full border border-encre-900/20 transition-colors hover:bg-encre-900/5 disabled:opacity-25"
+          className="grid h-8 w-8 place-items-center rounded-full border border-noir-piste/20 transition-colors hover:bg-noir-piste/5 disabled:opacity-25"
           aria-label="Mois précédent"
         >
           <span aria-hidden="true">‹</span>
         </button>
-        <p className="etiquette opacity-60">Choisissez vos dates</p>
+        <p className="etiquette opacity-75">Choisissez vos dates</p>
         <button
           type="button"
           onClick={() => setMoisAffiche(decalerMois(moisAffiche, 1))}
-          className="grid h-8 w-8 place-items-center rounded-full border border-encre-900/20 transition-colors hover:bg-encre-900/5"
+          className="grid h-8 w-8 place-items-center rounded-full border border-noir-piste/20 transition-colors hover:bg-noir-piste/5"
           aria-label="Mois suivant"
         >
           <span aria-hidden="true">›</span>
@@ -113,7 +113,7 @@ export function Calendrier({
               {JOURS.map((jour, index) => (
                 <abbr
                   key={`${jour}-${index}`}
-                  className="pb-1 text-[0.62rem] font-semibold uppercase tracking-wide text-encre-500 no-underline"
+                  className="pb-1 text-[0.62rem] font-semibold uppercase tracking-wide text-gris-cadre no-underline"
                 >
                   {jour}
                 </abbr>
@@ -147,11 +147,11 @@ export function Calendrier({
                     className={[
                       "relative mx-auto grid h-8 w-8 place-items-center rounded-full text-[0.8rem] tabular-nums transition-colors duration-150",
                       indisponible
-                        ? "cursor-not-allowed text-encre-900/25"
-                        : "hover:bg-terre-100",
-                      occupe && !passe ? "line-through decoration-terre-500/60" : "",
-                      estDebut || estFin ? "bg-encre-900 font-semibold text-sable-50 hover:bg-encre-900" : "",
-                      dansPlage ? "bg-terre-100 text-terre-800" : "",
+                        ? "cursor-not-allowed text-noir-piste/25"
+                        : "hover:bg-orange-signal/20",
+                      occupe && !passe ? "line-through decoration-orange-signal/60" : "",
+                      estDebut || estFin ? "bg-noir-piste font-semibold text-craie hover:bg-noir-piste" : "",
+                      dansPlage ? "bg-orange-signal/20 text-orange-sourd" : "",
                     ].join(" ")}
                   >
                     {Number(jour.slice(8, 10))}
@@ -163,15 +163,15 @@ export function Calendrier({
         ))}
       </div>
 
-      <p className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.72rem] text-encre-500">
+      <p className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.72rem] text-gris-cadre">
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-encre-900" /> Vos dates
+          <span className="h-3 w-3 rounded-full bg-noir-piste" /> Vos dates
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-terre-100" /> Période retenue
+          <span className="h-3 w-3 rounded-full bg-orange-signal/20" /> Période retenue
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full border border-encre-900/25 line-through decoration-terre-500" />{" "}
+          <span className="h-3 w-3 rounded-full border border-noir-piste/25 line-through decoration-orange-signal" />{" "}
           Déjà loué
         </span>
       </p>

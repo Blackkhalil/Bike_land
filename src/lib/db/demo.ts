@@ -11,6 +11,7 @@
 
 import { optionsLocation, pointsDeRetrait, velos } from "@/data/catalogue";
 import { aujourdhui, nombreDeJours, periodesSeChevauchent, type DateISO } from "../dates";
+import { EXPIRATION_PANIER_MINUTES } from "@/data/offres";
 import { calculerDevis } from "../tarification";
 import { genererReference, genererToken, hacherToken, lireToken } from "../tokens";
 import type {
@@ -62,21 +63,20 @@ function copie<T>(valeur: T): T {
   return structuredClone(valeur);
 }
 
+function trouver(reference: string) {
+  return etat().reservations.find(
+    (r) => r.reference.toUpperCase() === reference.toUpperCase(),
+  );
+}
+
 export const depotDemo: Depot = {
   async listerVelos(filtre?: FiltreCatalogue): Promise<Velo[]> {
-    let resultat = velos.filter((velo) => velo.statut !== "RETIRE");
+    let resultat = filtre?.inclureRetires
+      ? velos
+      : velos.filter((velo) => velo.statut !== "RETIRE");
 
-    if (filtre?.categories?.length) {
-      resultat = resultat.filter((velo) => filtre.categories!.includes(velo.categorie));
-    }
-    if (filtre?.tailles?.length) {
-      resultat = resultat.filter((velo) => filtre.tailles!.includes(velo.taille));
-    }
     if (filtre?.pointDeRetraitId) {
       resultat = resultat.filter((velo) => velo.pointDeRetraitId === filtre.pointDeRetraitId);
-    }
-    if (filtre?.prixMaxXof) {
-      resultat = resultat.filter((velo) => velo.prixJourXof <= filtre.prixMaxXof!);
     }
     if (filtre?.dateDebut && filtre?.dateFin) {
       const libres = new Set<string>();
@@ -104,10 +104,17 @@ export const depotDemo: Depot = {
   },
 
   async periodesIndisponibles(veloId: string) {
+    const limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000;
     return etat()
       .reservations.filter(
         (reservation) =>
-          reservation.statut !== "ANNULEE" && reservation.lignes.some((ligne) => ligne.veloId === veloId),
+          reservation.statut !== "ANNULEE" &&
+          // Un panier abandonne cesse de bloquer le velo.
+          !(
+            reservation.statut === "EN_ATTENTE_PAIEMENT" &&
+            new Date(reservation.creeLe).getTime() < limite
+          ) &&
+          reservation.lignes.some((ligne) => ligne.veloId === veloId),
       )
       .map((reservation) => ({ debut: reservation.dateDebut, fin: reservation.dateFin }));
   },
@@ -130,7 +137,12 @@ export const depotDemo: Depot = {
       throw new ConflitDisponibiliteError();
     }
 
-    const devis = calculerDevis(velo, demande.dateDebut, demande.dateFin, demande.options);
+    const devis = calculerDevis({
+      offre: demande.offre,
+      nombrePersonnes: demande.nombrePersonnes,
+      dureeHeures: demande.dureeHeures,
+      options: demande.options,
+    });
     const donnees = etat();
 
     const emailNormalise = demande.client.email.trim().toLowerCase();
@@ -155,7 +167,12 @@ export const depotDemo: Depot = {
     const reservation: Reservation = {
       id: `res-${reference}`,
       reference,
-      statut: "CONFIRMEE",
+      // La reservation nait EN ATTENTE : seul le paiement verifie la
+      // confirme. Sans cela, on pourrait reserver un velo sans payer.
+      statut: "EN_ATTENTE_PAIEMENT",
+      offre: demande.offre,
+      nombrePersonnes: devis.nombrePersonnes,
+      dureeHeures: devis.dureeHeures ?? undefined,
       clientId: client.id,
       client,
       pointDeRetraitId: velo.pointDeRetraitId,
@@ -167,7 +184,7 @@ export const depotDemo: Depot = {
           veloId: velo.id,
           veloNom: velo.nom,
           veloSlug: velo.slug,
-          prixUnitaireXof: velo.prixJourXof,
+          prixUnitaireXof: devis.sousTotalXof,
           totalLigneXof: devis.sousTotalXof,
         },
       ],
@@ -179,7 +196,7 @@ export const depotDemo: Depot = {
       })),
       sousTotalXof: devis.sousTotalXof,
       optionsXof: devis.optionsXof,
-      remiseXof: devis.remiseXof,
+      remiseXof: 0,
       cautionXof: devis.cautionXof,
       totalXof: devis.totalXof,
       paiements: [
@@ -187,7 +204,7 @@ export const depotDemo: Depot = {
           id: `pay-${reference}`,
           fournisseur: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "FEDAPAY",
           moyen: demande.moyenPaiement,
-          statut: "REUSSI",
+          statut: "INITIE",
           montantXof: devis.totalXof,
           referenceFournisseur: `TX-${reference}`,
           estCaution: false,
@@ -196,7 +213,6 @@ export const depotDemo: Depot = {
       ],
       message: demande.message,
       creeLe: maintenant,
-      confirmeLe: maintenant,
     };
 
     donnees.reservations.push(reservation);
@@ -242,6 +258,54 @@ export const depotDemo: Depot = {
 
   async listerClients() {
     return copie(etat().clients);
+  },
+
+  async confirmerPaiement(reference: string, referenceTransaction?: string) {
+    const reservation = trouver(reference);
+    if (!reservation) return null;
+
+    // Idempotence : rejouer la notification ne doit rien changer, et
+    // surtout ne pas renvoyer un second email au client.
+    if (reservation.statut !== "EN_ATTENTE_PAIEMENT") {
+      return { reservation: copie(reservation), dejaConfirmee: true };
+    }
+
+    reservation.statut = "CONFIRMEE";
+    reservation.confirmeLe = new Date().toISOString();
+    for (const paiement of reservation.paiements) {
+      if (paiement.estCaution) continue;
+      paiement.statut = "REUSSI";
+      if (referenceTransaction) paiement.referenceFournisseur = referenceTransaction;
+    }
+    return { reservation: copie(reservation), dejaConfirmee: false };
+  },
+
+  async marquerDepart(reference: string) {
+    const reservation = trouver(reference);
+    if (!reservation) return null;
+    // Une reservation annulee ne repart pas ; une deja en cours reste
+    // en cours (le coordinateur a pu cliquer deux fois).
+    if (reservation.statut === "ANNULEE") return copie(reservation);
+    reservation.statut = "EN_COURS";
+    return copie(reservation);
+  },
+
+  async marquerRetour(reference: string) {
+    const reservation = trouver(reference);
+    if (!reservation) return null;
+    if (reservation.statut === "ANNULEE") return copie(reservation);
+    reservation.statut = "TERMINEE";
+    return copie(reservation);
+  },
+
+  async majVelo(id, champs) {
+    // Le catalogue est un module importe, donc partage : on mute
+    // l'objet en place, comme le fait deja l'historique de demonstration
+    // pour les reservations. Rien n'est persiste au-dela du processus.
+    const velo = velos.find((v) => v.id === id);
+    if (!velo) return null;
+    if (champs.statut !== undefined) velo.statut = champs.statut;
+    return copie(velo);
   },
 
   async enregistrerMessageContact(message) {

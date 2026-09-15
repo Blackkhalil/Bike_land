@@ -8,12 +8,12 @@ export const site = {
   nom: "Bike Land",
   baseline: "Louez le vélo, gardez la route",
   description:
-    "Location de vélos préparés pour le road trip au Bénin : randonneurs, gravels et vélos à assistance électrique, réservables en ligne en deux minutes, sans créer de compte.",
+    "Location de vélos sur la route des Pêches à Cotonou : randonneurs, gravels, VTC et tandem, réservables en ligne en deux minutes, sans créer de compte. Les road trips à travers le Bénin arrivent bientôt.",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://bikeland.bj",
   email: "bonjour@bikeland.bj",
-  telephone: "+229 01 97 00 00 00",
-  telephoneLien: "+2290197000000",
-  whatsapp: "+2290197000000",
+  telephone: "+229 01 59 68 81 03",
+  telephoneLien: "+2290159688103",
+  whatsapp: "+2290159688103",
   adresse: {
     ligne: "Carré 1204, Haie Vive",
     ville: "Cotonou",
@@ -23,7 +23,7 @@ export const site = {
   reseaux: [
     { nom: "Instagram", url: "https://instagram.com/bikeland" },
     { nom: "Facebook", url: "https://facebook.com/bikeland" },
-    { nom: "WhatsApp", url: "https://wa.me/2290197000000" },
+    { nom: "WhatsApp", url: "https://wa.me/2290159688103" },
   ],
 } as const;
 
@@ -31,7 +31,6 @@ export const navigationPrincipale = [
   { libelle: "Nos vélos", href: "/velos" },
   { libelle: "Itinéraires", href: "/itineraires" },
   { libelle: "Comment ça marche", href: "/comment-ca-marche" },
-  { libelle: "Tarifs", href: "/tarifs" },
 ] as const;
 
 export const navigationSecondaire = [

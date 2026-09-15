@@ -40,7 +40,7 @@ export function VeloIllustration({
 }: Props) {
   const [accent, clair] = teintes;
   const cadre = accent;
-  const trait = "#2a231e";
+  const trait = "#0e0e0e";
 
   const cintreDrop = categorie === "GRAVEL" || categorie === "RANDONNEUR";
   const cadreOuvert = categorie === "VTC" || categorie === "VAE";

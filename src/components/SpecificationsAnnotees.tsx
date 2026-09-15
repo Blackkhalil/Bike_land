@@ -64,23 +64,15 @@ export function annotationsPour(velo: Velo): Annotation[] {
     },
   ];
 
-  if (velo.categorie === "VAE") {
-    communes.splice(2, 0, {
-      titre: `Moteur ${velo.moteurWatts ?? 750} W`,
-      valeur: `Batterie ${velo.batterieWh ?? 630} Wh · ${velo.autonomieAssistanceKm ?? 80} km`,
-      cible: [466, 113],
-      cote: "droite",
-      ligne: 110,
-    });
-  } else {
-    communes.splice(2, 0, {
-      titre: "Autonomie conseillée",
-      valeur: `${velo.autonomieConseilleeKm} km par jour, sans forcer`,
-      cible: [466, 118],
-      cote: "droite",
-      ligne: 110,
-    });
-  }
+  // Le parc est entièrement musculaire : aucune mention de moteur ni de
+  // batterie n'a de sens ici.
+  communes.splice(2, 0, {
+    titre: "Autonomie conseillée",
+    valeur: `${velo.autonomieConseilleeKm} km par jour, sans forcer`,
+    cible: [466, 118],
+    cote: "droite",
+    ligne: 110,
+  });
 
   return communes;
 }
@@ -88,7 +80,7 @@ export function annotationsPour(velo: Velo): Annotation[] {
 export function SpecificationsAnnotees({
   velo,
   className = "",
-  couleurTrait = "#2a231e",
+  couleurTrait = "#0e0e0e",
 }: {
   velo: Velo;
   className?: string;

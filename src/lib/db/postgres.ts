@@ -21,6 +21,7 @@ import type {
 } from "@prisma/client";
 
 import { nombreDeJours, versISO, type DateISO } from "../dates";
+import { EXPIRATION_PANIER_MINUTES } from "@/data/offres";
 import { calculerDevis } from "../tarification";
 import { genererReference, genererToken, hacherToken, lireToken } from "../tokens";
 import type { Client, MessageContact, PointDeRetrait, Reservation, Velo } from "../types";
@@ -47,11 +48,11 @@ function client(): PrismaClient {
 
 /** Teintes du visuel généré, dérivées de la catégorie (aucune photo requise). */
 const teintesParCategorie: Record<BikeCategory, [string, string]> = {
-  RANDONNEUR: ["#c75c34", "#f0e5d6"],
-  GRAVEL: ["#4e6630", "#e8eddd"],
-  VAE: ["#e2971d", "#fdf5f1"],
-  VTC: ["#b89b73", "#f8f2e9"],
-  TANDEM: ["#c07813", "#f0e5d6"],
+  RANDONNEUR: ["#f25c05", "#e0dcd3"],
+  GRAVEL: ["#1f6f5c", "#e0dcd3"],
+  VAE: ["#f4762f", "#f2efe9"],
+  VTC: ["#6b6b6b", "#f2efe9"],
+  TANDEM: ["#f25c05", "#e0dcd3"],
 };
 
 type BikeAvecAvis = BikePrisma & {
@@ -71,8 +72,6 @@ function versVelo(bike: BikeAvecAvis): Velo {
     statut: bike.status,
     accroche: bike.shortPitch,
     description: bike.description,
-    prixJourXof: bike.dailyPriceXof,
-    cautionXof: bike.depositXof,
     poidsKg: bike.weightKg,
     vitesses: bike.gearCount,
     chargeMaxKg: bike.maxLoadKg,
@@ -101,6 +100,9 @@ function versReservation(booking: BookingComplet): Reservation {
     id: booking.id,
     reference: booking.reference,
     statut: booking.status,
+    offre: booking.offer === "ROAD_TRIP" ? "road-trip" : "location-libre",
+    nombrePersonnes: booking.peopleCount,
+    dureeHeures: booking.durationHours ?? undefined,
     clientId: booking.customerId,
     client: versClient(booking.customer),
     pointDeRetraitId: booking.pickupPointId ?? "",
@@ -163,23 +165,64 @@ const inclusionReservation = {
   review: { select: { rating: true } },
 } satisfies Prisma.BookingInclude;
 
-/** Statuts qui immobilisent un vélo : une réservation annulée le libère. */
-const STATUTS_BLOQUANTS = ["EN_ATTENTE_PAIEMENT", "CONFIRMEE", "EN_COURS", "TERMINEE"] as const;
+/**
+ * Une reservation bloque le velo si elle est dans un statut bloquant ET
+ * qu'elle n'est pas un panier abandonne : une reservation jamais payee
+ * cesse de reserver le velo passe le delai d'expiration.
+ */
+function bookingBloquant(): Prisma.BookingWhereInput {
+  const limite = new Date(Date.now() - EXPIRATION_PANIER_MINUTES * 60_000);
+  return {
+    OR: [
+      { status: { in: ["CONFIRMEE", "EN_COURS", "TERMINEE"] } },
+      { status: "EN_ATTENTE_PAIEMENT", createdAt: { gte: limite } },
+    ],
+  };
+}
+
+/**
+ * Change le statut d'une reservation par sa reference.
+ *
+ * Une reservation annulee n'est jamais reactivee par un clic sur la
+ * fiche du jour : le coordinateur constate un depart ou un retour, il
+ * n'annule pas une annulation.
+ */
+async function changerStatutReservation(
+  reference: string,
+  statut: "EN_COURS" | "TERMINEE",
+): Promise<Reservation | null> {
+  const existante = await client().booking.findUnique({
+    where: { reference },
+    select: { id: true, status: true },
+  });
+  if (!existante) return null;
+  if (existante.status === "ANNULEE") {
+    const inchangee = await client().booking.findUnique({
+      where: { id: existante.id },
+      include: inclusionReservation,
+    });
+    return inchangee ? versReservation(inchangee) : null;
+  }
+
+  const booking = await client().booking.update({
+    where: { id: existante.id },
+    data: { status: statut },
+    include: inclusionReservation,
+  });
+  return versReservation(booking);
+}
 
 export const depotPostgres: Depot = {
   async listerVelos(filtre?: FiltreCatalogue): Promise<Velo[]> {
-    const where: Prisma.BikeWhereInput = { status: { not: "RETIRE" } };
-    if (filtre?.categories?.length) where.category = { in: filtre.categories as BikeCategory[] };
-    if (filtre?.tailles?.length) where.size = { in: filtre.tailles as ("S" | "M" | "L" | "XL")[] };
+    const where: Prisma.BikeWhereInput = filtre?.inclureRetires ? {} : { status: { not: "RETIRE" } };
     if (filtre?.pointDeRetraitId) where.pickupPointId = filtre.pointDeRetraitId;
-    if (filtre?.prixMaxXof) where.dailyPriceXof = { lte: filtre.prixMaxXof };
 
     if (filtre?.dateDebut && filtre?.dateFin) {
       // Un vélo est retenu s'il n'a aucune ligne de réservation active
       // qui chevauche la période demandée.
       where.bookingItems = {
         none: {
-          booking: { status: { in: [...STATUTS_BLOQUANTS] } },
+          booking: bookingBloquant(),
           startDate: { lte: new Date(`${filtre.dateFin}T00:00:00Z`) },
           endDate: { gte: new Date(`${filtre.dateDebut}T00:00:00Z`) },
         },
@@ -189,7 +232,7 @@ export const depotPostgres: Depot = {
     const bikes = await client().bike.findMany({
       where,
       include: { reviews: { where: { isPublished: true }, select: { rating: true } } },
-      orderBy: { dailyPriceXof: "asc" },
+      orderBy: { name: "asc" },
     });
     return bikes.map(versVelo);
   },
@@ -224,7 +267,7 @@ export const depotPostgres: Depot = {
 
   async periodesIndisponibles(veloId: string) {
     const lignes = await client().bookingItem.findMany({
-      where: { bikeId: veloId, booking: { status: { in: [...STATUTS_BLOQUANTS] } } },
+      where: { bikeId: veloId, booking: bookingBloquant() },
       select: { startDate: true, endDate: true },
       orderBy: { startDate: "asc" },
     });
@@ -238,7 +281,7 @@ export const depotPostgres: Depot = {
     const conflit = await client().bookingItem.findFirst({
       where: {
         bikeId: veloId,
-        booking: { status: { in: [...STATUTS_BLOQUANTS] } },
+        booking: bookingBloquant(),
         startDate: { lte: new Date(`${fin}T00:00:00Z`) },
         endDate: { gte: new Date(`${debut}T00:00:00Z`) },
       },
@@ -251,12 +294,12 @@ export const depotPostgres: Depot = {
     const bike = await client().bike.findUnique({ where: { id: demande.veloId } });
     if (!bike) throw new Error("Vélo introuvable.");
 
-    const devis = calculerDevis(
-      { prixJourXof: bike.dailyPriceXof, cautionXof: bike.depositXof },
-      demande.dateDebut,
-      demande.dateFin,
-      demande.options,
-    );
+    const devis = calculerDevis({
+      offre: demande.offre,
+      nombrePersonnes: demande.nombrePersonnes,
+      dureeHeures: demande.dureeHeures,
+      options: demande.options,
+    });
 
     const reference = genererReference();
     const token = genererToken(reference);
@@ -271,7 +314,7 @@ export const depotPostgres: Depot = {
         const conflit = await tx.bookingItem.findFirst({
           where: {
             bikeId: bike.id,
-            booking: { status: { in: [...STATUTS_BLOQUANTS] } },
+            booking: bookingBloquant(),
             startDate: { lte: fin },
             endDate: { gte: debut },
           },
@@ -298,7 +341,12 @@ export const depotPostgres: Depot = {
         return tx.booking.create({
           data: {
             reference,
-            status: "CONFIRMEE",
+            // Voir demo.ts : la reservation nait en attente, seul le
+            // paiement verifie la confirme.
+            status: "EN_ATTENTE_PAIEMENT",
+            offer: demande.offre === "road-trip" ? "ROAD_TRIP" : "LOCATION_LIBRE",
+            peopleCount: devis.nombrePersonnes,
+            durationHours: devis.dureeHeures,
             customerId: customer.id,
             pickupPointId: bike.pickupPointId,
             startDate: debut,
@@ -306,19 +354,18 @@ export const depotPostgres: Depot = {
             days: nombreDeJours(demande.dateDebut, demande.dateFin),
             subtotalXof: devis.sousTotalXof,
             optionsXof: devis.optionsXof,
-            discountXof: devis.remiseXof,
+            discountXof: 0,
             depositXof: devis.cautionXof,
             totalXof: devis.totalXof,
             accessTokenHash: hacherToken(token),
             notes: demande.message,
-            confirmedAt: new Date(),
             items: {
               create: [
                 {
                   bikeId: bike.id,
                   startDate: debut,
                   endDate: fin,
-                  unitPriceXof: bike.dailyPriceXof,
+                  unitPriceXof: devis.sousTotalXof,
                   lineTotalXof: devis.sousTotalXof,
                 },
               ],
@@ -336,7 +383,7 @@ export const depotPostgres: Depot = {
                 {
                   provider: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "FEDAPAY",
                   method: demande.moyenPaiement,
-                  status: "REUSSI",
+                  status: "INITIE",
                   amountXof: devis.totalXof,
                   isDeposit: false,
                 },
@@ -404,6 +451,64 @@ export const depotPostgres: Depot = {
       orderBy: { startDate: "desc" },
     });
     return bookings.map(versReservation);
+  },
+
+  async confirmerPaiement(reference: string, referenceTransaction?: string) {
+    const existante = await client().booking.findUnique({
+      where: { reference },
+      select: { id: true, status: true },
+    });
+    if (!existante) return null;
+
+    if (existante.status !== "EN_ATTENTE_PAIEMENT") {
+      const inchangee = await client().booking.findUnique({
+        where: { id: existante.id },
+        include: inclusionReservation,
+      });
+      return inchangee
+        ? { reservation: versReservation(inchangee), dejaConfirmee: true }
+        : null;
+    }
+
+    const booking = await client().booking.update({
+      where: { id: existante.id },
+      data: {
+        status: "CONFIRMEE",
+        confirmedAt: new Date(),
+        payments: {
+          updateMany: {
+            where: { isDeposit: false },
+            data: {
+              status: "REUSSI",
+              ...(referenceTransaction ? { providerReference: referenceTransaction } : {}),
+            },
+          },
+        },
+      },
+      include: inclusionReservation,
+    });
+    return { reservation: versReservation(booking), dejaConfirmee: false };
+  },
+
+  async marquerDepart(reference: string) {
+    return changerStatutReservation(reference, "EN_COURS");
+  },
+
+  async marquerRetour(reference: string) {
+    return changerStatutReservation(reference, "TERMINEE");
+  },
+
+  async majVelo(id, champs) {
+    const donnees: Prisma.BikeUpdateInput = {};
+    if (champs.statut !== undefined) donnees.status = champs.statut;
+    if (Object.keys(donnees).length === 0) return this.trouverVeloParId(id);
+
+    const bike = await client().bike.update({
+      where: { id },
+      data: donnees,
+      include: { reviews: { where: { isPublished: true }, select: { rating: true } } },
+    });
+    return versVelo(bike);
   },
 
   async listerClients() {
