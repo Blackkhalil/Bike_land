@@ -57,12 +57,48 @@ export function jetonValide(jeton: string | undefined): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function motDePasseCorrect(saisi: string): boolean {
-  const attendu = process.env.ADMIN_PASSWORD;
-  if (!attendu) return false;
+/** Comparaison à temps constant : `===` laisse fuir le préfixe commun. */
+function egalConstant(saisi: string, attendu: string): boolean {
   const a = Buffer.from(saisi);
   const b = Buffer.from(attendu);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export function motDePasseCorrect(saisi: string): boolean {
+  const attendu = process.env.ADMIN_PASSWORD;
+  if (!attendu) return false;
+  return egalConstant(saisi, attendu);
+}
+
+/** Vrai quand l'adresse de l'exploitant est configurée. */
+export function emailAdminConfigure(): boolean {
+  return Boolean(process.env.ADMIN_EMAIL);
+}
+
+/**
+ * Contrôle des identifiants de l'exploitant : adresse **et** mot de passe.
+ *
+ * Demander l'adresse en plus du mot de passe ajoute une seconde chose à
+ * connaître, et surtout rend les tentatives aveugles beaucoup plus
+ * coûteuses : deviner un mot de passe ne suffit plus.
+ *
+ * Tant que `ADMIN_EMAIL` n'est pas défini, l'adresse saisie n'est pas
+ * vérifiée — sinon la première mise en service enfermerait l'exploitant
+ * dehors. Ce cas est signalé sur la page de connexion et dans le journal
+ * du serveur, pour qu'il ne passe pas inaperçu.
+ */
+export function identifiantsCorrects(email: string, motDePasse: string): boolean {
+  if (!motDePasseCorrect(motDePasse)) return false;
+
+  const attendu = process.env.ADMIN_EMAIL;
+  if (!attendu) {
+    console.warn(
+      "[admin] ADMIN_EMAIL n'est pas défini : l'adresse saisie à la connexion n'est pas vérifiée.",
+    );
+    return true;
+  }
+
+  return egalConstant(email.trim().toLowerCase(), attendu.trim().toLowerCase());
 }
 
 /** Vrai si la requête courante a le droit d'entrer dans /admin. */

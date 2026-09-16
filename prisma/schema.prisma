@@ -231,7 +231,6 @@ enum PaymentProvider {
 enum PaymentMethod {
   MTN_MONEY
   MOOV_MONEY
-  CARTE_BANCAIRE
   ESPECES
 }
 

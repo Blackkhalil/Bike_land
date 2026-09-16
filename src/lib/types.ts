@@ -25,7 +25,13 @@ export type StatutReservation =
   | "TERMINEE"
   | "ANNULEE";
 
-export type MoyenPaiement = "MTN_MONEY" | "MOOV_MONEY" | "CARTE_BANCAIRE" | "ESPECES";
+/**
+ * Moyens de paiement du domaine.
+ *
+ * `ESPECES` n'est pas proposé en ligne : il ne sert qu'aux encaissements
+ * faits de la main à la main au point de départ.
+ */
+export type MoyenPaiement = "MTN_MONEY" | "MOOV_MONEY" | "ESPECES";
 export type FournisseurPaiement = "FEDAPAY" | "KKIAPAY" | "ESPECES";
 export type StatutPaiement = "INITIE" | "REUSSI" | "ECHOUE" | "REMBOURSE";
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { NOM_COOKIE, creerJeton, modeAcces, motDePasseCorrect } from "@/lib/admin";
+import { NOM_COOKIE, creerJeton, identifiantsCorrects, modeAcces } from "@/lib/admin";
 import {
   delaiAvantNouvelEssai,
   enregistrerEchec,
@@ -32,13 +32,23 @@ export async function POST(requete: Request) {
     );
   }
 
-  const corps = (await requete.json().catch(() => ({}))) as { motDePasse?: string };
-  if (typeof corps.motDePasse !== "string" || !motDePasseCorrect(corps.motDePasse)) {
+  const corps = (await requete.json().catch(() => ({}))) as {
+    email?: string;
+    motDePasse?: string;
+  };
+
+  // Un seul message d'erreur, quel que soit le champ fautif : préciser
+  // « adresse inconnue » indiquerait quelles adresses existent.
+  if (
+    typeof corps.email !== "string" ||
+    typeof corps.motDePasse !== "string" ||
+    !identifiantsCorrects(corps.email, corps.motDePasse)
+  ) {
     enregistrerEchec(appelant);
     // Délai fixe : évite de distinguer « mauvais mot de passe » de
     // « traitement rapide » par le temps de réponse.
     await new Promise((resoudre) => setTimeout(resoudre, 400));
-    return NextResponse.json({ erreur: "Mot de passe incorrect." }, { status: 401 });
+    return NextResponse.json({ erreur: "Adresse ou mot de passe incorrect." }, { status: 401 });
   }
 
   reinitialiser(appelant);

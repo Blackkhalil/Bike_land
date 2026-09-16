@@ -49,7 +49,7 @@ const villes = [
   "Paris, France", "Lomé, Togo", "Lagos, Nigéria", "Bruxelles, Belgique", "Ouidah",
 ];
 
-const moyens: MoyenPaiement[] = ["MTN_MONEY", "MOOV_MONEY", "CARTE_BANCAIRE", "ESPECES"];
+const moyens: MoyenPaiement[] = ["MTN_MONEY", "MOOV_MONEY", "ESPECES"];
 // Le Mobile Money domine largement au Bénin (§7.2) : la répartition du jeu
 // de démonstration reflète cette réalité de marché.
 const poidsMoyens = [0.46, 0.27, 0.22, 0.05];
@@ -245,7 +245,7 @@ function fabriquerReservation(contexte: {
         : [
             {
               id: `pay-demo-${index + 1}`,
-              fournisseur: moyen === "ESPECES" ? "ESPECES" : hasard() > 0.5 ? "FEDAPAY" : "KKIAPAY",
+              fournisseur: moyen === "ESPECES" ? "ESPECES" : "KKIAPAY",
               moyen,
               statut: "REUSSI",
               montantXof: devis.totalXof,
@@ -253,20 +253,8 @@ function fabriquerReservation(contexte: {
               estCaution: false,
               creeLe: `${jourReservation}T10:00:00.000Z`,
             },
-            ...(devis.cautionXof > 0
-              ? [
-                  {
-                    id: `pay-caution-${index + 1}`,
-                    fournisseur: (moyen === "ESPECES" ? "ESPECES" : "FEDAPAY") as "ESPECES" | "FEDAPAY",
-                    moyen,
-                    statut: (statut === "TERMINEE" ? "REMBOURSE" : "REUSSI") as "REMBOURSE" | "REUSSI",
-                    montantXof: devis.cautionXof,
-                    estCaution: true,
-                    rembourseLe: statut === "TERMINEE" ? `${ajouterJours(dateFin, 2)}T12:00:00.000Z` : undefined,
-                    creeLe: `${jourReservation}T10:00:00.000Z`,
-                  },
-                ]
-              : []),
+            // Aucune ligne de caution : elle se règle en espèces au départ
+            // et se rend au retour, sans jamais passer par la plateforme.
           ],
     creeLe: `${jourReservation}T10:00:00.000Z`,
     confirmeLe: statut === "ANNULEE" ? undefined : `${jourReservation}T10:02:00.000Z`,

@@ -8,10 +8,17 @@ import { Bouton } from "@/components/Bouton";
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Pastille } from "@/components/ui";
 import { optionsLocation } from "@/data/catalogue";
-import { EXIGENCES, GRILLE_HORAIRE, OFFRES, PRIX_ROAD_TRIP_XOF } from "@/data/offres";
+import {
+  EXIGENCES,
+  EXPIRATION_PANIER_MINUTES,
+  GRILLE_HORAIRE,
+  OFFRES,
+  PRIX_ROAD_TRIP_XOF,
+} from "@/data/offres";
 import type { DateISO } from "@/lib/dates";
 import { formatDate, formatXof } from "@/lib/format";
 import { moyensDisponibles } from "@/lib/paiement";
+import { ouvrirPaiementKkiapay, type ConfigurationWidget } from "./kkiapay";
 import { calculerDevis } from "@/lib/tarification";
 import type { CodeOffre, MoyenPaiement, PointDeRetrait, Velo } from "@/lib/types";
 
@@ -75,6 +82,16 @@ export function TunnelReservation({
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<Record<string, string>>({});
 
+  // Réservation créée, en attente du paiement. Tant qu'elle est là, on ne
+  // refait surtout pas d'appel de création : le vélo est déjà retenu, un
+  // second appel en bloquerait un autre pour rien.
+  const [attentePaiement, setAttentePaiement] = useState<{
+    token: string;
+    widget: ConfigurationWidget;
+  } | null>(null);
+  const [messagePaiement, setMessagePaiement] = useState<string | null>(null);
+  const [confirmationEnCours, setConfirmationEnCours] = useState(false);
+
   const devis = useMemo(
     () =>
       calculerDevis({
@@ -93,6 +110,49 @@ export function TunnelReservation({
 
   const coordonneesValides =
     prenom.trim().length >= 2 && nom.trim().length >= 2 && /^\S+@\S+\.\S+$/.test(email.trim());
+
+  /**
+   * Transmet au serveur l'identifiant rendu par la fenêtre KkiaPay.
+   *
+   * Le serveur redemande à KkiaPay ce qu'il en est avant de confirmer :
+   * ce que le navigateur envoie ici ne prouve rien par lui-même.
+   */
+  const confirmerPaiement = async (token: string, transactionId: string) => {
+    setConfirmationEnCours(true);
+    setMessagePaiement(null);
+    try {
+      const reponse = await fetch("/api/paiement/kkiapay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, transactionId }),
+      });
+      const donnees = await reponse.json().catch(() => ({}));
+
+      if (!reponse.ok) {
+        setMessagePaiement(
+          donnees.erreur ?? "Le paiement n'a pas pu être vérifié. Appelez-nous si vous avez été débité.",
+        );
+        return;
+      }
+      routeur.push(`/reservation/${token}?nouvelle=1`);
+    } catch {
+      // Le paiement est peut-être passé : le webhook confirmera.
+      setMessagePaiement(
+        "Connexion interrompue pendant la vérification. Si vous avez été débité, " +
+          "votre réservation sera confirmée d'ici quelques minutes — rechargez votre lien de suivi.",
+      );
+    } finally {
+      setConfirmationEnCours(false);
+    }
+  };
+
+  const lancerPaiement = (token: string, widget: ConfigurationWidget) => {
+    setMessagePaiement(null);
+    void ouvrirPaiementKkiapay(widget, {
+      onSucces: (transactionId) => void confirmerPaiement(token, transactionId),
+      onEchec: (message) => setMessagePaiement(message),
+    });
+  };
 
   const envoyer = async () => {
     setEnvoiEnCours(true);
@@ -135,7 +195,16 @@ export function TunnelReservation({
         return;
       }
 
-      routeur.push(`/reservation/${donnees.token}?nouvelle=1`);
+      // En mode démonstration, le serveur a déjà confirmé : rien à payer.
+      if (donnees.confirmee || !donnees.paiement?.widget) {
+        routeur.push(`/reservation/${donnees.token}?nouvelle=1`);
+        return;
+      }
+
+      // Le vélo est retenu, la fenêtre KkiaPay prend le relais. On garde
+      // de quoi la rouvrir si le client la ferme par mégarde.
+      setAttentePaiement({ token: donnees.token, widget: donnees.paiement.widget });
+      lancerPaiement(donnees.token, donnees.paiement.widget);
     } catch {
       setErreurGlobale("Connexion interrompue. Vérifiez votre réseau et réessayez.");
     } finally {
@@ -459,9 +528,29 @@ export function TunnelReservation({
           <div className="mt-10">
             <h2 className="titre-editorial text-[1.6rem]">Paiement</h2>
             <p className="mt-3 max-w-lg text-[0.92rem] leading-relaxed text-gris-cadre">
-              Le paiement est traité par un agrégateur béninois. Aucune coordonnée bancaire ne
-              transite ni n&apos;est conservée par Bike Land.
+              Le paiement est traité par KkiaPay, dans une fenêtre qui lui appartient. Aucune
+              coordonnée bancaire ne transite ni n&apos;est conservée par Bike Land.
             </p>
+
+            {attentePaiement && (
+              <div className="mt-6 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-5 py-4">
+                <p className="font-semibold">Votre vélo est retenu</p>
+                <p className="mt-1.5 text-[0.88rem] leading-relaxed">
+                  Terminez le paiement dans la fenêtre KkiaPay. Si vous l&apos;avez fermée,
+                  rouvrez-la ci-dessous — votre réservation reste valable{" "}
+                  {EXPIRATION_PANIER_MINUTES} minutes.
+                </p>
+              </div>
+            )}
+
+            {messagePaiement && (
+              <p
+                role="alert"
+                className="mt-4 rounded-[var(--radius-carte)] bg-white px-5 py-4 text-[0.88rem] leading-relaxed text-orange-sourd"
+              >
+                {messagePaiement}
+              </p>
+            )}
 
             <fieldset className="mt-8">
               <legend className="etiquette opacity-75">Moyen de paiement</legend>
@@ -519,12 +608,29 @@ export function TunnelReservation({
             )}
 
             <div className="mt-8 flex flex-wrap gap-3">
-              <Bouton variante="contour" className="text-noir-piste" onClick={() => setEtape(2)}>
-                Retour
-              </Bouton>
-              <Bouton onClick={envoyer} disabled={!cgv || envoiEnCours} taille="lg">
-                {envoiEnCours ? "Paiement en cours…" : `Payer ${formatXof(devis.totalXof)}`}
-              </Bouton>
+              {/* Une fois la réservation créée, on ne revient plus en
+                  arrière : le vélo est retenu et les montants sont figés. */}
+              {!attentePaiement && (
+                <Bouton variante="contour" className="text-noir-piste" onClick={() => setEtape(2)}>
+                  Retour
+                </Bouton>
+              )}
+
+              {attentePaiement ? (
+                <Bouton
+                  onClick={() => lancerPaiement(attentePaiement.token, attentePaiement.widget)}
+                  disabled={confirmationEnCours}
+                  taille="lg"
+                >
+                  {confirmationEnCours ? "Vérification du paiement…" : "Rouvrir le paiement"}
+                </Bouton>
+              ) : (
+                <Bouton onClick={envoyer} disabled={!cgv || envoiEnCours} taille="lg">
+                  {envoiEnCours
+                    ? "Ouverture du paiement…"
+                    : `Payer ${formatXof(devis.totalXof)}`}
+                </Bouton>
+              )}
             </div>
           </div>
         )}

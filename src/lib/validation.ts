@@ -64,7 +64,8 @@ export const schemaReservation = z
         .optional()
         .or(z.literal("")),
     }),
-    moyenPaiement: z.enum(["MTN_MONEY", "MOOV_MONEY", "CARTE_BANCAIRE"]),
+    // Mobile Money uniquement : la carte bancaire n'est plus proposée.
+    moyenPaiement: z.enum(["MTN_MONEY", "MOOV_MONEY"]),
     message: z.string().trim().max(1000).optional(),
     cgvAcceptees: z.literal(true, {
       errorMap: () => ({ message: "Les conditions générales doivent être acceptées." }),
@@ -104,6 +105,23 @@ export const schemaReservation = z
     },
     { message: "Au-delà de 60 jours, contactez-nous directement.", path: ["dateFin"] },
   );
+
+/**
+ * Retour de la fenêtre KkiaPay vers notre serveur.
+ *
+ * Le jeton prouve que l'appelant détient bien le lien personnel de la
+ * réservation ; l'identifiant de transaction, lui, n'est cru sur parole à
+ * aucun moment — il est revérifié auprès de KkiaPay.
+ */
+export const schemaConfirmationKkiapay = z.object({
+  token: z.string().trim().min(10).max(500),
+  transactionId: z
+    .string()
+    .trim()
+    .min(3)
+    .max(120)
+    .regex(/^[A-Za-z0-9_-]+$/, "Identifiant de transaction invalide."),
+});
 
 export const schemaContact = z.object({
   nom: z.string().trim().min(2, "Nom trop court.").max(80),

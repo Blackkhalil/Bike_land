@@ -24,6 +24,7 @@ import type {
 } from "../types";
 import {
   ConflitDisponibiliteError,
+  TransactionDejaUtiliseeError,
   type Depot,
   type DemandeReservation,
   type FiltreCatalogue,
@@ -202,7 +203,7 @@ export const depotDemo: Depot = {
       paiements: [
         {
           id: `pay-${reference}`,
-          fournisseur: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "FEDAPAY",
+          fournisseur: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "KKIAPAY",
           moyen: demande.moyenPaiement,
           statut: "INITIE",
           montantXof: devis.totalXof,
@@ -263,6 +264,19 @@ export const depotDemo: Depot = {
   async confirmerPaiement(reference: string, referenceTransaction?: string) {
     const reservation = trouver(reference);
     if (!reservation) return null;
+
+    // Équivalent en mémoire de la contrainte d'unicité de PostgreSQL :
+    // un identifiant de transaction ne confirme qu'une seule réservation.
+    if (referenceTransaction) {
+      const ailleurs = etat().reservations.some(
+        (autre) =>
+          autre.reference !== reservation.reference &&
+          autre.paiements.some(
+            (paiement) => paiement.referenceFournisseur === referenceTransaction,
+          ),
+      );
+      if (ailleurs) throw new TransactionDejaUtiliseeError();
+    }
 
     // Idempotence : rejouer la notification ne doit rien changer, et
     // surtout ne pas renvoyer un second email au client.

@@ -106,7 +106,6 @@ export interface Statistiques {
 const libellesMoyens: Record<MoyenPaiement, string> = {
   MTN_MONEY: "MTN MoMo",
   MOOV_MONEY: "Moov Money",
-  CARTE_BANCAIRE: "Carte bancaire",
   ESPECES: "Espèces",
 };
 

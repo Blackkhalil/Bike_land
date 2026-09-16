@@ -27,6 +27,7 @@ import { genererReference, genererToken, hacherToken, lireToken } from "../token
 import type { Client, MessageContact, PointDeRetrait, Reservation, Velo } from "../types";
 import {
   ConflitDisponibiliteError,
+  TransactionDejaUtiliseeError,
   type Depot,
   type DemandeReservation,
   type FiltreCatalogue,
@@ -44,6 +45,48 @@ function client(): PrismaClient {
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
   return porteur[clePrisma];
+}
+
+/** Code d'erreur Prisma, quelle que soit la classe d'erreur levée. */
+function codePrisma(erreur: unknown): string | null {
+  if (erreur instanceof Prisma.PrismaClientKnownRequestError) return erreur.code;
+  if (erreur instanceof Prisma.PrismaClientInitializationError) return erreur.errorCode ?? null;
+  return null;
+}
+
+/**
+ * Rejoue une opération quand la connexion à la base a lâché.
+ *
+ * Le pooler de Supabase ferme les connexions inactives. Quand cela tombe
+ * pendant une transaction, Prisma lève `P2028` — « transaction not found,
+ * obtained before disconnecting » — et l'écriture échoue alors qu'aucune
+ * règle métier n'a été enfreinte. Sans reprise, un client qui réserve
+ * après une période calme reçoit une erreur et perd sa réservation.
+ *
+ * Seules les pannes de liaison sont rejouées. Un conflit de
+ * disponibilité, lui, remonte immédiatement : il ne se résoudra pas en
+ * réessayant, et masquer un refus derrière une nouvelle tentative
+ * risquerait de réserver deux fois le même vélo.
+ *
+ * Les tentatives sont espacées un peu plus à chaque fois, le temps que la
+ * connexion se rétablisse.
+ */
+async function avecRepriseConnexion<T>(action: () => Promise<T>, essais = 3): Promise<T> {
+  const transitoires = new Set(["P1001", "P1002", "P1017", "P2024", "P2028"]);
+
+  for (let tentative = 1; ; tentative += 1) {
+    try {
+      return await action();
+    } catch (erreur) {
+      const code = codePrisma(erreur);
+      if (!code || !transitoires.has(code) || tentative >= essais) throw erreur;
+
+      console.warn(
+        `[base] connexion perdue (${code}), nouvelle tentative ${tentative + 1}/${essais}.`,
+      );
+      await new Promise((resoudre) => setTimeout(resoudre, 200 * tentative));
+    }
+  }
 }
 
 /** Teintes du visuel généré, dérivées de la catégorie (aucune photo requise). */
@@ -72,6 +115,10 @@ function versVelo(bike: BikeAvecAvis): Velo {
     statut: bike.status,
     accroche: bike.shortPitch,
     description: bike.description,
+    // Sans cette ligne, aucune photo ne remonte de la base : les vélos
+    // s'affichaient avec leur illustration de repli alors que le fichier
+    // existait bel et bien dans `public/`.
+    photo: bike.heroImageUrl ?? undefined,
     poidsKg: bike.weightKg,
     vitesses: bike.gearCount,
     chargeMaxKg: bike.maxLoadKg,
@@ -307,7 +354,8 @@ export const depotPostgres: Depot = {
     const fin = new Date(`${demande.dateFin}T00:00:00Z`);
     const email = demande.client.email.trim().toLowerCase();
 
-    const booking = await client().$transaction(
+    const booking = await avecRepriseConnexion(() =>
+      client().$transaction(
       async (tx) => {
         // Relecture du conflit *à l'intérieur* de la transaction : c'est
         // elle que le niveau Serializable protège d'une écriture concurrente.
@@ -378,33 +426,31 @@ export const depotPostgres: Depot = {
                 quantity: ligne.quantite,
               })),
             },
+            // Une seule ligne de paiement : celle réglée en ligne, encore
+            // à l'état INITIE tant que KkiaPay n'a rien confirmé.
+            //
+            // La caution de la location libre n'en crée aucune, et c'est
+            // volontaire : elle est remise en espèces au coordinateur au
+            // départ, puis rendue au retour. L'enregistrer ici comme
+            // « encaissée » ferait apparaître en comptabilité un argent
+            // qui n'est jamais passé par la plateforme.
             payments: {
               create: [
                 {
-                  provider: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "FEDAPAY",
+                  provider: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "KKIAPAY",
                   method: demande.moyenPaiement,
                   status: "INITIE",
                   amountXof: devis.totalXof,
                   isDeposit: false,
                 },
-                ...(devis.cautionXof > 0
-                  ? [
-                      {
-                        provider: "FEDAPAY" as const,
-                        method: demande.moyenPaiement,
-                        status: "REUSSI" as const,
-                        amountXof: devis.cautionXof,
-                        isDeposit: true,
-                      },
-                    ]
-                  : []),
               ],
             },
           },
           include: inclusionReservation,
         });
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      ),
     );
 
     return { reservation: versReservation(booking), token };
@@ -453,41 +499,58 @@ export const depotPostgres: Depot = {
     return bookings.map(versReservation);
   },
 
+  /**
+   * Fait passer une réservation payée en CONFIRMEE.
+   *
+   * Deux appels peuvent arriver en même temps — le navigateur du client
+   * et le webhook de KkiaPay signalent le même paiement. La transition
+   * est donc **conditionnelle** : `updateMany` filtre sur le statut de
+   * départ, et seul l'appel qui modifie réellement une ligne considère
+   * avoir confirmé. Le second se voit répondre `dejaConfirmee`, et aucun
+   * second email ne part.
+   *
+   * L'unicité de `providerReference` en base interdit par ailleurs qu'un
+   * même identifiant de transaction serve à deux réservations : la
+   * violation remonte ici en `TransactionDejaUtiliseeError`.
+   */
   async confirmerPaiement(reference: string, referenceTransaction?: string) {
-    const existante = await client().booking.findUnique({
-      where: { reference },
-      select: { id: true, status: true },
-    });
-    if (!existante) return null;
+    try {
+      return await client().$transaction(async (tx) => {
+        const existante = await tx.booking.findUnique({
+          where: { reference },
+          select: { id: true },
+        });
+        if (!existante) return null;
 
-    if (existante.status !== "EN_ATTENTE_PAIEMENT") {
-      const inchangee = await client().booking.findUnique({
-        where: { id: existante.id },
-        include: inclusionReservation,
-      });
-      return inchangee
-        ? { reservation: versReservation(inchangee), dejaConfirmee: true }
-        : null;
-    }
+        const passage = await tx.booking.updateMany({
+          where: { id: existante.id, status: "EN_ATTENTE_PAIEMENT" },
+          data: { status: "CONFIRMEE", confirmedAt: new Date() },
+        });
 
-    const booking = await client().booking.update({
-      where: { id: existante.id },
-      data: {
-        status: "CONFIRMEE",
-        confirmedAt: new Date(),
-        payments: {
-          updateMany: {
-            where: { isDeposit: false },
+        if (passage.count === 1) {
+          await tx.payment.updateMany({
+            where: { bookingId: existante.id, isDeposit: false },
             data: {
               status: "REUSSI",
               ...(referenceTransaction ? { providerReference: referenceTransaction } : {}),
             },
-          },
-        },
-      },
-      include: inclusionReservation,
-    });
-    return { reservation: versReservation(booking), dejaConfirmee: false };
+          });
+        }
+
+        const booking = await tx.booking.findUnique({
+          where: { id: existante.id },
+          include: inclusionReservation,
+        });
+        if (!booking) return null;
+
+        return { reservation: versReservation(booking), dejaConfirmee: passage.count === 0 };
+      });
+    } catch (erreur) {
+      if (erreur instanceof Prisma.PrismaClientKnownRequestError && erreur.code === "P2002") {
+        throw new TransactionDejaUtiliseeError();
+      }
+      throw erreur;
+    }
   },
 
   async marquerDepart(reference: string) {

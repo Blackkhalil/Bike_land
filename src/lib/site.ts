@@ -10,7 +10,7 @@ export const site = {
   description:
     "Location de vélos sur la route des Pêches à Cotonou : randonneurs, gravels, VTC et tandem, réservables en ligne en deux minutes, sans créer de compte. Les road trips à travers le Bénin arrivent bientôt.",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://bikeland.bj",
-  email: "bonjour@bikeland.bj",
+  email: "bikeland06@gmail.com",
   telephone: "+229 01 59 68 81 03",
   telephoneLien: "+2290159688103",
   whatsapp: "+2290159688103",

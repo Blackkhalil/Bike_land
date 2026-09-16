@@ -167,7 +167,7 @@ export const etapesLocation = [
     numero: "03",
     titre: "Payez en Mobile Money",
     detail:
-      "MTN Money, Moov Money ou carte bancaire, à la dernière étape seulement. La facture part par email dans la minute.",
+      "MTN Money ou Moov Money, à la dernière étape seulement. La facture part par email dans la minute.",
   },
   {
     numero: "04",
@@ -215,7 +215,7 @@ export const faq = [
       {
         question: "Quels moyens de paiement acceptez-vous ?",
         reponse:
-          "MTN Money et Moov Money pour le Mobile Money, ainsi que les cartes Visa et Mastercard. Les paiements passent par un agrégateur béninois (FedaPay ou KkiaPay) : aucune coordonnée bancaire ne transite par notre site.",
+          "Le Mobile Money uniquement : MTN Money et Moov Money. Les paiements passent par KkiaPay, agrégateur béninois, dans sa propre fenêtre : aucune coordonnée de paiement ne transite par notre site ni n'y est conservée.",
       },
       {
         question: "Une caution est-elle demandée ?",

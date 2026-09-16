@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { FormulaireConnexion } from "@/components/admin/FormulaireConnexion";
 import { Marque } from "@/components/Marque";
-import { modeAcces, sessionAdminValide } from "@/lib/admin";
+import { emailAdminConfigure, modeAcces, sessionAdminValide } from "@/lib/admin";
 
 export const metadata: Metadata = {
   title: "Connexion — administration",
@@ -34,6 +34,17 @@ export default async function PageConnexionAdmin() {
           </p>
         ) : (
           <div className="mt-8">
+            {/* Le champ adresse est toujours affiché, mais il n'est
+                réellement contrôlé qu'une fois ADMIN_EMAIL défini. Le
+                silence serait pire : on croirait la protection active. */}
+            {!emailAdminConfigure() && (
+              <p className="mb-6 rounded-[var(--radius-carte)] border border-orange-vif/40 bg-orange-vif/10 px-5 py-4 text-[0.85rem] leading-relaxed text-orange-signal/55">
+                <code className="font-mono">ADMIN_EMAIL</code> n&apos;est pas encore définie :
+                l&apos;adresse saisie ci-dessous n&apos;est pas vérifiée, seul le mot de passe
+                protège l&apos;accès. Renseignez-la dans les variables d&apos;environnement pour
+                activer ce second contrôle.
+              </p>
+            )}
             <FormulaireConnexion />
           </div>
         )}

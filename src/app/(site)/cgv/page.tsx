@@ -54,8 +54,8 @@ export default function PageCGV() {
         </p>
         <p>
           Les prix sont indiqués en francs CFA (XOF), toutes taxes comprises. Le paiement
-          s&apos;effectue par Mobile Money (MTN Money, Moov Money) ou par carte bancaire, via un
-          prestataire agréé. Aucune coordonnée bancaire n&apos;est conservée par {site.nom}.
+          s&apos;effectue par Mobile Money — MTN Money ou Moov Money — via KkiaPay. Aucune
+          coordonnée de paiement n&apos;est conservée par {site.nom}.
         </p>
       </ArticleLegal>
 

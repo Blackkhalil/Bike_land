@@ -36,6 +36,20 @@ export async function POST(requete: Request) {
 
   const donnees = analyse.data;
 
+  // Contrôle avant toute écriture : sans moyen d'encaisser, on ne crée pas
+  // de réservation qui resterait éternellement en attente de paiement.
+  if (fournisseurActif() === "indisponible") {
+    console.error("[reservations] aucune clé KkiaPay configurée : réservation refusée.");
+    return NextResponse.json(
+      {
+        erreur:
+          "Le paiement en ligne est momentanément indisponible. " +
+          `Appelez-nous au ${site.telephone}, nous prenons votre réservation par téléphone.`,
+      },
+      { status: 503 },
+    );
+  }
+
   const velo = await depot.trouverVeloParId(donnees.veloId);
   if (!velo) {
     return NextResponse.json({ erreur: "Ce vélo n'existe pas." }, { status: 404 });
@@ -74,11 +88,9 @@ export async function POST(requete: Request) {
 
     const paiement = await encaisser({
       montantXof: reservation.totalXof,
-      moyen: donnees.moyenPaiement,
       reference: reservation.reference,
-      description: `Location ${velo.nom} — ${reservation.reference}`,
+      moyen: donnees.moyenPaiement,
       client: donnees.client,
-      urlRetour: `${site.url}/reservation/${token}`,
     });
 
     const lienSuivi = `${site.url}/reservation/${token}`;
@@ -90,9 +102,10 @@ export async function POST(requete: Request) {
     //
     //  - en mode démonstration, `encaisser` répond REUSSI tout de suite,
     //    on confirme donc ici ;
-    //  - avec un vrai agrégateur, il répond EN_ATTENTE et redirige le
-    //    client vers sa page de paiement. C'est alors le webhook signé
-    //    qui confirmera, une fois l'argent reçu.
+    //  - avec KkiaPay, il répond EN_ATTENTE et renvoie de quoi ouvrir la
+    //    fenêtre de paiement dans le navigateur. La confirmation viendra
+    //    ensuite de /api/paiement/kkiapay ou du webhook, tous deux après
+    //    vérification de la transaction auprès de KkiaPay.
     //
     // Confirmer ici sans vérifier reviendrait à donner un vélo à qui
     // n'a pas payé.
@@ -113,8 +126,8 @@ export async function POST(requete: Request) {
         ]);
       }
     } else {
-      // Paiement pas encore abouti : le client part chez l'agregateur.
-      // On lui envoie tout de suite son lien de suivi, car c'est le seul
+      // Paiement pas encore abouti : la fenêtre KkiaPay va s'ouvrir.
+      // On envoie tout de suite le lien de suivi, car c'est le seul
       // moment ou le jeton existe en clair — la base n'en garde que le
       // hache, et le webhook qui confirmera ne pourra pas le reconstituer.
       await Promise.allSettled([envoyerReceptionDemande(reservation, lienSuivi)]);
@@ -130,7 +143,10 @@ export async function POST(requete: Request) {
         paiement: {
           statut: paiement.statut,
           fournisseur: paiement.fournisseur,
-          urlPaiement: paiement.urlPaiement,
+          // Contient la clé PUBLIQUE de KkiaPay, faite pour être lue par
+          // le navigateur. Les clés privée et secrète ne sortent jamais
+          // du serveur.
+          widget: paiement.widget,
           message: paiement.message,
         },
         modeDemonstration: fournisseurActif() === "demo",

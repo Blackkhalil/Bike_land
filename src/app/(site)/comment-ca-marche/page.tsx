@@ -58,9 +58,9 @@ export default function PageCommentCaMarche() {
               d&apos;abord
             </TitreSection>
             <p className="mt-6 max-w-md text-[0.98rem] leading-relaxed text-gris-cadre">
-              Au Bénin, le Mobile Money est le moyen de paiement du quotidien. Nous le traitons
-              donc comme le moyen principal, la carte bancaire venant en complément pour les
-              visiteurs étrangers.
+              Au Bénin, le Mobile Money est le moyen de paiement du quotidien. C&apos;est donc le
+              seul que nous acceptons : MTN Money ou Moov Money, depuis votre téléphone, sans
+              carte ni compte à créer.
             </p>
             <ul className="mt-8 space-y-0">
               {moyensDisponibles.map((moyen) => (

@@ -18,22 +18,87 @@ interface Message {
   texte: string;
 }
 
+/**
+ * Transporteur Gmail, créé une seule fois.
+ *
+ * Gmail impose que l'expéditeur soit le compte authentifié : on ne peut
+ * pas écrire « au nom de » quelqu'un d'autre. C'est la contrepartie de
+ * cette solution — mais elle évite d'avoir à posséder un domaine, ce que
+ * Resend exige pour écrire à autre chose que sa propre adresse.
+ */
+let transporteurGmail: import("nodemailer").Transporter | null = null;
+
+function gmailConfigure(): { utilisateur: string; motDePasse: string } | null {
+  const utilisateur = process.env.GMAIL_USER?.trim();
+  // Google affiche le mot de passe d'application par groupes de quatre ;
+  // les espaces sont décoratifs et feraient échouer l'authentification.
+  const motDePasse = process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, "");
+  if (!utilisateur || !motDePasse) return null;
+  return { utilisateur, motDePasse };
+}
+
+async function envoyerParGmail(
+  message: Message,
+  identifiants: { utilisateur: string; motDePasse: string },
+): Promise<{ envoye: boolean; raison?: string }> {
+  const { default: nodemailer } = await import("nodemailer");
+
+  transporteurGmail ??= nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: { user: identifiants.utilisateur, pass: identifiants.motDePasse },
+  });
+
+  try {
+    await transporteurGmail.sendMail({
+      from: process.env.EMAIL_EXPEDITEUR?.trim() || `${site.nom} <${identifiants.utilisateur}>`,
+      to: message.destinataire,
+      subject: message.sujet,
+      text: message.texte,
+      html: message.html,
+      replyTo: site.email,
+    });
+    return { envoye: true };
+  } catch (erreur) {
+    const detail = erreur instanceof Error ? erreur.message : "erreur inconnue";
+    console.error(`[email] Envoi Gmail refusé : ${detail}`);
+    // Le transporteur peut être en cause (identifiants changés) : on le
+    // jette pour que le prochain envoi en reconstruise un.
+    transporteurGmail = null;
+    return { envoye: false, raison: detail };
+  }
+}
+
 export async function envoyer(message: Message): Promise<{ envoye: boolean; raison?: string }> {
+  // Gmail d'abord : c'est la voie retenue pour Bike Land, faute de
+  // domaine propre. Resend reste branché pour le jour où il y en aura un.
+  const gmail = gmailConfigure();
+  if (gmail) return envoyerParGmail(message, gmail);
+
   const cle = process.env.RESEND_API_KEY;
 
   if (!cle) {
     console.info(
-      `[email] Aucune clé RESEND_API_KEY : message non envoyé.\n` +
+      `[email] Aucun envoi configuré (ni Gmail ni Resend) : message journalisé.\n` +
         `  À : ${message.destinataire}\n  Objet : ${message.sujet}\n${message.texte}`,
     );
-    return { envoye: false, raison: "RESEND_API_KEY absente" };
+    return { envoye: false, raison: "aucun fournisseur configuré" };
   }
 
   const reponse = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${cle}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: process.env.EMAIL_EXPEDITEUR ?? `${site.nom} <${site.email}>`,
+      // `||` et non `??` : dans un fichier .env, une variable laissée vide
+      // vaut la chaîne vide et non `undefined`. Un expéditeur vide ferait
+      // rejeter l'envoi par Resend au lieu de retomber sur le défaut.
+      from: process.env.EMAIL_EXPEDITEUR?.trim() || `${site.nom} <${site.email}>`,
+      // L'expéditeur technique appartient à Resend tant que Bike Land n'a
+      // pas son propre domaine vérifié : on ne peut pas prouver la
+      // possession de gmail.com. Sans cette ligne, répondre à un email de
+      // confirmation écrirait dans le vide.
+      reply_to: site.email,
       to: [message.destinataire],
       subject: message.sujet,
       html: message.html,

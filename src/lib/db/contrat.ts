@@ -134,3 +134,19 @@ export class ConflitDisponibiliteError extends Error {
     this.name = "ConflitDisponibiliteError";
   }
 }
+
+/**
+ * Un identifiant de transaction déjà rattaché à une autre réservation.
+ *
+ * C'est la protection contre le rejeu : sans elle, un client ayant payé
+ * une fois pourrait présenter le même identifiant pour faire confirmer
+ * autant de réservations qu'il le souhaite. La contrainte d'unicité sur
+ * la référence du fournisseur la rend impossible à contourner, y compris
+ * sur deux appels simultanés.
+ */
+export class TransactionDejaUtiliseeError extends Error {
+  constructor(message = "Ce paiement a déjà servi pour une autre réservation.") {
+    super(message);
+    this.name = "TransactionDejaUtiliseeError";
+  }
+}

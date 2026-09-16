@@ -5,6 +5,7 @@ import { useState } from "react";
 
 export function FormulaireConnexion() {
   const routeur = useRouter();
+  const [email, setEmail] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -18,7 +19,7 @@ export function FormulaireConnexion() {
       const reponse = await fetch("/api/admin/connexion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ motDePasse }),
+        body: JSON.stringify({ email, motDePasse }),
       });
 
       if (!reponse.ok) {
@@ -37,6 +38,21 @@ export function FormulaireConnexion() {
 
   return (
     <form onSubmit={soumettre}>
+      <label htmlFor="email-admin" className="etiquette opacity-75">
+        Adresse email
+      </label>
+      <input
+        id="email-admin"
+        name="email"
+        type="email"
+        autoComplete="username"
+        inputMode="email"
+        value={email}
+        onChange={(evenement) => setEmail(evenement.target.value)}
+        aria-invalid={erreur ? true : undefined}
+        className="mb-6 mt-2 w-full rounded-full border border-craie/25 bg-craie/10 px-5 py-3 text-[0.95rem] text-craie outline-none transition-colors focus:border-craie/60"
+      />
+
       <label htmlFor="mot-de-passe" className="etiquette opacity-75">
         Mot de passe
       </label>
@@ -56,7 +72,7 @@ export function FormulaireConnexion() {
       )}
       <button
         type="submit"
-        disabled={enCours || motDePasse.length === 0}
+        disabled={enCours || email.trim().length === 0 || motDePasse.length === 0}
         className="mt-6 w-full rounded-full bg-craie px-6 py-3.5 font-semibold text-noir-piste transition-colors hover:bg-white disabled:opacity-40"
       >
         {enCours ? "Vérification…" : "Entrer"}

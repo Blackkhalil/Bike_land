@@ -1,124 +1,93 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
-import { depot } from "@/lib/db";
-import { envoyerConfirmation, envoyerFacture, envoyerNotificationAdmin } from "@/lib/email";
-import { numeroDeFacture } from "@/lib/facture";
+import { secretWebhookValide, verifierTransaction } from "@/lib/kkiapay";
+import { confirmerParKkiapay } from "@/lib/paiement-confirmation";
 import { site } from "@/lib/site";
 
 /**
- * Notification de paiement de l'agrégateur.
+ * Notification de paiement envoyée par KkiaPay.
  *
- * C'est la SEULE porte par laquelle une réservation passe de
- * « en attente de paiement » à « confirmée ». Le navigateur du client ne
- * peut pas confirmer sa propre réservation : sans cela, il suffirait
- * d'appeler l'API pour obtenir un vélo sans payer.
+ * C'est le filet de sécurité du parcours : si le client ferme son
+ * navigateur juste après avoir payé, personne ne revient nous dire que
+ * l'argent est arrivé. KkiaPay, lui, nous prévient.
  *
  * Trois protections, dans cet ordre :
  *
- *  1. **Signature obligatoire.** Sans `FEDAPAY_WEBHOOK_SECRET`, la route
- *     refuse tout. Un webhook non signé est une porte ouverte, pas une
- *     commodité de développement.
- *  2. **Comparaison à temps constant.** Comparer deux signatures avec
- *     `===` laisse fuir leur préfixe commun par le temps de réponse.
- *  3. **Idempotence.** Un agrégateur rejoue ses notifications jusqu'à
- *     obtenir un 200 : la deuxième passe ne doit ni re-confirmer, ni
- *     renvoyer un second email au client.
+ *  1. **Secret partagé obligatoire.** KkiaPay ne signe pas ses
+ *     notifications : il renvoie dans l'en-tête `x-kkiapay-secret` le
+ *     « secret hash » saisi dans son tableau de bord. Sans
+ *     `KKIAPAY_WEBHOOK_SECRET` configuré chez nous, la route refuse tout.
+ *     Un webhook non authentifié est une porte ouverte, pas une commodité.
+ *  2. **Comparaison à temps constant**, faite dans `secretWebhookValide`.
+ *  3. **Le contenu de la notification n'est jamais cru.** On n'en retient
+ *     que l'identifiant de transaction, puis on redemande à KkiaPay ce
+ *     qu'il en est. Quelqu'un qui devinerait le secret ne pourrait donc
+ *     toujours pas fabriquer un paiement.
+ *
+ * Codes de retour : 200 dès que la situation est tranchée — y compris
+ * pour un refus — afin que KkiaPay cesse de rejouer. Le 500 est réservé
+ * aux pannes transitoires, les seules qu'un nouvel essai peut résoudre.
  */
-
-/** Extrait la signature de l'en-tête, quel que soit son format. */
-function signatureRecue(entetes: Headers): string | null {
-  const brut =
-    entetes.get("x-fedapay-signature") ??
-    entetes.get("x-signature") ??
-    entetes.get("signature");
-  if (!brut) return null;
-
-  // FedaPay envoie « t=<horodatage>,s=<signature> » ; d'autres n'envoient
-  // que la signature nue.
-  const partie = brut
-    .split(",")
-    .map((morceau) => morceau.trim())
-    .find((morceau) => morceau.startsWith("s="));
-  return partie ? partie.slice(2) : brut.trim();
-}
-
-function signatureValide(corpsBrut: string, recue: string, secret: string): boolean {
-  const attendue = createHmac("sha256", secret).update(corpsBrut).digest("hex");
-  const a = Buffer.from(recue);
-  const b = Buffer.from(attendue);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function POST(requete: Request) {
-  const secret = process.env.FEDAPAY_WEBHOOK_SECRET;
-  if (!secret) {
+  if (!process.env.KKIAPAY_WEBHOOK_SECRET) {
     console.error(
-      "[webhook] FEDAPAY_WEBHOOK_SECRET absent : notification refusée. " +
+      "[webhook] KKIAPAY_WEBHOOK_SECRET absent : notification refusée. " +
         "Tant qu'il n'est pas défini, aucune réservation ne peut être confirmée par cette route.",
     );
     return NextResponse.json({ erreur: "Webhook non configuré." }, { status: 503 });
   }
 
-  // Le corps est lu en texte : la signature porte sur les octets reçus,
-  // pas sur un objet re-sérialisé, dont l'ordre des clés pourrait différer.
-  const corpsBrut = await requete.text();
-  const recue = signatureRecue(requete.headers);
-
-  if (!recue || !signatureValide(corpsBrut, recue, secret)) {
-    console.warn("[webhook] Signature absente ou invalide : notification ignorée.");
-    return NextResponse.json({ erreur: "Signature invalide." }, { status: 401 });
+  if (!secretWebhookValide(requete.headers.get("x-kkiapay-secret"))) {
+    console.warn("[webhook] secret absent ou invalide : notification ignorée.");
+    return NextResponse.json({ erreur: "Secret invalide." }, { status: 401 });
   }
 
-  let charge: {
-    entity?: { reference?: string; status?: string; id?: number | string };
-    name?: string;
-  };
-  try {
-    charge = JSON.parse(corpsBrut);
-  } catch {
-    return NextResponse.json({ erreur: "Corps illisible." }, { status: 400 });
+  const corps = (await requete.json().catch(() => null)) as {
+    transactionId?: string;
+    partnerId?: string;
+    isPaymentSucces?: boolean;
+    event?: string;
+  } | null;
+
+  const transactionId = corps?.transactionId;
+  if (!transactionId) {
+    return NextResponse.json({ erreur: "Identifiant de transaction absent." }, { status: 400 });
   }
 
-  const reference = charge.entity?.reference;
-  const statut = charge.entity?.status;
+  const verification = await verifierTransaction(transactionId);
 
-  if (!reference) {
-    return NextResponse.json({ erreur: "Référence absente." }, { status: 400 });
+  if (verification.issue === "indisponible") {
+    // Seul cas où l'on demande un nouvel essai : l'état est inconnu.
+    console.error(`[webhook] vérification impossible (${verification.detail})`);
+    return NextResponse.json({ erreur: "Vérification impossible." }, { status: 500 });
   }
 
-  // Seul un paiement effectivement abouti confirme la réservation. Tout
-  // autre statut est acquitté (pour que l'agrégateur cesse de rejouer)
-  // mais ne change rien.
-  if (statut !== "approved" && statut !== "transferred") {
-    return NextResponse.json({ recu: true, confirme: false, statut });
-  }
-
-  const resultat = await depot.confirmerPaiement(reference, String(charge.entity?.id ?? ""));
-  if (!resultat) {
-    // 200 volontaire : une référence inconnue ne se résoudra jamais, il
-    // ne sert à rien que l'agrégateur rejoue indéfiniment.
-    console.warn(`[webhook] Référence inconnue : ${reference}`);
+  if (verification.issue === "introuvable") {
+    console.warn(`[webhook] transaction inconnue de KkiaPay : ${transactionId}`);
     return NextResponse.json({ recu: true, confirme: false, raison: "introuvable" });
   }
 
-  if (resultat.dejaConfirmee) {
-    return NextResponse.json({ recu: true, confirme: true, deja: true });
+  // La référence de la réservation voyage dans `partnerId`. On préfère
+  // celle que KkiaPay nous renvoie à celle du corps de la notification.
+  const reference = verification.transaction.partnerId ?? corps?.partnerId;
+  if (!reference) {
+    console.warn(`[webhook] transaction ${transactionId} sans référence de réservation.`);
+    return NextResponse.json({ recu: true, confirme: false, raison: "sans-reference" });
   }
 
-  // Les emails partent ici, et non à la création : avant le paiement, il
-  // n'y a rien à confirmer. Ils ne doivent jamais faire échouer
-  // l'acquittement, sinon l'agrégateur rejouerait sans fin.
-  const { reservation } = resultat;
-  // Page de suivi generique, et non un lien personnel : le jeton n'existe
-  // qu'a la creation et la base n'en garde que le hache. Le client a deja
-  // recu son lien dans l'accuse de reception.
-  const lienSuivi = `${site.url}/reservation/suivi`;
-  await Promise.allSettled([
-    envoyerConfirmation(reservation, lienSuivi),
-    envoyerFacture(reservation, numeroDeFacture(reservation), lienSuivi),
-    envoyerNotificationAdmin(reservation),
-  ]);
+  // Lien générique, et non personnel : la base ne conserve que le haché
+  // du jeton de suivi, impossible de le reconstituer ici. Le client a
+  // déjà reçu son lien personnel dans l'accusé de réception.
+  const resultat = await confirmerParKkiapay({
+    reference,
+    transaction: verification.transaction,
+    lienSuivi: `${site.url}/reservation/suivi`,
+  });
 
-  return NextResponse.json({ recu: true, confirme: true });
+  const confirme = resultat.issue === "confirmee" || resultat.issue === "deja-confirmee";
+  return NextResponse.json({
+    recu: true,
+    confirme,
+    issue: resultat.issue,
+  });
 }

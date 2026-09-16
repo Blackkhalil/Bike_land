@@ -3,6 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AnnulerReservation } from "@/components/reservation/AnnulerReservation";
+import { PaiementEnAttente } from "@/components/reservation/PaiementEnAttente";
+import { EXPIRATION_PANIER_MINUTES, panierExpire } from "@/data/offres";
+import { configurationWidgetPour } from "@/lib/paiement";
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Etiquette, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue, optionsLocation } from "@/data/catalogue";
@@ -54,6 +57,28 @@ export default async function PageSuiviReservation({
   const nouvelle = recherche.nouvelle === "1";
   const facture = numeroDeFacture(reservation);
 
+  // Réservation créée mais non payée : le vélo reste retenu le temps du
+  // panier, après quoi il repart à la vente. On ne propose donc de
+  // reprendre le paiement que dans cette fenêtre — au-delà, encaisser
+  // reviendrait à vendre un vélo peut-être déjà repris.
+  const enAttenteDePaiement = reservation.statut === "EN_ATTENTE_PAIEMENT";
+  const delaiDepasse = panierExpire(reservation.creeLe);
+  const widget =
+    enAttenteDePaiement && !delaiDepasse
+      ? configurationWidgetPour({
+          montantXof: reservation.totalXof,
+          reference: reservation.reference,
+          moyen:
+            reservation.paiements.find((paiement) => !paiement.estCaution)?.moyen ?? "MTN_MONEY",
+          client: {
+            prenom: reservation.client.prenom,
+            nom: reservation.client.nom,
+            email: reservation.client.email,
+            telephone: reservation.client.telephone,
+          },
+        })
+      : null;
+
   // L'annulation reste gratuite jusqu'à 72 h avant le départ (cf. CGV).
   const limiteAnnulationGratuite = ajouterJours(reservation.dateDebut, -3);
   const annulable = reservation.statut === "CONFIRMEE" && reservation.dateDebut > aujourdhui();
@@ -61,7 +86,10 @@ export default async function PageSuiviReservation({
 
   return (
     <Section fond="sable" className="pb-24 pt-32 sm:pt-40">
-      {nouvelle && (
+      {/* Le bandeau d'accueil ne doit annoncer une confirmation que si
+          elle a réellement eu lieu : une réservation encore impayée n'a
+          déclenché ni email de confirmation ni facture. */}
+      {nouvelle && !enAttenteDePaiement && (
         <div className="mb-10 rounded-[var(--radius-carte)] border border-vert-lagune/55 bg-vert-lagune/10 px-6 py-5">
           <p className="font-display text-[1.1rem] font-bold uppercase text-vert-lagune">
             C&apos;est réservé
@@ -70,6 +98,19 @@ export default async function PageSuiviReservation({
             Un email de confirmation et votre facture {facture} viennent de partir vers{" "}
             {reservation.client.email}. Gardez ce lien : il vous donne accès à votre réservation
             à tout moment, sans mot de passe.
+          </p>
+        </div>
+      )}
+
+      {widget && <PaiementEnAttente token={token} widget={widget} />}
+
+      {enAttenteDePaiement && delaiDepasse && (
+        <div className="mb-10 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-6 py-5">
+          <p className="font-display text-[1.1rem] font-bold uppercase">Délai de paiement dépassé</p>
+          <p className="mt-2 text-[0.92rem] leading-relaxed">
+            Cette réservation n&apos;a pas été réglée dans les {EXPIRATION_PANIER_MINUTES} minutes :
+            le vélo est reparti à la réservation. Reprenez une réservation depuis le catalogue, ou
+            appelez-nous au {site.telephone}.
           </p>
         </div>
       )}

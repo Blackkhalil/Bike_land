@@ -52,6 +52,7 @@ async function main() {
       status: velo.statut,
       shortPitch: velo.accroche,
       description: velo.description,
+      heroImageUrl: velo.photo ?? null,
       weightKg: velo.poidsKg,
       gearCount: velo.vitesses,
       maxLoadKg: velo.chargeMaxKg,

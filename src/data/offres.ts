@@ -98,3 +98,15 @@ export const OFFRES: {
  * connexion.
  */
 export const EXPIRATION_PANIER_MINUTES = 30;
+
+/**
+ * Ce panier a-t-il dépassé son délai de paiement ?
+ *
+ * Écrit ici, au plus près du délai, et non recopié dans chaque appelant :
+ * la page de suivi et la confirmation de paiement doivent répondre
+ * exactement la même chose, sans quoi l'une proposerait de payer un vélo
+ * que l'autre considère déjà reparti.
+ */
+export function panierExpire(creeLe: string, maintenant = Date.now()): boolean {
+  return maintenant - new Date(creeLe).getTime() > EXPIRATION_PANIER_MINUTES * 60_000;
+}

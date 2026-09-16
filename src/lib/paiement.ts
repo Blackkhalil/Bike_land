@@ -1,162 +1,156 @@
 /**
- * Encaissement des paiements.
+ * Encaissement des paiements, via KkiaPay.
  *
- * Le cahier des charges (§6.1, §7.2) retient un agrégateur béninois —
- * FedaPay ou KkiaPay — parce que le Mobile Money y est très majoritaire
- * devant la carte bancaire, et que Stripe ou PayPal ne le couvrent pas.
+ * Le Mobile Money est très majoritaire au Bénin devant la carte
+ * bancaire, et ni Stripe ni PayPal ne le couvrent : le cahier des charges
+ * retient donc un agrégateur local. KkiaPay a été choisi.
  *
- * Ce module expose une interface unique et trois implémentations :
- *  - FedaPay et KkiaPay, activées par leurs clés d'API respectives ;
- *  - un mode « démonstration » utilisé tant qu'aucune clé n'est configurée,
- *    qui simule une transaction réussie pour que le parcours complet reste
- *    testable de bout en bout.
+ * Son fonctionnement diffère d'un agrégateur à page hébergée : le client
+ * paie dans une fenêtre ouverte par **son navigateur**, qui reçoit en
+ * retour un identifiant de transaction. Le serveur ne fabrique donc rien
+ * ici — il se contente de fournir au navigateur la clé publique et le
+ * montant, puis vérifie après coup (cf. `src/lib/kkiapay.ts`).
  *
- * Aucune coordonnée bancaire ne transite par notre serveur : l'agrégateur
- * héberge la page de paiement, nous ne manipulons que des identifiants de
- * transaction.
+ * Deux modes seulement :
+ *
+ *  - **kkiapay** dès que les trois clés sont présentes ;
+ *  - **démonstration** en développement local sans clé, pour que le
+ *    parcours reste testable de bout en bout.
+ *
+ * En production, l'absence de clés ne bascule PAS en démonstration : elle
+ * rend le paiement indisponible. Simuler un encaissement réussi sur un
+ * site en ligne reviendrait à distribuer les vélos gratuitement.
+ *
+ * Aucune coordonnée bancaire ne transite par notre serveur : la fenêtre
+ * de paiement appartient à KkiaPay, nous ne manipulons que des
+ * identifiants de transaction.
  */
 
+import { configurationKkiapay } from "./kkiapay";
 import type { MoyenPaiement } from "./types";
 
-export type FournisseurActif = "fedapay" | "kkiapay" | "demo";
+export type FournisseurActif = "kkiapay" | "demo" | "indisponible";
 
 export interface DemandePaiement {
   montantXof: number;
-  moyen: MoyenPaiement;
   reference: string;
-  description: string;
+  moyen: MoyenPaiement;
   client: { prenom: string; nom: string; email: string; telephone?: string };
-  urlRetour: string;
+}
+
+/** Ce que le navigateur doit connaître pour ouvrir la fenêtre KkiaPay. */
+export interface ConfigurationWidget {
+  clePublique: string;
+  sandbox: boolean;
+  montantXof: number;
+  /** Notre référence, renvoyée par KkiaPay et vérifiée côté serveur. */
+  reference: string;
+  /** Restreint la fenêtre au moyen choisi par le client. */
+  methodes: string[];
+  nom: string;
+  email: string;
+  telephone?: string;
 }
 
 export interface ResultatPaiement {
   statut: "REUSSI" | "EN_ATTENTE" | "ECHOUE";
   fournisseur: FournisseurActif;
   referenceTransaction: string;
-  /** Page de paiement hébergée, quand l'agrégateur en impose une. */
-  urlPaiement?: string;
+  /** Présent en mode KkiaPay : le navigateur ouvre la fenêtre avec ceci. */
+  widget?: ConfigurationWidget;
   message?: string;
 }
 
 export function fournisseurActif(): FournisseurActif {
-  if (process.env.FEDAPAY_SECRET_KEY) return "fedapay";
-  if (process.env.KKIAPAY_PRIVATE_KEY) return "kkiapay";
+  if (configurationKkiapay()) return "kkiapay";
+
+  // Le mode démonstration confirme sans encaisser : tolérable en
+  // développement, jamais en ligne. `PAIEMENT_DEMO_AUTORISE` existe pour
+  // les vitrines de démonstration délibérées, et pour elles seules.
+  if (process.env.NODE_ENV === "production" && process.env.PAIEMENT_DEMO_AUTORISE !== "true") {
+    return "indisponible";
+  }
   return "demo";
 }
 
-/** Moyens de paiement proposés au client, dans l'ordre d'usage au Bénin. */
+/**
+ * Moyens de paiement proposés au client.
+ *
+ * Mobile Money uniquement : la carte bancaire a été retirée de l'offre.
+ * Elle est très minoritaire au Bénin, et la proposer obligeait à afficher
+ * un moyen que presque personne n'utilise.
+ */
 export const moyensDisponibles: { code: MoyenPaiement; libelle: string; detail: string }[] = [
   { code: "MTN_MONEY", libelle: "MTN MoMo", detail: "Paiement par mobile" },
   { code: "MOOV_MONEY", libelle: "Moov Money", detail: "Paiement par mobile" },
-  { code: "CARTE_BANCAIRE", libelle: "Carte bancaire", detail: "Visa · Mastercard" },
 ];
 
-export async function encaisser(demande: DemandePaiement): Promise<ResultatPaiement> {
-  switch (fournisseurActif()) {
-    case "fedapay":
-      return encaisserFedaPay(demande);
-    case "kkiapay":
-      return encaisserKkiaPay(demande);
-    default:
-      return encaisserEnDemonstration(demande);
-  }
+/**
+ * Filtre passé à la fenêtre KkiaPay.
+ *
+ * Toujours « momo » : c'est le seul moyen que nous acceptons. KkiaPay ne
+ * distingue pas MTN de Moov dans ce filtre — l'opérateur se choisit dans
+ * sa fenêtre — mais restreindre à « momo » empêche la carte d'y
+ * apparaître, ce qui serait incohérent avec ce qu'annonce le site.
+ */
+export function methodesWidget(): string[] {
+  return ["momo"];
 }
 
-// ------------------------------------------------------------------ FedaPay
+export async function encaisser(demande: DemandePaiement): Promise<ResultatPaiement> {
+  const fournisseur = fournisseurActif();
 
-async function encaisserFedaPay(demande: DemandePaiement): Promise<ResultatPaiement> {
-  const base =
-    process.env.FEDAPAY_ENVIRONMENT === "live"
-      ? "https://api.fedapay.com/v1"
-      : "https://sandbox-api.fedapay.com/v1";
-
-  const reponse = await fetch(`${base}/transactions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.FEDAPAY_SECRET_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      description: demande.description,
-      amount: demande.montantXof,
-      currency: { iso: "XOF" },
-      callback_url: demande.urlRetour,
-      customer: {
-        firstname: demande.client.prenom,
-        lastname: demande.client.nom,
-        email: demande.client.email,
-        ...(demande.client.telephone
-          ? { phone_number: { number: demande.client.telephone, country: "bj" } }
-          : {}),
-      },
-    }),
-  });
-
-  if (!reponse.ok) {
+  if (fournisseur === "indisponible") {
     return {
       statut: "ECHOUE",
-      fournisseur: "fedapay",
+      fournisseur,
       referenceTransaction: "",
-      message: `FedaPay a refusé la transaction (HTTP ${reponse.status}).`,
+      message:
+        "Le paiement en ligne n'est pas configuré. Aucune réservation ne peut être encaissée.",
     };
   }
 
-  const donnees = (await reponse.json()) as {
-    "v1/transaction"?: { id: number; reference: string };
-  };
-  const transaction = donnees["v1/transaction"];
+  if (fournisseur === "demo") {
+    return {
+      statut: "REUSSI",
+      fournisseur,
+      referenceTransaction: `DEMO-${demande.reference}`,
+      message:
+        "Mode démonstration : aucun paiement réel n'a été effectué. " +
+        "Renseignez les clés KkiaPay pour encaisser réellement.",
+    };
+  }
 
   return {
     statut: "EN_ATTENTE",
-    fournisseur: "fedapay",
-    referenceTransaction: transaction?.reference ?? String(transaction?.id ?? ""),
-  };
-}
-
-// ------------------------------------------------------------------ KkiaPay
-
-async function encaisserKkiaPay(demande: DemandePaiement): Promise<ResultatPaiement> {
-  // KkiaPay initie le paiement côté navigateur via son widget ; le serveur
-  // ne fait que vérifier la transaction une fois le widget revenu.
-  return {
-    statut: "EN_ATTENTE",
     fournisseur: "kkiapay",
-    referenceTransaction: demande.reference,
-    message: "Transaction à confirmer par le widget KkiaPay.",
+    referenceTransaction: "",
+    widget: configurationWidgetPour(demande)!,
   };
 }
 
-export async function verifierKkiaPay(identifiantTransaction: string): Promise<ResultatPaiement> {
-  const reponse = await fetch("https://api.kkiapay.me/api/v1/transactions/status", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": process.env.KKIAPAY_PUBLIC_KEY ?? "",
-      "x-private-key": process.env.KKIAPAY_PRIVATE_KEY ?? "",
-      "x-secret-key": process.env.KKIAPAY_SECRET ?? "",
-    },
-    body: JSON.stringify({ transactionId: identifiantTransaction }),
-  });
+/**
+ * De quoi ouvrir la fenêtre KkiaPay pour une somme donnée.
+ *
+ * Sert au tunnel de réservation comme à la page de suivi : un client qui
+ * a fermé la fenêtre sans payer doit pouvoir la rouvrir depuis son lien
+ * personnel, sans recréer de réservation.
+ *
+ * Renvoie `null` si KkiaPay n'est pas configuré — la page appelante
+ * n'affiche alors simplement pas de bouton de paiement.
+ */
+export function configurationWidgetPour(demande: DemandePaiement): ConfigurationWidget | null {
+  const configuration = configurationKkiapay();
+  if (!configuration) return null;
 
-  const donnees = (await reponse.json().catch(() => ({}))) as { status?: string };
   return {
-    statut: donnees.status === "SUCCESS" ? "REUSSI" : "ECHOUE",
-    fournisseur: "kkiapay",
-    referenceTransaction: identifiantTransaction,
-  };
-}
-
-// -------------------------------------------------------------- Démonstration
-
-async function encaisserEnDemonstration(demande: DemandePaiement): Promise<ResultatPaiement> {
-  // Aucune clé configurée : on simule un encaissement réussi pour que le
-  // parcours de réservation reste testable sans compte marchand.
-  return {
-    statut: "REUSSI",
-    fournisseur: "demo",
-    referenceTransaction: `DEMO-${demande.reference}`,
-    message:
-      "Mode démonstration : aucun paiement réel n'a été effectué. " +
-      "Renseignez FEDAPAY_SECRET_KEY ou KKIAPAY_PRIVATE_KEY pour encaisser réellement.",
+    clePublique: configuration.clePublique,
+    sandbox: configuration.sandbox,
+    montantXof: demande.montantXof,
+    reference: demande.reference,
+    methodes: methodesWidget(),
+    nom: `${demande.client.prenom} ${demande.client.nom}`.trim(),
+    email: demande.client.email,
+    telephone: demande.client.telephone,
   };
 }
