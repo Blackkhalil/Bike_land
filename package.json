@@ -2,7 +2,14 @@
   "name": "bike-land",
   "version": "0.1.0",
   "private": true,
-  "description": "Bike Land — plateforme de location de vélos pour road trips (Bénin)",
+  "description": "Bike Land, location de vélos à Cotonou (Bénin) : location à l'heure et road trips encadrés",
+  "author": "SIBI IBRAHIM KHALIL",
+  "license": "UNLICENSED",
+  "homepage": "https://bike-land.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Blackkhalil/Bike_land.git"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",

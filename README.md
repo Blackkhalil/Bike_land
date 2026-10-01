@@ -1,55 +1,70 @@
 # Bike Land
 
-Plateforme de location de vélos pour road trips au Bénin — site public et espace
-d'exploitation, développés d'après le cahier des charges du projet.
+Plateforme de location de vélos à Cotonou, au Bénin. Site public et espace
+d'exploitation.
 
-> **Neuf vélos, trois points de retrait, une réservation en ligne sans création de
-> compte, payable en Mobile Money.**
+> **Onze vélos répartis en trois gammes, location à l'heure ou road trip encadré,
+> réservation en ligne sans création de compte, paiement en Mobile Money.**
+
+**Conception, direction du projet et propriété : SIBI IBRAHIM KHALIL.**
+Toutes les décisions de produit, de tarification, d'identité visuelle et de
+contenu éditorial lui reviennent. Le code a été écrit d'après son cahier des
+charges et sous sa direction.
+
+En ligne : <https://bike-land.vercel.app>
 
 ---
 
 ## Sommaire
 
-1. [Ce qui est livré](#ce-qui-est-livré)
-2. [Démarrer en une commande](#démarrer-en-une-commande)
-3. [Correspondance avec le cahier des charges](#correspondance-avec-le-cahier-des-charges)
-4. [Architecture](#architecture)
-5. [Variables d'environnement](#variables-denvironnement)
-6. [Passer en base PostgreSQL](#passer-en-base-postgresql)
-7. [Paiement et emails](#paiement-et-emails)
-8. [Déploiement](#déploiement)
-9. [Direction artistique](#direction-artistique)
-10. [Décisions techniques et leurs raisons](#décisions-techniques-et-leurs-raisons)
-11. [Ce qui reste à faire](#ce-qui-reste-à-faire)
+1. [Ce que fait le site](#ce-que-fait-le-site)
+2. [Démarrer](#démarrer)
+3. [Tarification](#tarification)
+4. [Parrainage](#parrainage)
+5. [Architecture](#architecture)
+6. [Variables d'environnement](#variables-denvironnement)
+7. [Paiement](#paiement)
+8. [Emails](#emails)
+9. [Déploiement](#déploiement)
+10. [Identité visuelle](#identité-visuelle)
+11. [Décisions techniques et leurs raisons](#décisions-techniques-et-leurs-raisons)
+12. [Ce qui reste à faire](#ce-qui-reste-à-faire)
 
 ---
 
-## Ce qui est livré
+## Ce que fait le site
 
-**Site public** (11 pages)
+### Site public
 
 | Page | Route | Contenu |
 |---|---|---|
-| Accueil | `/` | Hero, arguments, schéma technique annoté, entretien, parc, itinéraires, avis |
-| Catalogue | `/velos` | Filtres type / taille / point de retrait / **dates réellement disponibles** |
-| Fiche vélo | `/velos/[slug]` | Caractéristiques, équipement, calendrier de disponibilité, devis en direct, avis |
-| Itinéraires | `/itineraires`, `/itineraires/[slug]` | Quatre road trips détaillés étape par étape |
-| Comment ça marche | `/comment-ca-marche` | Les cinq étapes, les moyens de paiement, ce qui est compris |
-| Tarifs | `/tarifs` | Grille par catégorie et par durée, remises, options, cautions |
-| À propos | `/a-propos` | Histoire, valeurs, points de retrait |
-| Contact & FAQ | `/contact` | Formulaire + 12 questions fréquentes (avec données structurées `FAQPage`) |
-| Suivi | `/reservation/suivi`, `/reservation/[token]` | Accès à sa réservation par lien signé, facture, annulation |
-| Légal | `/mentions-legales`, `/cgv`, `/donnees-personnelles` | Conformité, dont la loi béninoise sur les données (APDP) |
+| Accueil | `/` | Vélo en vedette en 3D, les trois gammes, le parc, carrousel de photos, avis |
+| Catalogue | `/velos` | Les onze vélos groupés par gamme, chacun présenté par une vidéo |
+| Fiche vélo | `/velos/[slug]` | Gamme et tarif, caractéristiques, disponibilité à l'heure, avis |
+| Itinéraires | `/itineraires`, `/itineraires/[slug]` | Deux parcours de la route des Pêches, étape par étape |
+| Comment ça marche | `/comment-ca-marche` | Le déroulé d'une sortie, les moyens de paiement, ce qui est compris |
+| À propos | `/a-propos` | L'activité, le point de départ, les horaires |
+| Contact et FAQ | `/contact` | Formulaire qui écrit directement à Bike Land, questions fréquentes |
+| Suivi | `/reservation/suivi`, `/reservation/[token]` | Accès par lien signé, facture, annulation, dépôt d'avis |
+| Légal | `/mentions-legales`, `/cgv`, `/donnees-personnelles` | Dont la loi béninoise sur les données personnelles |
 
-**Tunnel de réservation** — `/reservation` : trois étapes (location → coordonnées →
-paiement), sans compte, avec récapitulatif chiffré en permanence.
+### Tunnel de réservation
 
-**Espace d'exploitation** — `/admin` : tableau de bord complet (§2.3), calendrier du
-parc, liste des réservations, fiches vélos, base clients, grille tarifaire, export CSV.
+`/reservation` en trois étapes : la location, les coordonnées, le paiement. Sans
+compte, avec le récapitulatif chiffré visible en permanence. Le code de
+parrainage se saisit à la dernière étape et la réduction est recalculée côté
+serveur.
+
+### Espace d'exploitation
+
+`/admin`, protégé par mot de passe. Tableau de bord, sortie du jour, réservations,
+parc, clients, avis à modérer, partenaires et codes de parrainage. Le parc
+s'édite depuis l'interface : ajouter un vélo, le mettre en entretien, le retirer,
+changer sa gamme.
 
 ---
 
-## Démarrer en une commande
+## Démarrer
 
 ```bash
 npm install
@@ -58,92 +73,72 @@ npm run dev
 
 Puis <http://localhost:3000>.
 
-**Aucune configuration n'est nécessaire.** Sans `DATABASE_URL`, l'application démarre
-en *mode démonstration* : un jeu de données en mémoire (9 vélos, 353 réservations et
-255 clients répartis sur seize mois, avec leurs paiements) rend le site et le tableau
-de bord entièrement navigables. Le tunnel de réservation fonctionne de bout en bout, paiement
-simulé compris.
+**Aucune configuration n'est nécessaire pour voir le site.** Sans `DATABASE_URL`,
+l'application démarre en mode démonstration, sur un jeu de données en mémoire qui
+rend le site et le tableau de bord entièrement navigables, paiement simulé
+compris.
 
-L'espace d'exploitation est à <http://localhost:3000/admin>. En développement, il
-s'ouvre sans mot de passe ; en production il refuse l'accès tant que `ADMIN_PASSWORD`
-n'est pas défini.
+L'espace d'exploitation est à <http://localhost:3000/admin>. En développement il
+s'ouvre sans mot de passe. **En production il refuse l'accès tant que
+`ADMIN_PASSWORD` n'est pas défini**, et personne n'entre, pas même le
+propriétaire.
 
-### Autres commandes
+### Les commandes
 
 ```bash
-npm run build      # construction de production
-npm run start      # serveur de production
-npm run typecheck  # TypeScript, sans émission
-npm run lint       # ESLint
-npm run db:push    # applique le schéma Prisma à la base
-npm run db:seed    # peuple la base avec le catalogue
+npm run build          # construction de production
+npm run start          # serveur de production
+npm run typecheck      # TypeScript, sans émission
+npm run lint           # ESLint
+npm run db:push        # applique le schéma Prisma à la base
+npm run db:seed        # verse le catalogue en base
+npm run db:sauvegarde  # exporte toute la base en JSON dans sauvegardes/
 ```
 
 ---
 
-## Correspondance avec le cahier des charges
+## Tarification
 
-### §2.1 — Côté visiteur
+Trois gammes. Le vélo détermine la gamme, la gamme détermine le prix. Tout est
+dans [`src/data/offres.ts`](src/data/offres.ts), seule source de vérité : le
+widget, le tunnel, l'API et l'admin lisent la même grille.
 
-| Fonctionnalité demandée | État | Où |
+### Location libre, en francs CFA
+
+| Durée | Classique | Premium | Prestige |
+|---|---|---|---|
+| 1 h | 1 125 | 1 625 | 2 125 |
+| 2 h | 2 125 | 3 125 | 4 125 |
+| 3 h | 3 125 | 4 625 | 6 125 |
+| 4 h | 3 625 | 5 625 | 7 125 |
+
+### Road trip encadré
+
+| Gamme | Prix | Cocos offertes |
 |---|---|---|
-| Catalogue de vélos | ✅ | `/velos` — photos (illustrations vectorielles), caractéristiques, tarifs |
-| Fiche produit | ✅ | `/velos/[slug]` — type, taille, équipement inclus, autonomie conseillée |
-| Réservation sans compte | ✅ | `/reservation` — coordonnées et paiement à la dernière étape |
-| Paiement en ligne | ✅ | Adaptateurs FedaPay et KkiaPay (MTN Money, Moov Money, cartes) |
-| Facture automatique par email | ✅ | `src/lib/email.ts`, envoyée juste après le paiement |
-| Disponibilité en temps réel | ✅ | Calendrier par vélo + filtre par dates ; **double réservation impossible** |
-| Suivi par lien unique | ✅ | Jeton HMAC signé, seul son haché est stocké en base |
-| Confirmation et rappels | ✅ confirmation · ⏳ rappel | Rappel avant départ : à brancher sur une tâche planifiée |
-| Contact / FAQ | ✅ | `/contact` — formulaire + FAQ ; chat non implémenté |
-| Avis clients | ✅ affichage | Modèle `Review` prêt ; le dépôt d'avis reste à ouvrir |
+| Classique | 2 625 | 1 |
+| Premium | 3 125 | 2 |
+| Prestige | 3 625 | 2 |
 
-### §2.2 — Côté administrateur
+Le road trip part sur créneaux fixes, samedi et dimanche de 8 h à 11 h. Les prix
+ne sont pas arrondis : ils sont affichés tels quels, à l'unité.
 
-| Fonctionnalité | État | Où |
-|---|---|---|
-| Gestion du parc | ✅ consultation | `/admin/velos` — état, sorties, revenus par vélo |
-| Gestion des réservations | ✅ | `/admin/reservations` — calendrier, départs et retours du jour, recherche |
-| Gestion des tarifs | ✅ consultation et simulation | `/admin/tarifs` |
-| Gestion des clients | ✅ | `/admin/clients` — base constituée automatiquement, sans compte client |
-| Statistiques | ✅ | `/admin` |
+Le parc compte six vélos Classique, quatre Premium et un Prestige.
 
-L'édition en ligne (créer un vélo, changer un prix depuis l'interface) n'est pas
-branchée : les écrans sont en lecture, et les données se modifient dans
-`src/data/catalogue.ts` ou en base. Le schéma Prisma est prêt à recevoir ces écritures
-(voir [Ce qui reste à faire](#ce-qui-reste-à-faire)).
+---
 
-### §2.3 — Tableau de bord statistique
+## Parrainage
 
-Tous les indicateurs demandés sont calculés dans `src/lib/statistiques.ts` :
+Un partenaire reçoit un code. Le client qui le saisit obtient **1 %** de
+réduction, le partenaire **5 %** de commission sur le montant réellement payé.
 
-- **Financiers** — chiffre d'affaires (jour / semaine / mois / année) avec comparaison
-  à la période précédente, revenu moyen par réservation, répartition par moyen de
-  paiement, cautions encaissées et restituées.
-- **Réservation** — nombre de réservations, taux d'occupation du parc, durée moyenne,
-  taux d'annulation, saisonnalité mensuelle.
-- **Parc** — vélos les plus et les moins loués, disponibles / en location / en entretien.
-- **Clients** — nouveaux contre récurrents, origine par point de retrait, note moyenne.
-- **Présentation** — courbe d'évolution, colonnes de saisonnalité, barres de
-  répartition, jauge d'occupation, filtres de période, **export CSV** prêt pour la
-  comptabilité.
+L'utilisation ne compte pour le partenaire **qu'après un paiement abouti**. Elle
+suit trois états : `EN_ATTENTE` à la réservation, `VALIDE` à la confirmation du
+paiement, `ANNULE` si la réservation tombe. Une réservation abandonnée ne
+rémunère donc personne, et le quota du code est rendu.
 
-> Deux précisions d'analyse, qui changent la lecture des chiffres :
-> une période en cours n'est **jamais** comparée à une période complète — les deux
-> fenêtres couvrent le même nombre de jours écoulés ; et le dernier point de la courbe,
-> lorsqu'il porte sur un mois entamé, est tracé en pointillé pour ne pas se lire comme
-> une chute d'activité.
-
-### §5 — Contraintes techniques
-
-| Contrainte | État |
-|---|---|
-| Site responsive | ✅ mobile, tablette, desktop — vérifié à 390 px et 1440 px |
-| Disponibilité temps réel, sans double réservation | ✅ garantie par transaction sérialisable (voir plus bas) |
-| Paiement adapté au marché béninois | ✅ Mobile Money en premier, cartes ensuite |
-| Hébergement et nom de domaine | ⏳ à souscrire — la configuration est documentée |
-| Multilingue | ⏳ à trancher (§8) — les textes sont centralisés, pas encore externalisés |
-| Protection des données (APDP) | ✅ page dédiée, minimisation, durées de conservation |
+La réduction est plafonnée pour que le montant reste au-dessus du minimum
+encaissable par l'opérateur.
 
 ---
 
@@ -152,51 +147,56 @@ Tous les indicateurs demandés sont calculés dans `src/lib/statistiques.ts` :
 ```
 src/
 ├── app/
-│   ├── (site)/          Site public — porte l'en-tête et le pied de page
+│   ├── (site)/          Site public, porte l'en-tête et le pied de page
 │   ├── admin/
 │   │   ├── connexion/   Page de connexion, hors périmètre protégé
-│   │   └── (protege)/   Tableau de bord et gestion — session obligatoire
-│   └── api/             Réservations, disponibilité, contact, export, connexion
+│   │   └── (protege)/    Tableau de bord et gestion, session obligatoire
+│   └── api/             Réservations, paiement, webhook, parrainage, admin
 ├── components/
-│   ├── accueil/         Sections de la page d'accueil
-│   ├── admin/           Navigation, calendrier du parc, filtres
-│   ├── graphiques/      Graphiques SVG écrits à la main + palette validée
-│   └── reservation/     Calendrier de disponibilité, tunnel, suivi
-├── data/                Catalogue et contenus éditoriaux
+│   ├── accueil/         Sections de la page d'accueil, vélo 3D, carrousel
+│   ├── admin/           Navigation, calendrier du parc, contrôles d'édition
+│   ├── graphiques/      Graphiques SVG écrits à la main
+│   └── reservation/     Calendrier, tunnel, suivi, avis
+├── data/
+│   ├── catalogue.ts     Le parc, les points de retrait
+│   └── offres.ts        Gammes, grille horaire, créneaux de road trip
 └── lib/
-    ├── db/              Couche de données — deux implémentations
-    ├── dates.ts         Dates civiles et chevauchement de périodes
-    ├── tarification.ts  Moteur de devis — source unique des prix
-    ├── statistiques.ts  Indicateurs du §2.3
+    ├── db/              Couche de données, deux implémentations
+    ├── saspay.ts        Client SasPay, signature de webhook
+    ├── parrainage.ts    Réduction client et commission partenaire
+    ├── statistiques.ts  Indicateurs du tableau de bord
     ├── tokens.ts        Liens de suivi signés
-    ├── paiement.ts      FedaPay / KkiaPay / démonstration
-    └── email.ts         Resend, avec repli console
+    └── email.ts         Gmail par SMTP
 ```
 
 ### La couche de données
 
-Aucune page n'importe Prisma. Tout passe par `depot` (`src/lib/db/index.ts`), qui
-choisit son implémentation au premier appel :
+Aucune page n'importe Prisma. Tout passe par `depot`
+([`src/lib/db/index.ts`](src/lib/db/index.ts)), qui choisit son implémentation au
+premier appel : `postgres.ts` si `DATABASE_URL` est défini, `demo.ts` sinon. Les
+deux respectent le même contrat et la même règle métier.
 
-- **`DATABASE_URL` présent** → `postgres.ts`, l'implémentation Prisma / PostgreSQL
-  retenue au §6.1 ;
-- **absent** → `demo.ts`, un jeu de données en mémoire.
-
-Les deux respectent le même contrat (`contrat.ts`) et la même règle métier.
+Chaque méthode du dépôt PostgreSQL passe par une reprise automatique sur perte de
+connexion. Le pooler de Supabase ferme les connexions inactives, et le premier
+appel après une accalmie tombe dessus. Sans reprise, un client qui réserve après
+une période calme perd sa réservation pour une raison qui n'a rien à voir avec
+lui.
 
 ### Comment la double réservation est rendue impossible
 
-C'est la contrainte centrale du cahier des charges, et elle est traitée à trois niveaux :
+La contrainte centrale du projet, traitée à trois niveaux :
 
-1. **À l'affichage** — le calendrier de la fiche produit désactive les jours déjà pris,
-   et le filtre par dates du catalogue masque les vélos indisponibles.
-2. **Avant l'encaissement** — `POST /api/reservations` revérifie la disponibilité avant
-   d'appeler l'agrégateur de paiement, pour ne pas débiter à tort.
-3. **À l'écriture** — l'insertion se fait dans une transaction PostgreSQL en niveau
-   `Serializable`, qui relit le conflit *à l'intérieur* de la transaction. C'est le seul
-   niveau qui empêche le *write skew* : deux clients qui cliquent « payer » à la même
-   seconde ne peuvent pas tous les deux lire « aucun conflit » puis écrire. Le second
-   reçoit un `409` et un message explicite.
+1. **À l'affichage**, le calendrier désactive les créneaux déjà pris.
+2. **Avant l'encaissement**, la disponibilité est revérifiée pour ne pas débiter à
+   tort.
+3. **À l'écriture**, l'insertion se fait dans une transaction PostgreSQL en niveau
+   `Serializable`, qui relit le conflit à l'intérieur de la transaction. C'est le
+   seul niveau qui empêche le *write skew* : deux clients qui paient à la même
+   seconde ne peuvent pas lire tous les deux « aucun conflit » puis écrire. Le
+   second reçoit un `409` et un message clair.
+
+Depuis que la disponibilité se compte à l'heure, deux sorties peuvent partager la
+même journée : le chevauchement se calcule sur les heures, pas sur les dates.
 
 ---
 
@@ -207,94 +207,106 @@ Copiez `.env.example` en `.env`. Aucune n'est requise pour démarrer.
 | Variable | Effet si absente |
 |---|---|
 | `DATABASE_URL` | Mode démonstration, données en mémoire |
-| `BOOKING_TOKEN_SECRET` | Secret aléatoire par processus en mode démo ; **obligatoire** dès qu'une base est configurée |
-| `NEXT_PUBLIC_SITE_URL` | `https://bikeland.bj` — sert aux emails et aux métadonnées |
-| `FEDAPAY_SECRET_KEY` / `KKIAPAY_PRIVATE_KEY` | Paiement simulé, aucune transaction réelle |
-| `RESEND_API_KEY` | Emails journalisés dans la console au lieu d'être envoyés |
-| `ADMIN_PASSWORD` | `/admin` ouvert en développement, **fermé en production** |
+| `BOOKING_TOKEN_SECRET` | Secret aléatoire par processus en démo, **obligatoire** dès qu'une base est configurée |
+| `NEXT_PUBLIC_SITE_URL` | `https://bikeland.bj`, sert aux emails et aux métadonnées |
+| `SASPAY_API_KEY` | Paiement simulé en développement, **refusé en production** |
+| `SASPAY_WEBHOOK_SECRET` | Le webhook rejette tout, ce qui est le comportement voulu |
+| `GMAIL_USER`, `GMAIL_APP_PASSWORD` | Emails journalisés dans la console au lieu d'être envoyés |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | `/admin` ouvert en développement, **fermé en production** |
+
+`PAIEMENT_DEMO_AUTORISE=true` force le mode démonstration en production. Il
+existe pour les vitrines de démonstration délibérées, et pour elles seules : avec
+cette variable, le site confirme des réservations sans encaisser.
+
+En production, toutes les variables de secret sont posées en `sensitive` sur
+Vercel : leur valeur ne se relit plus depuis l'interface, y compris par le
+propriétaire du projet.
 
 ---
 
-## Passer en base PostgreSQL
+## Paiement
 
-```bash
-# 1. Créez une base (Railway, Render ou Supabase — cf. §6.1 du cahier des charges)
-# 2. Renseignez DATABASE_URL et BOOKING_TOKEN_SECRET dans .env
-openssl rand -hex 32          # pour BOOKING_TOKEN_SECRET
+**SasPay**, en Mobile Money, sur les trois opérateurs du pays : MTN, Moov et
+Celtiis. La carte bancaire n'est pas proposée, elle est très minoritaire au Bénin.
 
-npm run db:push               # crée les tables
-npm run db:seed               # y verse le catalogue
-npm run dev
-```
+La demande est poussée sur le téléphone du client, qui la valide. Aucune
+coordonnée de paiement ne transite par le serveur.
 
-Le bandeau du tableau de bord passe alors de « Mode démonstration » à
-« Base PostgreSQL ».
+La confirmation ne vient **jamais** du navigateur seul. Elle vient du webhook ou
+d'une vérification auprès de SasPay, et la réservation reste
+`EN_ATTENTE_PAIEMENT` tant que le paiement n'est pas constaté. Confirmer sur la
+foi d'une redirection reviendrait à donner un vélo à qui n'a pas payé.
+
+Le webhook vérifie une signature HMAC-SHA256 calculée sur `horodatage.corps`,
+avec une tolérance de cinq minutes. Signature absente, falsifiée, horodatage
+périmé ou corps modifié après signature : tout est rejeté en `401`.
+
+Un panier non payé expire au bout de trente minutes et libère le vélo.
 
 ---
 
-## Paiement et emails
+## Emails
 
-**Paiement** — `src/lib/paiement.ts` expose une interface unique et trois
-implémentations : FedaPay, KkiaPay et un mode démonstration. L'agrégateur héberge la
-page de paiement : aucune coordonnée bancaire ne transite par le serveur. Les
-commissions indicatives figurent au §7.2 du cahier des charges.
+[`src/lib/email.ts`](src/lib/email.ts) envoie par SMTP Gmail, avec un mot de
+passe d'application. Sans identifiants, le contenu complet est journalisé dans la
+console, ce qui permet de le relire en développement.
 
-**Emails** — `src/lib/email.ts` envoie la confirmation (avec le lien de suivi) et la
-facture via Resend. Sans clé d'API, le contenu complet est journalisé dans la console,
-ce qui permet de le relire en développement.
+Bike Land reçoit une notification **après confirmation du paiement**, pas à la
+réservation, avec le nom, l'email, le téléphone, le vélo, les dates, le montant,
+le code de parrainage et les références de transaction. Le formulaire de contact
+écrit directement à Bike Land, avec l'adresse du visiteur en `replyTo`.
 
 ---
 
 ## Déploiement
 
-Cible prévue au §6.1 : **Vercel** pour le site et les routes d'API, **Railway / Render
-/ Supabase** pour PostgreSQL.
+**Vercel** pour le site et les routes d'API, **Supabase** pour PostgreSQL.
 
-```bash
-npm run build
-```
+Deux réglages comptent, et ils ont chacun coûté une panne :
 
-À configurer sur Vercel :
+- **`DATABASE_URL` sur le port 6543**, le pooler en mode transaction, avec
+  `?pgbouncer=true&connection_limit=3`. Sur le port 5432, le pooler en mode
+  session plafonne à quinze connexions et le site s'effondre vers soixante
+  visiteurs simultanés.
+- **Les fonctions dans la même région que la base**, déclarée dans
+  [`vercel.json`](vercel.json). Avec la base à Londres et les fonctions à
+  Washington, chaque requête traversait l'Atlantique, et une transaction
+  `Serializable` en fait plusieurs.
 
-1. Les variables d'environnement ci-dessus, `ADMIN_PASSWORD` et `BOOKING_TOKEN_SECRET`
-   en tête.
-2. La commande d'installation : `npm install && npx prisma generate`.
-3. Le domaine (`bikeland.bj` ou `bikeland.com` — disponibilité à vérifier, §7.1).
+Mesuré en production après ces deux réglages, sur une route qui interroge la base
+à chaque appel : 300 requêtes simultanées, 300 réponses en `200`, aucune erreur.
+
+Les pages du site sont servies depuis le cache du CDN et ne consomment ni
+invocation ni connexion à la base.
 
 ---
 
-## Direction artistique
+## Identité visuelle
 
-La maquette de référence est une page produit très éditoriale : typographie
-monumentale posée derrière le produit, filets fins, schéma technique légendé,
-accordéon d'entretien. Cette **construction** est reprise ; la **palette** est celle du
-§4.1 du cahier des charges — terracotta, sable, olive, touches de soleil — et non le
-bleu froid de la référence, parce que le cahier demande explicitement un ton chaleureux
-et accueillant.
+Noir, craie, et un seul accent orange. L'orange ne sert qu'à ce qui appelle une
+action ou porte un prix : un accent qui signale partout ne signale plus rien.
 
-- **Typographies** — *Bricolage Grotesque* pour les titres (grotesque humaniste, tient
-  en très grand corps), *Outfit* pour le texte courant (arrondie, lisible).
-- **Illustrations** — tous les visuels sont des SVG paramétrés
-  (`VeloIllustration`, `PaysageIllustration`) : nets à toutes les tailles, aucune
-  requête réseau, recolorés par la charte. Ils tiennent la place des photographies
-  authentiques prévues au §4.1 jusqu'à la séance photo ; le domaine Cloudinary est déjà
-  autorisé dans `next.config.ts`.
+- **Typographies** : *Oswald* pour les titres, condensée et affirmée, *Inter* pour
+  le texte courant.
+- **Les vélos sont filmés**, pas illustrés. Chaque carte du catalogue porte une
+  vidéo qui démarre quand elle entre à l'écran et s'arrête quand elle en sort,
+  sur ordinateur comme sur téléphone. Onze vidéos lancées ensemble feraient
+  télécharger vingt mégaoctets d'un coup : seules les vidéos réellement visibles
+  se chargent, les autres restent sur leur affiche, qui est le premier plan de la
+  vidéo elle-même.
+- `prefers-reduced-motion` est respecté partout : la vidéo reste alors figée et
+  rien ne bouge.
 
 ### Les couleurs des graphiques ont été validées, pas choisies à l'œil
 
-La palette du tableau de bord est passée par un validateur (bandes de clarté, plancher
-de chroma, séparation sous protanopie et deutéranopie, contraste sur le fond) :
+La palette du tableau de bord est passée par un validateur : bandes de clarté,
+plancher de chroma, séparation sous protanopie et deutéranopie, contraste sur le
+fond. Les catégories nominales sont tracées d'une seule teinte : leur longueur
+porte la magnitude, leur libellé porte l'identité. Colorer chaque barre selon sa
+valeur re-encoderait en couleur ce que la barre dit déjà.
 
-- **catégoriel** `#b04726 · #2a6fb0 · #c07813` — pire paire adjacente ΔE 20,5 en
-  protanopie, 25,7 en vision normale ;
-- **séquentiel** `#e6a687 → #90371f` — rampe monotone d'une seule teinte ;
-- les catégories **nominales** (moyens de paiement, vélos, points de retrait) sont
-  tracées d'une seule teinte : leur longueur porte la magnitude, leur libellé porte
-  l'identité. Colorer chaque barre selon sa valeur re-encoderait en couleur ce que la
-  barre dit déjà.
-
-Chaque graphique propose un tableau de valeurs dépliable : l'information n'est jamais
-accessible par la seule couleur.
+Chaque graphique propose un tableau de valeurs dépliable : l'information n'est
+jamais accessible par la seule couleur.
 
 ---
 
@@ -302,33 +314,39 @@ accessible par la seule couleur.
 
 | Décision | Raison |
 |---|---|
-| Montants en **entiers de FCFA** | Le franc CFA n'a pas de subdivision en usage : aucun arrondi flottant à gérer |
-| Dates de location en `YYYY-MM-DD`, sans heure | Évite les décalages d'un jour entre le serveur (UTC) et le navigateur (UTC+1) |
-| `endDate` **incluse** | Une location du 12 au 14 dure trois jours ; le vélo est immobilisé le 14 |
-| Un seul moteur de prix | `calculerDevis` sert au widget, au tunnel, à l'API et à l'admin : le prix affiché est celui qui sera enregistré |
-| Graphiques SVG écrits à la main | Six graphiques ne justifient pas 150 ko de bibliothèque |
+| Montants en **entiers de FCFA** | Le franc CFA n'a pas de subdivision en usage, aucun arrondi flottant à gérer |
+| Prix non arrondis | 1 125 et 2 625 sont les prix décidés, les afficher autrement serait mentir sur le montant débité |
+| Une seule source de prix | `offres.ts` sert au widget, au tunnel, à l'API et à l'admin : le prix affiché est celui qui sera encaissé |
+| Le prix envoyé par le client est **ignoré** | Il est recalculé côté serveur à partir du vélo et de la durée |
+| Durées limitées à la grille publiée | Aucun tarif ne peut être inventé par l'appelant |
 | Jeton de suivi haché en base | Une copie de la base ne permet pas de forger un lien vers une réservation |
 | Champ piège plutôt que captcha | Rien à charger, rien à résoudre, aucune donnée envoyée à un tiers |
-| Historique de démonstration déterministe | Générateur à graine fixe : les chiffres du tableau de bord ne bougent pas d'un rechargement à l'autre |
+| Graphiques SVG écrits à la main | Six graphiques ne justifient pas 150 ko de bibliothèque |
+| Carrousel sans bibliothèque | Défilement natif et `scroll-snap` suffisent, et se comportent correctement au clavier |
+| Photos du carrousel lues dans un dossier | On dépose un fichier dans `public/carrousel`, il apparaît. Aucune liste à tenir dans le code. |
+| Avis non modifiables à la modération | Un avis retouché ne vaut plus rien pour celui qui le lit. Publier ou retirer, rien d'autre. |
 
 ---
 
 ## Ce qui reste à faire
 
-Par ordre d'utilité :
+1. **Numéros RCCM et IFU**, à renseigner dans
+   [`src/lib/site.ts`](src/lib/site.ts). Tant qu'ils sont vides, les mentions
+   légales annoncent qu'ils seront publiés dès attribution. Les publier est une
+   obligation pour une activité commerciale au Bénin.
+2. **Basculer le compte SasPay en `DEDUCTED`**. Aujourd'hui les frais de 3,25 %
+   s'ajoutent au montant, et le client paie au-dessus du prix affiché.
+3. **Emails de rappel avant le départ**, à brancher sur une tâche planifiée.
+4. **Nom de domaine**, à souscrire et à rattacher.
+5. **Multilingue**, les textes sont centralisés mais pas externalisés.
+6. **Alléger la page d'accueil**, 129 ko de HTML est lourd pour une connexion
+   mobile béninoise.
 
-1. **Édition en ligne du parc et des tarifs** — les écrans d'administration sont en
-   lecture. Les modèles Prisma (`Bike`, `PriceRule`) et les écritures du dépôt sont
-   prêts ; il manque les formulaires et les routes `PATCH`.
-2. **Emails de rappel avant le départ** — le gabarit existe, il faut une tâche
-   planifiée (Vercel Cron) qui balaie les départs à J−2.
-3. **Dépôt d'avis par les clients** — le modèle `Review` et l'affichage existent ; le
-   formulaire, envoyé par lien après la restitution, reste à écrire.
-4. **Multilingue** (§8, à trancher) — les textes sont centralisés mais pas externalisés
-   en fichiers de traduction.
-5. **Photographies** — remplacer les illustrations par les prises de vue réelles, via
-   Cloudinary.
-6. **Points à trancher du §8** — nombre de points de retrait, restitution multi-sites,
-   caution et assurance, budget et délais. Les choix provisoires retenus ici (trois
-   points, restitution croisée en option, caution remplaçable par une assurance) sont
-   tous paramétrables.
+---
+
+## Licence et propriété
+
+Projet privé. **Bike Land et l'ensemble de ses contenus, textes, identité
+visuelle, photographies, vidéos et choix éditoriaux sont la propriété de SIBI
+IBRAHIM KHALIL.** Toute reproduction ou réutilisation, totale ou partielle, sans
+autorisation écrite préalable est interdite.
