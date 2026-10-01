@@ -214,7 +214,9 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
     "À prévoir au départ :",
     ...prevoir.map((ligne) => `  - ${ligne}`),
     "",
-    `Retrouvez votre réservation avec le lien reçu à l'enregistrement, ou sur ${lienSuivi}`,
+    `Votre réservation, votre facture et son annulation éventuelle :`,
+    lienSuivi,
+    `Ce lien vous est personnel, gardez-le.`,
     "",
     `À bientôt sur la route,`,
     `L'équipe ${site.nom}, ${site.telephone}`,
@@ -242,6 +244,11 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
             ] as [string, string][])
           : []),
       ],
+      // Sans ce bouton, la version HTML de la confirmation ne contenait
+      // aucun lien : le client qui la rouvrait pour retrouver sa
+      // réservation n'avait rien à cliquer. C'est pourtant l'email vers
+      // lequel il revient, bien plus que vers celui de la demande.
+      action: { libelle: "Voir ma réservation", url: lienSuivi },
       pied: `À prévoir au départ : ${prevoir.join(" ")}`,
     }),
   });
