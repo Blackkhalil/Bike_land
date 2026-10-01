@@ -16,24 +16,24 @@ export const metadata: Metadata = {
 
 const valeurs = [
   {
-    titre: "Peu de vélos, bien suivis",
+    titre: "Onze vélos, bien suivis",
     detail:
-      "Une poignée de machines, pas quatre-vingts. Chacune a son carnet d'entretien et son mécanicien référent. C'est ce qui nous permet de promettre qu'un vélo qui sort est un vélo qui roule.",
-  },
-  {
-    titre: "Le prix affiché est le prix payé",
-    detail:
-      "Pas de frais de dossier, pas de supplément découvert au comptoir. Le road trip est au forfait, la location libre à l'heure : dans les deux cas, le prix affiché est le prix payé.",
+      "Onze machines, pas quatre-vingts. Chacune a son carnet d'entretien et son mécanicien référent. C'est ce qui nous permet de promettre qu'un vélo qui sort est un vélo qui roule.",
   },
   {
     titre: "On répond, vraiment",
     detail:
-      "Un numéro, une personne au bout. Pendant toute la location, sept jours sur sept. C'est la moindre des choses quand on confie quelqu'un à une piste de latérite.",
+      "Un numéro, une personne au bout, du lundi au samedi. Et pendant toute la durée de votre sortie, quel que soit le jour : c'est la moindre des choses quand on confie quelqu'un à une piste de latérite.",
+  },
+  {
+    titre: "Le prix affiché est le prix payé",
+    detail:
+      "Pas de frais de dossier, pas de supplément découvert au comptoir. Le road trip est au forfait, la location libre à l'heure. La caution de la location libre vous est rendue au retour du vélo, le road trip n'en demande aucune.",
   },
   {
     titre: "Le Bénin d'abord",
     detail:
-      "Nos itinéraires sont conçus avec des gens d'ici, nos hébergements partenaires sont tenus par des familles, et le Mobile Money passe avant la carte bancaire.",
+      "Nos itinéraires sont tracés avec des gens d'ici, un coordinateur ouvre la route sur chaque sortie encadrée, et le Mobile Money passe avant tout le reste : MTN, Moov et Celtiis.",
   },
 ];
 
@@ -50,7 +50,7 @@ export default async function PageAPropos() {
         </TitreSection>
         <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-craie/70">
           Bike Land est né d&apos;un constat simple : il est plus facile de louer une voiture à
-          Cotonou qu&apos;un vélo capable de tenir quatre jours de piste. Nous avons ouvert
+          Cotonou qu&apos;un vélo en état de tenir la route des Pêches. Nous avons ouvert
           l&apos;atelier que nous aurions voulu trouver.
         </p>
       </Section>

@@ -192,9 +192,18 @@ export const faq = [
   },
 ] as const;
 
+/**
+ * Chiffres de la page « À propos ».
+ *
+ * Chacun doit être vérifiable. Une note moyenne « 4,8 / 5 sur 222
+ * locations » y figurait alors qu'aucun avis n'avait jamais été déposé :
+ * c'est le genre de chiffre qui se retourne contre celui qui l'affiche
+ * le jour où un client demande à les lire. Il a été retiré, et il ne
+ * reviendra que calculé sur les avis réels.
+ */
 export const chiffresCles = [
-  { valeur: "6", unite: "vélos", detail: "préparés et suivis un par un" },
+  { valeur: "11", unite: "vélos", detail: "préparés et suivis un par un" },
+  { valeur: "3", unite: "gammes", detail: "Classique, Premium, Prestige" },
   { valeur: "1", unite: "point", detail: "Route des Pêches, Cotonou" },
-  { valeur: "0", unite: "FCFA", detail: "de caution : les sorties sont encadrées" },
-  { valeur: "4,8", unite: "/ 5", detail: "sur 222 locations" },
+  { valeur: "1 125", unite: "FCFA", detail: "la première heure, en Classique" },
 ] as const;
