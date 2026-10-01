@@ -21,6 +21,7 @@ const liens = [
   { href: "/admin/velos", libelle: "Parc de vélos" },
   { href: "/admin/clients", libelle: "Clients" },
   { href: "/admin/avis", libelle: "Avis clients" },
+  { href: "/admin/messages", libelle: "Messages reçus" },
   { href: "/admin/parrainage", libelle: "Parrainage" },
 ];
 
