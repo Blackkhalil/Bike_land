@@ -81,6 +81,28 @@ export default function PageDonneesPersonnelles() {
         </p>
       </ArticleLegal>
 
+      <ArticleLegal titre="Mesure d'audience">
+        <p>
+          Nous comptons les pages consultées, pour savoir ce qui intéresse nos visiteurs et où
+          ils abandonnent une réservation. Cette mesure est assurée par Vercel Web Analytics,
+          l&apos;hébergeur du site.
+        </p>
+        <p>
+          <strong>Aucun cookie n&apos;est déposé</strong> et aucun identifiant durable ne vous
+          est attribué : vous n&apos;êtes pas suivi d&apos;une visite à l&apos;autre, ni d&apos;un
+          site à l&apos;autre. Ce qui est enregistré est agrégé : la page consultée, la page
+          d&apos;où vous venez, le type d&apos;appareil, le navigateur et le pays. Votre adresse
+          IP sert uniquement à déterminer le pays, puis elle est écartée ; elle n&apos;est pas
+          conservée.
+        </p>
+        <p>
+          C&apos;est aussi pour cette raison que ce site ne vous impose aucune bannière de
+          consentement : il n&apos;y a rien à consentir. Si vous souhaitez malgré tout ne pas
+          être compté, activez l&apos;option « Ne pas me pister » de votre navigateur, elle est
+          respectée.
+        </p>
+      </ArticleLegal>
+
       <ArticleLegal titre="Sécurité">
         <p>
           Les échanges sont chiffrés (HTTPS). Les liens de suivi de réservation reposent sur un

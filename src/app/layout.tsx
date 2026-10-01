@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Oswald } from "next/font/google";
 
+import { MesureAudience } from "@/components/MesureAudience";
 import { site } from "@/lib/site";
 import "./globals.css";
 
@@ -58,11 +59,24 @@ export const viewport: Viewport = {
  * L'en-tête et le pied de page appartiennent au groupe `(site)` : ils ne
  * doivent apparaître ni dans l'espace d'exploitation, ni sur la page de
  * connexion.
+ *
+ * La mesure d'audience est posée ici, donc sur toutes les pages.
+ * Volontairement : savoir que personne n'atteint l'étape du paiement
+ * vaut autant que savoir combien de gens arrivent sur l'accueil, et
+ * c'est le parcours entier qui renseigne.
+ *
+ * Elle ne pose aucun cookie et n'établit pas d'identifiant durable, ce
+ * qui lui évite la bannière de consentement. Elle est tout de même
+ * déclarée dans la page sur les données personnelles : ne pas poser de
+ * cookie ne dispense pas de dire qu'on mesure.
  */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr-BJ" className={`${oswald.variable} ${inter.variable}`}>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">
+        {children}
+        <MesureAudience />
+      </body>
     </html>
   );
 }
