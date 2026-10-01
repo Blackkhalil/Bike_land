@@ -20,14 +20,28 @@ export default function PageMentionsLegales() {
         <p>
           {site.nom}, entreprise de location de cycles.
           <br />
-          Siège : {site.adresse.ligne}, {site.adresse.ville}, {site.adresse.pays}.
-          <br />
-          Registre du commerce et du crédit mobilier (RCCM) : à compléter avant la mise en ligne.
-          <br />
-          Identifiant fiscal unique (IFU) : à compléter avant la mise en ligne.
+          Siège : {site.adresse.ville}, {site.adresse.pays}.
+          {site.immatriculation.rccm ? (
+            <>
+              <br />
+              Registre du commerce et du crédit mobilier (RCCM) : {site.immatriculation.rccm}.
+            </>
+          ) : null}
+          {site.immatriculation.ifu ? (
+            <>
+              <br />
+              Identifiant fiscal unique (IFU) : {site.immatriculation.ifu}.
+            </>
+          ) : null}
         </p>
+        {!site.immatriculation.rccm || !site.immatriculation.ifu ? (
+          <p>
+            Les numéros d&apos;immatriculation au registre du commerce et du crédit mobilier et
+            d&apos;identifiant fiscal unique seront publiés sur cette page dès leur attribution.
+          </p>
+        ) : null}
         <p>
-          Téléphone : {site.telephone} — Courriel : {site.email}
+          Téléphone : {site.telephone}. Courriel : {site.email}
         </p>
       </ArticleLegal>
 
@@ -38,15 +52,15 @@ export default function PageMentionsLegales() {
       <ArticleLegal titre="Hébergement">
         <p>
           Le site est hébergé par Vercel Inc., 340 S Lemon Ave #4133, Walnut, CA 91789, États-Unis.
-          La base de données est hébergée dans l&apos;Union européenne par le fournisseur retenu au
-          moment du déploiement.
+          La base de données est hébergée par Supabase, sur une infrastructure Amazon Web Services
+          située à Londres, au Royaume-Uni.
         </p>
       </ArticleLegal>
 
       <ArticleLegal titre="Propriété intellectuelle">
         <p>
-          L&apos;ensemble des contenus de ce site — textes, illustrations, mise en page,
-          identité visuelle — est la propriété de {site.nom}, sauf mention contraire. Toute
+          L&apos;ensemble des contenus de ce site, textes, illustrations, mise en page,
+          identité visuelle, est la propriété de {site.nom}, sauf mention contraire. Toute
           reproduction ou représentation, totale ou partielle, sans autorisation écrite préalable
           est interdite.
         </p>

@@ -6,7 +6,7 @@ import { Marque } from "@/components/Marque";
 import { emailAdminConfigure, modeAcces, sessionAdminValide } from "@/lib/admin";
 
 export const metadata: Metadata = {
-  title: "Connexion — administration",
+  title: "Connexion à l'administration",
   robots: { index: false, follow: false },
 };
 

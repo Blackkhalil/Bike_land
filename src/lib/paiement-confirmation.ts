@@ -3,18 +3,18 @@
  *
  * Deux chemins mènent ici, et c'est justement pourquoi ce module existe :
  *
- *  - le **navigateur** du client, quand la fenêtre KkiaPay lui rend la
- *    main avec un identifiant de transaction ;
- *  - le **webhook** de KkiaPay, filet de sécurité si le client ferme son
- *    navigateur avant le retour.
+ *  - le **navigateur** du client, qui demande périodiquement où en est la
+ *    validation sur le téléphone ;
+ *  - le **webhook** de SasPay, filet de sécurité si le client ferme son
+ *    navigateur avant d'avoir validé.
  *
  * Les deux doivent appliquer exactement les mêmes contrôles. Les écrire
- * deux fois reviendrait, tôt ou tard, à en oublier un d'un côté — et ce
+ * deux fois reviendrait, tôt ou tard, à en oublier un d'un côté, et ce
  * côté-là deviendrait la porte d'entrée. Les routes ne font donc que
  * traduire en HTTP l'issue renvoyée ici.
  *
- * Précondition : la transaction a déjà été vérifiée auprès de KkiaPay par
- * l'appelant (`verifierTransaction`). Ce module ne croit jamais un
+ * Précondition : le paiement a déjà été vérifié auprès de SasPay par
+ * l'appelant (`verifierPaiement`). Ce module ne croit jamais un
  * identifiant sur parole.
  */
 
@@ -22,13 +22,13 @@ import { panierExpire } from "@/data/offres";
 import { depot, TransactionDejaUtiliseeError } from "@/lib/db";
 import { envoyerConfirmation, envoyerFacture, envoyerNotificationAdmin } from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
-import { controlerTransaction, type TransactionKkiapay } from "@/lib/kkiapay";
+import { controlerPaiement, type PaiementSasPay } from "@/lib/saspay";
 import type { Reservation } from "@/lib/types";
 
 export type IssueConfirmation =
   /** Première confirmation : les emails viennent de partir. */
   | { issue: "confirmee"; reservation: Reservation }
-  /** Déjà confirmée — rejeu du webhook, ou double retour du navigateur. */
+  /** Déjà confirmée, rejeu du webhook, ou double retour du navigateur. */
   | { issue: "deja-confirmee"; reservation: Reservation }
   | { issue: "introuvable" }
   | { issue: "annulee"; reservation: Reservation }
@@ -39,20 +39,20 @@ export type IssueConfirmation =
   /** Payé trop tard : le vélo a été repris entre-temps. À rembourser. */
   | { issue: "creneau-perdu"; reservation: Reservation };
 
-export async function confirmerParKkiapay(parametres: {
+export async function confirmerParSasPay(parametres: {
   reference: string;
-  transaction: TransactionKkiapay;
+  paiement: PaiementSasPay;
   /** Lien de suivi mis dans les emails : personnel si connu, générique sinon. */
   lienSuivi: string;
 }): Promise<IssueConfirmation> {
-  const { reference, transaction, lienSuivi } = parametres;
+  const { reference, paiement, lienSuivi } = parametres;
 
   const reservation = await depot.trouverReservationParReference(reference);
   if (!reservation) return { issue: "introuvable" };
 
   if (reservation.statut === "ANNULEE") {
     console.error(
-      `[paiement] ${reference} : paiement ${transaction.transactionId} reçu sur une réservation annulée. Remboursement à faire.`,
+      `[paiement] ${reference} : paiement ${paiement.id} reçu sur une réservation annulée. Remboursement à faire.`,
     );
     return { issue: "annulee", reservation };
   }
@@ -63,20 +63,17 @@ export async function confirmerParKkiapay(parametres: {
     const dejaEnregistre = reservation.paiements.find(
       (paiement) => !paiement.estCaution,
     )?.referenceFournisseur;
-    if (dejaEnregistre && dejaEnregistre !== transaction.transactionId) {
+    if (dejaEnregistre && dejaEnregistre !== paiement.id) {
       console.error(
-        `[paiement] ${reference} : second paiement ${transaction.transactionId} alors que ${dejaEnregistre} est déjà encaissé. Remboursement à faire.`,
+        `[paiement] ${reference} : second paiement ${paiement.id} alors que ${dejaEnregistre} est déjà encaissé. Remboursement à faire.`,
       );
     }
     return { issue: "deja-confirmee", reservation };
   }
 
-  const controle = controlerTransaction(transaction, {
-    reference,
-    montantXof: reservation.totalXof,
-  });
+  const controle = controlerPaiement(paiement, { montantXof: reservation.totalXof });
   if (!controle.valide) {
-    console.warn(`[paiement] ${reference} : transaction refusée — ${controle.raison}`);
+    console.warn(`[paiement] ${reference} : transaction refusée, ${controle.raison}`);
     return { issue: "refusee", raison: controle.raison };
   }
 
@@ -87,10 +84,16 @@ export async function confirmerParKkiapay(parametres: {
     const ligne = reservation.lignes[0];
     const libre =
       ligne &&
-      (await depot.estDisponible(ligne.veloId, reservation.dateDebut, reservation.dateFin));
+      (await depot.estDisponible(
+        ligne.veloId,
+        reservation.dateDebut,
+        reservation.dateFin,
+        reservation.heureDebut,
+        reservation.heureFin,
+      ));
     if (!libre) {
       console.error(
-        `[paiement] ${reference} : paiement ${transaction.transactionId} encaissé hors délai, le vélo n'est plus disponible. Remboursement à faire.`,
+        `[paiement] ${reference} : paiement ${paiement.id} encaissé hors délai, le vélo n'est plus disponible. Remboursement à faire.`,
       );
       return { issue: "creneau-perdu", reservation };
     }
@@ -98,11 +101,11 @@ export async function confirmerParKkiapay(parametres: {
 
   let resultat;
   try {
-    resultat = await depot.confirmerPaiement(reference, transaction.transactionId);
+    resultat = await depot.confirmerPaiement(reference, paiement.id);
   } catch (erreur) {
     if (erreur instanceof TransactionDejaUtiliseeError) {
       console.warn(
-        `[paiement] ${reference} : la transaction ${transaction.transactionId} a déjà servi ailleurs.`,
+        `[paiement] ${reference} : le paiement ${paiement.id} a déjà servi ailleurs.`,
       );
       return { issue: "transaction-deja-utilisee" };
     }

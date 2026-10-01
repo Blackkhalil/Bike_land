@@ -2,26 +2,26 @@
 
 import { useMemo, useState } from "react";
 
-import {
-  ajouterJours,
-  aujourdhui,
-  listerJours,
-  periodesSeChevauchent,
-  versISO,
-  type DateISO,
-} from "@/lib/dates";
+import { ajouterJours, aujourdhui, listerJours, versISO, type DateISO } from "@/lib/dates";
+import { FERMETURE_HEURE, OUVERTURE_HEURE } from "@/data/offres";
 
 /**
- * Calendrier de sélection d'une période de location.
+ * Calendrier de sélection du jour de location.
  *
- * Les jours déjà pris pour ce vélo précis sont désactivés : c'est la
- * traduction visible de la disponibilité temps réel du §2.1. Une période
- * qui enjamberait un jour occupé est refusée au moment du second clic.
+ * Il ne sert qu'à la location libre : le road trip part à l'un des deux
+ * créneaux encadrés du week-end, qui se choisissent dans le tunnel.
+ *
+ * Depuis que la disponibilité se compte à l'heure, un jour n'est barré
+ * que lorsqu'il est réellement plein. Une sortie de 8 h à 11 h laisse le
+ * vélo libre l'après-midi : le barrer serait refuser une location qui
+ * peut parfaitement avoir lieu.
  */
 
 export interface PeriodeOccupee {
   debut: DateISO;
   fin: DateISO;
+  heureDebut: number;
+  heureFin: number;
 }
 
 const JOURS = ["L", "M", "M", "J", "V", "S", "D"];
@@ -43,13 +43,37 @@ export function Calendrier({
   const [moisAffiche, setMoisAffiche] = useState(() => premierJour.slice(0, 7));
   const [survol, setSurvol] = useState<DateISO | null>(null);
 
-  const joursOccupes = useMemo(() => {
-    const ensemble = new Set<DateISO>();
+  /**
+   * Pour chaque jour touché par une réservation, les heures déjà prises.
+   *
+   * On raisonne sur une grille d'heures plutôt que sur un simple drapeau :
+   * c'est ce qui permet de distinguer « il reste de la place » de « la
+   * journée est pleine ».
+   */
+  const heuresPrises = useMemo(() => {
+    const parJour = new Map<DateISO, boolean[]>();
     for (const periode of periodesOccupees) {
-      for (const jour of listerJours(periode.debut, periode.fin)) ensemble.add(jour);
+      for (const jour of listerJours(periode.debut, periode.fin)) {
+        const grille =
+          parJour.get(jour) ?? new Array(FERMETURE_HEURE - OUVERTURE_HEURE).fill(false);
+        for (let h = periode.heureDebut; h < periode.heureFin; h += 1) {
+          const index = h - OUVERTURE_HEURE;
+          if (index >= 0 && index < grille.length) grille[index] = true;
+        }
+        parJour.set(jour, grille);
+      }
+    }
+    return parJour;
+  }, [periodesOccupees]);
+
+  /** Jours dont plus aucune heure n'est libre : eux seuls sont barrés. */
+  const joursPleins = useMemo(() => {
+    const ensemble = new Set<DateISO>();
+    for (const [jour, grille] of heuresPrises) {
+      if (grille.every(Boolean)) ensemble.add(jour);
     }
     return ensemble;
-  }, [periodesOccupees]);
+  }, [heuresPrises]);
 
   const mois = useMemo(
     () => Array.from({ length: nombreDeMois }, (_, decalage) => decalerMois(moisAffiche, decalage)),
@@ -59,23 +83,10 @@ export function Calendrier({
   const finProvisoire = fin ?? (debut && survol && survol > debut ? survol : null);
 
   const clique = (jour: DateISO) => {
-    if (joursOccupes.has(jour) || jour < premierJour) return;
-
-    // Premier clic, ou redémarrage d'une sélection : on pose le départ.
-    if (!debut || fin || jour < debut) {
-      onChange(jour, null);
-      return;
-    }
-
-    // Second clic : refus si un jour occupé se trouve dans l'intervalle.
-    const conflit = periodesOccupees.some((periode) =>
-      periodesSeChevauchent(debut, jour, periode.debut, periode.fin),
-    );
-    if (conflit) {
-      onChange(jour, null);
-      return;
-    }
-    onChange(debut, jour);
+    if (joursPleins.has(jour) || jour < premierJour) return;
+    // Une sortie tient dans la journée : il n'y a qu'un jour à poser,
+    // l'heure se choisit ensuite dans le tunnel.
+    onChange(jour, null);
   };
 
   const peutReculer = moisAffiche > premierJour.slice(0, 7);
@@ -92,7 +103,7 @@ export function Calendrier({
         >
           <span aria-hidden="true">‹</span>
         </button>
-        <p className="etiquette opacity-75">Choisissez vos dates</p>
+        <p className="etiquette opacity-75">Choisissez votre jour</p>
         <button
           type="button"
           onClick={() => setMoisAffiche(decalerMois(moisAffiche, 1))}
@@ -123,7 +134,10 @@ export function Calendrier({
                 if (!jour) return <span key={`vide-${index}`} />;
 
                 const passe = jour < premierJour;
-                const occupe = joursOccupes.has(jour);
+                const plein = joursPleins.has(jour);
+                // Journée entamée mais pas pleine : on la propose quand
+                // même, en signalant qu'il y reste moins de choix.
+                const entame = !plein && heuresPrises.has(jour);
                 const estDebut = jour === debut;
                 const estFin = jour === fin;
                 const dansPlage =
@@ -132,7 +146,7 @@ export function Calendrier({
                   jour > debut &&
                   jour < finProvisoire;
 
-                const indisponible = passe || occupe;
+                const indisponible = passe || plein;
 
                 return (
                   <button
@@ -149,7 +163,8 @@ export function Calendrier({
                       indisponible
                         ? "cursor-not-allowed text-noir-piste/25"
                         : "hover:bg-orange-signal/20",
-                      occupe && !passe ? "line-through decoration-orange-signal/60" : "",
+                      plein && !passe ? "line-through decoration-orange-signal/60" : "",
+                      entame && !passe ? "text-orange-sourd" : "",
                       estDebut || estFin ? "bg-noir-piste font-semibold text-craie hover:bg-noir-piste" : "",
                       dansPlage ? "bg-orange-signal/20 text-orange-sourd" : "",
                     ].join(" ")}
@@ -165,14 +180,15 @@ export function Calendrier({
 
       <p className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.72rem] text-gris-cadre">
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-noir-piste" /> Vos dates
+          <span className="h-3 w-3 rounded-full bg-noir-piste" /> Votre jour
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-3 w-3 rounded-full bg-orange-signal/20" /> Période retenue
+          <span className="h-3 w-3 rounded-full border border-noir-piste/25 text-orange-sourd" />{" "}
+          Partiellement réservé
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-full border border-noir-piste/25 line-through decoration-orange-signal" />{" "}
-          Déjà loué
+          Journée complète
         </span>
       </p>
     </div>

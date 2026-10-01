@@ -6,7 +6,7 @@
  * teinte ET en clarté, une rampe séquentielle monotone d'une seule
  * teinte, et jamais de sens porté par la seule couleur.
  *
- * ATTENTION — ces valeurs n'ont PAS été repassées dans le validateur
+ * ATTENTION, ces valeurs n'ont PAS été repassées dans le validateur
  * (bandes de clarté, plancher de chroma, séparation sous protanopie et
  * deutéranopie). Elles ont été choisies pour préserver les propriétés
  * qui avaient été validées :

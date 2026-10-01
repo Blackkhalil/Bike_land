@@ -5,6 +5,12 @@ import { redirect } from "next/navigation";
 import { TunnelReservation } from "@/components/reservation/TunnelReservation";
 import { Section, TitreSection } from "@/components/ui";
 import { optionsLocation } from "@/data/catalogue";
+import {
+  CRENEAUX_ROAD_TRIP,
+  creneauxDisponibles,
+  DUREE_ROAD_TRIP_HEURES,
+  heuresDepartPossibles,
+} from "@/data/offres";
 import type { CodeOffre } from "@/lib/types";
 import { depot } from "@/lib/db";
 import { aujourdhui, estDateISOValide } from "@/lib/dates";
@@ -36,6 +42,20 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   const debut = typeof parametres.debut === "string" ? parametres.debut : null;
   const fin = typeof parametres.fin === "string" ? parametres.fin : null;
 
+  // Heure de départ. Le road trip part au créneau encadré ; la location
+  // libre accepte l'heure passée dans l'URL, à condition qu'elle laisse
+  // le temps de rendre le vélo avant la fermeture.
+  const heureBrute = Number(parametres.heure);
+  const departsPossibles = heuresDepartPossibles(dureeHeures);
+  const heureDebut =
+    offre === "road-trip"
+      ? CRENEAUX_ROAD_TRIP[0].heureDebut
+      : departsPossibles.includes(heureBrute)
+        ? heureBrute
+        : (departsPossibles[0] ?? CRENEAUX_ROAD_TRIP[0].heureDebut);
+  const heureFin =
+    heureDebut + (offre === "road-trip" ? DUREE_ROAD_TRIP_HEURES : dureeHeures);
+
   // Sans période valide, il n'y a rien à réserver : on renvoie au catalogue
   // plutôt que d'afficher un tunnel vide.
   if (
@@ -50,11 +70,16 @@ export default async function PageReservation({ searchParams }: { searchParams: 
     redirect("/velos");
   }
 
+  // Les créneaux encadrés se calculent ici, sur le serveur : le tunnel
+  // est un composant client, et y appeler `new Date()` donnerait une
+  // valeur différente de celle du rendu serveur.
+  const creneaux = creneauxDisponibles();
+
   const velo = await depot.trouverVeloParSlug(slug);
   if (!velo) redirect("/velos");
 
   const [disponible, points] = await Promise.all([
-    depot.estDisponible(velo.id, debut, fin),
+    depot.estDisponible(velo.id, debut, fin, heureDebut, heureFin),
     depot.listerPointsDeRetrait(),
   ]);
 
@@ -78,6 +103,8 @@ export default async function PageReservation({ searchParams }: { searchParams: 
             nombrePersonnes={nombrePersonnes}
             dateDebut={debut}
             dateFin={fin}
+            heureDebut={heureDebut}
+            creneaux={creneaux}
             optionsInitiales={optionsDemandees}
           />
         </div>
@@ -85,14 +112,14 @@ export default async function PageReservation({ searchParams }: { searchParams: 
         <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
           <p className="titre-editorial text-[1.4rem]">Ce vélo n&apos;est plus libre</p>
           <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
-            Quelqu&apos;un a réservé le {velo.nom} sur cette période pendant que vous
+            Quelqu&apos;un a réservé le {velo.nom} sur ce créneau pendant que vous
             choisissiez vos options. Aucun montant n&apos;a été prélevé.
           </p>
           <Link
             href={`/velos?debut=${debut}&fin=${fin}`}
             className="mt-6 inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
           >
-            Voir les vélos libres sur ces dates
+            Voir les vélos libres sur ce créneau
           </Link>
         </div>
       )}

@@ -7,6 +7,7 @@
  */
 
 import type { DateISO } from "./dates";
+import type { GammeVelo } from "@/data/offres";
 
 /**
  * Les deux offres. Definie ici et non dans data/offres.ts pour que la
@@ -14,7 +15,9 @@ import type { DateISO } from "./dates";
  */
 export type CodeOffre = "road-trip" | "location-libre";
 
-export type CategorieVelo = "RANDONNEUR" | "GRAVEL" | "VAE" | "VTC" | "TANDEM";
+export type { GammeVelo };
+
+export type CategorieVelo = "VTT" | "RANDONNEUR" | "GRAVEL" | "VAE" | "VTC" | "TANDEM";
 export type TailleVelo = "S" | "M" | "L" | "XL";
 export type StatutVelo = "DISPONIBLE" | "EN_LOCATION" | "MAINTENANCE" | "RETIRE";
 
@@ -31,8 +34,15 @@ export type StatutReservation =
  * `ESPECES` n'est pas proposé en ligne : il ne sert qu'aux encaissements
  * faits de la main à la main au point de départ.
  */
-export type MoyenPaiement = "MTN_MONEY" | "MOOV_MONEY" | "ESPECES";
-export type FournisseurPaiement = "FEDAPAY" | "KKIAPAY" | "ESPECES";
+export type MoyenPaiement = "MTN_MONEY" | "MOOV_MONEY" | "CELTIIS_CASH" | "ESPECES";
+/**
+ * Agrégateurs de paiement.
+ *
+ * SasPay est le seul actif. FEDAPAY et KKIAPAY restent déclarés pour les
+ * paiements déjà enregistrés sous ces noms : les retirer rendrait
+ * illisibles des factures déjà envoyées.
+ */
+export type FournisseurPaiement = "FEDAPAY" | "KKIAPAY" | "SASPAY" | "ESPECES";
 export type StatutPaiement = "INITIE" | "REUSSI" | "ECHOUE" | "REMBOURSE";
 
 export interface PointDeRetrait {
@@ -49,6 +59,8 @@ export interface Velo {
   slug: string;
   nom: string;
   categorie: CategorieVelo;
+  /** Gamme commerciale : c'est elle qui commande le prix. */
+  gamme: GammeVelo;
   taille: TailleVelo;
   statut: StatutVelo;
   accroche: string;
@@ -72,6 +84,14 @@ export interface Velo {
    * schéma juste qu'une photo d'un autre vélo.
    */
   photo?: string;
+  /**
+   * Presentation video du velo, servie depuis `public/images`.
+   *
+   * Quand elle existe, elle remplace la photo sur la fiche : douze
+   * secondes de tour complet valent mieux qu'un cliche fixe pour juger
+   * d'une machine qu'on va louer.
+   */
+  video?: string;
 }
 
 export interface OptionLocation {
@@ -136,6 +156,9 @@ export interface Reservation {
   pointDeRetraitId: string;
   dateDebut: DateISO;
   dateFin: DateISO;
+  /** Heures de la sortie. 8 h-11 h pour un road trip, variables sinon. */
+  heureDebut: number;
+  heureFin: number;
   jours: number;
   lignes: LigneReservation[];
   options: OptionReservee[];
@@ -151,17 +174,67 @@ export interface Reservation {
   annuleLe?: string;
   /** Note laissée après la location, quand le module d'avis est activé. */
   note?: number;
+  /** Code de parrainage utilisé, s'il y en a un. */
+  codeParrainage?: string;
 }
 
-export interface Avis {
+/**
+ * Un avis laissé par un client après sa sortie.
+ *
+ * Distinct de `Avis`, qui est le témoignage éditorial du site : celui-ci
+ * est rattaché à une réservation réelle, une seule par sortie, et ne
+ * paraît qu'une fois relu. Sans cette relecture, la page d'un vélo
+ * deviendrait le premier endroit venu pour écrire n'importe quoi.
+ */
+/** Un partenaire qui nous apporte des clients par son code de parrainage. */
+export interface Partenaire {
+  id: string;
+  nom: string;
+  /** Téléphone ou email : à qui l'on parle chez ce partenaire. */
+  contact?: string;
+  notes?: string;
+  actif: boolean;
+  creeLe: string;
+}
+
+/**
+ * Ce que le partenaire a apporté, et ce qu'on lui doit.
+ *
+ * Le chiffre d'affaires compté ici est celui **après** réduction : c'est
+ * ce que ces clients ont réellement payé, et donc ce que le partenariat a
+ * rapporté. Y mettre le montant avant réduction gonflerait
+ * artificiellement le rendement de chaque partenaire.
+ *
+ * `commissionDueXof` est la somme des commissions figées à chaque
+ * utilisation. Elle ne se recalcule pas : le taux est une politique, et
+ * appliquer le taux d'aujourd'hui à une réservation de l'an dernier
+ * fausserait l'historique des versements.
+ */
+export interface StatistiquesPartenaire {
+  partenaire: Partenaire;
+  codes: string[];
+  /** Nombre de clients venus par ce partenaire. */
+  utilisations: number;
+  reductionsAccordeesXof: number;
+  chiffreAffairesXof: number;
+  /** Commission à verser au partenaire. */
+  commissionDueXof: number;
+  derniereUtilisation?: string;
+}
+
+export interface AvisClient {
   id: string;
   veloId: string;
+  veloNom: string;
+  /** Référence de la réservation : un avis par sortie, pas un de plus. */
+  reference: string;
   auteur: string;
-  ville: string;
   note: number;
-  titre: string;
-  commentaire: string;
-  date: string;
+  titre?: string;
+  commentaire?: string;
+  /** Un avis n'apparaît sur le site qu'une fois relu et publié. */
+  publie: boolean;
+  creeLe: string;
 }
 
 export interface Itineraire {

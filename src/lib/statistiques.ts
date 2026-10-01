@@ -17,6 +17,7 @@ import {
   type DateISO,
 } from "./dates";
 import { OFFRES } from "@/data/offres";
+import { fraisEncaissement } from "./paiement";
 import type { Client, CodeOffre, MoyenPaiement, Reservation, Velo } from "./types";
 
 export type Granularite = "jour" | "semaine" | "mois" | "annee";
@@ -42,7 +43,7 @@ export interface IndicateurCompare {
 }
 
 export interface Statistiques {
-  /** Période demandée, telle quelle (le mois entier, l'année entière…). */
+  /** Période demandée, telle quelle (le mois entier, l'année entière, etc.). */
   periode: Periode;
   /**
    * Fenêtre réellement mesurée : la période demandée tronquée à
@@ -55,12 +56,26 @@ export interface Statistiques {
 
   // --- Indicateurs financiers
   chiffreAffaires: IndicateurCompare;
+  /**
+   * Frais d'encaissement retenus par SasPay sur la période.
+   *
+   * Ils sont compris dans les tarifs affichés : le client paie le prix
+   * annoncé, et SasPay en prélève sa part avant que l'argent arrive. Le
+   * chiffre d'affaires ci-dessus est donc ce que les clients ont payé, pas
+   * ce qui est arrivé dans le portefeuille, d'où cette ligne.
+   *
+   * Les frais de retrait n'y sont pas : ils se paient par versement, pas
+   * par réservation.
+   */
+  fraisRetenus: number;
+  /** Ce qui arrive dans le portefeuille SasPay, frais d'encaissement déduits. */
+  encaisseNet: number;
   revenuMoyenParReservation: IndicateurCompare;
   repartitionPaiements: Serie[];
   /**
    * Cautions actuellement entre les mains du coordinateur : locations
    * libres parties et pas encore rendues. C'est de l'argent liquide à
-   * rendre, pas du chiffre d'affaires — d'où sa place à part.
+   * rendre, pas du chiffre d'affaires, d'où sa place à part.
    */
   cautionsEnCirculation: number;
 
@@ -106,6 +121,7 @@ export interface Statistiques {
 const libellesMoyens: Record<MoyenPaiement, string> = {
   MTN_MONEY: "MTN MoMo",
   MOOV_MONEY: "Moov Money",
+  CELTIIS_CASH: "Celtiis Cash",
   ESPECES: "Espèces",
 };
 
@@ -185,6 +201,13 @@ export function calculerStatistiques(
   const ca = somme(facturees.map((r) => r.totalXof));
   const caAvant = somme(factureesAvant.map((r) => r.totalXof));
 
+  // Seuls les frais d'encaissement sont comptés ici : ils se paient sur
+  // chaque paiement, donc réservation par réservation. Les frais de
+  // retrait, eux, dépendent du rythme des versements et non des
+  // réservations, les mêler donnerait un chiffre qu'aucun relevé ne
+  // confirmerait jamais.
+  const fraisRetenus = somme(facturees.map((r) => fraisEncaissement(r.totalXof)));
+
   const moyenne = facturees.length ? Math.round(ca / facturees.length) : 0;
   const moyenneAvant = factureesAvant.length ? Math.round(caAvant / factureesAvant.length) : 0;
 
@@ -214,7 +237,7 @@ export function calculerStatistiques(
 
   // --- Cautions en circulation : locations libres sorties et pas encore
   //     rendues. Cet argent est en espèces chez le coordinateur, il n'est
-  //     jamais encaissé en ligne — ce n'est donc pas du chiffre d'affaires.
+  //     jamais encaissé en ligne, ce n'est donc pas du chiffre d'affaires.
   const cautionsEnCirculation = somme(
     reservations
       .filter((r) => r.statut === "EN_COURS" && r.offre === "location-libre")
@@ -350,6 +373,8 @@ export function calculerStatistiques(
     periodeEnCours,
     periodePrecedente: precedente,
     chiffreAffaires: comparer(ca, caAvant),
+    fraisRetenus,
+    encaisseNet: ca - fraisRetenus,
     revenuMoyenParReservation: comparer(moyenne, moyenneAvant),
     repartitionPaiements,
     cautionsEnCirculation,
@@ -402,8 +427,8 @@ function etiquetteMois(mois: string): string {
 /**
  * Export comptable : une ligne par réservation, séparateur point-virgule.
  *
- * La colonne `jours` a été retirée — toutes les sorties tiennent dans la
- * journée — au profit de ce qui détermine réellement le montant :
+ * La colonne `jours` a été retirée, toutes les sorties tiennent dans la
+ * journée, au profit de ce qui détermine réellement le montant :
  * la formule, le nombre de participants (road trip) et la durée en heures
  * (location libre).
  *

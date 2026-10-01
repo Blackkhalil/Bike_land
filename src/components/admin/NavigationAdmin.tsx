@@ -20,6 +20,8 @@ const liens = [
   { href: "/admin/reservations", libelle: "Réservations" },
   { href: "/admin/velos", libelle: "Parc de vélos" },
   { href: "/admin/clients", libelle: "Clients" },
+  { href: "/admin/avis", libelle: "Avis clients" },
+  { href: "/admin/parrainage", libelle: "Parrainage" },
 ];
 
 export function NavigationAdmin({

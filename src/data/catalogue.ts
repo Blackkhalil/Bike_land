@@ -14,7 +14,7 @@ export const pointsDeRetrait: PointDeRetrait[] = [
     nom: "Atelier Route des Pêches",
     ville: "Cotonou",
     adresse: "Route des Pêches, Fidjrossè, Cotonou",
-    horaires: "Actuellement 2 créneaux de sortie par semaine — horaires confirmés par téléphone",
+    horaires: "Actuellement 2 créneaux de sortie par semaine, horaires confirmés par téléphone",
     actif: true,
   },
   // Points « à venir » avec l'ouverture des road trips longue distance :
@@ -25,7 +25,7 @@ export const pointsDeRetrait: PointDeRetrait[] = [
     nom: "Relais Route des Pêches",
     ville: "Ouidah",
     adresse: "Boulevard de la Plage, face au marché de Kpassè",
-    horaires: "Tous les jours, 8 h – 18 h",
+    horaires: "Tous les jours, 8 h - 18 h",
     actif: false,
   },
   {
@@ -33,7 +33,7 @@ export const pointsDeRetrait: PointDeRetrait[] = [
     nom: "Base Atacora",
     ville: "Natitingou",
     adresse: "Quartier Yimporima, route de Boukoumbé",
-    horaires: "Lun – sam, 7 h 30 – 18 h",
+    horaires: "Lun - sam, 7 h 30 - 18 h",
     actif: false,
   },
 ];
@@ -48,174 +48,309 @@ const equipementCommun = [
   "Eau de coco offerte au départ",
 ];
 
+/**
+ * Le parc, tel que les vidéos produit le décrivent.
+ *
+ * Chaque vélo porte sa présentation filmée, et c'est elle qui fait foi :
+ * les caractéristiques ci-dessous, suspension, freinage, vitesses,
+ * roues, coloris, sont relevées sur la fiche technique affichée dans la
+ * vidéo, pas inventées.
+ *
+ * **Trois champs restent à confirmer** : `poidsKg`, `chargeMaxKg` et
+ * `autonomieConseilleeKm`. Les vidéos ne les donnent pas. Les valeurs
+ * portées ici sont celles, courantes, d'un VTT de ce type ; elles sont
+ * plausibles mais non mesurées.
+ *
+ * ── Répartition en gammes ────────────────────────────────────────────
+ *
+ * Elle est donnée par l'exploitant, et suit le nom des fichiers vidéo :
+ *
+ *  - **Classique** : les six machines de la série `bikeland_0X`.
+ *  - **Premium** : les quatre `prenium-*`.
+ *  - **Prestige** : une seule, la N° 1 à double frein à disque, jantes
+ *    bâton magnésium et cadre acier haute résistance.
+ *
+ * L'équipement seul aurait suggéré un autre découpage, Soleil, Flamme
+ * et Onyx sont tout-suspendus à freins à disque. C'est la décision
+ * commerciale qui tranche, pas la fiche technique.
+ *
+ * Si cette répartition ne correspond pas à votre intention commerciale,
+ * c'est le champ `gamme` de chaque vélo qu'il faut changer, rien
+ * d'autre : les prix en découlent (cf. src/data/offres.ts).
+ */
 export const velos: Velo[] = [
+  /* ─────────────────────────────────────────────────────── Classique */
   {
-    id: "velo-atacora",
-    slug: "atacora-randonneur",
-    photo: "/images/IMG_6168.PNG",
-    nom: "Atacora",
-    categorie: "RANDONNEUR",
-    taille: "L",
+    id: "velo-emeraude",
+    slug: "emeraude",
+    video: "/images/bikeland_01_emeraude.mp4",
+    photo: "/images/affiches/bikeland_01_emeraude.jpg",
+    nom: "Émeraude",
+    categorie: "VTT",
+    gamme: "CLASSIQUE",
+    taille: "M",
     statut: "DISPONIBLE",
-    accroche: "Le tout-suspendu noir, confortable sur les pistes défoncées",
+    accroche: "Le VTT dame, vert et noir, à cadre surbaissé",
     description:
-      "VTT tout-suspendu : une suspension à l'avant et une à l'arrière, qui encaissent les nids-de-poule et les racines de la piste littorale sans vous secouer. Freins à disque aux deux roues, pneus larges à crampons, garde-boue avant et arrière pour rouler après la pluie. C'est le vélo à prendre si le confort passe avant tout.",
+      "Un VTT dame à fourche rigide et cadre surbaissé : on l'enjambe sans lever la jambe, ce qui change tout en jupe ou en pagne. Vingt et une vitesses pour négocier les faux plats de la route des Pêches, freinage V-Brake sur jante, roues de 26 pouces. Le vélo à prendre pour une première sortie.",
+    poidsKg: 15,
+    vitesses: 21,
+    chargeMaxKg: 100,
+    autonomieConseilleeKm: 30,
+    equipementInclus: [...equipementCommun, "Cadre surbaissé", "Fourche rigide"],
+    pointDeRetraitId: "pt-cotonou",
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#1f7a52", "#e0dcd3"],
+  },
+  {
+    id: "velo-rubis",
+    slug: "rubis",
+    video: "/images/bikeland_02_rubis.mp4",
+    photo: "/images/affiches/bikeland_02_rubis.jpg",
+    nom: "Rubis",
+    categorie: "VTT",
+    gamme: "CLASSIQUE",
+    taille: "M",
+    statut: "DISPONIBLE",
+    accroche: "Le semi-rigide noir et bordeaux, souple à l'avant",
+    description:
+      "Semi-rigide : une fourche suspendue à l'avant, un cadre rigide à l'arrière. C'est le bon compromis pour la piste littorale : assez souple pour encaisser les nids-de-poule, assez ferme pour ne pas pomper au pédalage. Vingt et une vitesses, freinage V-Brake, roues de 26 pouces.",
+    poidsKg: 15.5,
+    vitesses: 21,
+    chargeMaxKg: 110,
+    autonomieConseilleeKm: 35,
+    equipementInclus: [...equipementCommun, "Fourche suspendue avant"],
+    pointDeRetraitId: "pt-cotonou",
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#7a1f2e", "#e0dcd3"],
+  },
+  {
+    id: "velo-glacier",
+    slug: "glacier",
+    video: "/images/bikeland_04_glacier.mp4",
+    photo: "/images/affiches/bikeland_04_glacier.jpg",
+    nom: "Glacier",
+    categorie: "VTT",
+    gamme: "CLASSIQUE",
+    taille: "S",
+    statut: "DISPONIBLE",
+    accroche: "Le petit format en 24 pouces, pour les gabarits légers",
+    description:
+      "Le seul vélo du parc en roues de 24 pouces : plus maniable, plus bas, taillé pour les gabarits légers et les adolescents. Cadre entièrement rigide et sept vitesses, de quoi rouler simplement, sans rien à régler. Freinage V-Brake sur jante.",
+    poidsKg: 13,
+    vitesses: 7,
+    chargeMaxKg: 85,
+    autonomieConseilleeKm: 25,
+    equipementInclus: [...equipementCommun, "Roues 24 pouces", "Cadre rigide"],
+    pointDeRetraitId: "pt-cotonou",
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#2f6fb5", "#e0dcd3"],
+  },
+
+  /* ───────────────────────────────────────────────────────── Premium */
+  {
+    id: "velo-soleil",
+    slug: "soleil",
+    video: "/images/bikeland_03_soleil.mp4",
+    photo: "/images/affiches/bikeland_03_soleil.jpg",
+    nom: "Soleil",
+    categorie: "VTT",
+    gamme: "CLASSIQUE",
+    taille: "M",
+    statut: "DISPONIBLE",
+    accroche: "Le tout-suspendu jaune, freins à disque",
+    description:
+      "Tout-suspendu : une suspension à l'avant, une à l'arrière. La piste défoncée cesse d'être une épreuve. Freins à disque aux deux roues, qui mordent même après la pluie, là où un patin glisse. Vingt et une vitesses, roues de 26 pouces. Jaune, difficile à manquer.",
     poidsKg: 16.5,
     vitesses: 21,
     chargeMaxKg: 110,
-    autonomieConseilleeKm: 40,
+    autonomieConseilleeKm: 45,
     equipementInclus: [...equipementCommun, "Suspension avant et arrière", "Freins à disque"],
     pointDeRetraitId: "pt-cotonou",
-    noteMoyenne: 4.8,
-    nombreAvis: 34,
-    teintes: ["#f25c05", "#e0dcd3"],
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#e8a317", "#e0dcd3"],
   },
   {
-    id: "velo-oueme",
-    slug: "oueme-randonneur",
-    photo: "/images/IMG_6169.PNG",
-    nom: "Ouémé",
-    categorie: "RANDONNEUR",
+    id: "velo-flamme",
+    slug: "flamme",
+    video: "/images/bikeland_05_flamme.mp4",
+    photo: "/images/affiches/bikeland_05_flamme.jpg",
+    nom: "Flamme",
+    categorie: "VTT",
+    gamme: "CLASSIQUE",
     taille: "M",
     statut: "DISPONIBLE",
-    accroche: "Bordeaux et noir, nerveux et simple à vivre",
+    accroche: "Le tout-suspendu rouge et jaune, freins à disque",
     description:
-      "VTT semi-rigide : suspension à l'avant seulement, cadre rigide à l'arrière. Résultat, il avance mieux que le tout-suspendu dès que la piste est roulante, et il demande moins d'entretien. Garde-boue aux deux roues, béquille, poignées vertes pour le reconnaître de loin.",
-    poidsKg: 14.5,
+      "Même architecture que le Soleil, double suspension et freins à disque, dans une livrée rouge et jaune. Vingt et une vitesses, roues de 26 pouces. Le vélo du groupe qu'on repère de loin sur la piste.",
+    poidsKg: 16.5,
     vitesses: 21,
     chargeMaxKg: 110,
     autonomieConseilleeKm: 45,
-    equipementInclus: [...equipementCommun, "Suspension avant", "Béquille"],
-    pointDeRetraitId: "pt-cotonou",
-    noteMoyenne: 4.7,
-    nombreAvis: 21,
-    teintes: ["#c44a04", "#f2efe9"],
-  },
-  {
-    id: "velo-pendjari",
-    slug: "pendjari-gravel",
-    photo: "/images/IMG_6170.PNG",
-    nom: "Pendjari",
-    categorie: "GRAVEL",
-    taille: "L",
-    statut: "DISPONIBLE",
-    accroche: "Rouge et jaune, celui qu'on repère sur toutes les photos",
-    description:
-      "VTT tout-suspendu, en rouge et jaune : impossible à confondre, et c'est souvent celui qu'on réserve pour les photos de sortie. Suspension avant et arrière, freins à disque, pneus à crampons larges. Aussi confortable que l'Atacora, avec une position un peu plus relevée.",
-    poidsKg: 16.8,
-    vitesses: 21,
-    chargeMaxKg: 110,
-    autonomieConseilleeKm: 40,
     equipementInclus: [...equipementCommun, "Suspension avant et arrière", "Freins à disque"],
     pointDeRetraitId: "pt-cotonou",
-    noteMoyenne: 4.9,
-    nombreAvis: 27,
-    teintes: ["#1f6f5c", "#e0dcd3"],
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#c8301f", "#e0dcd3"],
   },
   {
-    id: "velo-tanougou",
-    slug: "tanougou-gravel",
-    photo: "/images/IMG_6171.PNG",
-    nom: "Tanougou",
-    categorie: "GRAVEL",
-    taille: "M",
-    statut: "DISPONIBLE",
-    accroche: "Le jaune, taille moyenne, tout-suspendu",
-    description:
-      "Même châssis tout-suspendu que le Pendjari, en jaune et en taille moyenne : il convient aux gabarits autour d'1,70 m. Suspension aux deux extrémités, freins à disque, garde-boue et béquille. Le bon choix pour une première sortie sur la route des Pêches.",
-    poidsKg: 16.2,
-    vitesses: 21,
-    chargeMaxKg: 105,
-    autonomieConseilleeKm: 40,
-    equipementInclus: [...equipementCommun, "Suspension avant et arrière", "Béquille"],
-    pointDeRetraitId: "pt-cotonou",
-    noteMoyenne: 4.6,
-    nombreAvis: 18,
-    teintes: ["#268a72", "#f2efe9"],
-  },
-  {
-    id: "velo-cotonou",
-    slug: "cotonou-vtc",
-    photo: "/images/IMG_6172.PNG",
-    nom: "Cotonou",
-    categorie: "VTC",
-    taille: "S",
-    statut: "DISPONIBLE",
-    accroche: "Noir et bleu, léger, parfait pour débuter",
-    description:
-      "VTT semi-rigide léger, en noir et bleu. Sans suspension arrière, il est plus facile à relancer et plus simple à entretenir : c'est le vélo que nous conseillons pour une première heure de location libre. Garde-boue aux deux roues, porte-bidon sur le cadre.",
-    poidsKg: 14.0,
-    vitesses: 21,
-    chargeMaxKg: 100,
-    autonomieConseilleeKm: 45,
-    equipementInclus: [...equipementCommun, "Suspension avant", "Porte-bidon sur le cadre"],
-    pointDeRetraitId: "pt-cotonou",
-    noteMoyenne: 4.5,
-    nombreAvis: 29,
-    teintes: ["#6b6b6b", "#f2efe9"],
-  },
-  {
-    id: "velo-abomey",
-    slug: "abomey-vtc",
-    photo: "/images/IMG_6173.PNG",
-    nom: "Abomey",
-    categorie: "VTC",
-    taille: "M",
-    statut: "DISPONIBLE",
-    accroche: "Semi-rigide, guidon large, freins à disque",
-    description:
-      "VTT semi-rigide à guidon large, qui donne une conduite stable et rassurante quand on n'a pas roulé depuis longtemps. Freins à disque aux deux roues, suspension avant, pneus à crampons. Un vélo sans histoire, taillé pour les sorties en groupe.",
-    poidsKg: 14.8,
-    vitesses: 21,
-    chargeMaxKg: 110,
-    autonomieConseilleeKm: 45,
-    equipementInclus: [...equipementCommun, "Suspension avant", "Freins à disque"],
-    pointDeRetraitId: "pt-cotonou",
-    noteMoyenne: 4.6,
-    nombreAvis: 23,
-    teintes: ["#6b6b6b", "#e0dcd3"],
-  },
-  {
-    id: "velo-tandem",
-    slug: "tandem-route-des-peches",
-    photo: "/images/IMG_6174.PNG",
-    nom: "Fidjrossè",
-    categorie: "VTC",
+    id: "velo-onyx",
+    slug: "onyx",
+    video: "/images/bikeland_06_onyx.mp4",
+    photo: "/images/affiches/bikeland_06_onyx.jpg",
+    nom: "Onyx",
+    categorie: "VTT",
+    gamme: "CLASSIQUE",
     taille: "L",
     statut: "DISPONIBLE",
-    accroche: "Noir et vert, le plus grand du parc",
+    accroche: "Le tout-suspendu noir intégral, freins à disque",
     description:
-      "VTT semi-rigide en grande taille, noir et vert : celui qu'on sort pour les gabarits à partir d'1,80 m. Suspension avant, garde-boue intégraux, triple plateau pour les portions sableuses. Selle large et position redressée, confortable sur la durée.",
-    poidsKg: 15.4,
+      "Noir intégral, du cadre aux jantes. Tout-suspendu, freins à disque aux deux roues, vingt et une vitesses, roues de 26 pouces. Le plus sobre du parc, et le plus grand : à prendre si vous dépassez 1,80 m.",
+    poidsKg: 17,
     vitesses: 21,
     chargeMaxKg: 120,
     autonomieConseilleeKm: 45,
-    equipementInclus: [...equipementCommun, "Suspension avant", "Garde-boue intégraux"],
+    equipementInclus: [...equipementCommun, "Suspension avant et arrière", "Freins à disque"],
     pointDeRetraitId: "pt-cotonou",
-    noteMoyenne: 4.7,
-    nombreAvis: 12,
-    teintes: ["#f25c05", "#f2efe9"],
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#1c1b19", "#e0dcd3"],
+  },
+
+  /* ──────────────────────────────────────────────────────── Prestige */
+  {
+    id: "velo-prestige-01",
+    slug: "prestige-jantes-baton",
+    video: "/images/bikeland-prestige.mp4",
+    photo: "/images/affiches/bikeland-prestige.jpg",
+    nom: "Prestige N° 1",
+    categorie: "VTT",
+    gamme: "PRESTIGE",
+    taille: "L",
+    statut: "DISPONIBLE",
+    accroche: "Jantes bâton, double frein à disque, cadre acier haute résistance",
+    description:
+      "Le haut du parc. Cadre en acier haute résistance, suspension avant et arrière, double frein à disque, et des jantes bâton magnésium à six branches qui ne se dévoilent pas. Pneus KENDA tout-terrain, vingt et une vitesses, roues de 26 pouces. Noir et rouge.",
+    poidsKg: 18,
+    vitesses: 21,
+    chargeMaxKg: 130,
+    autonomieConseilleeKm: 60,
+    equipementInclus: [
+      ...equipementCommun,
+      "Jantes bâton magnésium 6 branches",
+      "Double frein à disque",
+      "Pneus KENDA tout-terrain",
+    ],
+    pointDeRetraitId: "pt-cotonou",
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#c8301f", "#1c1b19"],
+  },
+  {
+    id: "velo-prestige-northpoint",
+    slug: "prestige-northpoint",
+    video: "/images/prenium-v02_northpoint.mp4",
+    photo: "/images/affiches/prenium-v02_northpoint.jpg",
+    nom: "Northpoint",
+    categorie: "VTT",
+    gamme: "PREMIUM",
+    taille: "L",
+    statut: "DISPONIBLE",
+    accroche: "Semi-rigide noir et bleu, freins à disque",
+    description:
+      "Semi-rigide à fourche suspendue et freins à disque aux deux roues : le vélo qui va vite sans vous secouer, là où le tout-suspendu absorbe une partie de votre pédalage. Vingt et une vitesses, roues de 26 pouces, noir et bleu.",
+    poidsKg: 15.5,
+    vitesses: 21,
+    chargeMaxKg: 120,
+    autonomieConseilleeKm: 55,
+    equipementInclus: [...equipementCommun, "Fourche suspendue avant", "Freins à disque"],
+    pointDeRetraitId: "pt-cotonou",
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#2f6fb5", "#1c1b19"],
+  },
+  {
+    id: "velo-prestige-mongoose",
+    slug: "prestige-mongoose",
+    video: "/images/prenium-v03_mongoose.mp4",
+    photo: "/images/affiches/prenium-v03_mongoose.jpg",
+    nom: "Mongoose",
+    categorie: "VTT",
+    gamme: "PREMIUM",
+    taille: "L",
+    statut: "DISPONIBLE",
+    accroche: "Tout-suspendu blanc et noir",
+    description:
+      "Tout-suspendu blanc et noir, vingt et une vitesses, roues de 26 pouces. Freinage V-Brake sur jante. À garder en tête si vous roulez après une averse : le patin mord moins qu'un disque sur une jante mouillée.",
+    poidsKg: 17,
+    vitesses: 21,
+    chargeMaxKg: 120,
+    autonomieConseilleeKm: 50,
+    equipementInclus: [...equipementCommun, "Suspension avant et arrière"],
+    pointDeRetraitId: "pt-cotonou",
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#f4f2ed", "#1c1b19"],
+  },
+  {
+    id: "velo-prestige-muddyfox",
+    slug: "prestige-muddyfox",
+    video: "/images/prenium-v04_muddyfox.mp4",
+    photo: "/images/affiches/prenium-v04_muddyfox.jpg",
+    nom: "Muddyfox",
+    categorie: "VTT",
+    gamme: "PREMIUM",
+    taille: "L",
+    statut: "DISPONIBLE",
+    accroche: "Tout-suspendu noir et bleu, freins à disque",
+    description:
+      "Tout-suspendu et freins à disque aux deux roues : la combinaison la plus sûre du parc pour la piste littorale, pluie comprise. Vingt et une vitesses, roues de 26 pouces, noir et bleu.",
+    poidsKg: 17,
+    vitesses: 21,
+    chargeMaxKg: 120,
+    autonomieConseilleeKm: 55,
+    equipementInclus: [...equipementCommun, "Suspension avant et arrière", "Freins à disque"],
+    pointDeRetraitId: "pt-cotonou",
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#2f6fb5", "#1c1b19"],
+  },
+  {
+    id: "velo-prestige-raleigh",
+    slug: "prestige-raleigh",
+    video: "/images/prenium-v05_raleigh.mp4",
+    photo: "/images/affiches/prenium-v05_raleigh.jpg",
+    nom: "Raleigh",
+    categorie: "VTT",
+    gamme: "PREMIUM",
+    taille: "M",
+    statut: "DISPONIBLE",
+    accroche: "Semi-rigide noir et bleu, la marque anglaise",
+    description:
+      "Semi-rigide à fourche suspendue, vingt et une vitesses, roues de 26 pouces. Freinage V-Brake sur jante. Noir et bleu, signé Raleigh, l'une des plus vieilles marques de cycle au monde.",
+    poidsKg: 15,
+    vitesses: 21,
+    chargeMaxKg: 110,
+    autonomieConseilleeKm: 45,
+    equipementInclus: [...equipementCommun, "Fourche suspendue avant"],
+    pointDeRetraitId: "pt-cotonou",
+    noteMoyenne: 0,
+    nombreAvis: 0,
+    teintes: ["#2f6fb5", "#e0dcd3"],
   },
 ];
 
-/**
- * Options payantes : volontairement aucune.
- *
- * Le prix ne doit avoir que deux formes possibles — le forfait du road
- * trip et la grille horaire de la location libre. Les anciennes options
- * (sacoches, compteur GPS, assurance, transfert) introduisaient des
- * montants en dehors de ces deux grilles et ont ete retirees.
- *
- * La plomberie est conservee (modele Prisma, champ `options` du devis) :
- * rajouter une option se fait en ajoutant une entree ici, sans toucher
- * au reste du code.
- */
 export const optionsLocation: OptionLocation[] = [];
 
 
 
 
 export const libellesCategorie: Record<Velo["categorie"], string> = {
+  VTT: "VTT",
   RANDONNEUR: "Randonneur",
   GRAVEL: "Gravel",
   VAE: "Assistance électrique",
@@ -224,10 +359,10 @@ export const libellesCategorie: Record<Velo["categorie"], string> = {
 };
 
 export const libellesTaille: Record<Velo["taille"], string> = {
-  S: "S — 1,55 à 1,68 m",
-  M: "M — 1,65 à 1,78 m",
-  L: "L — 1,75 à 1,88 m",
-  XL: "XL — 1,86 à 1,98 m",
+  S: "S : 1,55 à 1,68 m",
+  M: "M : 1,65 à 1,78 m",
+  L: "L : 1,75 à 1,88 m",
+  XL: "XL : 1,86 à 1,98 m",
 };
 
 export const libellesStatut: Record<Velo["statut"], string> = {

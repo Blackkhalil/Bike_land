@@ -6,7 +6,7 @@ import { navigationLegale, navigationPrincipale, navigationSecondaire, site } fr
 /**
  * Pied de page, fond noir.
  *
- * La signature en très grand corps est conservée — c'est un élément
+ * La signature en très grand corps est conservée, c'est un élément
  * graphique, pas un titre, et elle joue le rôle de bloc plein que le
  * brief §2 recherche. Elle passe simplement en casse phrase et perd son
  * grain décoratif.
@@ -73,7 +73,7 @@ export function PiedDePage() {
                 </a>
               </li>
               <li className="text-craie/60">
-                {site.adresse.ligne}, {site.adresse.ville}, {site.adresse.pays}
+                Route des Pêches, {site.adresse.ville}, {site.adresse.pays}
               </li>
               <li className="text-craie/60">{site.horaires}</li>
             </ul>

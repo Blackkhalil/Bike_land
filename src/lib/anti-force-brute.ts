@@ -8,7 +8,7 @@
  * Le compteur vit **en mémoire du processus**. C'est volontaire et c'est
  * suffisant ici : Bike Land tourne sur une seule instance. Si un jour le
  * site est répliqué sur plusieurs machines, chacune aura son compteur et
- * la limite sera multipliée d'autant — il faudra alors la déplacer dans
+ * la limite sera multipliée d'autant, il faudra alors la déplacer dans
  * Redis ou dans la base. Redémarrer le serveur remet aussi les compteurs
  * à zéro ; c'est acceptable pour un blocage de quelques minutes.
  */
@@ -34,7 +34,7 @@ function compteurs(): Map<string, Compteur> {
  *
  * Derrière un reverse proxy (Vercel, Nginx), l'adresse vue par Node est
  * celle du proxy : on lit donc l'en-tête qu'il pose. Cet en-tête est
- * falsifiable si le site est exposé sans proxy — on ne s'en sert que pour
+ * falsifiable si le site est exposé sans proxy, on ne s'en sert que pour
  * répartir un quota, jamais pour autoriser quoi que ce soit.
  */
 export function identifiantAppelant(requete: Request): string {

@@ -20,7 +20,7 @@ interface Props {
   avecOmbre?: boolean;
   /**
    * Position et taille lorsqu'on imbrique l'illustration dans un autre SVG
-   * — c'est ainsi que le schéma annoté partage son repère avec le vélo.
+   *, c'est ainsi que le schéma annoté partage son repère avec le vélo.
    */
   x?: number;
   y?: number;

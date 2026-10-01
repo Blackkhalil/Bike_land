@@ -31,7 +31,7 @@ export function Passion() {
           <p className="mt-6 max-w-lg text-[1rem] leading-relaxed text-gris-cadre">
             À vélo, le paysage arrive à la bonne vitesse. On sent l&apos;odeur du poisson braisé
             avant de voir le village, on s&apos;arrête parce qu&apos;un manguier fait de
-            l&apos;ombre, on discute au bord de la piste. C&apos;est un autre rapport au trajet —
+            l&apos;ombre, on discute au bord de la piste. C&apos;est un autre rapport au trajet,
             et souvent, c&apos;est de lui qu&apos;on se souvient.
           </p>
           <p className="mt-4 max-w-lg text-[1rem] leading-relaxed text-gris-cadre">

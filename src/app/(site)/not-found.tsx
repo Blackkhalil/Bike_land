@@ -13,7 +13,7 @@ export default function PageIntrouvable() {
         </TitreSection>
         <p className="mt-6 text-[0.98rem] leading-relaxed text-gris-cadre">
           Le lien est peut-être ancien, ou l&apos;adresse comporte une coquille. Reprenons depuis
-          le catalogue — c&apos;est de là que tout part.
+          le catalogue : c&apos;est de là que tout part.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <BoutonLien href="/velos" variante="primaire" taille="lg">

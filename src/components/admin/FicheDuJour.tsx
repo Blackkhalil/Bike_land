@@ -13,7 +13,7 @@ import type { Reservation } from "@/lib/types";
  * C'est le cœur de la fiche : les deux formules n'engagent pas les mêmes
  * gestes. Un road trip demande de préparer des cocos et des eaux ; une
  * location libre demande de réclamer une pièce d'identité, un engagement
- * signé et une caution en espèces — et de les rendre au retour.
+ * signé et une caution en espèces, et de les rendre au retour.
  */
 function consignes(reservation: Reservation, sens: "depart" | "retour"): string[] {
   if (reservation.offre === "road-trip") {
@@ -44,7 +44,7 @@ function consignes(reservation: Reservation, sens: "depart" | "retour"): string[
  * Une ligne de la fiche du jour.
  *
  * Conçue pour un téléphone tenu d'une main : le nom en gros, le numéro
- * appelable d'un geste, et un seul bouton d'action à la fois — celui de
+ * appelable d'un geste, et un seul bouton d'action à la fois, celui de
  * l'étape où en est réellement la réservation.
  */
 function Ligne({
@@ -208,7 +208,7 @@ export function FicheDuJour({
           {departs.length > 0 && (
             <section className="mt-8" aria-labelledby="titre-departs">
               <h2 id="titre-departs" className="titre-editorial text-[1.3rem]">
-                À remettre — {departs.length}
+                À remettre ({departs.length})
               </h2>
               <ul className="mt-4 space-y-3">
                 {departs.map((reservation) => (
@@ -226,7 +226,7 @@ export function FicheDuJour({
           {retours.length > 0 && (
             <section className="mt-10" aria-labelledby="titre-retours">
               <h2 id="titre-retours" className="titre-editorial text-[1.3rem]">
-                À récupérer — {retours.length}
+                À récupérer ({retours.length})
               </h2>
               <ul className="mt-4 space-y-3">
                 {retours.map((reservation) => (

@@ -7,7 +7,7 @@ type Taille = "sm" | "md" | "lg";
 /**
  * L'orange est un signal : il ne marque que ce sur quoi on peut cliquer
  * pour avancer. `primaire` est donc l'unique bouton plein orange, et il
- * ne doit y en avoir qu'un par écran — le second choix prend `contour`.
+ * ne doit y en avoir qu'un par écran, le second choix prend `contour`.
  */
 const variantes: Record<Variante, string> = {
   primaire: "bg-orange-signal text-noir-piste hover:bg-orange-vif",

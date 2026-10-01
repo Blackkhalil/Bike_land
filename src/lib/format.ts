@@ -60,9 +60,30 @@ export function formatPeriode(debut: string | Date, fin: string | Date): string 
   const d = versDate(debut);
   const f = versDate(fin);
   if (d.getUTCFullYear() === f.getUTCFullYear() && d.getUTCMonth() === f.getUTCMonth()) {
-    return `${d.getUTCDate()} – ${formatDate(f)}`;
+    return `${d.getUTCDate()} - ${formatDate(f)}`;
   }
-  return `${formatDateCourte(d)} – ${formatDate(f)}`;
+  return `${formatDateCourte(d)} - ${formatDate(f)}`;
+}
+
+/**
+ * Le créneau d'une réservation : jour et horaire d'un seul tenant.
+ *
+ * Écrit une fois ici plutôt que recopié dans chaque écran : la facture,
+ * le suivi client et la fiche du jour doivent annoncer exactement le même
+ * horaire, sinon le coordinateur et le client ne s'attendent pas au même
+ * moment au point de départ.
+ */
+export function formatCreneau(reservation: {
+  dateDebut: string | Date;
+  heureDebut: number;
+  heureFin: number;
+}): string {
+  return `${formatDate(reservation.dateDebut)}, de ${reservation.heureDebut} h à ${reservation.heureFin} h`;
+}
+
+/** Le seul horaire, sans le jour : « 8 h - 11 h ». */
+export function formatPlageHoraire(heureDebut: number, heureFin: number): string {
+  return `${heureDebut} h - ${heureFin} h`;
 }
 
 export function formatNombre(valeur: number, decimales = 0): string {
@@ -84,7 +105,7 @@ function versDate(valeur: string | Date): Date {
  * Résume une réservation en une ligne : sa formule et ce qui la
  * dimensionne.
  *
- * Remplace l'ancien « N jours », qui ne veut plus rien dire — toutes les
+ * Remplace l'ancien « N jours », qui ne veut plus rien dire, toutes les
  * sorties tiennent dans la journée. Ce qui distingue deux réservations,
  * c'est désormais la formule, et le nombre de participants ou la durée.
  */

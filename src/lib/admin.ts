@@ -3,7 +3,7 @@
  *
  * Un seul mot de passe partagé : l'exploitant et le coordinateur de
  * sortie sont la même personne. Un système de rôles séparés a été écrit
- * puis retiré — il n'apportait que de la complexité tant qu'une seule
+ * puis retiré, il n'apportait que de la complexité tant qu'une seule
  * personne tient les deux casquettes. Si un jour quelqu'un est recruté
  * pour encadrer les sorties, c'est ici qu'il faudra rouvrir le sujet :
  * un coordinateur n'a pas à voir le chiffre d'affaires ni la base
@@ -31,7 +31,7 @@ function secret(): string {
  * Mode d'accès courant.
  * - `protege`   : un mot de passe est défini, la connexion est demandée.
  * - `ouvert`    : pas de mot de passe, mais on est en développement local.
- * - `verrouille`: pas de mot de passe en production — l'accès est refusé,
+ * - `verrouille`: pas de mot de passe en production, l'accès est refusé,
  *                 pour ne pas exposer les données clients par omission.
  */
 export function modeAcces(): "protege" | "ouvert" | "verrouille" {
@@ -83,7 +83,7 @@ export function emailAdminConfigure(): boolean {
  * coûteuses : deviner un mot de passe ne suffit plus.
  *
  * Tant que `ADMIN_EMAIL` n'est pas défini, l'adresse saisie n'est pas
- * vérifiée — sinon la première mise en service enfermerait l'exploitant
+ * vérifiée, sinon la première mise en service enfermerait l'exploitant
  * dehors. Ce cas est signalé sur la page de connexion et dans le journal
  * du serveur, pour qu'il ne passe pas inaperçu.
  */

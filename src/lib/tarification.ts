@@ -18,9 +18,11 @@
 import { optionsLocation } from "@/data/catalogue";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
+  COCOS_ROAD_TRIP,
   PRIX_ROAD_TRIP_XOF,
   prixLocationLibre,
   type CodeOffre,
+  type GammeVelo,
 } from "@/data/offres";
 import type { OptionLocation } from "./types";
 
@@ -37,19 +39,39 @@ export interface LigneDevis {
 
 export interface ParametresDevis {
   offre: CodeOffre;
+  /**
+   * Gamme du velo choisi : c'est elle qui commande le prix.
+   *
+   * Obligatoire depuis que la plaquette distingue Classique, Premium et
+   * Prestige. Sans elle, il n'y a pas de tarif a appliquer, et en
+   * inventer un serait pire que d'echouer.
+   */
+  gamme: GammeVelo;
   /** Road trip : nombre de participants. Un par défaut. */
   nombrePersonnes?: number;
   /** Location libre : durée en heures, telle que publiée dans la grille. */
   dureeHeures?: number;
   options?: OptionChoisie[];
+  /**
+   * Code de parrainage déjà vérifié par l'appelant.
+   *
+   * Le devis ne le valide pas : il ne sait rien des dates de validité ni
+   * des quotas, et un module de tarification qui interrogerait la base ne
+   * serait plus une fonction pure. C'est le dépôt qui vérifie, dans la
+   * transaction qui crée la réservation, puis passe ici le montant retenu.
+   */
+  remise?: { code: string; montantXof: number };
 }
 
 export interface Devis {
   offre: CodeOffre;
+  gamme: GammeVelo;
   nombrePersonnes: number;
   dureeHeures: number | null;
   sousTotalXof: number;
   optionsXof: number;
+  /** Réduction accordée par un code de parrainage, zéro sans code. */
+  remiseXof: number;
   /**
    * Caution demandée. Elle n'est PAS encaissée en ligne : elle est
    * remise en espèces au départ, en même temps que la pièce d'identité,
@@ -72,7 +94,7 @@ export class DureeNonTarifeeError extends Error {
 }
 
 export function calculerDevis(parametres: ParametresDevis): Devis {
-  const { offre } = parametres;
+  const { offre, gamme } = parametres;
   const nombrePersonnes = Math.max(1, Math.min(parametres.nombrePersonnes ?? 1, 12));
 
   const lignes: LigneDevis[] = [];
@@ -81,17 +103,21 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
   let dureeHeures: number | null = null;
 
   if (offre === "road-trip") {
-    sousTotalXof = PRIX_ROAD_TRIP_XOF * nombrePersonnes;
+    const prixUnitaire = PRIX_ROAD_TRIP_XOF[gamme];
+    const cocos = COCOS_ROAD_TRIP[gamme];
+    sousTotalXof = prixUnitaire * nombrePersonnes;
     cautionXof = 0;
     lignes.push({
       libelle:
-        nombrePersonnes > 1 ? `Road trip — ${nombrePersonnes} personnes` : "Road trip — 1 personne",
-      detail: `${PRIX_ROAD_TRIP_XOF.toLocaleString("fr-FR")} FCFA par personne, eau et coco compris`,
+        nombrePersonnes > 1 ? `Road trip, ${nombrePersonnes} personnes` : "Road trip, 1 personne",
+      detail:
+        `${prixUnitaire.toLocaleString("fr-FR")} FCFA par personne, eau et ` +
+        `${cocos > 1 ? `${cocos} cocos` : "1 coco"} compris`,
       montantXof: sousTotalXof,
     });
   } else {
     dureeHeures = parametres.dureeHeures ?? 1;
-    const prix = prixLocationLibre(dureeHeures);
+    const prix = prixLocationLibre(gamme, dureeHeures);
     // Une durée hors grille n'est pas arrondie en silence : elle est
     // refusée. Inventer un prix serait pire que de renvoyer une erreur.
     if (prix === null) throw new DureeNonTarifeeError(dureeHeures);
@@ -99,7 +125,7 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
     sousTotalXof = prix;
     cautionXof = CAUTION_LOCATION_LIBRE_XOF;
     lignes.push({
-      libelle: `Location libre — ${dureeHeures} h`,
+      libelle: `Location libre, ${dureeHeures} h`,
       detail: "Vélo, casque et antivol compris",
       montantXof: sousTotalXof,
     });
@@ -124,14 +150,33 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
     });
   }
 
-  const totalXof = sousTotalXof + optionsXof;
+  // La réduction s'applique après les options, sur le total : c'est ce que
+  // le client comprend d'un « −1 % », et elle est plafonnée par
+  // `reductionPour`, donc jamais de total négatif ni de montant trop bas
+  // pour être encaissé.
+  const avantRemise = sousTotalXof + optionsXof;
+  const remiseXof = Math.min(Math.max(parametres.remise?.montantXof ?? 0, 0), avantRemise);
+
+  if (remiseXof > 0 && parametres.remise) {
+    lignes.push({
+      libelle: `Code ${parametres.remise.code}`,
+      detail: "Parrainage partenaire",
+      // Négatif : le récapitulatif l'affiche avec un signe moins, sans
+      // avoir à connaître la nature de la ligne.
+      montantXof: -remiseXof,
+    });
+  }
+
+  const totalXof = avantRemise - remiseXof;
 
   return {
     offre,
+    gamme,
     nombrePersonnes,
     dureeHeures,
     sousTotalXof,
     optionsXof,
+    remiseXof,
     cautionXof,
     totalXof,
     aPayerXof: totalXof,

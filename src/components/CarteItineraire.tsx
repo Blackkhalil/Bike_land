@@ -28,7 +28,7 @@ export function CarteItineraire({
           {itineraire.photo ? (
             <Image
               src={itineraire.photo}
-              alt={`${itineraire.titre} — ${itineraire.region}`}
+              alt={`${itineraire.titre}, ${itineraire.region}`}
               fill
               sizes="(min-width: 768px) 400px, 100vw"
               className="object-cover"

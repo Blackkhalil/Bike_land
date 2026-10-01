@@ -11,6 +11,12 @@
 
 import { optionsLocation, velos } from "@/data/catalogue";
 import { ajouterJours, estHauteSaison, nombreDeJours, versISO, type DateISO } from "../dates";
+import {
+  CRENEAUX_ROAD_TRIP,
+  DUREE_ROAD_TRIP_HEURES,
+  heuresDepartPossibles,
+} from "@/data/offres";
+import { creneauxSeChevauchent, type CreneauOccupe } from "./contrat";
 import { calculerDevis } from "../tarification";
 import type {
   Client,
@@ -49,7 +55,7 @@ const villes = [
   "Paris, France", "Lomé, Togo", "Lagos, Nigéria", "Bruxelles, Belgique", "Ouidah",
 ];
 
-const moyens: MoyenPaiement[] = ["MTN_MONEY", "MOOV_MONEY", "ESPECES"];
+const moyens: MoyenPaiement[] = ["MTN_MONEY", "MOOV_MONEY", "CELTIIS_CASH", "ESPECES"];
 // Le Mobile Money domine largement au Bénin (§7.2) : la répartition du jeu
 // de démonstration reflète cette réalité de marché.
 const poidsMoyens = [0.46, 0.27, 0.22, 0.05];
@@ -66,8 +72,8 @@ export function construireHistorique(aujourdHuiISO: DateISO): HistoriqueDemo {
   const reservations: Reservation[] = [];
 
   // Occupation par vélo, pour ne jamais fabriquer deux locations
-  // qui se chevauchent sur un même vélo — la règle centrale du §2.1.
-  const occupation = new Map<string, { debut: DateISO; fin: DateISO }[]>();
+  // qui se chevauchent sur un même vélo, la règle centrale du §2.1.
+  const occupation = new Map<string, CreneauOccupe[]>();
   for (const velo of velos) occupation.set(velo.id, []);
 
   const debutHistorique = ajouterJours(aujourdHuiISO, -420);
@@ -150,7 +156,7 @@ function fabriquerReservation(contexte: {
   hasard: () => number;
   jourReservation: DateISO;
   aujourdHuiISO: DateISO;
-  occupation: Map<string, { debut: DateISO; fin: DateISO }[]>;
+  occupation: Map<string, CreneauOccupe[]>;
   clients: Client[];
   clientsParEmail: Map<string, Client>;
   index: number;
@@ -177,10 +183,6 @@ function fabriquerReservation(contexte: {
 
   if (dateFin > ajouterJours(aujourdHuiISO, 60)) return null;
 
-  const creneaux = occupation.get(velo.id)!;
-  const chevauche = creneaux.some((c) => dateDebut <= c.fin && c.debut <= dateFin);
-  if (chevauche) return null;
-
   const optionsChoisies = choisirOptions(hasard);
 
   // Mélange des deux formules, à peu près deux tiers de road trips : sans
@@ -189,8 +191,23 @@ function fabriquerReservation(contexte: {
   const estRoadTrip = impose ? impose.offre === "road-trip" : hasard() < 0.65;
   const nombrePersonnes = estRoadTrip ? choisirParticipants(hasard) : 1;
   const dureeHeures = estRoadTrip ? undefined : choisirDuree(hasard);
+
+  // Les heures se déduisent de la formule : le road trip part au créneau
+  // encadré, la location libre à une heure tirée parmi les départs
+  // compatibles avec l'heure de fermeture.
+  const heureDebut = estRoadTrip
+    ? CRENEAUX_ROAD_TRIP[0].heureDebut
+    : tirerHeureDepart(hasard, dureeHeures ?? 1);
+  const heureFin = heureDebut + (estRoadTrip ? DUREE_ROAD_TRIP_HEURES : (dureeHeures ?? 1));
+
+  // Depuis que la disponibilité se compte à l'heure, deux sorties du même
+  // jour ne se gênent que si leurs horaires se recouvrent vraiment.
+  const creneaux = occupation.get(velo.id)!;
+  const candidat = { debut: dateDebut, fin: dateFin, heureDebut, heureFin };
+  if (creneaux.some((c) => creneauxSeChevauchent(candidat, c))) return null;
   const devis = calculerDevis({
     offre: estRoadTrip ? "road-trip" : "location-libre",
+    gamme: velo.gamme,
     nombrePersonnes,
     dureeHeures,
     options: optionsChoisies,
@@ -201,7 +218,7 @@ function fabriquerReservation(contexte: {
   const statut = impose?.statut ?? deduireStatut(hasard, dateDebut, dateFin, aujourdHuiISO);
 
   if (statut !== "ANNULEE") {
-    creneaux.push({ debut: dateDebut, fin: dateFin });
+    creneaux.push(candidat);
   }
 
   const reference = `BL-D${String(index + 1).padStart(4, "0")}`;
@@ -218,6 +235,8 @@ function fabriquerReservation(contexte: {
     pointDeRetraitId: velo.pointDeRetraitId,
     dateDebut,
     dateFin,
+    heureDebut,
+    heureFin,
     jours: nombreDeJours(dateDebut, dateFin),
     lignes: [
       {
@@ -245,7 +264,7 @@ function fabriquerReservation(contexte: {
         : [
             {
               id: `pay-demo-${index + 1}`,
-              fournisseur: moyen === "ESPECES" ? "ESPECES" : "KKIAPAY",
+              fournisseur: moyen === "ESPECES" ? "ESPECES" : "SASPAY",
               moyen,
               statut: "REUSSI",
               montantXof: devis.totalXof,
@@ -381,3 +400,9 @@ function tirageDePoisson(hasard: () => number, lambda: number): number {
 }
 
 export const aujourdHuiDemo = (): DateISO => versISO(new Date());
+
+/** Une heure de départ plausible pour une location libre de cette durée. */
+function tirerHeureDepart(hasard: () => number, dureeHeures: number): number {
+  const possibles = heuresDepartPossibles(dureeHeures);
+  return possibles[Math.floor(hasard() * possibles.length)] ?? possibles[0];
+}

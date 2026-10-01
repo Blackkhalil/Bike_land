@@ -81,7 +81,7 @@ function TitreBloc({
  *     facture au participant, la location libre à l'heure. On ne les
  *     additionne donc jamais : chacune garde son volume et son unité.
  *
- * Aucun calcul métier ici — tout vient de `calculerStatistiques`.
+ * Aucun calcul métier ici, tout vient de `calculerStatistiques`.
  */
 export default async function PageTableauDeBord({ searchParams }: { searchParams: Recherche }) {
   const parametres = await searchParams;
@@ -108,7 +108,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   const jour = aujourdhui();
   const actives = reservations.filter((r) => r.statut !== "ANNULEE");
 
-  // Ce qui reste réellement à faire, déduit de l'état et non des dates —
+  // Ce qui reste réellement à faire, déduit de l'état et non des dates,
   // exactement comme la fiche du jour, sinon les deux écrans annoncent
   // des chiffres différents. Un vélo déjà remis n'est plus « à préparer »,
   // et un vélo qui n'est pas encore parti n'est pas « attendu au retour ».
@@ -139,7 +139,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
               <>
                 {" "}
                 La période n&apos;est pas terminée : elle est comparée aux {joursCompares} mêmes
-                jours de la période précédente, et non à une période entière — sinon la
+                jours de la période précédente, et non à une période entière, sinon la
                 comparaison montrerait une chute qui n&apos;existe pas.
               </>
             )}
@@ -278,6 +278,17 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
             indicateur={stats.chiffreAffaires}
             aide="Aucune période précédente à comparer."
           />
+          {/* Ce qui arrive réellement dans le portefeuille SasPay. Les
+              frais sont compris dans les tarifs affichés : sans cette
+              tuile, le tableau de bord annoncerait un encaissement que le
+              compte ne verra jamais. Le retrait vers la banque coûte
+              en plus 1,5 % + 100 F, par versement et non par
+              réservation, il n'a donc pas sa place ici. */}
+          <TuileStat
+            libelle="Encaissé net"
+            valeur={formatXof(stats.encaisseNet)}
+            aide={`Après ${formatXof(stats.fraisRetenus)} de frais d'encaissement SasPay (3,25 %). Le retrait vers la banque coûte 1,5 % + 100 F par versement.`}
+          />
           <TuileStat
             libelle="Panier moyen"
             valeur={formatXof(stats.revenuMoyenParReservation.valeur)}
@@ -345,7 +356,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           />
           <TuileStat
             libelle="Note moyenne"
-            valeur={stats.noteMoyenne !== null ? `${formatNombre(stats.noteMoyenne, 2)} / 5` : "—"}
+            valeur={stats.noteMoyenne !== null ? `${formatNombre(stats.noteMoyenne, 2)} / 5` : "aucune note"}
             aide={`${stats.nombreAvis} avis laissés sur la période.`}
           />
         </div>

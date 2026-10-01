@@ -4,7 +4,7 @@ import { ArticleLegal, PageLegale } from "@/components/PageLegale";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   DUREE_MAX_LOCATION_LIBRE,
-  PRIX_ROAD_TRIP_XOF,
+  PRIX_MINIMUM_ROAD_TRIP_XOF,
 } from "@/data/offres";
 import { formatXof } from "@/lib/format";
 import { site } from "@/lib/site";
@@ -23,7 +23,7 @@ export default function PageCGV() {
       miseAJour="8 septembre 2026"
       sousTitre="Ce que nous nous engageons à faire, et ce que nous vous demandons en retour. Elles s'appliquent à toute réservation effectuée sur ce site."
     >
-      <ArticleLegal titre="Article 1 — Objet">
+      <ArticleLegal titre="Article 1. Objet">
         <p>
           Les présentes conditions régissent la location de cycles proposée par {site.nom} aux
           particuliers et aux professionnels, au départ de la route
@@ -31,7 +31,7 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 2 — Réservation">
+      <ArticleLegal titre="Article 2. Réservation">
         <p>
           La réservation s&apos;effectue en ligne, sans création de compte. Elle devient ferme à
           la validation du paiement. Un email de confirmation, une facture et un lien de suivi
@@ -43,23 +43,33 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 3 — Offres et tarifs">
+      <ArticleLegal titre="Article 3. Offres et tarifs">
         <p>
           {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
           en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, au forfait de{" "}
-          {formatXof(PRIX_ROAD_TRIP_XOF)} par personne, eau et coco compris. La{" "}
+          {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} par personne selon la gamme de vélo, eau et
+          coco compris. La{" "}
           <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
           accompagnement, facturée à l&apos;heure selon la grille publiée sur le site, de une à{" "}
           {DUREE_MAX_LOCATION_LIBRE} heures.
         </p>
         <p>
-          Les prix sont indiqués en francs CFA (XOF), toutes taxes comprises. Le paiement
-          s&apos;effectue par Mobile Money — MTN Money ou Moov Money — via KkiaPay. Aucune
+          Les prix sont indiqués en francs CFA (XOF), toutes taxes comprises.
+          L&apos;opérateur de paiement ajoute sa commission au montant de la location.{" "}
+          <strong>
+            Cette commission vous est annoncée avant toute validation : l&apos;écran de paiement
+            affiche le détail et le montant exact qui sera débité de votre compte.
+          </strong>{" "}
+          Aucun autre supplément n&apos;est appliqué.
+        </p>
+        <p>
+          Le paiement s&apos;effectue par Mobile Money : MTN Money, Moov Money ou Celtiis
+          Cash. Aucune
           coordonnée de paiement n&apos;est conservée par {site.nom}.
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 4 — Caution et garanties">
+      <ArticleLegal titre="Article 4. Caution et garanties">
         <p>
           <strong>Road trip.</strong> Aucune caution n&apos;est demandée et aucun montant
           n&apos;est pré-autorisé. La sortie est encadrée par un coordinateur de {site.nom}, qui
@@ -75,7 +85,7 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 5 — Annulation et modification">
+      <ArticleLegal titre="Article 5. Annulation et modification">
         <p>
           L&apos;annulation est gratuite jusqu&apos;à 72 heures avant l&apos;heure de départ
           prévue. Entre 72 heures et l&apos;heure de départ, 50 % du montant reste dû. Passé
@@ -92,7 +102,7 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 6 — Retrait et restitution">
+      <ArticleLegal titre="Article 6. Retrait et restitution">
         <p>
           Le vélo est remis par le coordinateur en état de fonctionnement, réglé à la taille du
           locataire, après un point de contrôle contradictoire. Il est récupéré par ce même
@@ -104,7 +114,7 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 7 — Obligations du locataire">
+      <ArticleLegal titre="Article 7. Obligations du locataire">
         <p>
           Le locataire s&apos;engage à utiliser le vélo en bon père de famille, à respecter le
           code de la route, à porter le casque fourni et à utiliser l&apos;antivol lors de tout
@@ -113,7 +123,7 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 8 — Dommages, vol et assistance">
+      <ArticleLegal titre="Article 8. Dommages, vol et assistance">
         <p>
           L&apos;usure normale est à la charge de {site.nom}. Les dégradations résultant d&apos;une
           négligence, ainsi que le vol sans effraction, sont à la charge du locataire, dans la
@@ -125,7 +135,7 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 9 — Responsabilité">
+      <ArticleLegal titre="Article 9. Responsabilité">
         <p>
           {site.nom} ne saurait être tenu responsable des dommages corporels ou matériels
           survenus au locataire ou à des tiers du fait de l&apos;usage du vélo, sauf défaut
@@ -133,7 +143,7 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 10 — Données personnelles">
+      <ArticleLegal titre="Article 10. Données personnelles">
         <p>
           Le traitement des données est décrit dans la politique de protection des données, en
           conformité avec la législation béninoise sur la protection des données à caractère
@@ -142,7 +152,7 @@ export default function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ArticleLegal titre="Article 11 — Réclamations et droit applicable">
+      <ArticleLegal titre="Article 11. Réclamations et droit applicable">
         <p>
           Toute réclamation peut être adressée à {site.email} ou au {site.telephone}. À défaut
           d&apos;accord amiable, les présentes conditions sont soumises au droit béninois et les

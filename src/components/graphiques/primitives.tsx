@@ -152,7 +152,7 @@ export function TableauDeSecours({
           <tbody>
             {/*
              * Clé sur l'index : `ligne[0]` est l'étiquette affichée (ex. un
-             * mois abrégé), pas un identifiant — deux lignes peuvent la
+             * mois abrégé), pas un identifiant, deux lignes peuvent la
              * partager légitimement (même mois, années différentes). La
              * liste vient d'un tableau figé, jamais réordonné ni filtré en
              * place, donc l'index reste un identifiant stable.

@@ -13,8 +13,8 @@ export const metadata: Metadata = { title: "La sortie du jour" };
  * que pour le bureau : c'est celui qu'on ouvre sur la route des Pêches,
  * au moment de remettre les vélos.
  *
- * Il ne montre que ce qui se passe aujourd'hui. Tout le reste — chiffres,
- * historique, tarifs — est à un clic, mais pas ici.
+ * Il ne montre que ce qui se passe aujourd'hui. Tout le reste, chiffres,
+ * historique, tarifs, est à un clic, mais pas ici.
  */
 export default async function PageAujourdhui() {
   const jour = aujourdhui();
@@ -28,7 +28,15 @@ export default async function PageAujourdhui() {
   // ligne à faire disparaître.
   const departs = actives
     .filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE")
-    .sort((a, b) => (a.dateDebut < b.dateDebut ? -1 : 1));
+    // Dans l'ordre de la journée : le coordinateur lit cette liste de
+    // haut en bas au fil des départs.
+    .sort((a, b) =>
+      a.dateDebut === b.dateDebut
+        ? a.heureDebut - b.heureDebut
+        : a.dateDebut < b.dateDebut
+          ? -1
+          : 1,
+    );
 
   // Un retour est attendu dès que la date de fin est atteinte et que le
   // vélo est effectivement sorti.

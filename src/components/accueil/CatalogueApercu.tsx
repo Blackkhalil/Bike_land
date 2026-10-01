@@ -2,23 +2,22 @@ import { CarteVelo } from "@/components/CarteVelo";
 import { LienFleche, Section, TitreSection } from "@/components/ui";
 import type { Velo } from "@/lib/types";
 
-/** Aperçu du parc sur la page d'accueil : quatre vélos, puis le catalogue. */
-export function CatalogueApercu({
-  velos,
-  nombreTotal,
-}: {
-  /** Les quelques velos mis en avant, pas tout le parc. */
-  velos: Velo[];
-  /** Taille reelle du parc : `velos` n'en est qu'un extrait. */
-  nombreTotal: number;
-}) {
+/**
+ * Aperçu du parc sur la page d'accueil : quatre vélos, puis le catalogue.
+ *
+ * La taille du parc n'est jamais annoncée. Elle ne renseigne le client
+ * sur rien qu'il puisse utiliser, ce qui l'intéresse, c'est de savoir
+ * si le vélo qu'il veut est libre à sa date, et afficher un petit
+ * nombre dessert l'entreprise sans contrepartie.
+ */
+export function CatalogueApercu({ velos }: { velos: Velo[] }) {
   return (
     <Section fond="noir" className="py-20 sm:py-28">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <TitreSection className="max-w-2xl">
-          {nombreTotal} vélos,
+          Des vélos
           <br />
-          pas un de plus
+          choisis un par un
         </TitreSection>
         <p className="max-w-sm text-[0.92rem] leading-relaxed text-craie/65">
           Un parc volontairement restreint : c&apos;est la condition pour connaître chaque

@@ -73,7 +73,7 @@ export default async function PageItineraire({ params }: { params: Params }) {
           {itineraire.photo ? (
             <Image
               src={itineraire.photo}
-              alt={`${itineraire.titre} — ${itineraire.region}`}
+              alt={`${itineraire.titre}, ${itineraire.region}`}
               fill
               priority
               sizes="(min-width: 1280px) 1200px, 100vw"

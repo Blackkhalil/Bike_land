@@ -5,8 +5,8 @@ import { site } from "@/lib/site";
 import "./globals.css";
 
 // Titres : grotesque condensée à graisse lourde (brief §2). Oswald tient
-// le très grand corps sans s'étaler en largeur — ce qui compte quand le
-// titre doit déborder de son bloc — et garde une bas-de-casse lisible,
+// le très grand corps sans s'étaler en largeur, ce qui compte quand le
+// titre doit déborder de son bloc, et garde une bas-de-casse lisible,
 // puisque la casse phrase est imposée et les capitales proscrites.
 const oswald = Oswald({
   subsets: ["latin"],
@@ -25,7 +25,7 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
   title: {
-    default: `${site.nom} — Location de vélos pour road trips au Bénin`,
+    default: `${site.nom}, location de vélos pour road trips au Bénin`,
     template: `%s · ${site.nom}`,
   },
   description: site.description,
@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "fr_BJ",
     siteName: site.nom,
-    title: `${site.nom} — ${site.baseline}`,
+    title: `${site.nom}, ${site.baseline}`,
     description: site.description,
   },
   robots: { index: true, follow: true },

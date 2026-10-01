@@ -3,7 +3,7 @@
  *
  * Le client reçoit par email un lien contenant un token signé. Le token
  * porte la référence de la réservation et une signature HMAC ; la base ne
- * stocke que le hachage du token, jamais le token lui-même — une fuite de
+ * stocke que le hachage du token, jamais le token lui-même, une fuite de
  * la base ne permet donc pas de fabriquer un lien de suivi valide.
  */
 

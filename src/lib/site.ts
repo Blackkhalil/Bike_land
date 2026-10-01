@@ -15,15 +15,41 @@ export const site = {
   telephoneLien: "+2290159688103",
   whatsapp: "+2290159688103",
   adresse: {
-    ligne: "Carré 1204, Haie Vive",
+    // L'adresse précise a été retirée du site sur demande. Seules la
+    // ville et le pays subsistent, ils restent nécessaires aux mentions
+    // légales et à la facturation.
     ville: "Cotonou",
     pays: "Bénin",
   },
-  horaires: "Du lundi au samedi, 8 h – 19 h",
+  horaires: "Du lundi au samedi, 8 h - 19 h",
+  /**
+   * Immatriculations légales, à renseigner dès leur attribution.
+   *
+   * Elles figurent ici et nulle part ailleurs : les mentions légales les
+   * affichent dès qu'elles sont remplies, et annoncent simplement
+   * qu'elles sont en attente le reste du temps. Il n'y a donc aucun
+   * fichier de code à toucher pour les publier, et aucun risque de
+   * laisser une note de développeur en ligne.
+   *
+   * Les publier est une obligation pour une activité commerciale au
+   * Bénin : à remplir avant de communiquer sur le site.
+   */
+  immatriculation: {
+    /** Registre du commerce et du crédit mobilier. */
+    rccm: "",
+    /** Identifiant fiscal unique. */
+    ifu: "",
+  },
+  /**
+   * Comptes réellement ouverts, et eux seuls.
+   *
+   * Facebook a été retiré plutôt que laissé inerte : une icône qui ne
+   * mène nulle part fait douter du reste de la page, et rien n'oblige à
+   * afficher un réseau sur lequel on n'est pas.
+   */
   reseaux: [
-    { nom: "Instagram", url: "https://instagram.com/bikeland" },
-    { nom: "Facebook", url: "https://facebook.com/bikeland" },
-    { nom: "WhatsApp", url: "https://wa.me/2290159688103" },
+    { nom: "Instagram", url: "https://instagram.com/bikeland_bj" },
+    { nom: "WhatsApp", url: "https://wa.me/2290191002201" },
   ],
 } as const;
 

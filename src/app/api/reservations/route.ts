@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { DUREE_ROAD_TRIP_HEURES } from "@/data/offres";
 import { ConflitDisponibiliteError, depot } from "@/lib/db";
 import {
   envoyerConfirmation,
@@ -20,7 +21,7 @@ import { erreursParChamp, schemaReservation } from "@/lib/validation";
  *
  * L'écriture est la dernière autorité sur la disponibilité : si deux
  * clients paient à la même seconde pour le même vélo, le second reçoit un
- * 409 et son paiement est à rembourser — cas signalé explicitement plutôt
+ * 409 et son paiement est à rembourser, cas signalé explicitement plutôt
  * que masqué.
  */
 export async function POST(requete: Request) {
@@ -39,7 +40,7 @@ export async function POST(requete: Request) {
   // Contrôle avant toute écriture : sans moyen d'encaisser, on ne crée pas
   // de réservation qui resterait éternellement en attente de paiement.
   if (fournisseurActif() === "indisponible") {
-    console.error("[reservations] aucune clé KkiaPay configurée : réservation refusée.");
+    console.error("[reservations] aucune clé SasPay configurée : réservation refusée.");
     return NextResponse.json(
       {
         erreur:
@@ -55,11 +56,25 @@ export async function POST(requete: Request) {
     return NextResponse.json({ erreur: "Ce vélo n'existe pas." }, { status: 404 });
   }
 
-  // Contrôle en amont : évite d'encaisser pour une période déjà prise.
-  const libre = await depot.estDisponible(velo.id, donnees.dateDebut, donnees.dateFin);
+  // L'heure de fin découle de la formule : le road trip dure le temps de
+  // son créneau encadré, la location libre le nombre d'heures acheté.
+  const heureFin =
+    donnees.offre === "road-trip"
+      ? donnees.heureDebut + DUREE_ROAD_TRIP_HEURES
+      : donnees.heureDebut + (donnees.dureeHeures ?? 1);
+
+  // Contrôle en amont : évite d'encaisser pour un créneau déjà pris. La
+  // garantie réelle reste l'écriture, en transaction sérialisable.
+  const libre = await depot.estDisponible(
+    velo.id,
+    donnees.dateDebut,
+    donnees.dateFin,
+    donnees.heureDebut,
+    heureFin,
+  );
   if (!libre) {
     return NextResponse.json(
-      { erreur: "Ce vélo n'est plus libre sur ces dates.", code: "INDISPONIBLE" },
+      { erreur: "Ce vélo n'est plus libre sur ce créneau.", code: "INDISPONIBLE" },
       { status: 409 },
     );
   }
@@ -72,7 +87,9 @@ export async function POST(requete: Request) {
       dureeHeures: donnees.dureeHeures,
       dateDebut: donnees.dateDebut,
       dateFin: donnees.dateFin,
+      heureDebut: donnees.heureDebut,
       options: donnees.options,
+      codeParrainage: donnees.codeParrainage || undefined,
       client: {
         prenom: donnees.client.prenom,
         nom: donnees.client.nom,
@@ -102,10 +119,11 @@ export async function POST(requete: Request) {
     //
     //  - en mode démonstration, `encaisser` répond REUSSI tout de suite,
     //    on confirme donc ici ;
-    //  - avec KkiaPay, il répond EN_ATTENTE et renvoie de quoi ouvrir la
-    //    fenêtre de paiement dans le navigateur. La confirmation viendra
-    //    ensuite de /api/paiement/kkiapay ou du webhook, tous deux après
-    //    vérification de la transaction auprès de KkiaPay.
+    //  - avec SasPay, il répond EN_ATTENTE : la demande vient de partir
+    //    sur le téléphone du client, qui doit la valider. La confirmation
+    //    viendra ensuite de /api/paiement/saspay (que le navigateur
+    //    interroge) ou du webhook, tous deux après vérification du
+    //    paiement auprès de SasPay.
     //
     // Confirmer ici sans vérifier reviendrait à donner un vélo à qui
     // n'a pas payé.
@@ -126,9 +144,10 @@ export async function POST(requete: Request) {
         ]);
       }
     } else {
-      // Paiement pas encore abouti : la fenêtre KkiaPay va s'ouvrir.
+      // Paiement pas encore abouti : la demande est partie sur le
+      // téléphone du client et attend sa validation.
       // On envoie tout de suite le lien de suivi, car c'est le seul
-      // moment ou le jeton existe en clair — la base n'en garde que le
+      // moment ou le jeton existe en clair, la base n'en garde que le
       // hache, et le webhook qui confirmera ne pourra pas le reconstituer.
       await Promise.allSettled([envoyerReceptionDemande(reservation, lienSuivi)]);
     }
@@ -143,10 +162,10 @@ export async function POST(requete: Request) {
         paiement: {
           statut: paiement.statut,
           fournisseur: paiement.fournisseur,
-          // Contient la clé PUBLIQUE de KkiaPay, faite pour être lue par
-          // le navigateur. Les clés privée et secrète ne sortent jamais
-          // du serveur.
-          widget: paiement.widget,
+          // Rien de secret ne sort d'ici : seulement l'identifiant du
+          // paiement SasPay, dont le navigateur a besoin pour demander
+          // où en est la validation sur le téléphone du client.
+          suivi: paiement.suivi,
           message: paiement.message,
         },
         modeDemonstration: fournisseurActif() === "demo",

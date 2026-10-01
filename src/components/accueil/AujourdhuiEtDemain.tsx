@@ -26,7 +26,7 @@ const tuiles = [
     alt: "VTT robuste posé devant un entrepôt",
     etat: "Bientôt" as const,
     titre: "Le road trip béninois",
-    detail: "Du littoral aux montagnes de l'Atacora — la suite que nous préparons.",
+    detail: "Du littoral aux montagnes de l'Atacora, la suite que nous préparons.",
     href: "/itineraires",
     libelleLien: "Découvrir la suite",
   },

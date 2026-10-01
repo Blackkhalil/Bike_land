@@ -57,7 +57,7 @@ export function Section({
     craie: "bg-craie text-noir-piste",
     lagune: "bg-vert-lagune text-craie",
     transparent: "",
-    // Alias de migration — voir FondSection.
+    // Alias de migration, voir FondSection.
     sable: "bg-craie text-noir-piste",
     blanc: "bg-craie text-noir-piste",
     encre: "bg-noir-piste text-craie",

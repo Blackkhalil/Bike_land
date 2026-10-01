@@ -3,14 +3,15 @@
 import { useState } from "react";
 
 import { ajouterJours, aujourdhui, listerJours, versISO } from "@/lib/dates";
-import { formatDateCourte } from "@/lib/format";
+import { formatDateCourte, formatPlageHoraire } from "@/lib/format";
+import { FERMETURE_HEURE, OUVERTURE_HEURE } from "@/data/offres";
 import type { Reservation, Velo } from "@/lib/types";
 
 /**
  * Vue calendrier du parc (§2.2) : un vélo par ligne, un jour par colonne.
  *
- * C'est la lecture dont l'exploitant a besoin au comptoir — qui est
- * sorti, qui rentre quand, quel créneau reste libre — et c'est aussi la
+ * C'est la lecture dont l'exploitant a besoin au comptoir, qui est
+ * sorti, qui rentre quand, quel créneau reste libre, et c'est aussi la
  * vérification visuelle qu'aucune double réservation n'existe : deux
  * barres ne peuvent pas se superposer sur une même ligne.
  */
@@ -41,7 +42,7 @@ export function CalendrierParc({
             Calendrier du parc
           </h2>
           <p className="mt-1 text-[0.8rem] text-gris-cadre">
-            {formatDateCourte(jours[0])} – {formatDateCourte(jours[jours.length - 1])}
+            {formatDateCourte(jours[0])} - {formatDateCourte(jours[jours.length - 1])}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -137,7 +138,7 @@ export function CalendrierParc({
                       className="absolute inset-y-2 left-0 rounded-[var(--radius-bouton)] bg-craie-ombre/70 px-2 text-[0.7rem] leading-7"
                       style={{ width: jours.length * LARGEUR_JOUR - 2 }}
                     >
-                      Immobilisé — atelier
+                      Immobilisé à l&apos;atelier
                     </div>
                   )}
 
@@ -145,14 +146,11 @@ export function CalendrierParc({
                     <a
                       key={creneau.reservation.id}
                       href={`/admin/reservations?reference=${creneau.reservation.reference}`}
-                      title={`${creneau.reservation.reference} — ${creneau.reservation.client.prenom} ${creneau.reservation.client.nom}`}
+                      title={`${creneau.reservation.reference} : ${creneau.reservation.client.prenom} ${creneau.reservation.client.nom} · ${formatPlageHoraire(creneau.reservation.heureDebut, creneau.reservation.heureFin)}`}
                       className={`absolute inset-y-2 flex items-center overflow-hidden rounded-[var(--radius-bouton)] px-2 text-[0.7rem] font-semibold text-craie transition-opacity hover:opacity-85 ${
                         creneau.reservation.statut === "EN_COURS" ? "bg-orange-signal" : "bg-noir-releve"
                       }`}
-                      style={{
-                        left: creneau.indexDebut * LARGEUR_JOUR + 2,
-                        width: (creneau.indexFin - creneau.indexDebut + 1) * LARGEUR_JOUR - 4,
-                      }}
+                      style={positionBarre(creneau)}
                     >
                       <span className="truncate">
                         {creneau.reservation.client.prenom} {creneau.reservation.client.nom[0]}.
@@ -182,3 +180,28 @@ export function CalendrierParc({
 }
 
 export const premierJourVisible = () => versISO(new Date());
+
+/**
+ * Place une barre de réservation dans la grille.
+ *
+ * Une journée n'appartient plus à une seule location : la barre occupe
+ * donc la fraction du jour correspondant à ses heures, ce qui fait
+ * apparaître côte à côte deux sorties du même vélo le même jour. Sans
+ * cela, elles se superposeraient et la seconde serait invisible.
+ */
+function positionBarre(creneau: {
+  indexDebut: number;
+  indexFin: number;
+  reservation: { heureDebut: number; heureFin: number };
+}): { left: number; width: number } {
+  const amplitude = FERMETURE_HEURE - OUVERTURE_HEURE;
+  const debutRelatif = Math.max(0, creneau.reservation.heureDebut - OUVERTURE_HEURE) / amplitude;
+  const finRelative = Math.min(amplitude, creneau.reservation.heureFin - OUVERTURE_HEURE) / amplitude;
+
+  const gauche = (creneau.indexDebut + debutRelatif) * LARGEUR_JOUR;
+  const droite = (creneau.indexFin + finRelative) * LARGEUR_JOUR;
+
+  // Deux pixels de marge, et une largeur minimale pour qu'une location
+  // d'une heure reste cliquable.
+  return { left: gauche + 1, width: Math.max(14, droite - gauche - 2) };
+}

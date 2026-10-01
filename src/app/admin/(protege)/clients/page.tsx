@@ -13,12 +13,12 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
  *
  * Elle n'est jamais saisie : elle se constitue toute seule, une fiche par
  * adresse email rencontrée lors d'une réservation. Le client n'ouvre
- * aucun compte et ne choisit aucun mot de passe — c'est un parti pris du
+ * aucun compte et ne choisit aucun mot de passe, c'est un parti pris du
  * parcours de réservation, et cet écran en est la conséquence.
  *
  * « Total dépensé » ne compte que ce qui a été réellement payé en ligne :
  * les cautions de location libre, remises en espèces au départ et rendues
- * au retour, n'y figurent pas — ce n'est pas du chiffre d'affaires.
+ * au retour, n'y figurent pas, ce n'est pas du chiffre d'affaires.
  *
  * Le pavé de bas de page rappelle les durées de conservation : ce sont
  * des obligations, pas une décoration.
@@ -116,7 +116,7 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
                 <td className="py-3 pr-4 text-right tabular-nums">{fiche.nombre}</td>
                 <td className="py-3 pr-4 text-right tabular-nums">{formatXof(fiche.total)}</td>
                 <td className="py-3 pr-4 whitespace-nowrap">
-                  {fiche.derniere ? formatDate(fiche.derniere) : "—"}
+                  {fiche.derniere ? formatDate(fiche.derniere) : "jamais"}
                 </td>
                 <td className="py-3">
                   {fiche.nombre > 2 ? (

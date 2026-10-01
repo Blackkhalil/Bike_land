@@ -5,7 +5,7 @@ import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 const REPOS = "perspective(1200px) rotateX(0deg) rotateY(0deg) scale3d(1,1,1)";
 
 /**
- * Enveloppe qui incline son contenu en 3D selon la position du curseur —
+ * Enveloppe qui incline son contenu en 3D selon la position du curseur,
  * pensée pour la photo produit détourée sur fond noir (hero), afin de
  * suggérer un objet réel plutôt qu'une image plate.
  *

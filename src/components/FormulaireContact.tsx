@@ -51,7 +51,7 @@ export function FormulaireContact() {
         <p className="titre-editorial text-[1.5rem] text-vert-lagune">Message envoyé</p>
         <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
           Nous répondons sous 24 heures ouvrées. Un accusé de réception vient de partir vers
-          votre adresse — vérifiez vos courriers indésirables si vous ne le voyez pas.
+          votre adresse. Vérifiez vos courriers indésirables si vous ne le voyez pas.
         </p>
         <Bouton variante="contour" className="mt-6 text-noir-piste" onClick={() => setEtat("repos")}>
           Écrire un autre message

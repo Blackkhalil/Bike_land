@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ControlesVelo } from "@/components/admin/ControlesVelo";
+import { FormulaireNouveauVelo } from "@/components/admin/FormulaireNouveauVelo";
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Pastille } from "@/components/ui";
 import { libellesStatut } from "@/data/catalogue";
@@ -23,7 +24,7 @@ const tons: Record<StatutVelo, "succes" | "info" | "alerte" | "neutre"> = {
  * Le parc, vélo par vélo.
  *
  * Une fiche par machine : où elle est, ce qu'elle fait en ce moment, ce
- * qu'elle a rapporté, et le seul réglage qui se change en exploitation —
+ * qu'elle a rapporté, et le seul réglage qui se change en exploitation,
  * son statut.
  *
  * Trois choix méritent d'être expliqués :
@@ -96,7 +97,7 @@ export default async function PageParcAdmin() {
           <p className="etiquette opacity-75">Exploitation</p>
           <h1 className="titre-editorial mt-3 text-[2rem]">Parc de vélos</h1>
           <p className="mt-2 text-[0.88rem] text-gris-cadre">
-            {enService} vélo{enService > 1 ? "s" : ""} en service — {dehors} dehors,{" "}
+            {enService} vélo{enService > 1 ? "s" : ""} en service, {dehors} dehors,{" "}
             {atelier} à l&apos;atelier, {Math.max(enService - dehors - atelier, 0)} disponible
             {enService - dehors - atelier > 1 ? "s" : ""}.
             {retires > 0 && ` ${retires} retiré${retires > 1 ? "s" : ""} du parc.`}
@@ -137,7 +138,7 @@ export default async function PageParcAdmin() {
                   <p className="mt-3 text-[0.85rem]">
                     {enCours ? (
                       <>
-                        <strong className="font-semibold text-orange-sourd">Sorti</strong> —{" "}
+                        <strong className="font-semibold text-orange-sourd">Sorti</strong>,{" "}
                         {resumeOffre(enCours)}, avec {enCours.client.prenom} {enCours.client.nom} (
                         {enCours.reference}).
                         {enCours.cautionXof > 0 &&
@@ -145,7 +146,7 @@ export default async function PageParcAdmin() {
                       </>
                     ) : prochaine ? (
                       <>
-                        Prochaine sortie le {formatDate(prochaine.dateDebut)} —{" "}
+                        Prochaine sortie le {formatDate(prochaine.dateDebut)},{" "}
                         {resumeOffre(prochaine)}, avec {prochaine.client.prenom}{" "}
                         {prochaine.client.nom}.
                       </>
@@ -208,11 +209,14 @@ export default async function PageParcAdmin() {
         })}
       </div>
 
+      <FormulaireNouveauVelo points={points} />
+
       <p className="mt-8 rounded-[var(--radius-carte)] border border-noir-piste/12 p-6 text-[0.85rem] leading-relaxed text-gris-cadre">
-        L&apos;ajout, la modification et le retrait de vélos passent aujourd&apos;hui par le jeu de
-        données du projet (<code className="font-mono">src/data/catalogue.ts</code>) ou par la base
-        PostgreSQL. Un formulaire d&apos;édition en ligne est le prolongement naturel de cet écran,
-        une fois le parc stabilisé.
+        Pour sortir un vélo du parc, passez-le en{" "}
+        <strong className="text-noir-piste">Retiré du parc</strong> sur sa fiche ci-dessus : il
+        disparaît du site public et son historique reste consultable. Il n&apos;existe
+        volontairement pas de suppression définitive : elle détacherait les réservations passées
+        des factures déjà envoyées.
       </p>
     </div>
   );

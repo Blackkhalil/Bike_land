@@ -4,7 +4,7 @@ import { CalendrierParc } from "@/components/admin/CalendrierParc";
 import { Pastille } from "@/components/ui";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
-import { formatDate, formatXof, resumeOffre } from "@/lib/format";
+import { formatDate, formatPlageHoraire, formatXof, resumeOffre } from "@/lib/format";
 import type { StatutReservation } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Réservations" };
@@ -30,8 +30,8 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
 /**
  * Toutes les réservations, avec le mouvement du jour en tête.
  *
- * L'écran s'ouvre sur ce qui est en attente d'un geste — vélos à remettre,
- * vélos à récupérer — puis déroule le calendrier du parc et la liste
+ * L'écran s'ouvre sur ce qui est en attente d'un geste, vélos à remettre,
+ * vélos à récupérer, puis déroule le calendrier du parc et la liste
  * complète, filtrable.
  *
  * La recherche couvre la référence, le client, l'email **et le nom du
@@ -40,7 +40,7 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
  *
  * La colonne « Formule » a remplacé l'ancienne « Période » : les dates de
  * début et de fin sont toujours les mêmes, alors que la formule et son
- * dimensionnement — participants ou heures — distinguent réellement deux
+ * dimensionnement, participants ou heures, distinguent réellement deux
  * réservations.
  */
 export default async function PageReservationsAdmin({ searchParams }: { searchParams: Recherche }) {
@@ -234,6 +234,11 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                   </td>
                   <td className="py-3 pr-4 whitespace-nowrap">
                     {formatDate(reservation.dateDebut)}
+                    {/* L'horaire compte autant que le jour depuis qu'un
+                        même vélo sort plusieurs fois dans la journée. */}
+                    <span className="block text-[0.76rem] text-gris-cadre tabular-nums">
+                      {formatPlageHoraire(reservation.heureDebut, reservation.heureFin)}
+                    </span>
                   </td>
                   <td className="py-3 pr-4 text-right tabular-nums">
                     {formatXof(reservation.totalXof)}

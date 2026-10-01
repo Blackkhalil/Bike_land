@@ -189,3 +189,21 @@ input[type="number"]::-webkit-inner-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/**
+ * Balancement lent du vélo en vedette.
+ *
+ * Il remplace le suivi de souris sur les écrans tactiles, où il n'y a
+ * pas de pointeur à suivre. L'amplitude est volontairement minuscule :
+ * un mouvement perpétuel plus marqué finirait par gêner la lecture du
+ * texte posé à côté.
+ */
+@keyframes flotter {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(-0.6deg);
+  }
+}

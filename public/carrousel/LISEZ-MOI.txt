@@ -1,0 +1,31 @@
+Photos du carrousel de la page d'accueil
+========================================
+
+Déposez vos photos ICI. Elles apparaissent sur le site sans rien changer
+au code. Retirez-en une, elle disparaît.
+
+Formats acceptés : .jpg  .jpeg  .png  .webp  .avif
+
+ORDRE D'AFFICHAGE
+Les photos défilent dans l'ordre alphabétique du nom de fichier. Pour
+imposer un ordre précis, préfixez par un nombre :
+
+    01-depart-du-samedi.jpg
+    02-plage-de-fidjrosse.jpg
+    03-coco-a-l-arrivee.jpg
+
+NOMMEZ VOS FICHIERS EN CLAIR
+Le nom sert de description aux personnes qui naviguent avec un lecteur
+d'écran, et à Google. « coucher-de-soleil-a-fidjrosse.jpg » devient
+« Coucher de soleil à Fidjrossè ». « IMG_4821.jpg » ne décrit rien.
+
+POIDS DES FICHIERS
+Ne vous en souciez pas : le site redimensionne et convertit chaque photo
+automatiquement. Vous pouvez déposer des fichiers sortis directement d'un
+téléphone, vos visiteurs ne téléchargeront jamais l'original.
+
+CADRAGE
+Les photos sont affichées en 4:3, recadrées au centre. Évitez de placer
+un sujet important tout en haut ou tout en bas de l'image.
+
+Ce fichier est ignoré par le site : seules les images comptent.

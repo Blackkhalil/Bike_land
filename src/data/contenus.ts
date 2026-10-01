@@ -3,7 +3,7 @@
  * étapes du parcours de location.
  */
 
-import type { Avis, Itineraire } from "@/lib/types";
+import type { Itineraire } from "@/lib/types";
 
 export const itineraires: Itineraire[] = [
   {
@@ -74,82 +74,13 @@ export const itineraires: Itineraire[] = [
   },
 ];
 
-// ATTENTION — contenu de démonstration, à remplacer avant l'ouverture.
+// ATTENTION, contenu de démonstration, à remplacer avant l'ouverture.
 // Ces avis sont fictifs. Publier des témoignages inventés attribués à des
 // personnes nommées est une pratique trompeuse, et sanctionnée comme telle
 // dans la plupart des cadres de protection du consommateur. Ils sont ici
 // pour donner sa forme à la page, pas pour être mis en ligne tels quels :
 // dès les premières sorties, remplacez-les par les retours réels de vos
 // clients, avec leur accord.
-export const avisClients: Avis[] = [
-  {
-    id: "avis-1",
-    veloId: "velo-atacora",
-    auteur: "Mariam A.",
-    ville: "Fidjrossè, Cotonou",
-    note: 5,
-    titre: "Ma première sortie à vélo depuis des années",
-    commentaire:
-      "Je n'avais pas roulé depuis le lycée. Le coordinateur a réglé la selle à ma taille avant le départ et a calé son allure sur la mienne. On est allés jusqu'à Togbin sans que je me sente à la traîne.",
-    date: "2026-08-30",
-  },
-  {
-    id: "avis-4",
-    veloId: "velo-cotonou",
-    auteur: "Aïcha B.",
-    ville: "Akpakpa, Cotonou",
-    note: 4,
-    titre: "Réservé et payé depuis mon téléphone",
-    commentaire:
-      "Cinq minutes sur le site, payé en MTN Money, confirmation reçue dans la foulée. Le coco à l'arrivée était le bienvenu. Le panier avant est un peu petit, c'est mon seul reproche.",
-    date: "2026-08-11",
-  },
-  {
-    id: "avis-6",
-    veloId: "velo-abomey",
-    auteur: "Sylvain K.",
-    ville: "Cadjèhoun, Cotonou",
-    note: 5,
-    titre: "Le circuit de l'Amazone en famille",
-    commentaire:
-      "Parti avec mes deux grands un samedi matin. Deux heures tranquilles le long de la côte, la photo devant la statue, et retour avant la chaleur. On recommence le mois prochain.",
-    date: "2026-08-23",
-  },
-  {
-    id: "avis-5",
-    veloId: "velo-tandem",
-    auteur: "Élodie et Marc",
-    ville: "Haie Vive, Cotonou",
-    note: 5,
-    titre: "Le tandem, la meilleure idée de la sortie",
-    commentaire:
-      "On a roulé jusqu'à Togbin en riant tout du long. Prise en main immédiate, même sans aucune expérience du tandem.",
-    date: "2026-07-19",
-  },
-  {
-    id: "avis-2",
-    veloId: "velo-oueme",
-    auteur: "Rodrigue T.",
-    ville: "Gbédjromédé, Cotonou",
-    note: 5,
-    titre: "Rien à prévoir, tout est fourni",
-    commentaire:
-      "Casque, antivol, kit de réparation, l'eau et le coco : je suis venu les mains dans les poches. Et pas de caution à bloquer sur mon compte, ça change tout.",
-    date: "2026-07-05",
-  },
-  {
-    id: "avis-3",
-    veloId: "velo-tanougou",
-    auteur: "Koffi D.",
-    ville: "Ménontin, Cotonou",
-    note: 5,
-    titre: "Une crevaison, et personne n'est resté planté",
-    commentaire:
-      "Crevaison à mi-parcours sur la piste. Le coordinateur avait la pompe et les rustines, dix minutes plus tard on repartait. C'est ce genre de chose qui fait la différence.",
-    date: "2026-06-21",
-  },
-];
-
 export const etapesLocation = [
   {
     numero: "01",
@@ -215,7 +146,7 @@ export const faq = [
       {
         question: "Quels moyens de paiement acceptez-vous ?",
         reponse:
-          "Le Mobile Money uniquement : MTN Money et Moov Money. Les paiements passent par KkiaPay, agrégateur béninois, dans sa propre fenêtre : aucune coordonnée de paiement ne transite par notre site ni n'y est conservée.",
+          "Le Mobile Money uniquement : MTN Money et Moov Money. Une demande arrive sur votre téléphone, vous la validez avec votre code habituel. Les paiements passent par SasPay : aucune coordonnée de paiement ne transite par notre site ni n'y est conservée.",
       },
       {
         question: "Une caution est-elle demandée ?",

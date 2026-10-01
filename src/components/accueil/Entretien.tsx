@@ -4,7 +4,7 @@ import { Etiquette, Section, TitreSection } from "@/components/ui";
 
 /**
  * « Votre vélo, prêt à rouler » : accordéon d'entretien à gauche, visuel à
- * droite — la construction du bloc maintenance de la maquette.
+ * droite, la construction du bloc maintenance de la maquette.
  */
 
 const volets = [

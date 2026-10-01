@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { VeloIllustration } from "./VeloIllustration";
+import { VideoCarteVelo } from "./VideoCarteVelo";
 import { Pastille } from "./ui";
 import type { Velo } from "@/lib/types";
 
@@ -14,8 +15,13 @@ import type { Velo } from "@/lib/types";
  * morphologie au départ. Les afficher laisserait croire qu'il faut en
  * tenir compte.
  *
- * Restent le nom, la photo et l'accroche — ce qui aide vraiment à
- * choisir — plus le seul état qui compte : le vélo est-il disponible.
+ * Restent le nom, le visuel et l'accroche, ce qui aide vraiment à
+ * choisir, plus le seul état qui compte : le vélo est-il disponible.
+ *
+ * Le visuel est la présentation filmée quand elle existe : elle montre
+ * la machine sous tous les angles, ce qu'aucun cliché ne fait. Elle
+ * démarre au survol et non toute seule, onze vidéos qui se lanceraient
+ * ensemble rendraient le catalogue inutilisable sur un réseau mobile.
  */
 export function CarteVelo({
   velo,
@@ -36,7 +42,9 @@ export function CarteVelo({
     >
       <Link href={href} className="flex flex-1 flex-col">
         <div className="relative grid aspect-4/3 place-items-center overflow-hidden bg-craie">
-          {velo.photo ? (
+          {velo.video ? (
+            <VideoCarteVelo source={velo.video} affiche={velo.photo} nom={velo.nom} />
+          ) : velo.photo ? (
             <Image
               src={velo.photo}
               alt={velo.nom}

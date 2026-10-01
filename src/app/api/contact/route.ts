@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { depot } from "@/lib/db";
-import { envoyerAccuseContact } from "@/lib/email";
+import { envoyerAccuseContact, envoyerMessageContactAdmin } from "@/lib/email";
 import { erreursParChamp, schemaContact } from "@/lib/validation";
 
 /** Formulaire de contact (§2.1) : enregistrement, puis accusé de réception. */
@@ -22,7 +22,14 @@ export async function POST(requete: Request) {
   if (siteWeb) return NextResponse.json({ recu: true });
 
   await depot.enregistrerMessageContact(message);
-  await envoyerAccuseContact(message.nom, message.email).catch(() => undefined);
+
+  // Les deux envois sont tentés en parallèle et aucun ne peut faire
+  // échouer la réponse : le message est déjà enregistré, et dire au
+  // visiteur que son envoi a échoué l'amènerait à le renvoyer.
+  await Promise.allSettled([
+    envoyerMessageContactAdmin(message),
+    envoyerAccuseContact(message.nom, message.email),
+  ]);
 
   return NextResponse.json({ recu: true }, { status: 201 });
 }

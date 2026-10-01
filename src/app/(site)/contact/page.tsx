@@ -9,7 +9,7 @@ import { site } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Contact & FAQ",
   description:
-    "Questions fréquentes sur la location, le paiement Mobile Money, les sorties encadrées et l'assistance — et un formulaire pour tout le reste.",
+    "Questions fréquentes sur la location, le paiement Mobile Money, les sorties encadrées et l'assistance, plus un formulaire pour tout le reste.",
   alternates: { canonical: "/contact" },
 };
 
@@ -32,7 +32,12 @@ export default function PageContact() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(donneesStructurees) }}
+        // Le `<` est échappé : une balise fermante apparaissant dans une
+        // des réponses de la FAQ sortirait sinon du bloc de script et
+        // serait interprétée comme du HTML.
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(donneesStructurees).replace(/</g, "\\u003c"),
+        }}
       />
 
       <Section fond="noir" className="pb-16 pt-32 sm:pt-40">
@@ -72,7 +77,7 @@ export default function PageContact() {
               <div>
                 <p className="etiquette opacity-75">À l&apos;atelier</p>
                 <p className="mt-2 text-[0.95rem] leading-relaxed">
-                  {site.adresse.ligne}
+                  Route des Pêches, Fidjrossè
                   <br />
                   {site.adresse.ville}, {site.adresse.pays}
                 </p>

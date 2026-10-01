@@ -105,7 +105,7 @@ export function Courbe({
           viewBox={`0 0 ${largeur} ${HAUTEUR}`}
           className="w-full"
           role="img"
-          aria-label={`${titre} — ${points.length} points, de ${points[0].etiquette} à ${points[dernier].etiquette}`}
+          aria-label={`${titre}, ${points.length} points, de ${points[0].etiquette} à ${points[dernier].etiquette}`}
         >
           <LignesGrille
             valeurs={echelle}

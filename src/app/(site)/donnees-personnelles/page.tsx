@@ -19,7 +19,7 @@ export default function PageDonneesPersonnelles() {
     >
       <ArticleLegal titre="Responsable du traitement">
         <p>
-          {site.nom}, {site.adresse.ligne}, {site.adresse.ville}, {site.adresse.pays}. Contact :{" "}
+          {site.nom}, {site.adresse.ville}, {site.adresse.pays}. Contact :{" "}
           {site.email}.
         </p>
         <p>
@@ -33,21 +33,21 @@ export default function PageDonneesPersonnelles() {
         <p>Nous traitons uniquement les données suivantes :</p>
         <ul className="ml-5 list-disc space-y-2">
           <li>
-            <strong>Identité et contact</strong> — prénom, nom, adresse email, numéro de
+            <strong>Identité et contact</strong> : prénom, nom, adresse email, numéro de
             téléphone. Finalité : établir le contrat de location, envoyer la confirmation, la
             facture et le lien de suivi, vous joindre en cas d&apos;imprévu.
           </li>
           <li>
-            <strong>Réservation</strong> — vélo, dates, options, point de départ, montant.
+            <strong>Réservation</strong> : vélo, dates, options, point de départ, montant.
             Finalité : exécuter la location et tenir la comptabilité.
           </li>
           <li>
-            <strong>Paiement</strong> — identifiant de transaction et moyen utilisé.{" "}
+            <strong>Paiement</strong> : identifiant de transaction et moyen utilisé.{" "}
             <em>Aucune coordonnée bancaire n&apos;est reçue ni stockée par Bike Land</em> : elles
             sont traitées par l&apos;agrégateur de paiement.
           </li>
           <li>
-            <strong>Message libre</strong> — le texte que vous nous adressez, s&apos;il y a lieu.
+            <strong>Message libre</strong> : le texte que vous nous adressez, s&apos;il y a lieu.
           </li>
         </ul>
         <p>

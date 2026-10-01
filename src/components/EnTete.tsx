@@ -11,7 +11,7 @@ import { navigationPrincipale, navigationSecondaire } from "@/lib/site";
 /**
  * En-tête collant.
  *
- * Logo à gauche, navigation centrée, actions à droite — la composition
+ * Logo à gauche, navigation centrée, actions à droite, la composition
  * des références fournies. Transparent au-dessus du héros, il bascule en
  * noir opaque après 80px de défilement (brief §2).
  *

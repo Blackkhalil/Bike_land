@@ -53,7 +53,7 @@ export function FormulaireSuivi() {
         id="lien-suivi"
         value={saisie}
         onChange={(evenement) => setSaisie(evenement.target.value)}
-        placeholder="https://bikeland.bj/reservation/BL-XXXXXX…"
+        placeholder="https://bikeland.bj/reservation/BL-XXXXXX"
         aria-invalid={erreur ? true : undefined}
         aria-describedby={erreur ? "erreur-suivi" : undefined}
         className={`mt-2 w-full rounded-full border bg-craie px-5 py-3 text-[0.95rem] outline-none transition-colors focus:border-orange-signal ${

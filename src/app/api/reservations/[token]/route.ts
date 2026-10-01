@@ -20,7 +20,7 @@ export async function GET(_requete: Request, { params }: { params: Params }) {
  * Annulation.
  *
  * Le token vaut autorisation : seul son porteur peut annuler. On refuse
- * l'annulation d'une location déjà commencée — le vélo est sorti.
+ * l'annulation d'une location déjà commencée, le vélo est sorti.
  */
 export async function DELETE(_requete: Request, { params }: { params: Params }) {
   const { token } = await params;

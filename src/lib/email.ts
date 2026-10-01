@@ -8,7 +8,7 @@
  */
 
 import { site } from "./site";
-import { formatDate, formatXof, resumeOffre } from "./format";
+import { formatCreneau, formatXof, resumeOffre } from "./format";
 import type { Reservation } from "./types";
 
 interface Message {
@@ -16,6 +16,13 @@ interface Message {
   sujet: string;
   html: string;
   texte: string;
+  /**
+   * Adresse à laquelle répondre, quand elle diffère de la nôtre.
+   *
+   * Sert aux notifications internes : un message de contact transféré à
+   * l'équipe doit se répondre d'un clic au client, pas à nous-mêmes.
+   */
+  repondreA?: string;
 }
 
 /**
@@ -23,7 +30,7 @@ interface Message {
  *
  * Gmail impose que l'expéditeur soit le compte authentifié : on ne peut
  * pas écrire « au nom de » quelqu'un d'autre. C'est la contrepartie de
- * cette solution — mais elle évite d'avoir à posséder un domaine, ce que
+ * cette solution, mais elle évite d'avoir à posséder un domaine, ce que
  * Resend exige pour écrire à autre chose que sa propre adresse.
  */
 let transporteurGmail: import("nodemailer").Transporter | null = null;
@@ -57,7 +64,7 @@ async function envoyerParGmail(
       subject: message.sujet,
       text: message.texte,
       html: message.html,
-      replyTo: site.email,
+      replyTo: message.repondreA || site.email,
     });
     return { envoye: true };
   } catch (erreur) {
@@ -98,7 +105,7 @@ export async function envoyer(message: Message): Promise<{ envoye: boolean; rais
       // pas son propre domaine vérifié : on ne peut pas prouver la
       // possession de gmail.com. Sans cette ligne, répondre à un email de
       // confirmation écrirait dans le vide.
-      reply_to: site.email,
+      reply_to: message.repondreA || site.email,
       to: [message.destinataire],
       subject: message.sujet,
       html: message.html,
@@ -158,7 +165,7 @@ function aPrevoir(reservation: Reservation): string[] {
  * C'est le SEUL email qui porte le lien de suivi personnel : le jeton
  * n'existe qu'a la creation, et la base n'en stocke que le hache. Le
  * webhook de paiement, qui confirme ensuite, ne peut donc pas le
- * reconstituer — et c'est voulu : une fuite de la base ne doit pas
+ * reconstituer, et c'est voulu : une fuite de la base ne doit pas
  * permettre de forger un lien vers une reservation.
  */
 export async function envoyerReceptionDemande(reservation: Reservation, lienSuivi: string) {
@@ -174,7 +181,7 @@ export async function envoyerReceptionDemande(reservation: Reservation, lienSuiv
       `Conservez ce lien, il est le seul moyen de retrouver votre réservation :`,
       lienSuivi,
       "",
-      `L'équipe ${site.nom} — ${site.telephone}`,
+      `L'équipe ${site.nom}, ${site.telephone}`,
     ].join("\n"),
     html: gabarit({
       titre: "Demande enregistrée",
@@ -182,7 +189,7 @@ export async function envoyerReceptionDemande(reservation: Reservation, lienSuiv
       lignes: [
         ["Référence", reservation.reference],
         ...detailsOffre(reservation),
-        ["Date", formatDate(reservation.dateDebut)],
+        ["Date", formatCreneau(reservation)],
         ["Montant à régler", formatXof(reservation.totalXof)],
       ],
       action: { libelle: "Suivre ma demande", url: lienSuivi },
@@ -201,7 +208,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
     `Votre paiement est reçu, votre réservation est confirmée.`,
     `Référence : ${reservation.reference}`,
     `Vélo : ${velo?.veloNom}`,
-    `Date : ${formatDate(reservation.dateDebut)}`,
+    `Date : ${formatCreneau(reservation)}`,
     `Montant réglé : ${formatXof(reservation.totalXof)}`,
     "",
     "À prévoir au départ :",
@@ -210,7 +217,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
     `Retrouvez votre réservation avec le lien reçu à l'enregistrement, ou sur ${lienSuivi}`,
     "",
     `À bientôt sur la route,`,
-    `L'équipe ${site.nom} — ${site.telephone}`,
+    `L'équipe ${site.nom}, ${site.telephone}`,
   ].join("\n");
 
   return envoyer({
@@ -222,9 +229,9 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
       intro: `Bonjour ${reservation.client.prenom}, votre paiement est reçu.`,
       lignes: [
         ["Référence", reservation.reference],
-        ["Vélo", velo?.veloNom ?? "—"],
+        ["Vélo", velo?.veloNom ?? "non précisé"],
         ...detailsOffre(reservation),
-        ["Date", formatDate(reservation.dateDebut)],
+        ["Date", formatCreneau(reservation)],
         ["Montant réglé", formatXof(reservation.totalXof)],
         ...(reservation.cautionXof > 0
           ? ([
@@ -243,7 +250,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
 export async function envoyerFacture(reservation: Reservation, numeroFacture: string, lienSuivi: string) {
   return envoyer({
     destinataire: reservation.client.email,
-    sujet: `Facture ${numeroFacture} — ${site.nom}`,
+    sujet: `Facture ${numeroFacture}, ${site.nom}`,
     texte:
       `Bonjour ${reservation.client.prenom},\n\n` +
       `Voici votre facture ${numeroFacture} d'un montant de ${formatXof(reservation.totalXof)} ` +
@@ -277,20 +284,34 @@ export async function envoyerFacture(reservation: Reservation, numeroFacture: st
  */
 export async function envoyerNotificationAdmin(reservation: Reservation) {
   const destinataire = process.env.ADMIN_EMAIL || site.email;
-  const velos = reservation.lignes.map((ligne) => ligne.veloNom).join(", ") || "—";
+  const velos = reservation.lignes.map((ligne) => ligne.veloNom).join(", ") || "non précisé";
   const contact = reservation.client.telephone || reservation.client.email;
   const lienAdmin = `${site.url}/admin/reservations?reference=${reservation.reference}`;
 
+  // Référence du paiement chez l'agrégateur : c'est elle qu'il faut
+  // citer pour retrouver la transaction, réclamer un remboursement ou
+  // rapprocher un versement. Sans elle, il faut fouiller.
+  const paiement = reservation.paiements.find((ligne) => !ligne.estCaution);
+  const referencePaiement = paiement?.referenceFournisseur ?? "non communiquée";
+
   return envoyer({
     destinataire,
-    sujet: `Nouvelle réservation ${reservation.reference} — ${velos}`,
+    sujet: `Réservation payée ${reservation.reference} : ${velos}`,
     texte: [
-      `Nouvelle réservation reçue.`,
+      `Réservation confirmée : le paiement est encaissé.`,
       "",
-      `Référence : ${reservation.reference}`,
-      `Client : ${reservation.client.prenom} ${reservation.client.nom} (${contact})`,
+      `Référence réservation : ${reservation.reference}`,
+      `Référence paiement : ${referencePaiement}`,
+      "",
+      `Client : ${reservation.client.prenom} ${reservation.client.nom}`,
+      `Email : ${reservation.client.email}`,
+      `Téléphone : ${reservation.client.telephone ?? "non renseigné"}`,
+      "",
       `Vélo : ${velos}`,
-      `Date : ${formatDate(reservation.dateDebut)}`,
+      `Date : ${formatCreneau(reservation)}`,
+      reservation.codeParrainage
+        ? `Code de parrainage : ${reservation.codeParrainage}`
+        : "",
       `Formule : ${resumeOffre(reservation)}`,
       reservation.cautionXof > 0
         ? `À réclamer au départ : pièce d'identité, engagement signé et caution de ${formatXof(reservation.cautionXof)} en espèces.`
@@ -303,16 +324,20 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
       .filter(Boolean)
       .join("\n"),
     html: gabarit({
-      titre: "Nouvelle réservation",
-      intro: `${reservation.client.prenom} ${reservation.client.nom} vient de réserver.`,
+      titre: "Réservation payée",
+      intro: `${reservation.client.prenom} ${reservation.client.nom} vient de réserver et de payer.`,
       lignes: [
         ["Référence", reservation.reference],
         ["Client", `${reservation.client.prenom} ${reservation.client.nom}`],
-        ["Contact", contact],
+        ["Email", reservation.client.email],
+        ["Téléphone", reservation.client.telephone ?? "non renseigné"],
         ["Vélo", velos],
-        ["Départ", formatDate(reservation.dateDebut)],
-        ["Retour", formatDate(reservation.dateFin)],
-        ["Montant", formatXof(reservation.totalXof)],
+        ["Départ", formatCreneau(reservation)],
+        ["Montant payé", formatXof(reservation.totalXof)],
+        ["Référence paiement", referencePaiement],
+        ...(reservation.codeParrainage
+          ? ([["Code de parrainage", reservation.codeParrainage]] as [string, string][])
+          : []),
       ],
       action: { libelle: "Voir la réservation", url: lienAdmin },
       pied: reservation.message ? `Message du client : « ${reservation.message} »` : undefined,
@@ -320,10 +345,57 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
   });
 }
 
+/**
+ * Prévient l'équipe qu'un message vient d'arriver.
+ *
+ * Le client recevait son accusé de réception, mais personne chez Bike Land
+ * n'était averti : il fallait penser à ouvrir l'administration. Un
+ * message de contact est une demande commerciale, il doit arriver là où
+ * on lit son courrier.
+ *
+ * `repondreA` porte l'adresse du client : répondre à cet email écrit
+ * directement a la personne, sans avoir a recopier quoi que ce soit.
+ */
+export async function envoyerMessageContactAdmin(message: {
+  nom: string;
+  email: string;
+  sujet: string;
+  message: string;
+}) {
+  const destinataire = process.env.ADMIN_EMAIL || site.email;
+
+  return envoyer({
+    destinataire,
+    repondreA: message.email,
+    sujet: `Message de ${message.nom} : ${message.sujet}`,
+    texte: [
+      "Nouveau message reçu depuis le formulaire de contact.",
+      "",
+      `De : ${message.nom} <${message.email}>`,
+      `Sujet : ${message.sujet}`,
+      "",
+      message.message,
+      "",
+      "Répondez directement à cet email : votre réponse partira vers le client.",
+    ].join("\n"),
+    html: gabarit({
+      titre: "Nouveau message de contact",
+      intro: `${message.nom} vous a écrit depuis le site.`,
+      lignes: [
+        ["De", message.nom],
+        ["Email", message.email],
+        ["Sujet", message.sujet],
+      ],
+      action: { libelle: "Voir dans l'administration", url: `${site.url}/admin/messages` },
+      pied: `« ${message.message} »`,
+    }),
+  });
+}
+
 export async function envoyerAccuseContact(nom: string, email: string) {
   return envoyer({
     destinataire: email,
-    sujet: `Nous avons bien reçu votre message — ${site.nom}`,
+    sujet: `Nous avons bien reçu votre message, ${site.nom}`,
     texte:
       `Bonjour ${nom},\n\nVotre message est arrivé. Nous répondons sous 24 heures ouvrées.\n` +
       `Pour une demande urgente, appelez-nous au ${site.telephone}.\n`,
@@ -331,7 +403,7 @@ export async function envoyerAccuseContact(nom: string, email: string) {
       titre: "Message bien reçu",
       intro: `Bonjour ${nom}, nous revenons vers vous sous 24 heures ouvrées.`,
       lignes: [["Urgence", site.telephone]],
-      pied: `${site.adresse.ligne}, ${site.adresse.ville}`,
+      pied: `Route des Pêches, ${site.adresse.ville}`,
     }),
   });
 }
@@ -373,7 +445,7 @@ function gabarit(contenu: {
         </td></tr>
       </table>
       <p style="max-width:520px;margin:20px auto 0;font-size:12px;color:#6b6b6b;text-align:center">
-        ${site.nom} · ${site.adresse.ligne}, ${site.adresse.ville}, ${site.adresse.pays} · ${site.telephone}
+        ${site.nom} · ${site.adresse.ville}, ${site.adresse.pays} · ${site.telephone}
       </p>
     </td></tr>
   </table>

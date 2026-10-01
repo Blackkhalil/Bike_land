@@ -1,8 +1,8 @@
 /**
  * Numérotation des factures.
  *
- * Le numéro doit être stable pour une réservation donnée — une facture
- * renvoyée deux fois porte le même numéro — et lisible par la comptabilité.
+ * Le numéro doit être stable pour une réservation donnée, une facture
+ * renvoyée deux fois porte le même numéro, et lisible par la comptabilité.
  * Format : FA-AAAA-XXXXXX, où le suffixe reprend la référence de la
  * réservation, déjà unique.
  */

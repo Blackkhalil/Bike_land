@@ -3,9 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AnnulerReservation } from "@/components/reservation/AnnulerReservation";
+import { FormulaireAvis } from "@/components/reservation/FormulaireAvis";
 import { PaiementEnAttente } from "@/components/reservation/PaiementEnAttente";
-import { EXPIRATION_PANIER_MINUTES, panierExpire } from "@/data/offres";
-import { configurationWidgetPour } from "@/lib/paiement";
+import { EXPIRATION_PANIER_MINUTES, formatHeure, panierExpire } from "@/data/offres";
+import { fournisseurActif } from "@/lib/paiement";
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Etiquette, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue, optionsLocation } from "@/data/catalogue";
@@ -46,6 +47,13 @@ export default async function PageSuiviReservation({
   const recherche = await searchParams;
 
   const reservation = await depot.trouverReservationParToken(decodeURIComponent(token));
+
+  // L'avis déjà laissé, s'il existe : le formulaire s'ouvre alors en
+  // modification plutôt que de proposer d'en écrire un second.
+  const avis =
+    reservation?.statut === "TERMINEE"
+      ? await depot.trouverAvisParReference(reservation.reference)
+      : null;
   if (!reservation) notFound();
 
   const ligne = reservation.lignes[0];
@@ -59,25 +67,14 @@ export default async function PageSuiviReservation({
 
   // Réservation créée mais non payée : le vélo reste retenu le temps du
   // panier, après quoi il repart à la vente. On ne propose donc de
-  // reprendre le paiement que dans cette fenêtre — au-delà, encaisser
+  // reprendre le paiement que dans cette fenêtre, au-delà, encaisser
   // reviendrait à vendre un vélo peut-être déjà repris.
   const enAttenteDePaiement = reservation.statut === "EN_ATTENTE_PAIEMENT";
   const delaiDepasse = panierExpire(reservation.creeLe);
-  const widget =
-    enAttenteDePaiement && !delaiDepasse
-      ? configurationWidgetPour({
-          montantXof: reservation.totalXof,
-          reference: reservation.reference,
-          moyen:
-            reservation.paiements.find((paiement) => !paiement.estCaution)?.moyen ?? "MTN_MONEY",
-          client: {
-            prenom: reservation.client.prenom,
-            nom: reservation.client.nom,
-            email: reservation.client.email,
-            telephone: reservation.client.telephone,
-          },
-        })
-      : null;
+  // La relance n'est proposée que si le paiement en ligne est réellement
+  // configuré : un bouton qui répondrait 503 serait pire que pas de bouton.
+  const relanceProposable =
+    enAttenteDePaiement && !delaiDepasse && fournisseurActif() === "saspay";
 
   // L'annulation reste gratuite jusqu'à 72 h avant le départ (cf. CGV).
   const limiteAnnulationGratuite = ajouterJours(reservation.dateDebut, -3);
@@ -102,7 +99,16 @@ export default async function PageSuiviReservation({
         </div>
       )}
 
-      {widget && <PaiementEnAttente token={token} widget={widget} />}
+      {relanceProposable && (
+        <PaiementEnAttente
+          token={token}
+          montantXof={reservation.totalXof}
+          moyenInitial={
+            reservation.paiements.find((paiement) => !paiement.estCaution)?.moyen
+          }
+          telephoneInitial={reservation.client.telephone}
+        />
+      )}
 
       {enAttenteDePaiement && delaiDepasse && (
         <div className="mb-10 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-6 py-5">
@@ -154,21 +160,30 @@ export default async function PageSuiviReservation({
             </div>
           </div>
 
-          {/* Les dates */}
+          {/* Le créneau. Une sortie tient dans la journée : ce qui
+              change d'une réservation à l'autre, c'est l'heure. */}
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <div className="rounded-[var(--radius-carte)] bg-white p-6">
               <p className="etiquette opacity-75">Départ</p>
               <p className="mt-2 font-display text-[1.1rem] font-bold capitalize leading-tight">
                 {formatDateAvecJour(reservation.dateDebut)}
               </p>
+              <p className="mt-2 font-display text-[1.35rem] font-extrabold tabular-nums text-orange-sourd">
+                {formatHeure(reservation.heureDebut)}
+              </p>
               {point && <p className="mt-2 text-[0.85rem] text-gris-cadre">{point.horaires}</p>}
             </div>
             <div className="rounded-[var(--radius-carte)] bg-white p-6">
-              <p className="etiquette opacity-75">Retour</p>
+              <p className="etiquette opacity-75">Retour du vélo</p>
               <p className="mt-2 font-display text-[1.1rem] font-bold capitalize leading-tight">
                 {formatDateAvecJour(reservation.dateFin)}
               </p>
-              <p className="mt-2 text-[0.85rem] text-gris-cadre">Avant la fermeture de l&apos;atelier</p>
+              <p className="mt-2 font-display text-[1.35rem] font-extrabold tabular-nums text-orange-sourd">
+                {formatHeure(reservation.heureFin)}
+              </p>
+              <p className="mt-2 text-[0.85rem] text-gris-cadre">
+                Merci d&apos;être à l&apos;heure : le vélo peut être attendu juste après.
+              </p>
             </div>
           </div>
 
@@ -210,6 +225,18 @@ export default async function PageSuiviReservation({
                 })}
               </ul>
             </div>
+          )}
+
+          {/* La sortie est faite : on peut la noter. Le formulaire
+              n'apparaît pas avant, on ne note pas ce qu'on n'a pas vécu. */}
+          {reservation.statut === "TERMINEE" && (
+            <FormulaireAvis
+              token={decodeURIComponent(token)}
+              noteExistante={avis?.note}
+              titreExistant={avis?.titre}
+              commentaireExistant={avis?.commentaire}
+              dejaPublie={avis?.publie}
+            />
           )}
 
           {annulable && (

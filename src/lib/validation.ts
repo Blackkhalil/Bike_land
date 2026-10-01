@@ -9,17 +9,28 @@
 import { z } from "zod";
 
 import { optionsLocation } from "@/data/catalogue";
-import { GRILLE_HORAIRE } from "@/data/offres";
+import {
+  CRENEAUX_ROAD_TRIP,
+  FERMETURE_HEURE,
+  GRILLE_HORAIRE,
+  heuresDepartPossibles,
+  OUVERTURE_HEURE,
+} from "@/data/offres";
 import { estDateISOValide } from "./dates";
 
 const dateISO = z
   .string()
   .refine(estDateISOValide, { message: "Date attendue au format AAAA-MM-JJ." });
 
-const DUREES_TARIFEES = GRILLE_HORAIRE.map((palier) => palier.heures);
+// Les durées publiées sont les mêmes d'une gamme à l'autre : seul le
+// prix change. On prend donc la grille Classique comme référence.
+const DUREES_TARIFEES = GRILLE_HORAIRE.CLASSIQUE.map((palier) => palier.heures);
+
+/** Heure de la journée, bornée à l'amplitude d'ouverture de l'atelier. */
+const heureOuvrable = z.number().int().min(OUVERTURE_HEURE).max(FERMETURE_HEURE);
 
 // `z.enum` exige au moins une valeur. Aucune option n'etant proposee
-// aujourd'hui, le schema n'accepte tout simplement aucune option — et
+// aujourd'hui, le schema n'accepte tout simplement aucune option, et
 // reste pret si l'on en rajoute un jour.
 const codesOptions = optionsLocation.map((option) => option.code);
 const schemaOption =
@@ -30,11 +41,20 @@ const schemaOption =
       })
     : z.never();
 
-export const schemaDisponibilite = z.object({
-  veloId: z.string().min(1),
-  dateDebut: dateISO,
-  dateFin: dateISO,
-});
+export const schemaDisponibilite = z
+  .object({
+    veloId: z.string().min(1),
+    dateDebut: dateISO,
+    dateFin: dateISO,
+    // Depuis que la disponibilité se compte à l'heure, une période seule
+    // ne suffit plus à répondre : deux sorties peuvent partager la journée.
+    heureDebut: heureOuvrable,
+    heureFin: heureOuvrable,
+  })
+  .refine((valeurs) => valeurs.heureDebut < valeurs.heureFin, {
+    message: "L'heure de retour doit suivre l'heure de départ.",
+    path: ["heureFin"],
+  });
 
 export const schemaReservation = z
   .object({
@@ -52,20 +72,34 @@ export const schemaReservation = z
       .optional(),
     dateDebut: dateISO,
     dateFin: dateISO,
+    // Heure de départ : imposée par le créneau en road trip, choisie par
+    // le client en location libre. Les deux cas sont vérifiés plus bas.
+    heureDebut: heureOuvrable,
     options: z.array(schemaOption).max(8).default([]),
+    /**
+     * Code de parrainage saisi par le client.
+     *
+     * Jamais cru sur parole : la réduction est recalculée côté serveur
+     * dans la transaction qui crée la réservation. Un code inconnu ou
+     * épuisé ne fait pas échouer la réservation, il n'accorde simplement
+     * rien, un refus à cette étape ferait perdre le vélo pour une faute
+     * de frappe.
+     */
+    codeParrainage: z.string().trim().max(32).optional().or(z.literal("")),
     client: z.object({
       prenom: z.string().trim().min(2, "Prénom trop court.").max(60),
       nom: z.string().trim().min(2, "Nom trop court.").max(60),
       email: z.string().trim().toLowerCase().email("Adresse email invalide."),
+      // Obligatoire depuis SasPay : la demande de paiement est poussée
+      // sur ce numéro. Sans lui, il n'y a personne à joindre.
       telephone: z
         .string()
         .trim()
         .regex(/^[+0-9 ().-]{8,20}$/, "Numéro de téléphone invalide.")
-        .optional()
-        .or(z.literal("")),
+        .min(8, "Numéro Mobile Money nécessaire pour payer."),
     }),
     // Mobile Money uniquement : la carte bancaire n'est plus proposée.
-    moyenPaiement: z.enum(["MTN_MONEY", "MOOV_MONEY"]),
+    moyenPaiement: z.enum(["MTN_MONEY", "MOOV_MONEY", "CELTIIS_CASH"]),
     message: z.string().trim().max(1000).optional(),
     cgvAcceptees: z.literal(true, {
       errorMap: () => ({ message: "Les conditions générales doivent être acceptées." }),
@@ -80,6 +114,34 @@ export const schemaReservation = z
       message:
         "La location libre exige une durée ; le road trip n'en prend pas.",
       path: ["dureeHeures"],
+    },
+  )
+  .refine(
+    (valeurs) => {
+      if (valeurs.offre !== "road-trip") return true;
+      // Le road trip est encadré : il ne part qu'aux créneaux publiés,
+      // et seulement les jours où le coordinateur ouvre la route.
+      const jourSemaine = new Date(`${valeurs.dateDebut}T12:00:00`).getDay();
+      return CRENEAUX_ROAD_TRIP.some(
+        (creneau) =>
+          creneau.jourSemaine === jourSemaine && creneau.heureDebut === valeurs.heureDebut,
+      );
+    },
+    {
+      message: "Le road trip ne part qu'aux créneaux proposés.",
+      path: ["heureDebut"],
+    },
+  )
+  .refine(
+    (valeurs) => {
+      if (valeurs.offre !== "location-libre" || valeurs.dureeHeures === undefined) return true;
+      // On refuse un départ dont le retour tomberait après la fermeture :
+      // le client ne pourrait pas rendre le vélo.
+      return heuresDepartPossibles(valeurs.dureeHeures).includes(valeurs.heureDebut);
+    },
+    {
+      message: "Cette heure de départ ne laisse pas le temps de rendre le vélo.",
+      path: ["heureDebut"],
     },
   )
   .refine((valeurs) => valeurs.dateDebut <= valeurs.dateFin, {
@@ -107,20 +169,20 @@ export const schemaReservation = z
   );
 
 /**
- * Retour de la fenêtre KkiaPay vers notre serveur.
+ * « Où en est mon paiement ? », envoyé par le navigateur du client.
  *
  * Le jeton prouve que l'appelant détient bien le lien personnel de la
- * réservation ; l'identifiant de transaction, lui, n'est cru sur parole à
- * aucun moment — il est revérifié auprès de KkiaPay.
+ * réservation ; l'identifiant du paiement, lui, n'est cru sur parole à
+ * aucun moment, il est revérifié auprès de SasPay.
  */
-export const schemaConfirmationKkiapay = z.object({
+export const schemaSuiviPaiement = z.object({
   token: z.string().trim().min(10).max(500),
-  transactionId: z
+  paiementId: z
     .string()
     .trim()
     .min(3)
     .max(120)
-    .regex(/^[A-Za-z0-9_-]+$/, "Identifiant de transaction invalide."),
+    .regex(/^[A-Za-z0-9_-]+$/, "Identifiant de paiement invalide."),
 });
 
 export const schemaContact = z.object({
@@ -144,3 +206,94 @@ export function erreursParChamp(erreur: z.ZodError): Record<string, string> {
   }
   return resultat;
 }
+
+/**
+ * Un vélo ajouté au parc depuis l'espace d'exploitation.
+ *
+ * Les bornes ne sont pas décoratives : une charge maximale de 5 kg ou un
+ * poids de 300 kg trahit une faute de frappe, et cette fiche est lue par
+ * le client pour savoir si le vélo le portera.
+ */
+export const schemaNouveauVelo = z.object({
+  nom: z.string().trim().min(3, "Nom trop court.").max(80),
+  categorie: z.enum(["VTT", "RANDONNEUR", "GRAVEL", "VAE", "VTC", "TANDEM"]),
+  /** La gamme fixe le tarif : elle ne peut pas être laissée au hasard. */
+  gamme: z.enum(["CLASSIQUE", "PREMIUM", "PRESTIGE"]),
+  taille: z.enum(["S", "M", "L", "XL"]),
+  accroche: z.string().trim().min(10, "Accroche trop courte.").max(140),
+  description: z.string().trim().min(30, "Description trop courte.").max(1200),
+  poidsKg: z.number().min(5, "Poids invalide.").max(60),
+  vitesses: z.number().int().min(1).max(30),
+  chargeMaxKg: z.number().int().min(60, "Charge maximale invalide.").max(250),
+  autonomieConseilleeKm: z.number().int().min(5).max(300),
+  equipementInclus: z.string().trim().max(400).default(""),
+  pointDeRetraitId: z.string().trim().max(60).optional().or(z.literal("")),
+  photo: z.string().trim().max(200).optional().or(z.literal("")),
+});
+
+export type EntreeNouveauVelo = z.infer<typeof schemaNouveauVelo>;
+
+/**
+ * Avis d'un client sur sa sortie.
+ *
+ * La note suffit : demander un texte obligatoire ferait taire ceux qui
+ * n'ont rien de particulier à dire, et ce sont souvent les sorties qui
+ * se sont bien passées.
+ */
+export const schemaAvis = z.object({
+  note: z.number().int().min(1, "Note attendue entre 1 et 5.").max(5),
+  titre: z.string().trim().max(80).optional().or(z.literal("")),
+  commentaire: z.string().trim().max(800).optional().or(z.literal("")),
+});
+
+export type EntreeAvis = z.infer<typeof schemaAvis>;
+
+/* --------------------------------------------- Parrainage partenaires */
+
+/** Un code tel que le client le saisit, avant normalisation. */
+const codeParrainageSaisi = z
+  .string()
+  .trim()
+  .min(3, "Code trop court.")
+  .max(32, "Code trop long.")
+  .regex(/^[A-Za-z0-9 _-]+$/, "Un code ne contient que lettres, chiffres et tirets.");
+
+export const schemaVerificationParrainage = z.object({
+  code: codeParrainageSaisi,
+  /**
+   * Montant sur lequel calculer l'aperçu.
+   *
+   * Sans danger : il ne sert qu'à afficher une remise estimée. Le devis
+   * définitif est recalculé côté serveur à partir de la formule et de la
+   * durée, jamais de ce que le navigateur annonce.
+   */
+  montantXof: z.number().int().min(0).max(5_000_000),
+});
+
+export const schemaNouveauPartenaire = z.object({
+  nom: z.string().trim().min(2, "Nom trop court.").max(80),
+  contact: z.string().trim().max(120).optional().or(z.literal("")),
+  notes: z.string().trim().max(600).optional().or(z.literal("")),
+});
+
+/**
+ * Un code de parrainage créé depuis l'espace d'exploitation.
+ *
+ * Ni taux de réduction ni commission à saisir : ce sont des constantes de
+ * politique commerciale (cf. src/lib/parrainage.ts), les mêmes pour tous
+ * les partenaires.
+ */
+export const schemaNouveauCodeParrainage = z
+  .object({
+    code: codeParrainageSaisi,
+    partenaireId: z.string().trim().min(1, "Partenaire manquant."),
+    debuteLe: dateISO.optional().or(z.literal("")),
+    finitLe: dateISO.optional().or(z.literal("")),
+    utilisationsMax: z.number().int().min(1).max(10_000).optional(),
+  })
+  .refine(
+    (valeurs) => !valeurs.debuteLe || !valeurs.finitLe || valeurs.debuteLe <= valeurs.finitLe,
+    { message: "La fin de validité doit suivre le début.", path: ["finitLe"] },
+  );
+
+export type EntreeNouveauCodeParrainage = z.infer<typeof schemaNouveauCodeParrainage>;

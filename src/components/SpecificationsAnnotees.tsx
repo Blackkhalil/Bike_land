@@ -90,7 +90,7 @@ export function SpecificationsAnnotees({
 
   return (
     <div className={className}>
-      {/* Schéma annoté — écrans larges */}
+      {/* Schéma annoté, écrans larges */}
       <svg viewBox="0 0 1360 560" className="hidden w-full lg:block" aria-hidden="true">
         <VeloIllustration
           categorie={velo.categorie}
@@ -150,7 +150,7 @@ export function SpecificationsAnnotees({
         </g>
       </svg>
 
-      {/* Repli sans annotations — écrans étroits */}
+      {/* Repli sans annotations, écrans étroits */}
       <div className="lg:hidden">
         <VeloIllustration categorie={velo.categorie} teintes={velo.teintes} className="w-full" />
         <dl className="mt-6 grid gap-x-6 gap-y-5 sm:grid-cols-2">

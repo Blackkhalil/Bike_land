@@ -35,3 +35,11 @@ public/images/téléchargement.jpg
 # incertains. Ils restent sur le poste mais ne partent pas sur GitHub.
 public/images/pngtree-*.png
 public/images/images (1).jpg
+
+# Fichiers sources non servis : originaux HEIC, rushes vidéo.
+# Ils ne sont ni déployés ni versionnés — ils restent sur la machine.
+photos-sources/
+sauvegardes/
+
+# Images de référence, jamais publiées : elles ne sont pas à nous.
+public/images sibe web inspiration/

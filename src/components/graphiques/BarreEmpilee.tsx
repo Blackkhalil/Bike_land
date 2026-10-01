@@ -14,7 +14,7 @@ import {
  *
  * Deux emplacements catégoriels au maximum ici : c'est ce que la palette
  * tient lorsque n'importe quelle paire peut se retrouver côte à côte. Un
- * intervalle de 2 px de la couleur du fond sépare les segments — c'est le
+ * intervalle de 2 px de la couleur du fond sépare les segments, c'est le
  * vide qui les distingue, pas un contour.
  */
 export function BarreEmpilee({
@@ -76,7 +76,7 @@ export function BarreEmpilee({
         lignes={segments.map((segment) => [
           segment.etiquette,
           formater(segment.valeur),
-          total > 0 ? `${Math.round((segment.valeur / total) * 100)} %` : "—",
+          total > 0 ? `${Math.round((segment.valeur / total) * 100)} %` : "0 %",
         ])}
       />
     </CadreGraphique>

@@ -3,19 +3,24 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { GAMMES, GRILLE_HORAIRE, PRIX_ROAD_TRIP_XOF, type GammeVelo } from "@/data/offres";
+import { formatXof } from "@/lib/format";
 import type { StatutVelo, Velo } from "@/lib/types";
 
 /**
- * Contrôle d'exploitation d'un vélo : sa disponibilité.
+ * Contrôles d'exploitation d'un vélo : sa disponibilité et sa gamme.
  *
- * Le prix n'est PAS modifiable ici, et c'est volontaire : il ne dépend
- * plus du vélo mais de la formule choisie par le client — forfait pour
- * le road trip, grille horaire pour la location libre. Un champ de prix
- * par vélo laisserait croire le contraire. Les tarifs se changent dans
- * `src/data/offres.ts`.
+ * Ce sont les deux seules choses qui bougent une fois la machine au
+ * parc. Le reste de la fiche (géométrie, équipement, photo) relève du
+ * catalogue et ne se retouche pas entre deux sorties.
  *
- * Le changement de statut est immédiat et se répercute sur le site
- * public : un vélo en entretien disparaît des dates réservables.
+ * La gamme commande le tarif. La changer ici change ce que paieront les
+ * prochains clients, rien de plus : les réservations déjà prises gardent
+ * le montant inscrit dessus, qui a été payé. C'est pourquoi le bouton
+ * annonce le nouveau prix avant qu'on clique.
+ *
+ * Le changement est immédiat et se répercute sur le site public : un
+ * vélo passé à l'atelier disparaît des dates réservables dans la minute.
  */
 
 const OPTIONS: { valeur: StatutVelo; libelle: string; consequence: string }[] = [
@@ -41,7 +46,7 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
   const [enCours, demarrerTransition] = useTransition();
   const [erreur, setErreur] = useState<string | null>(null);
 
-  const envoyer = async (champs: { statut: StatutVelo }) => {
+  const envoyer = async (champs: { statut?: StatutVelo; gamme?: GammeVelo }) => {
     setErreur(null);
     try {
       const reponse = await fetch(`/api/admin/velos/${velo.id}`, {
@@ -64,7 +69,9 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
 
   return (
     <div className={`mt-4 border-t border-noir-piste/10 pt-4 ${enCours ? "opacity-60" : ""}`}>
-      <div className="flex flex-wrap items-center gap-2">
+      {/* ------------------------------------------------ Disponibilité */}
+      <p className="etiquette opacity-70">Disponibilité</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         {OPTIONS.map((option) => {
           const actif = velo.statut === option.valeur;
           return (
@@ -84,12 +91,44 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
             </button>
           );
         })}
-
       </div>
 
       <p className="mt-2 text-[0.78rem] text-gris-cadre">
         {OPTIONS.find((option) => option.valeur === velo.statut)?.consequence ??
           "Statut déduit des réservations en cours."}
+      </p>
+
+      {/* -------------------------------------------------------- Gamme */}
+      <p className="etiquette mt-5 opacity-70">Gamme et tarif</p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {GAMMES.map((gamme) => {
+          const actif = velo.gamme === gamme.code;
+          const prixHeure = GRILLE_HORAIRE[gamme.code][0].prixXof;
+          return (
+            <button
+              key={gamme.code}
+              type="button"
+              onClick={() => !actif && envoyer({ gamme: gamme.code })}
+              aria-pressed={actif}
+              title={`${formatXof(prixHeure)} l'heure, road trip ${formatXof(
+                PRIX_ROAD_TRIP_XOF[gamme.code],
+              )} par personne`}
+              className={`min-h-[40px] rounded-[var(--radius-bouton)] border px-3.5 text-[0.82rem] font-semibold transition-colors ${
+                actif
+                  ? "border-orange-signal bg-orange-signal text-noir-piste"
+                  : "border-noir-piste/20 text-gris-cadre hover:border-noir-piste/50 hover:text-noir-piste"
+              }`}
+            >
+              {gamme.nom}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="mt-2 text-[0.78rem] text-gris-cadre">
+        {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l&apos;heure, road trip{" "}
+        {formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])} par personne. Les réservations déjà prises
+        gardent leur montant.
       </p>
 
       {erreur && (

@@ -15,7 +15,14 @@ datasource db {
 
 // ---------------------------------------------------------------- Parc de vélos
 
+enum BikeTier {
+  CLASSIQUE
+  PREMIUM
+  PRESTIGE
+}
+
 enum BikeCategory {
+  VTT
   RANDONNEUR // vélo de voyage classique, sacoches, longue distance
   GRAVEL     // mixte route / piste
   VAE        // vélo à assistance électrique
@@ -42,6 +49,8 @@ model Bike {
   slug        String       @unique
   name        String
   category    BikeCategory
+  /// Gamme commerciale : c'est elle qui commande le prix (cf. src/data/offres.ts).
+  tier        BikeTier     @default(CLASSIQUE)
   size        BikeSize
   status      BikeStatus   @default(DISPONIBLE)
   shortPitch  String
@@ -64,6 +73,8 @@ model Bike {
 
   includedEquipment String[] // « équipement inclus » de la fiche produit
   heroImageUrl      String?
+  /// Présentation vidéo, servie depuis `public`. Remplace la photo sur la fiche.
+  videoUrl          String?
   galleryImageUrls  String[]
 
   pickupPointId String?
@@ -166,6 +177,12 @@ model Booking {
   endDate   DateTime @db.Date // dernier jour de location inclus
   days      Int
 
+  /// Heure de début et de fin, sur la journée de la sortie. Le road trip
+  /// part à 8 h pour finir à 11 h ; la location libre choisit son heure.
+  /// Les valeurs par défaut correspondent au créneau encadré historique.
+  startHour Int @default(8)
+  endHour   Int @default(11)
+
   subtotalXof Int
   optionsXof  Int @default(0)
   discountXof Int @default(0)
@@ -182,6 +199,9 @@ model Booking {
   options  BookingOption[]
   payments Payment[]
   review   Review?
+  /// Code promo utilisé, s'il y en a un. Une réservation au maximum par
+  /// utilisation : c'est cette ligne qui rattache le client au partenaire.
+  promoUsage PromoUsage?
 
   confirmedAt DateTime?
   cancelledAt DateTime?
@@ -201,8 +221,14 @@ model BookingItem {
 
   // Dates dupliquées depuis la réservation : c'est ce couple qui est
   // interrogé pour la disponibilité temps réel d'un vélo donné.
+  //
+  // Les heures s'y ajoutent depuis que deux clients peuvent louer le même
+  // vélo le même jour — l'un le matin, l'autre l'après-midi. Sans elles,
+  // le premier bloquerait la journée entière.
   startDate     DateTime @db.Date
   endDate       DateTime @db.Date
+  startHour     Int      @default(8)
+  endHour       Int      @default(11)
   unitPriceXof  Int
   lineTotalXof  Int
 
@@ -223,14 +249,19 @@ model BookingOption {
 // ---------------------------------------------------------------- Paiement
 
 enum PaymentProvider {
+  // FEDAPAY et KKIAPAY ne sont plus utilisés : le compte KkiaPay n'a
+  // jamais été validé. Les valeurs restent pour ne pas orpheliner les
+  // paiements déjà enregistrés sous ces noms.
   FEDAPAY
   KKIAPAY
+  SASPAY
   ESPECES // encaissement au comptoir, saisi par l'administrateur
 }
 
 enum PaymentMethod {
   MTN_MONEY
   MOOV_MONEY
+  CELTIIS_CASH
   ESPECES
 }
 
@@ -313,4 +344,137 @@ model ContactMessage {
   createdAt DateTime @default(now())
 
   @@index([handledAt, createdAt])
+}
+
+/* ------------------------------------------------- Parrainage partenaires */
+
+/**
+ * Un partenaire qui nous apporte des clients.
+ *
+ * Hôtel, agence de voyage, restaurant, guide : chacun a son code de
+ * parrainage, et c'est le code qui permet de savoir qui a apporté qui.
+ * Sans cette table, on saurait qu'une réduction a été accordée, mais pas à
+ * qui verser la commission.
+ */
+model Partner {
+  id      String  @id @default(cuid())
+  name    String  @unique
+  /// Téléphone ou email : à qui l'on parle chez ce partenaire.
+  contact String?
+  notes   String? @db.Text
+  /// Un partenariat qui s'arrête se désactive, il ne s'efface pas : ses
+  /// codes ont déjà servi et l'historique doit rester lisible.
+  isActive Boolean @default(true)
+
+  promoCodes PromoCode[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/**
+ * Conservé pour les colonnes existantes de PromoCode.
+ *
+ * La réduction est désormais une politique unique (1 % au client, 5 % de
+ * commission au partenaire, cf. src/lib/parrainage.ts) et non plus une
+ * valeur par code. L'énumération reste déclarée parce que la colonne
+ * existe en base : la retirer exigerait une migration destructive pour
+ * aucun bénéfice.
+ */
+enum PromoKind {
+  POURCENTAGE
+  MONTANT_FIXE
+}
+
+/**
+ * Un code de parrainage, toujours rattaché à un partenaire.
+ *
+ * Le nom des tables — PromoCode, PromoUsage — est antérieur au passage au
+ * vocabulaire du parrainage. Il est conservé : renommer une table en
+ * production demande une migration, et ces noms ne sont vus par personne
+ * d'autre que le code.
+ *
+ * `useCount` est dénormalisé : il pourrait se compter sur `PromoUsage`,
+ * mais le quota doit être vérifié dans la transaction qui crée la
+ * réservation, et un compteur se verrouille là où un COUNT ne le fait pas.
+ */
+model PromoCode {
+  code String @id // en majuscules, c'est l'identifiant lisible du code
+
+  partnerId String
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  /// Vestiges du temps où chaque code portait sa propre valeur. Ils sont
+  /// désormais écrits depuis les constantes de src/lib/parrainage.ts et ne
+  /// sont plus lus pour calculer quoi que ce soit.
+  kind  PromoKind
+  value Int
+
+  /// Fenêtre de validité. Les deux bornes sont facultatives : un code sans
+  /// date de fin reste valable jusqu'à ce qu'on le désactive.
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  /// Nombre d'utilisations autorisées. `null` : sans limite.
+  maxUses  Int?
+  useCount Int  @default(0)
+
+  isActive Boolean @default(true)
+
+  usages PromoUsage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([partnerId])
+}
+
+/**
+ * Où en est une utilisation de code.
+ *
+ *  - `EN_ATTENTE` : le code est appliqué, la réservation créée, mais le
+ *    client n'a pas encore payé. Le partenaire ne l'a pas gagné.
+ *  - `VALIDE` : le paiement est confirmé. C'est là, et seulement là, que
+ *    le client compte pour le partenaire et que la commission est due.
+ *  - `ANNULE` : le paiement a échoué, ou la réservation a été annulée.
+ */
+enum PromoUsageStatus {
+  EN_ATTENTE
+  VALIDE
+  ANNULE
+}
+
+/**
+ * Une utilisation d'un code de parrainage sur une réservation.
+ *
+ * C'est la table qui répond à la question posée : combien de clients tel
+ * partenaire a-t-il apportés, et combien lui devons-nous. Les deux
+ * montants y sont **figés** : les taux sont une politique, et une
+ * politique change. Recalculer une commission de 2024 avec le taux de
+ * 2026 fausserait tout l'historique des versements.
+ */
+model PromoUsage {
+  id String @id @default(cuid())
+
+  promoCode String
+  promo     PromoCode @relation(fields: [promoCode], references: [code], onDelete: Cascade)
+
+  /// Une réservation ne peut porter qu'un code.
+  bookingId String  @unique
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  /// Réduction accordée au client, en FCFA.
+  discountXof Int
+  /// Commission due au partenaire, en FCFA. Figée au taux du jour.
+  commissionXof Int @default(0)
+
+  /// Tant que ce n'est pas VALIDE, le partenaire ne compte ni ce client
+  /// ni sa commission. Un paiement non abouti ne rapporte rien.
+  status      PromoUsageStatus @default(EN_ATTENTE)
+  validatedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([promoCode])
+  @@index([status])
 }

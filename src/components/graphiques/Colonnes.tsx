@@ -75,7 +75,7 @@ export function Colonnes({
           viewBox={`0 0 ${largeur} ${HAUTEUR}`}
           className="w-full"
           role="img"
-          aria-label={`${titre} — ${points.length} périodes`}
+          aria-label={`${titre}, ${points.length} périodes`}
         >
           <LignesGrille
             valeurs={echelle}

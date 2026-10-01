@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -7,19 +8,39 @@ import { CarteVelo } from "@/components/CarteVelo";
 import { SpecificationsAnnotees } from "@/components/SpecificationsAnnotees";
 import Image from "next/image";
 import { VeloIllustration } from "@/components/VeloIllustration";
+import { VideoVelo } from "@/components/VideoVelo";
 import { WidgetReservation } from "@/components/reservation/WidgetReservation";
 import { Etoiles, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue } from "@/data/catalogue";
-import { avisClients } from "@/data/contenus";
+import {
+  creneauxDisponibles,
+  GAMMES,
+  GRILLE_HORAIRE,
+  PRIX_ROAD_TRIP_XOF,
+} from "@/data/offres";
 import { depot } from "@/lib/db";
 import { estDateISOValide } from "@/lib/dates";
 import { formatDate, formatXof } from "@/lib/format";
 
 type Params = Promise<{ slug: string }>;
-type Recherche = Promise<Record<string, string | string[] | undefined>>;
 
-/** La disponibilité évolue à chaque réservation : pas de mise en cache. */
-export const dynamic = "force-dynamic";
+/**
+ * Page régénérée au plus une fois par minute.
+ *
+ * Elle l'était auparavant à chaque visite, parce que le calendrier
+ * montre les créneaux déjà pris. C'était payer très cher une fraîcheur
+ * dont personne n'a besoin : mesuré sur un build de production, soixante
+ * visiteurs simultanés sur cette seule page suffisaient à épuiser le pool
+ * de connexions, zéro réponse servie sur soixante.
+ *
+ * Une minute de retard sur le calendrier ne coûte rien, parce que
+ * l'affichage n'a jamais été ce qui protège des doubles réservations :
+ * le tunnel revérifie la disponibilité avant le paiement, et la
+ * transaction sérialisable qui écrit la réservation tranche en dernier
+ * ressort. Au pire, un client voit un créneau libre qui ne l'est plus et
+ * reçoit un refus explicite, sans qu'un franc ait été prélevé.
+ */
+export const revalidate = 60;
 
 export async function generateStaticParams() {
   return catalogue.map((velo) => ({ slug: velo.slug }));
@@ -37,15 +58,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
-export default async function PageVelo({
-  params,
-  searchParams,
-}: {
-  params: Params;
-  searchParams: Recherche;
-}) {
+export default async function PageVelo({ params }: { params: Params }) {
   const { slug } = await params;
-  const recherche = await searchParams;
 
   const velo = await depot.trouverVeloParSlug(slug);
   if (!velo) notFound();
@@ -57,14 +71,14 @@ export default async function PageVelo({
   ]);
 
   const point = points.find((p) => p.id === velo.pointDeRetraitId);
-  const avis = avisClients.filter((a) => a.veloId === velo.id);
   // Les autres vélos du parc, sans trier par catégorie : elle ne guide
   // plus le choix du client.
   const similaires = tousLesVelos.filter((autre) => autre.id !== velo.id).slice(0, 3);
 
-  const debut = typeof recherche.debut === "string" && estDateISOValide(recherche.debut) ? recherche.debut : undefined;
-  const fin = typeof recherche.fin === "string" && estDateISOValide(recherche.fin) ? recherche.fin : undefined;
-  const datesInitiales = debut && fin && debut <= fin ? { debut, fin } : undefined;
+  // Les dates pré-remplies (?debut=&fin=) sont lues par le widget, dans
+  // le navigateur. Les lire ici obligerait Next à rendre la page à chaque
+  // visite pour deux paramètres facultatifs, et c'est précisément ce qui
+  // faisait tomber la fiche vélo sous la charge.
 
   // Ni catégorie ni taille : elles ne changent rien pour le client, le
   // coordinateur réglant la machine à sa morphologie au départ.
@@ -103,21 +117,43 @@ export default async function PageVelo({
 
           <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <TitreSection as="h1" taille="lg">
+              {/* La gamme avant le nom : c'est elle qui fixe le tarif, et
+                  le client doit savoir dans quelle catégorie il regarde
+                  avant de lire le prix. */}
+              <p className="etiquette text-orange-sourd">
+                {GAMMES.find((entree) => entree.code === velo.gamme)?.nom ?? velo.gamme}
+              </p>
+              <TitreSection as="h1" taille="lg" className="mt-2">
                 {velo.nom}
               </TitreSection>
               <p className="mt-4 max-w-xl text-[1.05rem] text-noir-releve">{velo.accroche}</p>
+
+              <p className="mt-5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.95rem] text-gris-cadre">
+                <strong className="font-display text-[1.5rem] font-extrabold tabular-nums text-noir-piste">
+                  {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)}
+                </strong>
+                l&apos;heure
+                <span aria-hidden="true" className="px-1 opacity-40">
+                  •
+                </span>
+                road trip{" "}
+                <strong className="font-semibold tabular-nums text-noir-piste">
+                  {formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])}
+                </strong>{" "}
+                par personne
+              </p>
             </div>
-            <div className="flex items-center gap-3 text-[0.88rem] text-gris-cadre">
-              <Etoiles note={velo.noteMoyenne} className="text-orange-signal" />
-              <span className="font-semibold text-noir-piste tabular-nums">
-                {velo.noteMoyenne.toLocaleString("fr-FR", { minimumFractionDigits: 1 })}
-              </span>
-              <span>· {velo.nombreAvis} avis</span>
-            </div>
+            {/* Plus d'étoiles par vélo : les avis portent sur l'expérience
+                Bike Land dans son ensemble, pas sur la machine. Coller
+                cette note sur un vélo ferait dire aux clients autre chose
+                que ce qu'ils ont écrit. */}
           </div>
 
-          {velo.photo ? (
+          {/* La vidéo passe devant la photo : elle montre le vélo sous
+              tous les angles, avec sa fiche technique incrustée. */}
+          {velo.video ? (
+            <VideoVelo source={velo.video} affiche={velo.photo} nom={velo.nom} />
+          ) : velo.photo ? (
             <div className="relative mx-auto mt-4 aspect-16/9 w-full max-w-4xl overflow-hidden">
               <Image
                 src={velo.photo}
@@ -197,11 +233,18 @@ export default async function PageVelo({
 
           <div className="lg:col-span-5">
             <div className="lg:sticky lg:top-24">
-              <WidgetReservation
-                velo={velo}
-                periodesOccupees={periodesOccupees}
-                datesInitiales={datesInitiales}
-              />
+              {/* Le widget lit les paramètres de l'URL, ce qui n'est
+                  possible dans une page prérendue qu'à l'intérieur d'une
+                  frontière Suspense : le reste de la fiche part du cache
+                  immédiatement, et l'encart de réservation se pose
+                  dessus. */}
+              <Suspense fallback={<SqueletteReservation />}>
+                <WidgetReservation
+                  creneaux={creneauxDisponibles()}
+                  velo={velo}
+                  periodesOccupees={periodesOccupees}
+                />
+              </Suspense>
             </div>
           </div>
         </div>
@@ -212,32 +255,6 @@ export default async function PageVelo({
         <TitreSection>Ce qui compte sur la route</TitreSection>
         <SpecificationsAnnotees velo={velo} className="mt-6" />
       </Section>
-
-      {/* --- Avis sur ce vélo --- */}
-      {avis.length > 0 && (
-        <Section fond="craie" className="py-16 sm:py-20">
-          <TitreSection>Ils ont roulé sur ce vélo</TitreSection>
-          <div className="mt-10 grid gap-6 md:grid-cols-2">
-            {avis.map((item) => (
-              <figure key={item.id} className="rounded-[var(--radius-carte)] bg-white p-7">
-                <Etoiles note={item.note} className="text-orange-signal" />
-                <blockquote className="mt-4">
-                  <p className="font-display text-[1.05rem] font-bold uppercase leading-tight">
-                    {item.titre}
-                  </p>
-                  <p className="mt-3 text-[0.92rem] leading-relaxed text-gris-cadre">
-                    {item.commentaire}
-                  </p>
-                </blockquote>
-                <figcaption className="mt-5 border-t border-noir-piste/12 pt-4 text-[0.8rem] text-gris-cadre">
-                  <span className="font-semibold text-noir-piste">{item.auteur}</span> · {item.ville}{" "}
-                  · {formatDate(item.date)}
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        </Section>
-      )}
 
       {/* --- Autres vélos --- */}
       <Section fond="craie" className="py-16 sm:py-20">
@@ -254,5 +271,15 @@ export default async function PageVelo({
         </div>
       </Section>
     </>
+  );
+}
+
+/** Emplacement réservé pendant que l'encart de réservation s'installe. */
+function SqueletteReservation() {
+  return (
+    <div
+      aria-hidden="true"
+      className="min-h-[26rem] animate-pulse rounded-[var(--radius-bloc)] border border-noir-piste/10 bg-white/60"
+    />
   );
 }

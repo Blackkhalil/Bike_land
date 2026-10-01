@@ -4,7 +4,7 @@ import { site } from "@/lib/site";
 
 /**
  * Bloc de clôture : un grand titre centré, le numéro d'assistance et
- * les deux actions principales — la construction du pied de page de la
+ * les deux actions principales, la construction du pied de page de la
  * maquette, avec la roue en filigrane.
  */
 export function Assistance() {
