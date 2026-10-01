@@ -1,10 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Bouton } from "@/components/Bouton";
+import type { DiagnosticEchec } from "@/lib/echecs-paiement";
+import { diagnostiquer, motifDepuisCode } from "@/lib/echecs-paiement";
 import { formatXof } from "@/lib/format";
+import { site } from "@/lib/site";
 import { moyensDisponibles } from "@/lib/paiement";
 import type { MoyenPaiement } from "@/lib/types";
 import { SuiviPaiementMomo } from "./SuiviPaiementMomo";
@@ -28,14 +31,29 @@ export function PaiementEnAttente({
   montantXof,
   moyenInitial,
   telephoneInitial,
+  diagnostic,
 }: {
   token: string;
   montantXof: number;
   /** L'opérateur choisi à la réservation, présélectionné. */
   moyenInitial?: MoyenPaiement;
   telephoneInitial?: string;
+  /**
+   * Pourquoi la tentative précédente a échoué, quand on le sait. Il
+   * décide du texte affiché et du champ mis en avant : un solde
+   * insuffisant ne se corrige pas en changeant de numéro.
+   */
+  diagnostic?: DiagnosticEchec | null;
 }) {
   const routeur = useRouter();
+  const champTelephone = useRef<HTMLInputElement>(null);
+
+  // Le champ fautif prend le curseur dès l'arrivée, pour que le client
+  // n'ait pas à chercher ce qu'on lui demande de corriger. Rien n'est
+  // volé au clavier quand il n'y a rien à corriger.
+  useEffect(() => {
+    if (diagnostic?.champ === "telephone") champTelephone.current?.focus();
+  }, [diagnostic]);
 
   // L'opérateur d'origine est présélectionné, sauf s'il s'agit d'espèces :
   // on ne relance pas en ligne un encaissement prévu au comptoir.
@@ -44,7 +62,10 @@ export function PaiementEnAttente({
   );
   const [telephone, setTelephone] = useState(telephoneInitial ?? "");
   const [envoi, setEnvoi] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  // Le diagnostic courant : celui reçu à l'arrivée, puis celui de la
+  // dernière relance ratée. Une relance qui échoue pour une autre raison
+  // doit remplacer l'explication, pas s'ajouter en dessous.
+  const [echec, setEchec] = useState<DiagnosticEchec | null>(diagnostic ?? null);
   const [suivi, setSuivi] = useState<{
     paiementId: string;
     moyen: MoyenPaiement;
@@ -56,7 +77,7 @@ export function PaiementEnAttente({
 
   const relancer = async () => {
     setEnvoi(true);
-    setMessage(null);
+    setEchec(null);
     try {
       const reponse = await fetch(`/api/reservations/${encodeURIComponent(token)}/paiement`, {
         method: "POST",
@@ -71,13 +92,16 @@ export function PaiementEnAttente({
       }
 
       if (!reponse.ok || !donnees.suivi) {
-        setMessage(donnees.erreur ?? "La demande de paiement n'a pas pu être envoyée.");
+        // Le serveur a déjà fait le diagnostic : on le reprend tel quel.
+        // `diagnostiquer` ne sert que de repli, pour les réponses qui ne
+        // viennent pas de notre route, un relais ou un pare-feu.
+        setEchec(motifDepuisCode(donnees.motif) ?? diagnostiquer(donnees.erreur));
         return;
       }
 
       setSuivi(donnees.suivi);
     } catch {
-      setMessage("Connexion interrompue. Vérifiez votre réseau et réessayez.");
+      setEchec(diagnostiquer("connexion interrompue"));
     } finally {
       setEnvoi(false);
     }
@@ -98,19 +122,43 @@ export function PaiementEnAttente({
         onConfirme={() => routeur.refresh()}
         onEchec={(texte) => {
           setSuivi(null);
-          setMessage(texte);
+          setEchec(diagnostiquer(texte));
         }}
       />
     );
   }
 
   return (
-    <div className="mt-6 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-6 py-5">
-      <p className="font-display text-[1.1rem] font-bold uppercase">Paiement à terminer</p>
-      <p className="mt-2 text-[0.92rem] leading-relaxed">
-        Votre vélo est retenu, mais le règlement de {formatXof(montantXof)} n&apos;est pas encore
-        passé. Relancez la demande ici : elle repartira sur le numéro indiqué.
+    <div className="mt-6 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-4 py-5 sm:px-6">
+      <p className="font-display text-[1.05rem] font-bold uppercase leading-tight sm:text-[1.1rem]">
+        {echec ? echec.titre : "Paiement à terminer"}
       </p>
+
+      {echec ? (
+        <>
+          <p className="mt-2 text-[0.92rem] leading-relaxed">{echec.explication}</p>
+          <p className="mt-2 text-[0.92rem] font-semibold leading-relaxed">{echec.remede}</p>
+          <p className="mt-2 text-[0.85rem] leading-relaxed text-gris-cadre">
+            Votre vélo reste retenu, et {formatXof(montantXof)} n&apos;ont pas été prélevés.
+          </p>
+        </>
+      ) : (
+        <p className="mt-2 text-[0.92rem] leading-relaxed">
+          Votre vélo est retenu, mais le règlement de {formatXof(montantXof)} n&apos;est pas
+          encore passé. Relancez la demande ici : elle repartira sur le numéro indiqué.
+        </p>
+      )}
+
+      {/* Quand réessayer tel quel ne sert à rien, le téléphone de
+          l'atelier vaut mieux qu'un bouton qui échouera pareil. */}
+      {echec && !echec.reessayerUtile && (
+        <a
+          href={`tel:${site.telephoneLien}`}
+          className="mt-4 inline-block font-display text-[1.05rem] font-bold text-orange-sourd underline underline-offset-4"
+        >
+          {site.telephone}
+        </a>
+      )}
 
       <fieldset className="mt-5">
         <legend className="etiquette opacity-75">Opérateur</legend>
@@ -142,14 +190,20 @@ export function PaiementEnAttente({
         </div>
       </fieldset>
 
-      <label className="mt-4 block max-w-xs">
+      <label className="mt-4 block w-full sm:max-w-xs">
         <span className="etiquette opacity-75">Numéro Mobile Money</span>
         <input
+          ref={champTelephone}
           type="tel"
+          inputMode="tel"
+          autoComplete="tel"
           value={telephone}
           onChange={(evenement) => setTelephone(evenement.target.value)}
           placeholder="+229 97 00 00 00"
-          className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/25 bg-white px-4 py-3 text-[0.95rem] outline-none transition-colors focus:border-orange-signal"
+          aria-invalid={echec?.champ === "telephone" || undefined}
+          className={`mt-2 w-full rounded-[var(--radius-bouton)] border bg-white px-4 py-3 text-[1rem] outline-none transition-colors focus:border-orange-signal ${
+            echec?.champ === "telephone" ? "border-orange-sourd" : "border-noir-piste/25"
+          }`}
         />
       </label>
 
@@ -161,12 +215,6 @@ export function PaiementEnAttente({
       {!numeroValide && (
         <p className="mt-2 text-[0.82rem] text-gris-cadre">
           Indiquez le numéro sur lequel vous voulez recevoir la demande.
-        </p>
-      )}
-
-      {message && (
-        <p role="alert" className="mt-3 text-[0.88rem] leading-relaxed text-orange-sourd">
-          {message}
         </p>
       )}
     </div>

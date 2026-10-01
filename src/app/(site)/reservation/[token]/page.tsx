@@ -12,6 +12,7 @@ import { Etiquette, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue, optionsLocation } from "@/data/catalogue";
 import { depot } from "@/lib/db";
 import { ajouterJours, aujourdhui } from "@/lib/dates";
+import { motifDepuisCode } from "@/lib/echecs-paiement";
 import { formatDate, formatDateAvecJour, formatXof, resumeOffre } from "@/lib/format";
 import { numeroDeFacture } from "@/lib/facture";
 import { site } from "@/lib/site";
@@ -65,6 +66,13 @@ export default async function PageSuiviReservation({
   const nouvelle = recherche.nouvelle === "1";
   const facture = numeroDeFacture(reservation);
 
+  // Pourquoi le paiement n'est pas passé, porté par l'adresse depuis le
+  // tunnel. Un code inconnu, ou bricolé à la main, ne donne rien : la
+  // page affiche alors le bloc de reprise ordinaire, sans diagnostic.
+  const diagnostic = motifDepuisCode(
+    typeof recherche.echec === "string" ? recherche.echec : null,
+  );
+
   // Réservation créée mais non payée : le vélo reste retenu le temps du
   // panier, après quoi il repart à la vente. On ne propose donc de
   // reprendre le paiement que dans cette fenêtre, au-delà, encaisser
@@ -107,6 +115,7 @@ export default async function PageSuiviReservation({
             reservation.paiements.find((paiement) => !paiement.estCaution)?.moyen
           }
           telephoneInitial={reservation.client.telephone}
+          diagnostic={diagnostic}
         />
       )}
 

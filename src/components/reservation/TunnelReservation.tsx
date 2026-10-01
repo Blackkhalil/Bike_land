@@ -20,6 +20,7 @@ import {
   PRIX_ROAD_TRIP_XOF,
 } from "@/data/offres";
 import type { DateISO } from "@/lib/dates";
+import { diagnostiquer } from "@/lib/echecs-paiement";
 import { formatDate, formatXof } from "@/lib/format";
 import { fraisEncaissement, moyensDisponibles, TAUX_ENCAISSEMENT } from "@/lib/paiement";
 import { SuiviPaiementMomo } from "./SuiviPaiementMomo";
@@ -333,8 +334,21 @@ export function TunnelReservation({
       }
 
       // En mode démonstration, le serveur a déjà confirmé : rien à payer.
-      if (donnees.confirmee || !donnees.paiement?.suivi) {
+      if (donnees.confirmee) {
         routeur.push(`/reservation/${donnees.token}?nouvelle=1`);
+        return;
+      }
+
+      // Pas de suivi : la demande n'est jamais partie sur le téléphone.
+      // La réservation existe et le vélo est retenu, mais le client doit
+      // savoir **pourquoi** cela a échoué, sans quoi il relancera la même
+      // demande avec le même numéro ou le même compte vide.
+      if (!donnees.paiement?.suivi) {
+        const motif = diagnostiquer(
+          donnees.paiement?.message,
+          donnees.paiement?.statut,
+        ).motif;
+        routeur.push(`/reservation/${donnees.token}?nouvelle=1&echec=${motif}`);
         return;
       }
 

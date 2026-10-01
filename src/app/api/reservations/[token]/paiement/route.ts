@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { panierExpire } from "@/data/offres";
 import { depot } from "@/lib/db";
+import { diagnostiquer } from "@/lib/echecs-paiement";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
 import { site } from "@/lib/site";
 import type { MoyenPaiement } from "@/lib/types";
@@ -101,8 +102,17 @@ export async function POST(requete: Request, { params }: { params: Params }) {
   });
 
   if (paiement.statut === "ECHOUE" || !paiement.suivi) {
+    // Le motif est établi ici, pas dans le navigateur : le message brut
+    // de SasPay est écrit pour un développeur, il nomme nos champs et nos
+    // contraintes internes. Le client reçoit un code et le texte qui lui
+    // est destiné, rien de plus.
+    const diagnostic = diagnostiquer(paiement.message, paiement.statut);
+    console.warn(
+      `[paiement] relance refusée pour ${reservation.reference} : ${diagnostic.motif}`,
+      paiement.message,
+    );
     return NextResponse.json(
-      { erreur: paiement.message ?? "La demande de paiement n'a pas pu être envoyée." },
+      { motif: diagnostic.motif, erreur: diagnostic.explication },
       { status: 502 },
     );
   }
