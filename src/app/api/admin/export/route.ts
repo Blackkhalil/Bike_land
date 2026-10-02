@@ -3,11 +3,8 @@ import { NextResponse } from "next/server";
 import { sessionAdminValide } from "@/lib/admin";
 import { depot } from "@/lib/db";
 import { exporterPdf } from "@/lib/export-pdf";
-import {
-  construirePeriode,
-  exporterCsv,
-  type Granularite,
-} from "@/lib/statistiques";
+import { construireRapport, exporterRapportCsv } from "@/lib/rapport";
+import { exporterCsv, type Granularite } from "@/lib/statistiques";
 
 /**
  * Export des réservations de la période (§2.3).
@@ -27,16 +24,20 @@ export async function GET(requete: Request) {
     ? (demandee as Granularite)
     : "mois";
 
-  const periode = construirePeriode(granularite);
-  const reservations = await depot.listerReservations({
-    depuis: periode.debut,
-    jusqua: periode.fin,
-  });
-
-  const nomBase = `bikeland-reservations-${periode.debut}-${periode.fin}`;
+  // Tout ce que montre le tableau de bord, assemblé une fois pour les
+  // deux formats. Les statistiques portent sur l'ensemble des
+  // réservations, comme à l'écran : la comparaison avec la période
+  // précédente et les douze derniers mois en ont besoin.
+  const [reservations, velos, clients] = await Promise.all([
+    depot.listerReservations(),
+    depot.listerVelos(),
+    depot.listerClients(),
+  ]);
+  const rapport = construireRapport({ reservations, velos, clients, granularite });
+  const nomBase = `bikeland-tableau-de-bord-${rapport.statistiques.periode.debut}-${rapport.statistiques.periode.fin}`;
 
   if (url.searchParams.get("format") === "pdf") {
-    const pdf = await exporterPdf(reservations, periode);
+    const pdf = await exporterPdf(rapport);
     return new NextResponse(Buffer.from(pdf), {
       headers: {
         "Content-Type": "application/pdf",
@@ -46,7 +47,7 @@ export async function GET(requete: Request) {
     });
   }
 
-  const csv = exporterCsv(reservations);
+  const csv = exporterRapportCsv(rapport, exporterCsv(rapport.detail));
   const nom = `${nomBase}.csv`;
 
   return new NextResponse(csv, {

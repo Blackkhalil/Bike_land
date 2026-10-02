@@ -8,7 +8,7 @@ import { Colonnes } from "@/components/graphiques/Colonnes";
 import { Courbe } from "@/components/graphiques/Courbe";
 import { Jauge, TuileStat } from "@/components/graphiques/TuileStat";
 import { SelecteurPeriode } from "@/components/admin/SelecteurPeriode";
-import { estEnAttente, seulementPayees } from "@/lib/reservations";
+import { indicateursDuJour } from "@/lib/rapport";
 import { depot } from "@/lib/db";
 import { aujourdhui, nombreDeJours } from "@/lib/dates";
 import { formatDate, formatNombre, formatXof } from "@/lib/format";
@@ -107,28 +107,15 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   // que l'exploitant regarde en arrivant à l'atelier, avant tout
   // indicateur de performance.
   const jour = aujourdhui();
-  const actives = seulementPayees(reservations);
-
-  // Ce qui reste réellement à faire, déduit de l'état et non des dates,
-  // exactement comme la fiche du jour, sinon les deux écrans annoncent
-  // des chiffres différents. Un vélo déjà remis n'est plus « à préparer »,
-  // et un vélo qui n'est pas encore parti n'est pas « attendu au retour ».
-  const departsDuJour = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
-  const retoursDuJour = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
-  // Seuls les paniers encore dans leur délai : un panier abandonné ne
-  // sera jamais payé, l'afficher comme « à payer » entretiendrait
-  // l'illusion d'une recette à venir.
-  const aPayer = reservations.filter(estEnAttente);
-
-  // Ce que le coordinateur doit préparer et réclamer aujourd'hui : les
-  // cocos et les eaux d'un côté, les pièces d'identité et les cautions de
-  // l'autre. Les deux formules ne demandent pas les mêmes gestes.
-  const participantsDuJour = departsDuJour
-    .filter((r) => r.offre === "road-trip")
-    .reduce((total, r) => total + r.nombrePersonnes, 0);
-  const cautionsAcollecter = departsDuJour
-    .filter((r) => r.offre === "location-libre")
-    .reduce((total, r) => total + r.cautionXof, 0);
+  // Calcul partagé avec les exports PDF et CSV : l'écran et le fichier
+  // annoncent toujours les mêmes chiffres.
+  const {
+    departs: departsDuJour,
+    retours: retoursDuJour,
+    aPayer,
+    participants: participantsDuJour,
+    cautions: cautionsAcollecter,
+  } = indicateursDuJour(reservations, jour);
 
   return (
     <div className="pb-10">

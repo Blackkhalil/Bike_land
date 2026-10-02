@@ -1,28 +1,23 @@
 /**
- * Export des réservations d'une période en PDF.
+ * Le tableau de bord en PDF.
  *
- * Le CSV sert au comptable, qui le recharge dans un tableur. Le PDF sert
- * à tout le reste : l'imprimer, l'envoyer, le classer. Il doit donc se
- * lire seul, sans outil, et c'est pourquoi il porte en tête ce qu'un
- * lecteur cherche d'abord : la période, le nombre de réservations
- * payées et ce qui a réellement été encaissé.
+ * Le PDF reprend la page d'administration dans son ordre : la journée,
+ * l'argent, le parc, les clients, les répartitions, les douze derniers
+ * mois, puis le détail de chaque réservation de la période. Il sert à
+ * imprimer, envoyer ou classer, et doit donc se lire seul.
  *
- * Les totaux ne comptent que les réservations payées, selon la même
- * règle que le tableau de bord : un panier jamais réglé n'est pas une
- * recette. Le détail, lui, liste toutes les lignes de la période avec
- * leur état, pour que rien ne soit caché à qui vérifie.
+ * Tout le contenu vient de `construireRapport`, que l'export CSV utilise
+ * aussi : les deux fichiers et l'écran disent la même chose.
  *
- * Les polices standard du PDF ne connaissent que l'alphabet latin de
- * base et ses accents. Les espaces insécables qu'insère la mise en forme
- * française des nombres, et les guillemets typographiques, y sont
- * absents : un seul de ces caractères ferait échouer tout le document.
- * Le texte est donc ramené à ce que la police sait écrire avant d'être
- * posé.
+ * Les polices standard du PDF ne connaissent que l'alphabet latin et ses
+ * accents. Les espaces insécables et les guillemets typographiques y sont
+ * absents, et un seul de ces caractères faisait échouer tout le document :
+ * le texte est ramené à ce que la police sait écrire avant d'être posé.
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
-import { seulementPayees } from "@/lib/reservations";
+import { montant, type Rapport } from "@/lib/rapport";
 import { site } from "@/lib/site";
 import type { Reservation, StatutReservation } from "@/lib/types";
 
@@ -30,11 +25,14 @@ const NOIR = rgb(0.055, 0.055, 0.055);
 const GRIS = rgb(0.42, 0.42, 0.42);
 const FILET = rgb(0.86, 0.84, 0.8);
 const ORANGE = rgb(0.95, 0.36, 0.02);
+const FOND = rgb(0.95, 0.94, 0.91);
 
 // A4 à l'italienne : le détail a neuf colonnes, il lui faut la largeur.
 const LARGEUR = 841.89;
 const HAUTEUR = 595.28;
 const MARGE = 36;
+const BAS = MARGE + 14;
+const UTILE = LARGEUR - 2 * MARGE;
 
 const LIBELLES_STATUT: Record<StatutReservation, string> = {
   EN_ATTENTE_PAIEMENT: "Non payée",
@@ -55,198 +53,225 @@ function lisible(texte: string): string {
     .replace(/[^\x20-\x7e -ÿ]/g, "?");
 }
 
-/** 12500 devient « 12 500 F », avec une espace ordinaire. */
-function montant(xof: number): string {
-  return `${String(Math.round(xof)).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} F`;
-}
-
-/** 2026-10-03 devient 03/10/2026. */
-function dateCourte(iso: string | undefined): string {
-  if (!iso) return "";
+const dateCourte = (iso: string) => {
   const [a, m, j] = iso.slice(0, 10).split("-");
   return `${j}/${m}/${a}`;
-}
+};
 
-/** Coupe un texte trop long pour sa colonne, en le signalant. */
-function ajuster(texte: string, police: PDFFont, taille: number, largeur: number): string {
-  let t = lisible(texte);
-  if (police.widthOfTextAtSize(t, taille) <= largeur) return t;
-  while (t.length > 1 && police.widthOfTextAtSize(`${t}...`, taille) > largeur) {
-    t = t.slice(0, -1);
-  }
-  return `${t}...`;
-}
-
-interface Colonne {
+interface ColonneDetail {
   titre: string;
   largeur: number;
   aDroite?: boolean;
   valeur: (r: Reservation) => string;
 }
 
-const COLONNES: Colonne[] = [
+const DETAIL: ColonneDetail[] = [
   { titre: "Référence", largeur: 72, valeur: (r) => r.reference },
   { titre: "Date", largeur: 62, valeur: (r) => dateCourte(r.dateDebut) },
-  {
-    titre: "Client",
-    largeur: 120,
-    valeur: (r) => `${r.client.prenom} ${r.client.nom}`,
-  },
+  { titre: "Client", largeur: 120, valeur: (r) => `${r.client.prenom} ${r.client.nom}` },
   { titre: "Téléphone", largeur: 90, valeur: (r) => r.client.telephone ?? "" },
-  {
-    titre: "Vélo",
-    largeur: 110,
-    valeur: (r) => r.lignes.map((l) => l.veloNom).join(" + "),
-  },
+  { titre: "Vélo", largeur: 110, valeur: (r) => r.lignes.map((l) => l.veloNom).join(" + ") },
   {
     titre: "Formule",
     largeur: 92,
     valeur: (r) =>
-      r.offre === "road-trip"
-        ? `Road trip, ${r.nombrePersonnes} pers.`
-        : `Libre, ${r.dureeHeures ?? "?"} h`,
+      r.offre === "road-trip" ? `Road trip, ${r.nombrePersonnes} pers.` : `Libre, ${r.dureeHeures ?? "?"} h`,
   },
   {
     titre: "Paiement",
     largeur: 78,
-    valeur: (r) => {
-      const moyen = r.paiements.find((p) => !p.estCaution)?.moyen ?? "";
-      return moyen.replace("_MONEY", "").replace("_CASH", "").replace("_", " ");
-    },
+    valeur: (r) =>
+      (r.paiements.find((p) => !p.estCaution)?.moyen ?? "")
+        .replace("_MONEY", "")
+        .replace("_CASH", "")
+        .replace("_", " "),
   },
   { titre: "État", largeur: 70, valeur: (r) => LIBELLES_STATUT[r.statut] },
   { titre: "Montant", largeur: 75, aDroite: true, valeur: (r) => montant(r.totalXof) },
 ];
 
-export async function exporterPdf(
-  reservations: Reservation[],
-  periode: { debut: string; fin: string; libelle?: string },
-): Promise<Uint8Array> {
+export async function exporterPdf(rapport: Rapport): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
-  doc.setTitle(lisible(`${site.nom}, réservations du ${dateCourte(periode.debut)} au ${dateCourte(periode.fin)}`));
+  doc.setTitle(lisible(`${site.nom}, ${rapport.titre}, ${rapport.periodeLibelle}`));
   doc.setAuthor(site.nom);
   doc.setCreator(site.nom);
 
   const normale = await doc.embedFont(StandardFonts.Helvetica);
   const grasse = await doc.embedFont(StandardFonts.HelveticaBold);
 
-  const triees = [...reservations].sort((a, b) =>
-    a.dateDebut === b.dateDebut ? a.reference.localeCompare(b.reference) : a.dateDebut.localeCompare(b.dateDebut),
-  );
-  const payees = seulementPayees(triees);
-  const encaisse = payees.reduce((s, r) => s + r.totalXof, 0);
-  const annulees = triees.filter((r) => r.statut === "ANNULEE").length;
-  const nonPayees = triees.filter((r) => r.statut === "EN_ATTENTE_PAIEMENT").length;
-
-  const texte = (
-    page: PDFPage,
-    contenu: string,
-    x: number,
-    y: number,
-    taille: number,
-    police: PDFFont = normale,
-    couleur = NOIR,
-  ) => page.drawText(lisible(contenu), { x, y, size: taille, font: police, color: couleur });
-
   let page = doc.addPage([LARGEUR, HAUTEUR]);
   let y = HAUTEUR - MARGE;
 
-  // --- En-tête : ce qu'on cherche d'abord.
-  texte(page, site.nom.toUpperCase(), MARGE, y - 4, 9, grasse, ORANGE);
-  texte(page, "Réservations de la période", MARGE, y - 26, 20, grasse);
-  texte(
-    page,
-    `Du ${dateCourte(periode.debut)} au ${dateCourte(periode.fin)}. Édité le ${dateCourte(new Date().toISOString())}.`,
+  const ecrire = (
+    contenu: string,
+    x: number,
+    haut: number,
+    taille: number,
+    police: PDFFont = normale,
+    couleur = NOIR,
+    p: PDFPage = page,
+  ) => p.drawText(lisible(contenu), { x, y: haut, size: taille, font: police, color: couleur });
+
+  const aDroite = (contenu: string, xDroit: number, haut: number, taille: number, police: PDFFont, couleur = NOIR) => {
+    const t = lisible(contenu);
+    page.drawText(t, { x: xDroit - police.widthOfTextAtSize(t, taille), y: haut, size: taille, font: police, color: couleur });
+  };
+
+  const ajuster = (texte: string, police: PDFFont, taille: number, largeur: number) => {
+    let t = lisible(texte);
+    if (police.widthOfTextAtSize(t, taille) <= largeur) return t;
+    while (t.length > 1 && police.widthOfTextAtSize(`${t}...`, taille) > largeur) t = t.slice(0, -1);
+    return `${t}...`;
+  };
+
+  /** Passe à la page suivante si la hauteur demandée ne tient plus. */
+  const place = (hauteur: number) => {
+    if (y - hauteur < BAS) {
+      page = doc.addPage([LARGEUR, HAUTEUR]);
+      y = HAUTEUR - MARGE;
+    }
+  };
+
+  const titreBloc = (titre: string, question: string) => {
+    place(52);
+    y -= 8;
+    ecrire(titre, MARGE, y, 13, grasse);
+    ecrire(question, MARGE, y - 14, 8.5, normale, GRIS);
+    y -= 26;
+  };
+
+  // --- En-tête.
+  ecrire(site.nom.toUpperCase(), MARGE, y - 4, 9, grasse, ORANGE);
+  ecrire(`${rapport.titre} : ${rapport.periodeLibelle.toLowerCase()}`, MARGE, y - 26, 20, grasse);
+  ecrire(
+    `${rapport.fenetre}. ${rapport.comparaison}. Édité le ${rapport.editeLe}.`,
     MARGE,
-    y - 44,
+    y - 43,
     9.5,
     normale,
     GRIS,
   );
-  y -= 70;
+  y -= 60;
 
-  const blocs: [string, string][] = [
-    ["Réservations payées", String(payees.length)],
-    ["Encaissé", montant(encaisse)],
-    ["Panier moyen", payees.length ? montant(encaisse / payees.length) : "-"],
-    ["Annulées", String(annulees)],
-    ["Jamais payées", String(nonPayees)],
-  ];
-  const largeurBloc = (LARGEUR - 2 * MARGE) / blocs.length;
-  blocs.forEach(([libelle, valeur], i) => {
-    const x = MARGE + i * largeurBloc;
-    texte(page, libelle, x, y, 8.5, normale, GRIS);
-    texte(page, valeur, x, y - 18, 15, grasse);
-  });
-  y -= 34;
-  texte(
-    page,
-    "Les totaux ne comptent que les réservations payées. Le détail liste toutes les lignes de la période.",
+  // --- Sections d'indicateurs : libellé, valeur, période précédente,
+  //     évolution, explication.
+  const col = { libelle: MARGE, valeur: MARGE + 250, precedente: MARGE + 350, variation: MARGE + 450, aide: MARGE + 470 };
+  for (const section of rapport.sections) {
+    titreBloc(section.titre, section.question);
+    const compare = section.lignes.some((l) => l.precedente !== undefined);
+    if (compare) {
+      place(14);
+      aDroite("Période", col.valeur, y, 7.5, grasse, GRIS);
+      aDroite("Précédente", col.precedente, y, 7.5, grasse, GRIS);
+      aDroite("Évolution", col.variation, y, 7.5, grasse, GRIS);
+      y -= 12;
+    }
+    for (const ligne of section.lignes) {
+      place(16);
+      ecrire(ligne.libelle, col.libelle, y, 9.5);
+      aDroite(ligne.valeur, col.valeur, y, 9.5, grasse);
+      if (ligne.precedente !== undefined) aDroite(ligne.precedente, col.precedente, y, 9, normale, GRIS);
+      if (ligne.variation !== undefined) aDroite(ligne.variation, col.variation, y, 9, normale, GRIS);
+      if (ligne.aide) ecrire(ajuster(ligne.aide, normale, 8, LARGEUR - MARGE - col.aide), col.aide, y, 8, normale, GRIS);
+      page.drawLine({ start: { x: MARGE, y: y - 5 }, end: { x: LARGEUR - MARGE, y: y - 5 }, thickness: 0.4, color: FILET });
+      y -= 16;
+    }
+  }
+
+  // --- Tableaux de répartition.
+  for (const tableau of rapport.tableaux) {
+    titreBloc(tableau.titre, tableau.sousTitre);
+    const largeur = Math.min(UTILE, 160 + 130 * (tableau.colonnes.length - 1));
+    const premiere = 160;
+    const autres = (largeur - premiere) / Math.max(1, tableau.colonnes.length - 1);
+    const xDroit = (i: number) => MARGE + premiere + autres * i;
+
+    place(16);
+    tableau.colonnes.forEach((c, i) => {
+      if (i === 0) ecrire(c, MARGE, y, 7.5, grasse, GRIS);
+      else aDroite(c, xDroit(i), y, 7.5, grasse, GRIS);
+    });
+    y -= 12;
+
+    if (tableau.lignes.length === 0) {
+      place(16);
+      ecrire("Aucune donnée sur la période.", MARGE, y, 9, normale, GRIS);
+      y -= 16;
+      continue;
+    }
+    for (const ligne of tableau.lignes) {
+      place(15);
+      ligne.forEach((v, i) => {
+        if (i === 0) ecrire(ajuster(v, normale, 9, premiere - 8), MARGE, y, 9);
+        else aDroite(v, xDroit(i), y, 9, normale);
+      });
+      page.drawLine({ start: { x: MARGE, y: y - 4 }, end: { x: MARGE + largeur, y: y - 4 }, thickness: 0.4, color: FILET });
+      y -= 15;
+    }
+  }
+
+  // --- Détail des réservations, sur une nouvelle page.
+  page = doc.addPage([LARGEUR, HAUTEUR]);
+  y = HAUTEUR - MARGE;
+  ecrire("Détail des réservations de la période", MARGE, y - 14, 13, grasse);
+  ecrire(
+    `${rapport.detail.length} ligne${rapport.detail.length > 1 ? "s" : ""}. Les annulées et les non payées sont en gris : elles ne comptent dans aucun total.`,
     MARGE,
-    y,
-    8,
+    y - 28,
+    8.5,
     normale,
     GRIS,
   );
-  y -= 22;
+  y -= 46;
 
-  // --- Le détail.
-  const enTete = (p: PDFPage, haut: number) => {
+  const enTeteDetail = () => {
+    page.drawRectangle({ x: MARGE, y: y - 5, width: UTILE, height: 16, color: FOND });
     let x = MARGE;
-    for (const c of COLONNES) {
-      const titre = lisible(c.titre);
-      const decalage = c.aDroite ? c.largeur - grasse.widthOfTextAtSize(titre, 8) - 4 : 0;
-      p.drawText(titre, { x: x + decalage, y: haut, size: 8, font: grasse, color: GRIS });
+    for (const c of DETAIL) {
+      if (c.aDroite) aDroite(c.titre, x + c.largeur - 4, y, 8, grasse, GRIS);
+      else ecrire(c.titre, x + 2, y, 8, grasse, GRIS);
       x += c.largeur;
     }
-    p.drawLine({
-      start: { x: MARGE, y: haut - 5 },
-      end: { x: LARGEUR - MARGE, y: haut - 5 },
-      thickness: 0.8,
-      color: NOIR,
-    });
-    return haut - 18;
+    y -= 18;
   };
+  enTeteDetail();
 
-  y = enTete(page, y);
-
-  if (triees.length === 0) {
-    texte(page, "Aucune réservation sur cette période.", MARGE, y, 10, normale, GRIS);
+  if (rapport.detail.length === 0) {
+    ecrire("Aucune réservation sur cette période.", MARGE, y, 10, normale, GRIS);
   }
 
-  for (const r of triees) {
-    if (y < MARGE + 20) {
+  for (const r of rapport.detail) {
+    if (y < BAS + 6) {
       page = doc.addPage([LARGEUR, HAUTEUR]);
-      y = enTete(page, HAUTEUR - MARGE);
+      y = HAUTEUR - MARGE;
+      enTeteDetail();
     }
     const attenuee = r.statut === "ANNULEE" || r.statut === "EN_ATTENTE_PAIEMENT";
     let x = MARGE;
-    for (const c of COLONNES) {
+    for (const c of DETAIL) {
       const valeur = ajuster(c.valeur(r), normale, 8.5, c.largeur - 6);
-      const decalage = c.aDroite ? c.largeur - normale.widthOfTextAtSize(valeur, 8.5) - 4 : 0;
-      page.drawText(valeur, {
-        x: x + decalage,
-        y,
-        size: 8.5,
-        font: c.aDroite && !attenuee ? grasse : normale,
-        color: attenuee ? GRIS : NOIR,
-      });
+      const police = c.aDroite && !attenuee ? grasse : normale;
+      const couleur = attenuee ? GRIS : NOIR;
+      if (c.aDroite) aDroite(valeur, x + c.largeur - 4, y, 8.5, police, couleur);
+      else ecrire(valeur, x + 2, y, 8.5, police, couleur);
       x += c.largeur;
     }
-    page.drawLine({
-      start: { x: MARGE, y: y - 5 },
-      end: { x: LARGEUR - MARGE, y: y - 5 },
-      thickness: 0.4,
-      color: FILET,
-    });
+    page.drawLine({ start: { x: MARGE, y: y - 5 }, end: { x: LARGEUR - MARGE, y: y - 5 }, thickness: 0.4, color: FILET });
     y -= 17;
   }
 
-  // --- Pied de chaque page : d'où vient le document, et où l'on en est.
+  // --- Pied de chaque page.
   const pages = doc.getPages();
   pages.forEach((p, i) => {
-    const pied = lisible(`${site.nom}, ${site.adresse.ville} (${site.adresse.pays}). ${site.telephone}, ${site.email}`);
-    p.drawText(pied, { x: MARGE, y: MARGE - 16, size: 7.5, font: normale, color: GRIS });
+    ecrire(
+      `${site.nom}, ${site.adresse.ville} (${site.adresse.pays}). ${site.telephone}, ${site.email}`,
+      MARGE,
+      MARGE - 16,
+      7.5,
+      normale,
+      GRIS,
+      p,
+    );
     const numero = `Page ${i + 1} sur ${pages.length}`;
     p.drawText(numero, {
       x: LARGEUR - MARGE - normale.widthOfTextAtSize(numero, 7.5),
