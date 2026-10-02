@@ -41,6 +41,7 @@ export const depot: Depot = {
   trouverReservationParReference: async (reference) =>
     (await obtenirDepot()).trouverReservationParReference(reference),
   annulerReservation: async (reference) => (await obtenirDepot()).annulerReservation(reference),
+  supprimerReservation: async (reference) => (await obtenirDepot()).supprimerReservation(reference),
   listerReservations: async (options) => (await obtenirDepot()).listerReservations(options),
   listerClients: async () => (await obtenirDepot()).listerClients(),
   confirmerPaiement: async (reference, referenceTransaction) =>

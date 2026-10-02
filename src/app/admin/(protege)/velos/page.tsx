@@ -6,6 +6,7 @@ import { FormulaireNouveauVelo } from "@/components/admin/FormulaireNouveauVelo"
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Pastille } from "@/components/ui";
 import { libellesStatut } from "@/data/catalogue";
+import { seulementPayees } from "@/lib/reservations";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
 import { formatDate, formatNombre, formatXof, resumeOffre } from "@/lib/format";
@@ -56,7 +57,8 @@ export default async function PageParcAdmin() {
   ]);
 
   const jour = aujourdhui();
-  const actives = reservations.filter((reservation) => reservation.statut !== "ANNULEE");
+  // Les revenus et sorties par vélo ne comptent que le payé.
+  const actives = seulementPayees(reservations);
 
   const fiches = velos.map((velo) => {
     const sorties = actives.filter((reservation) =>

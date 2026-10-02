@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Pastille } from "@/components/ui";
+import { seulementPayees } from "@/lib/reservations";
 import { depot } from "@/lib/db";
 import { formatDate, formatNombre, formatXof } from "@/lib/format";
 
@@ -36,7 +37,7 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
   const fiches = clients
     .map((client) => {
       const siennes = reservations.filter((reservation) => reservation.clientId === client.id);
-      const facturees = siennes.filter((reservation) => reservation.statut !== "ANNULEE");
+      const facturees = seulementPayees(siennes);
       const total = facturees.reduce((somme, reservation) => somme + reservation.totalXof, 0);
       const derniere = siennes
         .map((reservation) => reservation.dateDebut)

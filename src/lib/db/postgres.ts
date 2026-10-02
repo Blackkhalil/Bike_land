@@ -834,6 +834,45 @@ const depotDirect: Depot = {
     );
   },
 
+  async supprimerReservation(reference: string) {
+    return client().$transaction(
+      async (tx) => {
+        const booking = await tx.booking.findUnique({
+          where: { reference: reference.toUpperCase() },
+          include: { payments: true, promoUsage: true },
+        });
+        if (!booking) return false;
+
+        // Garde-fou, et il n'est pas décoratif : une réservation qui a
+        // encaissé est une pièce comptable. Elle s'annule, se rembourse,
+        // mais ne s'efface pas, sans quoi un contrôle trouverait un trou
+        // dans la suite des factures.
+        const aEncaisse = booking.payments.some(
+          (paiement) => !paiement.isDeposit && paiement.status === "REUSSI",
+        );
+        if (aEncaisse || booking.status !== "EN_ATTENTE_PAIEMENT") return false;
+
+        // Le quota du code de parrainage revient au pot, comme à
+        // l'annulation : il avait été retenu à la création.
+        if (booking.promoUsage && booking.promoUsage.status === "EN_ATTENTE") {
+          await tx.promoCode.update({
+            where: { code: booking.promoUsage.promoCode },
+            data: { useCount: { decrement: 1 } },
+          });
+        }
+
+        await tx.promoUsage.deleteMany({ where: { bookingId: booking.id } });
+        await tx.payment.deleteMany({ where: { bookingId: booking.id } });
+        await tx.bookingOption.deleteMany({ where: { bookingId: booking.id } });
+        await tx.bookingItem.deleteMany({ where: { bookingId: booking.id } });
+        await tx.review.deleteMany({ where: { bookingId: booking.id } });
+        await tx.booking.delete({ where: { id: booking.id } });
+        return true;
+      },
+      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
+    );
+  },
+
   async listerReservations(options) {
     const where: Prisma.BookingWhereInput = {};
     if (options?.statut) where.status = options.statut;

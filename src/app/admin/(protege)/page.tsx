@@ -8,6 +8,7 @@ import { Colonnes } from "@/components/graphiques/Colonnes";
 import { Courbe } from "@/components/graphiques/Courbe";
 import { Jauge, TuileStat } from "@/components/graphiques/TuileStat";
 import { SelecteurPeriode } from "@/components/admin/SelecteurPeriode";
+import { estEnAttente, seulementPayees } from "@/lib/reservations";
 import { depot } from "@/lib/db";
 import { aujourdhui, nombreDeJours } from "@/lib/dates";
 import { formatDate, formatNombre, formatXof } from "@/lib/format";
@@ -106,7 +107,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   // que l'exploitant regarde en arrivant à l'atelier, avant tout
   // indicateur de performance.
   const jour = aujourdhui();
-  const actives = reservations.filter((r) => r.statut !== "ANNULEE");
+  const actives = seulementPayees(reservations);
 
   // Ce qui reste réellement à faire, déduit de l'état et non des dates,
   // exactement comme la fiche du jour, sinon les deux écrans annoncent
@@ -114,7 +115,10 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   // et un vélo qui n'est pas encore parti n'est pas « attendu au retour ».
   const departsDuJour = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retoursDuJour = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
-  const aPayer = reservations.filter((r) => r.statut === "EN_ATTENTE_PAIEMENT");
+  // Seuls les paniers encore dans leur délai : un panier abandonné ne
+  // sera jamais payé, l'afficher comme « à payer » entretiendrait
+  // l'illusion d'une recette à venir.
+  const aPayer = reservations.filter(estEnAttente);
 
   // Ce que le coordinateur doit préparer et réclamer aujourd'hui : les
   // cocos et les eaux d'un côté, les pièces d'identité et les cautions de

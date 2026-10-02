@@ -365,6 +365,33 @@ export const depotDemo: Depot = {
     return reservation ? copie(reservation) : null;
   },
 
+  async supprimerReservation(reference: string) {
+    const donnees = etat();
+    const index = donnees.reservations.findIndex(
+      (r) => r.reference.toUpperCase() === reference.toUpperCase(),
+    );
+    if (index === -1) return false;
+
+    const reservation = donnees.reservations[index];
+    // Même garde-fou qu'en base : ce qui a encaissé ne s'efface pas.
+    const aEncaisse = reservation.paiements.some(
+      (paiement) => !paiement.estCaution && paiement.statut === "REUSSI",
+    );
+    if (aEncaisse || reservation.statut !== "EN_ATTENTE_PAIEMENT") return false;
+
+    const usage = donnees.utilisationsPromo.find(
+      (u) => u.reference === reservation.reference && u.statut === "EN_ATTENTE",
+    );
+    if (usage) {
+      const code = donnees.codesPromo.find((c) => c.code === usage.code);
+      if (code) code.utilisations = Math.max(0, code.utilisations - 1);
+      donnees.utilisationsPromo.splice(donnees.utilisationsPromo.indexOf(usage), 1);
+    }
+
+    donnees.reservations.splice(index, 1);
+    return true;
+  },
+
   async annulerReservation(reference: string) {
     const reservation = etat().reservations.find(
       (r) => r.reference.toUpperCase() === reference.toUpperCase(),

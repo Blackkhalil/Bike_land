@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { FicheDuJour } from "@/components/admin/FicheDuJour";
+import { seulementPayees } from "@/lib/reservations";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
 
@@ -20,7 +21,9 @@ export default async function PageAujourdhui() {
   const jour = aujourdhui();
   const reservations = await depot.listerReservations();
 
-  const actives = reservations.filter((r) => r.statut !== "ANNULEE");
+  // Le planning du jour ne montre que des sorties payées : un panier
+  // non réglé n'amènera personne à l'atelier.
+  const actives = seulementPayees(reservations);
 
   // Un départ reste à faire tant que le vélo n'est pas remis. Une
   // réservation qui devait partir hier et n'est jamais passée en

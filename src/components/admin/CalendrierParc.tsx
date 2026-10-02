@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { ajouterJours, aujourdhui, listerJours, versISO } from "@/lib/dates";
+import { seulementPayees } from "@/lib/reservations";
 import { formatDateCourte, formatPlageHoraire } from "@/lib/format";
 import { FERMETURE_HEURE, OUVERTURE_HEURE } from "@/data/offres";
 import type { Reservation, Velo } from "@/lib/types";
@@ -32,7 +33,9 @@ export function CalendrierParc({
   const debut = ajouterJours(aujourdhui(), decalage);
   const jours = listerJours(debut, ajouterJours(debut, nombreDeJours - 1));
 
-  const actives = reservations.filter((reservation) => reservation.statut !== "ANNULEE");
+  // Le calendrier du parc montre ce qui est réellement engagé. Un
+  // panier non payé n'immobilise rien au-delà de quelques minutes.
+  const actives = seulementPayees(reservations);
 
   return (
     <div className="rounded-[var(--radius-carte)] bg-white p-6">

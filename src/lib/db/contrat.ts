@@ -188,6 +188,15 @@ export interface Depot {
   trouverReservationParReference(reference: string): Promise<Reservation | null>;
   annulerReservation(reference: string): Promise<Reservation | null>;
 
+  /**
+   * Efface définitivement une réservation jamais payée.
+   *
+   * Réservé aux paniers abandonnés. L'implémentation refuse d'effacer
+   * tout ce qui porte un paiement réussi : un règlement encaissé est une
+   * pièce comptable, il s'annule mais ne s'efface pas.
+   */
+  supprimerReservation(reference: string): Promise<boolean>;
+
   listerReservations(options?: {
     statut?: StatutReservation;
     depuis?: DateISO;

@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 
 import { CalendrierParc } from "@/components/admin/CalendrierParc";
 import { Pastille } from "@/components/ui";
+import { NettoyerPaniers } from "@/components/admin/NettoyerPaniers";
+import { estEnAttente, paniersAbandonnes, seulementPayees } from "@/lib/reservations";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
 import { formatDate, formatPlageHoraire, formatXof, resumeOffre } from "@/lib/format";
@@ -59,7 +61,11 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
   // consulte en ouvrant l'atelier le matin. Comme sur la fiche du jour et
   // le tableau de bord, on se fie à l'état et non aux dates : un vélo déjà
   // remis n'est plus à remettre.
-  const actives = reservations.filter((r) => r.statut !== "ANNULEE");
+  const actives = seulementPayees(reservations);
+  // Les paniers restent visibles, mais comptés à part : tant que le
+  // client n'a pas payé, ce n'est pas une réservation.
+  const enAttente = reservations.filter(estEnAttente);
+  const abandonnes = paniersAbandonnes(reservations);
   const departsDuJour = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retoursDuJour = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
 
@@ -85,10 +91,26 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
       <header>
         <p className="etiquette opacity-75">Exploitation</p>
         <h1 className="titre-editorial mt-3 text-[2rem]">Réservations</h1>
-        <p className="mt-2 text-[0.88rem] text-gris-cadre">
-          {reservations.length} réservations enregistrées, dont{" "}
-          {reservations.filter((r) => r.statut === "EN_COURS").length} en cours aujourd&apos;hui.
+        <p className="mt-2 max-w-2xl text-[0.88rem] leading-relaxed text-gris-cadre">
+          {actives.length} réservation{actives.length > 1 ? "s" : ""}, dont{" "}
+          {actives.filter((r) => r.statut === "EN_COURS").length} en cours aujourd&apos;hui.
+          {enAttente.length > 0 && (
+            <>
+              {" "}
+              {enAttente.length} panier{enAttente.length > 1 ? "s" : ""} en attente de paiement,
+              vélo retenu.
+            </>
+          )}
+          {abandonnes.length > 0 && (
+            <>
+              {" "}
+              {abandonnes.length} panier{abandonnes.length > 1 ? "s" : ""} abandonné
+              {abandonnes.length > 1 ? "s" : ""} : jamais payé
+              {abandonnes.length > 1 ? "s" : ""}, le vélo est reparti à la location.
+            </>
+          )}
         </p>
+        <NettoyerPaniers nombre={abandonnes.length} />
       </header>
 
       {/* Départs et retours du jour */}

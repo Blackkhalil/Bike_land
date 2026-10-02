@@ -18,6 +18,7 @@ import {
 } from "./dates";
 import { OFFRES } from "@/data/offres";
 import { fraisEncaissement } from "./paiement";
+import { estPayee, seulementPayees } from "./reservations";
 import type { Client, CodeOffre, MoyenPaiement, Reservation, Velo } from "./types";
 
 export type Granularite = "jour" | "semaine" | "mois" | "annee";
@@ -195,8 +196,11 @@ export function calculerStatistiques(
   const courantes = reservations.filter((r) => dansPeriode(r, fenetreCourante));
   const anciennes = reservations.filter((r) => dansPeriode(r, precedente));
 
-  const facturees = courantes.filter((r) => r.statut !== "ANNULEE");
-  const factureesAvant = anciennes.filter((r) => r.statut !== "ANNULEE");
+  // Seules les réservations payées entrent dans les comptes. Un panier
+  // non réglé n'est pas une vente, et le faire figurer au chiffre
+  // d'affaires afficherait de l'argent qui n'est jamais entré.
+  const facturees = seulementPayees(courantes);
+  const factureesAvant = seulementPayees(anciennes);
 
   const ca = somme(facturees.map((r) => r.totalXof));
   const caAvant = somme(factureesAvant.map((r) => r.totalXof));
@@ -274,11 +278,16 @@ export function calculerStatistiques(
   // désormais dans la journée, elle valait donc 1,0 en permanence. Ce qui
   // varie, et qu'on mesure à la place, ce sont les participants emmenés et
   // les heures vendues.
-  const tauxAnnulation = courantes.length
-    ? (courantes.filter((r) => r.statut === "ANNULEE").length / courantes.length) * 100
+  // Le taux d'annulation se rapporte aux réservations réelles,
+  // annulations comprises, et jamais aux paniers abandonnés : un
+  // panier qu'on n'a pas payé n'a pas été annulé, il n'a pas existé.
+  const courantesReelles = courantes.filter((r) => estPayee(r) || r.statut === "ANNULEE");
+  const anciennesReelles = anciennes.filter((r) => estPayee(r) || r.statut === "ANNULEE");
+  const tauxAnnulation = courantesReelles.length
+    ? (courantes.filter((r) => r.statut === "ANNULEE").length / courantesReelles.length) * 100
     : 0;
-  const tauxAnnulationAvant = anciennes.length
-    ? (anciennes.filter((r) => r.statut === "ANNULEE").length / anciennes.length) * 100
+  const tauxAnnulationAvant = anciennesReelles.length
+    ? (anciennes.filter((r) => r.statut === "ANNULEE").length / anciennesReelles.length) * 100
     : 0;
 
   // --- Séries temporelles sur les douze derniers mois, indépendantes du
@@ -286,7 +295,7 @@ export function calculerStatistiques(
   const finSeries = fenetreCourante.fin;
   const debutDouzeMois = ajouterJours(finSeries, -364);
   const surDouzeMois = reservations.filter(
-    (r) => r.statut !== "ANNULEE" && r.dateDebut >= debutDouzeMois && r.dateDebut <= finSeries,
+    (r) => estPayee(r) && r.dateDebut >= debutDouzeMois && r.dateDebut <= finSeries,
   );
 
   const caParMois = new Map<string, number>();
@@ -333,7 +342,7 @@ export function calculerStatistiques(
 
   const enLocation = new Set(
     reservations
-      .filter((r) => r.statut !== "ANNULEE" && r.dateDebut <= maintenant && r.dateFin >= maintenant)
+      .filter((r) => estPayee(r) && r.dateDebut <= maintenant && r.dateFin >= maintenant)
       .flatMap((r) => r.lignes.map((ligne) => ligne.veloId)),
   );
   const velosEnEntretien = velos.filter((velo) => velo.statut === "MAINTENANCE").length;
@@ -346,7 +355,7 @@ export function calculerStatistiques(
   //     savoir si la personne roulait déjà avec nous auparavant.
   const premiereReservation = new Map<string, DateISO>();
   for (const reservation of reservations) {
-    if (reservation.statut === "ANNULEE") continue;
+    if (!estPayee(reservation)) continue;
     const connue = premiereReservation.get(reservation.clientId);
     if (!connue || reservation.dateDebut < connue) {
       premiereReservation.set(reservation.clientId, reservation.dateDebut);
