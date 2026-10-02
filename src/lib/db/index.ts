@@ -55,6 +55,7 @@ export const depot: Depot = {
   listerPartenaires: async (options) => (await obtenirDepot()).listerPartenaires(options),
   creerPartenaire: async (champs) => (await obtenirDepot()).creerPartenaire(champs),
   majPartenaire: async (id, champs) => (await obtenirDepot()).majPartenaire(id, champs),
+  supprimerPartenaire: async (id) => (await obtenirDepot()).supprimerPartenaire(id),
   listerCodesParrainage: async () => (await obtenirDepot()).listerCodesParrainage(),
   creerCodeParrainage: async (champs) => (await obtenirDepot()).creerCodeParrainage(champs),
   majCodeParrainage: async (code, champs) => (await obtenirDepot()).majCodeParrainage(code, champs),

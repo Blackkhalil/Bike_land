@@ -599,6 +599,20 @@ export const depotDemo: Depot = {
     return copie(ligne);
   },
 
+  async supprimerPartenaire(id) {
+    const donnees = etat();
+    const index = donnees.partenaires.findIndex((p) => p.id === id);
+    if (index < 0) return { supprime: false };
+    const siens = new Set(donnees.codesPromo.filter((c) => c.partenaireId === id).map((c) => c.code));
+    const usages = donnees.utilisationsPromo.filter((u) => siens.has(u.code));
+    if (usages.some((u) => u.statut === "VALIDE")) return { supprime: false, raison: "commissions" as const };
+    if (usages.some((u) => u.statut === "EN_ATTENTE")) return { supprime: false, raison: "en-attente" as const };
+    donnees.utilisationsPromo = donnees.utilisationsPromo.filter((u) => !siens.has(u.code));
+    donnees.codesPromo = donnees.codesPromo.filter((c) => !siens.has(c.code));
+    donnees.partenaires.splice(index, 1);
+    return { supprime: true, codes: siens.size };
+  },
+
   async supprimerCodeParrainage(code) {
     const normalise = normaliserCode(code);
     const donnees = etat();

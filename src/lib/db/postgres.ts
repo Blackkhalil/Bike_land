@@ -1130,6 +1130,31 @@ const depotDirect: Depot = {
     return ligne ? versCodeParrainage(ligne) : null;
   },
 
+  async supprimerPartenaire(id) {
+    const partner = await client().partner.findUnique({
+      where: { id },
+      select: { _count: { select: { promoCodes: true } } },
+    });
+    if (!partner) return { supprime: false };
+
+    const parEtat = await client().promoUsage.groupBy({
+      by: ["status"],
+      where: { promo: { partnerId: id } },
+      _count: true,
+    });
+    const nombre = (etat: string) => parEtat.find((g) => g.status === etat)?._count ?? 0;
+    if (nombre("VALIDE") > 0) return { supprime: false, raison: "commissions" as const };
+    if (nombre("EN_ATTENTE") > 0) return { supprime: false, raison: "en-attente" as const };
+
+    // La cascade du schéma emporte les codes et leurs utilisations
+    // annulées, qui n'engagent plus personne.
+    const supprime = await client()
+      .partner.delete({ where: { id } })
+      .then(() => true)
+      .catch(() => false);
+    return { supprime, codes: partner._count.promoCodes };
+  },
+
   async supprimerCodeParrainage(code) {
     const normalise = normaliserCode(code);
     const utilisations = await client().promoUsage.count({

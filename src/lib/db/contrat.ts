@@ -277,6 +277,21 @@ export interface Depot {
   /** Active ou désactive un partenaire. Ses codes cessent alors de valoir. */
   majPartenaire(id: string, champs: { actif?: boolean }): Promise<Partenaire | null>;
 
+  /**
+   * Supprime un partenaire et ses codes.
+   *
+   * Refusé dès qu'une commission lui est comptée ou qu'un client attend
+   * encore de payer avec l'un de ses codes : la suppression effacerait en
+   * cascade ces utilisations, et avec elles ce qu'on lui doit. Un
+   * partenariat qui s'arrête se désactive. Les utilisations annulées, qui
+   * n'engagent plus rien, ne bloquent pas.
+   */
+  supprimerPartenaire(id: string): Promise<{
+    supprime: boolean;
+    raison?: "commissions" | "en-attente";
+    codes?: number;
+  }>;
+
   listerCodesParrainage(): Promise<CodeParrainage[]>;
   /**
    * Crée un code de parrainage.

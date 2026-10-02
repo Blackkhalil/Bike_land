@@ -72,6 +72,8 @@ export interface TableauRapport {
   /** Colonnes alignées à droite : les nombres. */
   aDroite: number[];
   lignes: string[][];
+  /** Ce qu'on écrit quand le tableau est vide. */
+  vide?: string;
 }
 
 export interface Rapport {
@@ -365,6 +367,7 @@ export function construireRapport(entrees: {
     {
       titre: "Ce que l'on doit à chaque partenaire, sur la période",
       sousTitre: "Réservations payées et non annulées. Commission figée au jour de la réservation.",
+      vide: "Aucune réservation parrainée payée sur la période : rien à verser.",
       colonnes: ["Partenaire", "Codes", "Clients", "Réductions", "Apporté", "Commission due"],
       aDroite: [2, 3, 4, 5],
       lignes: duesPeriode.map((l) => [
@@ -379,6 +382,7 @@ export function construireRapport(entrees: {
     {
       titre: "Partenaires, depuis le début",
       sousTitre: "Le cumul que montre la page parrainage.",
+      vide: "Aucun partenaire enregistré.",
       colonnes: ["Partenaire", "Contact", "Clients", "Réductions", "Apporté", "Commission due", "Dernière venue"],
       aDroite: [2, 3, 4, 5],
       lignes: partenaires.map((l) => [
@@ -394,6 +398,7 @@ export function construireRapport(entrees: {
     {
       titre: "Codes de parrainage",
       sousTitre: "L'état de chaque code aujourd'hui.",
+      vide: "Aucun code de parrainage créé.",
       colonnes: ["Code", "Partenaire", "Utilisations", "Validité", "État"],
       aDroite: [2],
       lignes: codes.map((c) => [
@@ -476,7 +481,7 @@ export function exporterRapportCsv(rapport: Rapport, detailCsv: string): string 
           ? // Seules les colonnes numériques sont converties : un numéro de
           // téléphone écrit sans « + » ne doit pas devenir un nombre.
           tableau.lignes.map((l) => ligne(...l.map((v, i) => (tableau.aDroite.includes(i) ? brut(v) : v))))
-          : [ligne("Aucune donnée sur la période")]),
+          : [ligne(tableau.vide ?? "Aucune donnée sur la période")]),
       ].join("\n"),
     );
   }

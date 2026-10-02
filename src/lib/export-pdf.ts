@@ -199,7 +199,7 @@ export async function exporterPdf(rapport: Rapport): Promise<Uint8Array> {
 
     if (tableau.lignes.length === 0) {
       place(16);
-      ecrire("Aucune donnée sur la période.", MARGE, y, 9, normale, GRIS);
+      ecrire(tableau.vide ?? "Aucune donnée sur la période.", MARGE, y, 9, normale, GRIS);
       y -= 16;
       continue;
     }

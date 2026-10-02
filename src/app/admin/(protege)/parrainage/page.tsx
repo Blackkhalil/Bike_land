@@ -170,7 +170,13 @@ export default async function PageCodesPromoAdmin() {
         )}
       </section>
 
-      <GestionParrainage partenaires={partenaires} codes={codes} />
+      <GestionParrainage
+        partenaires={partenaires}
+        codes={codes}
+        clientsParPartenaire={Object.fromEntries(
+          statistiques.map((ligne) => [ligne.partenaire.id, ligne.utilisations]),
+        )}
+      />
     </div>
   );
 }

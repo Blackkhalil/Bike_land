@@ -33,9 +33,12 @@ import type { Partenaire } from "@/lib/types";
 export function GestionParrainage({
   partenaires,
   codes,
+  clientsParPartenaire = {},
 }: {
   partenaires: Partenaire[];
   codes: CodeParrainage[];
+  /** Clients payants amenés par chaque partenaire, par identifiant. */
+  clientsParPartenaire?: Record<string, number>;
 }) {
   const routeur = useRouter();
   const [enCours, demarrerTransition] = useTransition();
@@ -46,6 +49,15 @@ export function GestionParrainage({
     <div className="mt-10 grid gap-6 lg:grid-cols-2">
       <FormulairePartenaire onCree={rafraichir} />
       <FormulaireCode partenaires={partenaires} onCree={rafraichir} />
+      <div className="lg:col-span-2">
+        <ListePartenaires
+          partenaires={partenaires}
+          codes={codes}
+          clientsParPartenaire={clientsParPartenaire}
+          onChange={rafraichir}
+          enCours={enCours}
+        />
+      </div>
       <div className="lg:col-span-2">
         <ListeCodes codes={codes} onChange={rafraichir} enCours={enCours} />
       </div>
@@ -264,6 +276,200 @@ function FormulaireCode({
 
       {erreur && <p className="mt-3 text-[0.84rem] text-orange-sourd">{erreur}</p>}
       {succes && <p className="mt-3 text-[0.84rem] text-vert-lagune">{succes}</p>}
+    </section>
+  );
+}
+
+/* ---------------------------------------------- Liste des partenaires */
+
+/**
+ * Les partenaires, avec de quoi les arrêter.
+ *
+ * Désactiver est le geste normal : le partenaire n'est plus proposé à la
+ * création d'un code, mais ce qu'il a apporté et ce qu'on lui doit reste
+ * lisible. Supprimer efface le partenaire et tous ses codes : ce n'est
+ * proposé qu'à celui qui n'a jamais amené de client payant, sans quoi
+ * ses commissions disparaîtraient avec lui. Le serveur le refuse de toute
+ * façon, et refuse aussi tant qu'un client est en train de payer avec
+ * l'un de ses codes.
+ *
+ * La suppression demande une confirmation qui dit ce qui part, codes
+ * compris : on ne la déclenche pas d'un clic égaré.
+ */
+function ListePartenaires({
+  partenaires,
+  codes,
+  clientsParPartenaire,
+  onChange,
+  enCours,
+}: {
+  partenaires: Partenaire[];
+  codes: CodeParrainage[];
+  clientsParPartenaire: Record<string, number>;
+  onChange: () => void;
+  enCours: boolean;
+}) {
+  const [action, setAction] = useState<string | null>(null);
+  const [aConfirmer, setAConfirmer] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [succes, setSucces] = useState<string | null>(null);
+
+  const appeler = async (id: string, methode: "PATCH" | "DELETE", corps?: object) => {
+    setAction(id);
+    setErreur(null);
+    setSucces(null);
+    try {
+      const reponse = await fetch(`/api/admin/partenaires/${encodeURIComponent(id)}`, {
+        method: methode,
+        headers: corps ? { "Content-Type": "application/json" } : undefined,
+        body: corps ? JSON.stringify(corps) : undefined,
+      });
+      const donnees = await reponse.json().catch(() => ({}));
+      if (!reponse.ok) {
+        setErreur(donnees.erreur ?? "L'opération a échoué.");
+        return null;
+      }
+      onChange();
+      return donnees;
+    } catch {
+      setErreur("Pas de réseau. Réessayez quand la connexion revient.");
+      return null;
+    } finally {
+      setAction(null);
+    }
+  };
+
+  const supprimer = async (partenaire: Partenaire) => {
+    const donnees = await appeler(partenaire.id, "DELETE");
+    setAConfirmer(null);
+    if (donnees) {
+      const n = donnees.codes ?? 0;
+      setSucces(
+        `${partenaire.nom} est supprimé${n > 0 ? `, avec ${n} code${n > 1 ? "s" : ""}` : ""}.`,
+      );
+    }
+  };
+
+  if (partenaires.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="titre-editorial text-[1.2rem]">Partenaires</h2>
+      <p className="mt-2 text-[0.84rem] leading-relaxed text-gris-cadre">
+        Un partenariat qui s&apos;arrête se désactive : son historique et ses commissions restent
+        lisibles. La suppression n&apos;est possible que pour un partenaire qui n&apos;a jamais
+        amené de client payant.
+      </p>
+
+      {erreur && (
+        <p
+          role="alert"
+          className="mt-4 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-4 py-3 text-[0.86rem] leading-relaxed"
+        >
+          {erreur}
+        </p>
+      )}
+      {succes && <p className="mt-4 text-[0.86rem] text-vert-lagune">{succes}</p>}
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[44rem] border-collapse text-left text-[0.86rem]">
+          <thead>
+            <tr className="border-b border-noir-piste/20 text-[0.74rem] uppercase tracking-[0.06em] text-gris-cadre">
+              <th className="py-2 pr-4 font-semibold">Partenaire</th>
+              <th className="py-2 pr-4 font-semibold">Contact</th>
+              <th className="py-2 pr-4 text-right font-semibold">Codes</th>
+              <th className="py-2 pr-4 text-right font-semibold">Clients payants</th>
+              <th className="py-2 pr-4 font-semibold">État</th>
+              <th className="py-2 font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {partenaires.map((partenaire) => {
+              const nombreCodes = codes.filter((c) => c.partenaireId === partenaire.id).length;
+              const clients = clientsParPartenaire[partenaire.id] ?? 0;
+              const occupe = action === partenaire.id || enCours;
+              return (
+                <tr key={partenaire.id} className="border-b border-noir-piste/10 align-top">
+                  <td className="py-3 pr-4 font-semibold">{partenaire.nom}</td>
+                  <td className="py-3 pr-4 text-gris-cadre">{partenaire.contact || "non renseigné"}</td>
+                  <td className="py-3 pr-4 text-right tabular-nums">{nombreCodes}</td>
+                  <td className="py-3 pr-4 text-right tabular-nums">{clients}</td>
+                  <td className="py-3 pr-4">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[0.72rem] font-semibold ${
+                        partenaire.actif
+                          ? "bg-vert-lagune/15 text-vert-lagune"
+                          : "bg-craie-ombre text-noir-piste"
+                      }`}
+                    >
+                      {partenaire.actif ? "Actif" : "Désactivé"}
+                    </span>
+                  </td>
+                  <td className="py-3">
+                    {aConfirmer === partenaire.id ? (
+                      <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                        <span className="text-[0.82rem]">
+                          Supprimer {partenaire.nom}
+                          {nombreCodes > 0
+                            ? ` et ses ${nombreCodes} code${nombreCodes > 1 ? "s" : ""}`
+                            : ""}{" "}
+                          ?
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => supprimer(partenaire)}
+                          disabled={occupe}
+                          className="rounded-[var(--radius-bouton)] bg-orange-signal px-3 py-1.5 text-[0.8rem] font-semibold text-noir-piste disabled:opacity-40"
+                        >
+                          {action === partenaire.id ? "Suppression…" : "Oui, supprimer"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAConfirmer(null)}
+                          disabled={occupe}
+                          className="lien-souligne cible-elargie text-[0.82rem]"
+                        >
+                          Annuler
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => appeler(partenaire.id, "PATCH", { actif: !partenaire.actif })}
+                          disabled={occupe}
+                          className="lien-souligne cible-elargie text-[0.82rem] font-semibold text-orange-sourd disabled:opacity-40"
+                        >
+                          {partenaire.actif ? "Désactiver" : "Réactiver"}
+                        </button>
+                        {clients === 0 && (
+                          <>
+                            <span aria-hidden="true" className="px-2 text-noir-piste/30">
+                              ·
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setErreur(null);
+                                setSucces(null);
+                                setAConfirmer(partenaire.id);
+                              }}
+                              disabled={occupe}
+                              className="lien-souligne cible-elargie text-[0.82rem] font-semibold text-gris-cadre disabled:opacity-40"
+                            >
+                              Supprimer
+                            </button>
+                          </>
+                        )}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
