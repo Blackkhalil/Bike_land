@@ -1,22 +1,32 @@
 /**
- * Verifie que la mesure d'audience fonctionne reellement.
+ * Verifie la mesure d'audience telle qu'elle est deployee.
  *
- * Deux pieges ont fait echouer les premieres verifications, et ils
- * valent d'etre notes parce qu'ils reprendront quiconque voudra
- * recontroler :
+ * Ce que ce controle sait prouver, et ce qu'il ne sait pas
+ * --------------------------------------------------------
  *
- *  1. Le script n'est pas dans le HTML. La bibliotheque l'injecte depuis
- *     le JavaScript, apres hydratation. Chercher une balise dans la
- *     source ne prouve donc rien.
+ * Un navigateur pilote ne peut pas prouver qu'une vue a ete comptee. La
+ * balise part par `navigator.sendBeacon`, que l'outil de pilotage ne voit
+ * pas passer, et la bibliotheque laisse sa file d'attente en place meme
+ * quand tout fonctionne. Une premiere version de ce controle concluait
+ * « service inactif » sur ce seul indice : elle se trompait, Vercel
+ * comptait pourtant les visites. La seule preuve qu'une vue est comptee
+ * est le tableau de bord Analytics de Vercel.
  *
- *  2. Vercel ne sert plus le script depuis `/_vercel/insights/`, mais
- *     depuis un chemin tire au hasard par projet, du genre
- *     `/8ce46b7ff00e43cc/script.js`, pour echapper aux bloqueurs de
- *     publicite. Guetter l'ancien chemin ne voit jamais rien passer.
+ * Ce que l'on peut prouver, en revanche, et c'est le plus important :
+ * que **nos filtres** font ce qu'on promet dans la page sur les donnees
+ * personnelles. On recupere la fonction `beforeSend` reellement
+ * deployee, celle que la bibliotheque appellera avant chaque envoi, et
+ * on la soumet a chaque cas :
  *
- * On detecte donc la bibliotheque par ce qu'elle pose sur `window`, et
- * le trafic par la balise qu'elle a injectee, quelle que soit son
- * adresse.
+ *  - une page ordinaire doit partir telle quelle ;
+ *  - une page /admin ne doit pas partir ;
+ *  - un jeton de reservation doit etre efface de l'adresse ;
+ *  - « Ne pas me pister » doit tout couper.
+ *
+ * Usage :
+ *
+ *     npm install --no-save playwright-core
+ *     node outils/verif-analytique.mjs
  */
 import { chromium } from "playwright-core";
 
@@ -24,96 +34,93 @@ const BASE = process.env.BASE ?? "https://bike-land.vercel.app";
 const navigateur = await chromium.launch({ channel: "msedge" });
 
 /**
- * Charge une page et rend compte de la mesure.
- *
- * `avantChargement` permet d'imposer un reglage du navigateur, comme
- * « Ne pas me pister », avant que la page ne s'execute.
+ * Charge une page et rend la fonction de filtrage deployee, appliquee a
+ * une serie d'adresses. `pister` impose « Ne pas me pister ».
  */
-async function observer(chemin, avantChargement) {
+async function filtrer(adresses, { pister = true } = {}) {
   const contexte = await navigateur.newContext();
-  if (avantChargement) await contexte.addInitScript(avantChargement);
+  if (!pister) {
+    await contexte.addInitScript(() => {
+      Object.defineProperty(window.navigator, "doNotTrack", { get: () => "1" });
+    });
+  }
   const page = await contexte.newPage();
+  await page.goto(BASE + "/cgv", { waitUntil: "domcontentloaded", timeout: 150_000 });
 
-  const trafic = [];
-  page.on("request", (r) => {
-    const u = r.url();
-    // Le script de mesure et ses balises partent vers le meme chemin
-    // tire au hasard. On reconnait la forme, pas l'adresse.
-    if (/\/[0-9a-f]{12,}\/(script\.js|view|event)/.test(u) || u.includes("/_vercel/insights/")) {
-      trafic.push(u.replace(BASE, ""));
-    }
-  });
-
-  await page.goto(BASE + chemin, { waitUntil: "domcontentloaded", timeout: 150_000 });
-
-  // On attend que la bibliotheque se signale plutot qu'un delai fixe :
-  // sur une connexion lente, l'hydratation prend parfois dix secondes.
-  let pret = false;
   for (let i = 0; i < 45; i += 1) {
-    pret = await page.evaluate(() => typeof window.va === "function");
+    const pret = await page.evaluate(() =>
+      Array.isArray(window.vaq) && window.vaq.some((e) => e[0] === "beforeSend"),
+    );
     if (pret) break;
     await page.waitForTimeout(1000);
   }
-  await page.waitForTimeout(6000);
 
-  const etat = await page.evaluate(() => ({
-    bibliotheque: typeof window.va === "function",
-    mode: window.vam,
-    enAttente: Array.isArray(window.vaq) ? window.vaq.map((e) => e[0]) : [],
-    /**
-     * Tant que le service n'est pas active sur le projet, Vercel sert un
-     * script inerte : il se charge bien, repond 200, mais ne remplace
-     * jamais le talon de file d'attente pose par la bibliotheque. C'est
-     * le seul signe fiable, et il ne se voit ni dans le HTML ni dans le
-     * code de reponse.
-     */
-    talonRemplace: !String(window.va).includes("vaq"),
-    script: [...document.querySelectorAll("script[src]")]
-      .map((s) => s.src)
-      .find((s) => /\/[0-9a-f]{12,}\/script\.js$/.test(s) || s.includes("/_vercel/insights/")),
-  }));
+  const resultats = await page.evaluate((liste) => {
+    const entree = (window.vaq || []).find((e) => e[0] === "beforeSend");
+    if (!entree || typeof entree[1] !== "function") return null;
+    const filtre = entree[1];
+    return liste.map((url) => {
+      try {
+        const sortie = filtre({ type: "pageview", url });
+        return { url, sortie: sortie === null ? null : sortie.url };
+      } catch (erreur) {
+        return { url, erreur: String(erreur) };
+      }
+    });
+  }, adresses);
 
   await contexte.close();
-  return { ...etat, trafic, hydrate: pret };
+  return resultats;
 }
 
-function rendre(titre, r, attenduMesure) {
-  const balises = r.trafic.filter((u) => !u.endsWith("script.js")).length;
-  // Une mesure n'a reellement eu lieu que si le script a pris la main.
-  // La file qui contient « pageview » prouve seulement qu'on a essaye.
-  const mesure = r.talonRemplace && (balises > 0 || !r.enAttente.includes("pageview"));
-  const conforme = attenduMesure ? mesure : !mesure;
+const base = BASE;
+const cas = [
+  { titre: "page ordinaire", url: `${base}/velos`, attendu: (s) => s === `${base}/velos` },
+  { titre: "espace d'exploitation", url: `${base}/admin/reservations`, attendu: (s) => s === null },
+  {
+    titre: "lien de suivi d'une reservation",
+    url: `${base}/reservation/BL-ABC123.signatureSecrete.xyz`,
+    attendu: (s) => s === `${base}/reservation/[jeton]`,
+  },
+  {
+    titre: "page de reservation, sans jeton",
+    url: `${base}/reservation?velo=emeraude`,
+    attendu: (s) => s === `${base}/reservation?velo=emeraude`,
+  },
+];
 
-  console.log(`\n=== ${titre} ===`);
-  console.log(`  hydratation      : ${r.hydrate ? "oui" : "NON"}`);
-  console.log(`  mode             : ${r.mode ?? "inconnu"}`);
-  console.log(`  script injecte   : ${r.script ? r.script.replace(BASE, "") : "non"}`);
-  console.log(`  service actif    : ${r.talonRemplace ? "oui" : "NON, a activer sur Vercel"}`);
-  console.log(`  evenements en file: ${r.enAttente.join(", ") || "aucun"}`);
-  console.log(`  balises envoyees : ${balises}`);
-  console.log(`  attendu          : ${attenduMesure ? "mesure comptee" : "aucune mesure"}`);
-  console.log(`  verdict          : ${conforme ? "conforme" : "A CORRIGER"}`);
-  return conforme;
+let conformes = 0;
+let total = 0;
+
+console.log("=== visiteur ordinaire ===");
+const ordinaire = await filtrer(cas.map((c) => c.url));
+if (!ordinaire) {
+  console.log("  filtre introuvable : la bibliotheque ne s'est pas chargee");
+} else {
+  for (const [i, c] of cas.entries()) {
+    const r = ordinaire[i];
+    const ok = !r.erreur && c.attendu(r.sortie);
+    total += 1;
+    if (ok) conformes += 1;
+    const sortie = r.erreur ? `ERREUR ${r.erreur}` : r.sortie === null ? "non envoye" : r.sortie.replace(base, "");
+    console.log(`  ${ok ? "ok    " : "ECHEC "} ${c.titre.padEnd(34)} -> ${sortie}`);
+  }
 }
 
-const resultats = [];
-
-resultats.push(rendre("page publique, visiteur ordinaire", await observer("/cgv"), true));
-
-resultats.push(
-  rendre(
-    "« Ne pas me pister » active",
-    await observer("/cgv", () => {
-      Object.defineProperty(window.navigator, "doNotTrack", { get: () => "1" });
-    }),
-    false,
-  ),
-);
-
-resultats.push(rendre("espace d'exploitation", await observer("/admin/connexion"), false));
+console.log("\n=== « Ne pas me pister » active ===");
+const refus = await filtrer([`${base}/velos`], { pister: false });
+if (refus) {
+  const ok = refus[0].sortie === null;
+  total += 1;
+  if (ok) conformes += 1;
+  console.log(`  ${ok ? "ok    " : "ECHEC "} ${"page ordinaire".padEnd(34)} -> ${refus[0].sortie === null ? "non envoye" : refus[0].sortie}`);
+}
 
 await navigateur.close();
 
-const rates = resultats.filter((r) => !r).length;
-console.log(`\n${resultats.length - rates}/${resultats.length} conformes`);
-process.exitCode = rates > 0 ? 1 : 0;
+console.log(`\n${conformes}/${total} conformes`);
+console.log(
+  "\nPour savoir si les vues sont bien comptees, voir le tableau de bord :\n" +
+    "https://vercel.com/khalils-projects-98b9ce03/bike-land/analytics",
+);
+process.exitCode = conformes === total ? 0 : 1;
