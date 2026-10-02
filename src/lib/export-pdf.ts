@@ -66,14 +66,14 @@ interface ColonneDetail {
 }
 
 const DETAIL: ColonneDetail[] = [
-  { titre: "Référence", largeur: 72, valeur: (r) => r.reference },
+  { titre: "Référence", largeur: 66, valeur: (r) => r.reference },
   { titre: "Date", largeur: 62, valeur: (r) => dateCourte(r.dateDebut) },
-  { titre: "Client", largeur: 120, valeur: (r) => `${r.client.prenom} ${r.client.nom}` },
-  { titre: "Téléphone", largeur: 90, valeur: (r) => r.client.telephone ?? "" },
-  { titre: "Vélo", largeur: 110, valeur: (r) => r.lignes.map((l) => l.veloNom).join(" + ") },
+  { titre: "Client", largeur: 104, valeur: (r) => `${r.client.prenom} ${r.client.nom}` },
+  { titre: "Téléphone", largeur: 84, valeur: (r) => r.client.telephone ?? "" },
+  { titre: "Vélo", largeur: 92, valeur: (r) => r.lignes.map((l) => l.veloNom).join(" + ") },
   {
     titre: "Formule",
-    largeur: 92,
+    largeur: 86,
     valeur: (r) =>
       r.offre === "road-trip" ? `Road trip, ${r.nombrePersonnes} pers.` : `Libre, ${r.dureeHeures ?? "?"} h`,
   },
@@ -86,6 +86,7 @@ const DETAIL: ColonneDetail[] = [
         .replace("_CASH", "")
         .replace("_", " "),
   },
+  { titre: "Parrainage", largeur: 52, valeur: (r) => r.codeParrainage ?? "" },
   { titre: "État", largeur: 70, valeur: (r) => LIBELLES_STATUT[r.statut] },
   { titre: "Montant", largeur: 75, aDroite: true, valeur: (r) => montant(r.totalXof) },
 ];
@@ -181,16 +182,19 @@ export async function exporterPdf(rapport: Rapport): Promise<Uint8Array> {
   // --- Tableaux de répartition.
   for (const tableau of rapport.tableaux) {
     titreBloc(tableau.titre, tableau.sousTitre);
-    const largeur = Math.min(UTILE, 160 + 130 * (tableau.colonnes.length - 1));
+    const largeur = Math.min(UTILE, 160 + 120 * (tableau.colonnes.length - 1));
     const premiere = 160;
     const autres = (largeur - premiere) / Math.max(1, tableau.colonnes.length - 1);
+    const xGauche = (i: number) => MARGE + premiere + autres * (i - 1) + 8;
     const xDroit = (i: number) => MARGE + premiere + autres * i;
+    const poser = (v: string, i: number, taille: number, police: PDFFont, couleur = NOIR) => {
+      if (i === 0) ecrire(ajuster(v, police, taille, premiere - 8), MARGE, y, taille, police, couleur);
+      else if (tableau.aDroite.includes(i)) aDroite(v, xDroit(i), y, taille, police, couleur);
+      else ecrire(ajuster(v, police, taille, autres - 10), xGauche(i), y, taille, police, couleur);
+    };
 
     place(16);
-    tableau.colonnes.forEach((c, i) => {
-      if (i === 0) ecrire(c, MARGE, y, 7.5, grasse, GRIS);
-      else aDroite(c, xDroit(i), y, 7.5, grasse, GRIS);
-    });
+    tableau.colonnes.forEach((c, i) => poser(c, i, 7.5, grasse, GRIS));
     y -= 12;
 
     if (tableau.lignes.length === 0) {
@@ -201,10 +205,7 @@ export async function exporterPdf(rapport: Rapport): Promise<Uint8Array> {
     }
     for (const ligne of tableau.lignes) {
       place(15);
-      ligne.forEach((v, i) => {
-        if (i === 0) ecrire(ajuster(v, normale, 9, premiere - 8), MARGE, y, 9);
-        else aDroite(v, xDroit(i), y, 9, normale);
-      });
+      ligne.forEach((v, i) => poser(v, i, 9, normale));
       page.drawLine({ start: { x: MARGE, y: y - 4 }, end: { x: MARGE + largeur, y: y - 4 }, thickness: 0.4, color: FILET });
       y -= 15;
     }

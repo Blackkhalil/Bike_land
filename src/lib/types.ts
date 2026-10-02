@@ -176,6 +176,13 @@ export interface Reservation {
   note?: number;
   /** Code de parrainage utilisé, s'il y en a un. */
   codeParrainage?: string;
+  /**
+   * Commission due au partenaire pour cette réservation, figée au moment
+   * où le code a été appliqué. Elle ne se recalcule jamais : le taux est
+   * une politique, et appliquer celui d'aujourd'hui à une réservation
+   * passée fausserait ce qu'on doit au partenaire.
+   */
+  commissionParrainageXof?: number;
 }
 
 /**

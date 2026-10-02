@@ -12,6 +12,7 @@
  */
 
 import { aujourdhui } from "@/lib/dates";
+import { libelleCommission, libelleReduction, type CodeParrainage } from "@/lib/parrainage";
 import { estEnAttente, seulementPayees } from "@/lib/reservations";
 import {
   calculerStatistiques,
@@ -20,7 +21,7 @@ import {
   type IndicateurCompare,
   type Statistiques,
 } from "@/lib/statistiques";
-import type { Client, Reservation, Velo } from "@/lib/types";
+import type { Client, Reservation, StatistiquesPartenaire, Velo } from "@/lib/types";
 
 /* ------------------------------------------------------- La journée */
 
@@ -145,8 +146,12 @@ export function construireRapport(entrees: {
   velos: Velo[];
   clients: Client[];
   granularite: Granularite;
+  /** Les codes de parrainage, pour rattacher chaque réservation à son partenaire. */
+  codes?: CodeParrainage[];
+  /** Le cumul par partenaire depuis le début, tel que le montre la page parrainage. */
+  partenaires?: StatistiquesPartenaire[];
 }): Rapport {
-  const { reservations, velos, clients, granularite } = entrees;
+  const { reservations, velos, clients, granularite, codes = [], partenaires = [] } = entrees;
   const periode = construirePeriode(granularite);
   const stats = calculerStatistiques(reservations, velos, clients, periode);
   const jour = indicateursDuJour(reservations);
@@ -282,6 +287,127 @@ export function construireRapport(entrees: {
         : a.dateDebut.localeCompare(b.dateDebut),
     );
 
+  /* --- Le parrainage.
+   *
+   * Deux lectures, et toutes deux comptent pour le paiement du
+   * partenaire. Sur la période exportée : ce qu'il a apporté et ce qu'on
+   * lui doit pour ces réservations-là, calculé sur les seules réservations
+   * payées et non annulées. Depuis le début : le cumul que montre la page
+   * parrainage. La commission est toujours celle figée à la réservation,
+   * jamais recalculée au taux du jour.
+   */
+  const partenaireDuCode = new Map(codes.map((c) => [c.code, c]));
+  const parrainees = seulementPayees(
+    reservations.filter(
+      (r) => r.codeParrainage && r.dateFin >= periode.debut && r.dateDebut <= periode.fin,
+    ),
+  );
+  const parPartenaire = new Map<
+    string,
+    { nom: string; codes: Set<string>; clients: number; reductions: number; apporte: number; commission: number }
+  >();
+  for (const r of parrainees) {
+    const code = partenaireDuCode.get(r.codeParrainage!);
+    const cle = code?.partenaireId ?? `inconnu-${r.codeParrainage}`;
+    const ligne = parPartenaire.get(cle) ?? {
+      nom: code?.partenaireNom ?? "Partenaire inconnu",
+      codes: new Set<string>(),
+      clients: 0,
+      reductions: 0,
+      apporte: 0,
+      commission: 0,
+    };
+    ligne.codes.add(r.codeParrainage!);
+    ligne.clients += 1;
+    ligne.reductions += r.remiseXof;
+    ligne.apporte += r.totalXof;
+    ligne.commission += r.commissionParrainageXof ?? 0;
+    parPartenaire.set(cle, ligne);
+  }
+  const duesPeriode = [...parPartenaire.values()].sort((a, b) => b.commission - a.commission);
+  const commissionPeriode = duesPeriode.reduce((s, l) => s + l.commission, 0);
+  const commissionCumul = partenaires.reduce((s, l) => s + l.commissionDueXof, 0);
+  const caParraine = parrainees.reduce((s, r) => s + r.totalXof, 0);
+  const caPeriode = stats.chiffreAffaires.valeur;
+
+  sections.push({
+    titre: "Parrainage",
+    question: `Le client obtient ${libelleReduction()}, le partenaire touche ${libelleCommission()}, une fois le paiement abouti.`,
+    lignes: [
+      { libelle: "Réservations parrainées payées", valeur: nombre(parrainees.length) },
+      {
+        libelle: "Part du chiffre d'affaires",
+        valeur: caPeriode > 0 ? `${nombre((caParraine / caPeriode) * 100, 1)} %` : "-",
+        aide: `${montant(caParraine)} apportés par les partenaires.`,
+      },
+      {
+        libelle: "Réductions accordées aux clients",
+        valeur: montant(parrainees.reduce((s, r) => s + r.remiseXof, 0)),
+      },
+      {
+        libelle: "Commissions dues sur la période",
+        valeur: montant(commissionPeriode),
+        aide: "À verser aux partenaires pour les réservations de la période.",
+      },
+      {
+        libelle: "Commissions dues depuis le début",
+        valeur: montant(commissionCumul),
+        aide: "Cumul de tous les partenaires, toutes périodes confondues.",
+      },
+      {
+        libelle: "Partenaires actifs",
+        valeur: `${nombre(partenaires.filter((l) => l.partenaire.actif).length)} sur ${nombre(partenaires.length)}`,
+      },
+    ],
+  });
+
+  tableaux.push(
+    {
+      titre: "Ce que l'on doit à chaque partenaire, sur la période",
+      sousTitre: "Réservations payées et non annulées. Commission figée au jour de la réservation.",
+      colonnes: ["Partenaire", "Codes", "Clients", "Réductions", "Apporté", "Commission due"],
+      aDroite: [2, 3, 4, 5],
+      lignes: duesPeriode.map((l) => [
+        l.nom,
+        [...l.codes].join(", "),
+        nombre(l.clients),
+        montant(l.reductions),
+        montant(l.apporte),
+        montant(l.commission),
+      ]),
+    },
+    {
+      titre: "Partenaires, depuis le début",
+      sousTitre: "Le cumul que montre la page parrainage.",
+      colonnes: ["Partenaire", "Contact", "Clients", "Réductions", "Apporté", "Commission due", "Dernière venue"],
+      aDroite: [2, 3, 4, 5],
+      lignes: partenaires.map((l) => [
+        `${l.partenaire.nom}${l.partenaire.actif ? "" : " (inactif)"}`,
+        l.partenaire.contact ?? "",
+        nombre(l.utilisations),
+        montant(l.reductionsAccordeesXof),
+        montant(l.chiffreAffairesXof),
+        montant(l.commissionDueXof),
+        l.derniereUtilisation ? dateCourte(l.derniereUtilisation) : "jamais",
+      ]),
+    },
+    {
+      titre: "Codes de parrainage",
+      sousTitre: "L'état de chaque code aujourd'hui.",
+      colonnes: ["Code", "Partenaire", "Utilisations", "Validité", "État"],
+      aDroite: [2],
+      lignes: codes.map((c) => [
+        c.code,
+        c.partenaireNom,
+        c.utilisationsMax ? `${nombre(c.utilisations)} / ${nombre(c.utilisationsMax)}` : nombre(c.utilisations),
+        c.debuteLe || c.finitLe
+          ? `${c.debuteLe ? dateCourte(c.debuteLe) : "..."} au ${c.finitLe ? dateCourte(c.finitLe) : "..."}`
+          : "sans limite",
+        c.actif ? "actif" : "inactif",
+      ]),
+    },
+  );
+
   return {
     titre: "Tableau de bord",
     periodeLibelle: periode.libelle,
@@ -347,7 +473,9 @@ export function exporterRapportCsv(rapport: Rapport, detailCsv: string): string 
         ligne(tableau.titre),
         ligne(...tableau.colonnes),
         ...(tableau.lignes.length
-          ? tableau.lignes.map((l) => ligne(...l.map((v, i) => (i === 0 ? v : brut(v)))))
+          ? // Seules les colonnes numériques sont converties : un numéro de
+          // téléphone écrit sans « + » ne doit pas devenir un nombre.
+          tableau.lignes.map((l) => ligne(...l.map((v, i) => (tableau.aDroite.includes(i) ? brut(v) : v))))
           : [ligne("Aucune donnée sur la période")]),
       ].join("\n"),
     );

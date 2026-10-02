@@ -311,6 +311,7 @@ export const depotDemo: Depot = {
       optionsXof: devis.optionsXof,
       remiseXof: devis.remiseXof,
       codeParrainage: remise?.code,
+      commissionParrainageXof: remise ? commissionPour(devis.totalXof) : undefined,
       cautionXof: devis.cautionXof,
       totalXof: devis.totalXof,
       paiements: [

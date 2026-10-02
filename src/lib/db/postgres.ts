@@ -294,6 +294,7 @@ function versReservation(booking: BookingComplet): Reservation {
     // recalculer quoi que ce soit, le montant de la remise est figé sur
     // la réservation.
     codeParrainage: booking.promoUsage?.promoCode,
+    commissionParrainageXof: booking.promoUsage?.commissionXof,
   };
 }
 

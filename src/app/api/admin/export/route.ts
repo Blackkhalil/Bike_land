@@ -28,12 +28,14 @@ export async function GET(requete: Request) {
   // deux formats. Les statistiques portent sur l'ensemble des
   // réservations, comme à l'écran : la comparaison avec la période
   // précédente et les douze derniers mois en ont besoin.
-  const [reservations, velos, clients] = await Promise.all([
+  const [reservations, velos, clients, codes, partenaires] = await Promise.all([
     depot.listerReservations(),
     depot.listerVelos(),
     depot.listerClients(),
+    depot.listerCodesParrainage(),
+    depot.statistiquesPartenaires(),
   ]);
-  const rapport = construireRapport({ reservations, velos, clients, granularite });
+  const rapport = construireRapport({ reservations, velos, clients, granularite, codes, partenaires });
   const nomBase = `bikeland-tableau-de-bord-${rapport.statistiques.periode.debut}-${rapport.statistiques.periode.fin}`;
 
   if (url.searchParams.get("format") === "pdf") {

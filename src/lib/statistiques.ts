@@ -463,6 +463,9 @@ export function exporterCsv(reservations: Reservation[]): string {
     "total_xof",
     "caution_especes_xof",
     "moyen_paiement",
+    "code_parrainage",
+    "remise_parrainage_xof",
+    "commission_partenaire_xof",
     "cree_le",
     "confirme_le",
   ];
@@ -484,6 +487,9 @@ export function exporterCsv(reservations: Reservation[]): string {
       reservation.totalXof,
       reservation.cautionXof,
       reservation.paiements.find((p) => !p.estCaution)?.moyen ?? "",
+      reservation.codeParrainage ?? "",
+      reservation.codeParrainage ? reservation.remiseXof : "",
+      reservation.commissionParrainageXof ?? "",
       reservation.creeLe.slice(0, 10),
       reservation.confirmeLe?.slice(0, 10) ?? "",
     ]
