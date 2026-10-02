@@ -39,12 +39,21 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
       const siennes = reservations.filter((reservation) => reservation.clientId === client.id);
       const facturees = seulementPayees(siennes);
       const total = facturees.reduce((somme, reservation) => somme + reservation.totalXof, 0);
-      const derniere = siennes
+      // La dernière location est celle qu'il a payée. Un panier
+      // abandonné n'est pas une venue à l'atelier.
+      const derniere = facturees
         .map((reservation) => reservation.dateDebut)
         .sort()
         .at(-1);
 
-      return { client, nombre: facturees.length, total, derniere, annulations: siennes.length - facturees.length };
+      // On ne compte que les vraies annulations. Soustraire les payées
+      // du total ferait passer pour un annulateur celui qui a seulement
+      // renoncé avant de payer, ce qui n'engage personne.
+      const annulations = siennes.filter(
+        (reservation) => reservation.statut === "ANNULEE",
+      ).length;
+
+      return { client, nombre: facturees.length, total, derniere, annulations };
     })
     .filter((fiche) => fiche.nombre > 0)
     .filter((fiche) =>

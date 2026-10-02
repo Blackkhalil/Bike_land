@@ -282,8 +282,9 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
 
         {reservations.length > filtrees.length && (
           <p className="mt-4 text-[0.8rem] text-gris-cadre">
-            {filtrees.length} réservations affichées sur {reservations.length}. Affinez la
-            recherche ou exportez en CSV depuis le tableau de bord pour la liste complète.
+            {filtrees.length} lignes affichées sur {reservations.length}, paniers compris.
+            Affinez la recherche ou exportez en CSV depuis le tableau de bord pour la liste
+            complète.
           </p>
         )}
       </section>
