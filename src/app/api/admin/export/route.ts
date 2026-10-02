@@ -2,13 +2,19 @@ import { NextResponse } from "next/server";
 
 import { sessionAdminValide } from "@/lib/admin";
 import { depot } from "@/lib/db";
+import { exporterPdf } from "@/lib/export-pdf";
 import {
   construirePeriode,
   exporterCsv,
   type Granularite,
 } from "@/lib/statistiques";
 
-/** Export comptable des réservations de la période (§2.3). */
+/**
+ * Export des réservations de la période (§2.3).
+ *
+ * `?format=csv`, par défaut, pour le comptable et son tableur.
+ * `?format=pdf` pour imprimer, envoyer ou classer.
+ */
 export async function GET(requete: Request) {
   if (!(await sessionAdminValide())) {
     return NextResponse.json({ erreur: "Accès refusé." }, { status: 401 });
@@ -27,8 +33,21 @@ export async function GET(requete: Request) {
     jusqua: periode.fin,
   });
 
+  const nomBase = `bikeland-reservations-${periode.debut}-${periode.fin}`;
+
+  if (url.searchParams.get("format") === "pdf") {
+    const pdf = await exporterPdf(reservations, periode);
+    return new NextResponse(Buffer.from(pdf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${nomBase}.pdf"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   const csv = exporterCsv(reservations);
-  const nom = `bikeland-reservations-${periode.debut}-${periode.fin}.csv`;
+  const nom = `${nomBase}.csv`;
 
   return new NextResponse(csv, {
     headers: {

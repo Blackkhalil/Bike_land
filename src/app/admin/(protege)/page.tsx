@@ -160,6 +160,12 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           >
             Exporter en CSV
           </a>
+          <a
+            href={`/api/admin/export?periode=${granularite}&format=pdf`}
+            className="rounded-full border border-noir-piste/25 px-5 py-2.5 text-[0.82rem] font-semibold transition-colors hover:bg-noir-piste hover:text-craie"
+          >
+            Exporter en PDF
+          </a>
         </div>
       </header>
 
