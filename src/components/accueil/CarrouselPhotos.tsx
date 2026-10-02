@@ -170,8 +170,15 @@ export function CarrouselPhotos({ photos }: { photos: PhotoCarrousel[] }) {
           à une photo. Ils passent à la ligne quand il y en a beaucoup
           plutôt que de déborder. */}
       {photos.length > 1 && (
-        <div className="mt-2 flex flex-wrap justify-center gap-2">
+        <div className="mt-2 flex flex-wrap justify-center">
           {photos.map((photo, index) => (
+            // Le point se voit à 8 px, mais on le touche sur 24. Mesuré
+            // sur téléphone, le bouton faisait 8 px de côté : bien trop
+            // petit pour un doigt, qui tombait à côté ou sur le voisin.
+            // La zone tactile est le bouton, le point n'en est que le
+            // dessin. Les boutons se touchent bord à bord, sans espace
+            // perdu entre eux, ce qui les fait tenir sur une ligne même
+            // sur un écran de 360 px.
             <button
               key={photo.source}
               type="button"
@@ -181,10 +188,17 @@ export function CarrouselPhotos({ photos }: { photos: PhotoCarrousel[] }) {
               }}
               aria-label={`Aller à la photo ${index + 1} sur ${photos.length}`}
               aria-current={index === actif}
-              className={`h-2 rounded-full transition-all ${
-                index === actif ? "w-6 bg-noir-piste" : "w-2 bg-noir-piste/25 hover:bg-noir-piste/50"
-              }`}
-            />
+              className="group inline-flex h-6 min-w-6 items-center justify-center"
+            >
+              <span
+                aria-hidden="true"
+                className={`h-2 rounded-full transition-all ${
+                  index === actif
+                    ? "w-5 bg-noir-piste"
+                    : "w-2 bg-noir-piste/25 group-hover:bg-noir-piste/50"
+                }`}
+              />
+            </button>
           ))}
         </div>
       )}

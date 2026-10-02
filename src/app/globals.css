@@ -124,6 +124,23 @@ body {
   background-size: 100% 1px;
 }
 
+/* Zone tactile élargie, sans rien changer à l'apparence.
+   Un lien de texte fait la hauteur de sa ligne, 19 px ici : conforme au
+   minimum d'accessibilité grâce à l'espace qui le sépare de ses voisins,
+   mais étroit sous un pouce. Le pseudo-élément ajoute 8 px de zone
+   cliquable au-dessus et au-dessous, invisible. Le soulignement animé,
+   dessiné en fond de l'élément lui-même, ne bouge pas : c'est pourquoi
+   on n'ajoute pas simplement du padding, qui l'aurait descendu sous le
+   texte. */
+.cible-elargie {
+  position: relative;
+}
+.cible-elargie::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+}
+
 /* ------------------------------------------------------------------
    Mouvement — un seul moment orchestré sur la page (l'entrée du héros).
    Les apparitions au scroll section par section sont supprimées : la

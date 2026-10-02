@@ -133,7 +133,7 @@ export function LienFleche({
   return (
     <Link
       href={href}
-      className={`lien-souligne inline-flex items-center text-[0.8rem] font-semibold uppercase tracking-[0.08em] ${className}`}
+      className={`lien-souligne cible-elargie inline-flex items-center text-[0.8rem] font-semibold uppercase tracking-[0.08em] ${className}`}
     >
       {children}
     </Link>

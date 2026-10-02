@@ -63,15 +63,18 @@ for (const [largeur, hauteur, etiquette] of LARGEURS) {
   const soucis = [];
 
   for (const chemin of PAGES) {
+    // Pas d'attente du reseau au repos : les videos continuent de se
+    // charger en fond et le reseau ne se calme jamais, ce qui faisait
+    // echouer la premiere version de ce controle sur chaque page. La
+    // mise en page, elle, est fixee des que le DOM est la et que les
+    // polices sont arrivees.
     try {
-      await page.goto(BASE + chemin, { waitUntil: "networkidle", timeout: 90_000 });
+      await page.goto(BASE + chemin, { waitUntil: "domcontentloaded", timeout: 120_000 });
+      await page.evaluate(() => document.fonts?.ready);
+      await page.waitForTimeout(800);
     } catch {
-      try {
-        await page.goto(BASE + chemin, { waitUntil: "domcontentloaded", timeout: 90_000 });
-      } catch {
-        soucis.push(`${chemin} : page injoignable`);
-        continue;
-      }
+      soucis.push(`${chemin} : page injoignable`);
+      continue;
     }
 
     const mesure = await page.evaluate((largeurVue) => {

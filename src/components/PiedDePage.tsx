@@ -38,7 +38,7 @@ export function PiedDePage() {
             <ul className="mt-5 space-y-3">
               {navigationPrincipale.map((lien) => (
                 <li key={lien.href}>
-                  <Link href={lien.href} className="lien-souligne text-[0.95rem] text-craie/85">
+                  <Link href={lien.href} className="lien-souligne cible-elargie text-[0.95rem] text-craie/85">
                     {lien.libelle}
                   </Link>
                 </li>
@@ -51,7 +51,7 @@ export function PiedDePage() {
             <ul className="mt-5 space-y-3">
               {navigationSecondaire.map((lien) => (
                 <li key={lien.href}>
-                  <Link href={lien.href} className="lien-souligne text-[0.95rem] text-craie/85">
+                  <Link href={lien.href} className="lien-souligne cible-elargie text-[0.95rem] text-craie/85">
                     {lien.libelle}
                   </Link>
                 </li>
@@ -63,12 +63,12 @@ export function PiedDePage() {
             <p className="etiquette text-craie/70">Nous joindre</p>
             <ul className="mt-5 space-y-3 text-[0.95rem] text-craie/85">
               <li>
-                <a href={`tel:${site.telephoneLien}`} className="lien-souligne">
+                <a href={`tel:${site.telephoneLien}`} className="lien-souligne cible-elargie">
                   {site.telephone}
                 </a>
               </li>
               <li>
-                <a href={`mailto:${site.email}`} className="lien-souligne">
+                <a href={`mailto:${site.email}`} className="lien-souligne cible-elargie">
                   {site.email}
                 </a>
               </li>
@@ -100,7 +100,7 @@ export function PiedDePage() {
           <ul className="flex flex-wrap gap-x-6 gap-y-2">
             {navigationLegale.map((lien) => (
               <li key={lien.href}>
-                <Link href={lien.href} className="lien-souligne">
+                <Link href={lien.href} className="lien-souligne cible-elargie">
                   {lien.libelle}
                 </Link>
               </li>
