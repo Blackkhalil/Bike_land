@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { afficheOptimisee } from "@/lib/affiche";
 
 /**
  * Présentation filmée d'un vélo, sur sa fiche.
@@ -52,7 +53,7 @@ export function VideoVelo({
       <video
         ref={video}
         src={source}
-        poster={affiche}
+        poster={afficheOptimisee(affiche, 600)}
         autoPlay
         muted
         loop

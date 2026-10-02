@@ -26,19 +26,26 @@ const depart = Date.now();
 const ressources = [];
 let hydrateA = null;
 
-page.on("response", async (reponse) => {
-  const url = reponse.url();
+// On pese ce qui passe **sur le fil**, compression comprise. Vercel sert
+// en Brotli : un script de 224 Ko n'en transfere que 71, le HTML de
+// l'accueil 16 sur 130. Mesurer le corps decompresse, comme le faisait
+// la premiere version de cet outil, triple le poids du code et fait
+// chercher des economies la ou il n'y en a pas. Les images, elles, sont
+// deja compressees : elles pesent sur le fil ce qu'elles pesent sur le
+// disque, et c'est pour cela qu'elles comptent autant.
+page.on("requestfinished", async (requete) => {
+  const url = requete.url();
   if (url.startsWith("data:")) return;
   let taille = 0;
   try {
-    const entete = reponse.headers()["content-length"];
-    taille = entete ? Number(entete) : (await reponse.body().catch(() => Buffer.alloc(0))).length;
+    const tailles = await requete.sizes();
+    taille = tailles.responseBodySize + tailles.responseHeadersSize;
   } catch {
     taille = 0;
   }
   ressources.push({
     url: url.replace(BASE, ""),
-    type: reponse.request().resourceType(),
+    type: requete.resourceType(),
     taille,
     a: Date.now() - depart,
   });

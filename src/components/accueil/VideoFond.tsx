@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { afficheOptimisee } from "@/lib/affiche";
 
 /**
  * Vidéo de fond du héros, avec commande de son.
@@ -51,7 +52,7 @@ export function VideoFond({
       <video
         ref={reference}
         src={source}
-        poster={affiche}
+        poster={afficheOptimisee(affiche, 600)}
         autoPlay
         muted
         loop

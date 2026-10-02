@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { afficheOptimisee } from "@/lib/affiche";
 
 /**
  * La présentation filmée d'un vélo, sur sa carte du catalogue.
@@ -64,7 +65,7 @@ export function VideoCarteVelo({
     <video
       ref={video}
       src={source}
-      poster={affiche}
+      poster={afficheOptimisee(affiche, 400)}
       muted
       loop
       playsInline
