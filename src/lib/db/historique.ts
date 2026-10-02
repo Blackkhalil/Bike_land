@@ -14,6 +14,7 @@ import { ajouterJours, estHauteSaison, nombreDeJours, versISO, type DateISO } fr
 import {
   CRENEAUX_ROAD_TRIP,
   DUREE_ROAD_TRIP_HEURES,
+  GRILLE_HORAIRE,
   heuresDepartPossibles,
 } from "@/data/offres";
 import { creneauxSeChevauchent, type CreneauOccupe } from "./contrat";
@@ -290,14 +291,23 @@ function fabriquerReservation(contexte: {
  * Pondérée vers les sorties courtes : c'est ce qu'on observe sur une
  * piste côtière, où l'on vient rouler une ou deux heures en fin de
  * journée bien plus souvent qu'une demi-journée entière.
+ *
+ * Les durées sont lues dans la grille, pas écrites ici. Une ancienne
+ * version tirait encore des sorties de 5 heures après que la grille eut
+ * été ramenée à 4 : le devis refusait cette durée, et tout le mode
+ * démonstration s'arrêtait au chargement, sur un site censé démarrer
+ * sans aucune configuration.
  */
 function choisirDuree(hasard: () => number): number {
-  const tirage = hasard();
-  if (tirage < 0.34) return 1;
-  if (tirage < 0.64) return 2;
-  if (tirage < 0.84) return 3;
-  if (tirage < 0.95) return 4;
-  return 5;
+  const durees = GRILLE_HORAIRE.CLASSIQUE.map((palier) => palier.heures);
+  // Chaque durée pèse deux fois moins que la précédente.
+  const poids = durees.map((_, i) => 1 / 2 ** i);
+  let tirage = hasard() * poids.reduce((somme, p) => somme + p, 0);
+  for (const [i, duree] of durees.entries()) {
+    tirage -= poids[i];
+    if (tirage <= 0) return duree;
+  }
+  return durees[durees.length - 1];
 }
 
 /** Participants d'un road trip : le plus souvent seul ou à deux. */
