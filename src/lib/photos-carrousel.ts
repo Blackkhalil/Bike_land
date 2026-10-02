@@ -56,26 +56,12 @@ const NOM_D_APPAREIL =
 
 const DESCRIPTION_NEUTRE = "Une sortie Bike Land sur la route des Pêches";
 
-/**
- * Combien de photos le carrousel montre au plus.
- *
- * Le dossier peut en contenir autant qu'on veut, la page n'en publie
- * que les premières. Chaque photo coûte une figure et un jeu complet de
- * tailles dans le HTML : à vingt-cinq, cela représentait dix-sept pour
- * cent du poids de la page d'accueil, pour des images que personne ne
- * fait défiler jusqu'au bout.
- *
- * Pour changer l'ordre, préfixez les fichiers par un nombre.
- */
-const MAXIMUM_AFFICHE = 12;
-
 export async function photosDuCarrousel(): Promise<PhotoCarrousel[]> {
   try {
     const fichiers = await readdir(DOSSIER);
     return fichiers
       .filter((fichier) => EXTENSIONS.has(path.extname(fichier).toLowerCase()))
       .sort((a, b) => a.localeCompare(b, "fr", { numeric: true }))
-      .slice(0, MAXIMUM_AFFICHE)
       .map((fichier) => ({
         source: `/carrousel/${fichier}`,
         description: decrire(fichier),

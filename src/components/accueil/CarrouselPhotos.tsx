@@ -177,8 +177,10 @@ export function CarrouselPhotos({ photos }: { photos: PhotoCarrousel[] }) {
             // petit pour un doigt, qui tombait à côté ou sur le voisin.
             // La zone tactile est le bouton, le point n'en est que le
             // dessin. Les boutons se touchent bord à bord, sans espace
-            // perdu entre eux, ce qui les fait tenir sur une ligne même
-            // sur un écran de 360 px.
+            // perdu entre eux. Au-delà d'une quinzaine de photos, ils
+            // passent à la ligne sur téléphone plutôt que de rétrécir :
+            // deux rangées de points lisibles valent mieux qu'une rangée
+            // qu'on ne peut plus toucher.
             <button
               key={photo.source}
               type="button"
