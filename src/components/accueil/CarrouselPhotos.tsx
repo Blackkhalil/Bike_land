@@ -152,10 +152,14 @@ export function CarrouselPhotos({ photos }: { photos: PhotoCarrousel[] }) {
               alt={photo.description}
               fill
               sizes="(min-width: 640px) 24rem, 80vw"
-              // Les trois premières sont chargées tout de suite, les
-              // suivantes quand elles approchent : c'est ce qui évite de
-              // télécharger seize photos pour en voir trois.
-              loading={index < 3 ? "eager" : "lazy"}
+              // Toutes différées, sans exception. Les trois premières
+              // étaient chargées d'emblée pour qu'elles soient là quand
+              // le visiteur arrive en bas. Mesuré sur une connexion
+              // béninoise, cela coûtait 151 Ko servis avant même que la
+              // page devienne cliquable, pour des photos situées sous
+              // sept sections. Le navigateur les charge de lui-même à
+              // l'approche, ce qui est bien assez tôt.
+              loading="lazy"
               className="object-cover"
             />
           </figure>
