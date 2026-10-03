@@ -133,7 +133,7 @@ export function TableauDeSecours({
         onClick={() => setOuvert((etat) => !etat)}
         aria-expanded={ouvert}
         aria-controls={identifiant}
-        className="text-[0.76rem] font-semibold uppercase tracking-[0.1em] text-gris-cadre transition-colors hover:text-noir-piste"
+        className="-my-2 py-2.5 text-[0.76rem] font-semibold uppercase tracking-[0.1em] text-gris-cadre transition-colors hover:text-noir-piste"
       >
         {ouvert ? "Masquer" : "Voir"} les valeurs
       </button>

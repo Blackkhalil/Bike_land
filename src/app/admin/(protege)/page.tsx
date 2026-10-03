@@ -57,7 +57,7 @@ function TitreBloc({
       {action && (
         <Link
           href={action.href}
-          className="lien-souligne text-[0.85rem] font-semibold text-orange-sourd"
+          className="lien-souligne cible-elargie text-[0.85rem] font-semibold text-orange-sourd"
         >
           {action.libelle}
         </Link>

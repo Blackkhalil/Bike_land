@@ -58,14 +58,14 @@ export default async function PageMessagesAdmin({ searchParams }: { searchParams
           </p>
         </div>
 
-        <form method="get" className="flex items-center gap-2">
+        <form method="get" className="flex w-full items-center gap-2 sm:w-auto">
           <input
             type="search"
             name="q"
             defaultValue={recherche}
             placeholder="Nom, email ou mot du message"
             aria-label="Rechercher un message"
-            className="h-9 w-64 rounded-full border border-noir-piste/20 px-4 text-[0.85rem]"
+            className="h-9 min-w-0 flex-1 rounded-full border border-noir-piste/20 px-4 text-[0.85rem] sm:w-64 sm:flex-none"
           />
           <button
             type="submit"

@@ -80,14 +80,14 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
           </p>
         </div>
 
-        <form method="get" className="flex items-center gap-2">
+        <form method="get" className="flex w-full items-center gap-2 sm:w-auto">
           <input
             type="search"
             name="q"
             defaultValue={recherche}
             placeholder="Nom ou email"
             aria-label="Rechercher un client"
-            className="h-9 w-56 rounded-full border border-noir-piste/20 px-4 text-[0.85rem]"
+            className="h-9 min-w-0 flex-1 rounded-full border border-noir-piste/20 px-4 text-[0.85rem] sm:w-56 sm:flex-none"
           />
           <button
             type="submit"
@@ -122,7 +122,7 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
             {fiche.client.telephone && (
               <a
                 href={`tel:${fiche.client.telephone.replace(/\s+/g, "")}`}
-                className="mt-0.5 inline-block text-[0.84rem] font-semibold text-orange-sourd"
+                className="cible-elargie mt-0.5 inline-block text-[0.84rem] font-semibold text-orange-sourd"
               >
                 {fiche.client.telephone}
               </a>
