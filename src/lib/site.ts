@@ -13,13 +13,36 @@ export const site = {
   email: "bikeland06@gmail.com",
   telephone: "+229 01 59 68 81 03",
   telephoneLien: "+2290159688103",
-  whatsapp: "+2290159688103",
+  /**
+   * Les deux lignes WhatsApp de l'équipe, tenues toutes les deux.
+   *
+   * L'email de confirmation les donne ensemble ; le pied de page renvoie
+   * à la seconde (voir `reseaux`).
+   */
+  whatsapp: [
+    { numero: "+229 01 59 68 81 03", lien: "https://wa.me/2290159688103" },
+    { numero: "+229 01 91 00 22 01", lien: "https://wa.me/2290191002201" },
+  ],
   adresse: {
     // L'adresse précise a été retirée du site sur demande. Seules la
     // ville et le pays subsistent, ils restent nécessaires aux mentions
     // légales et à la facturation.
     ville: "Cotonou",
     pays: "Bénin",
+  },
+  /**
+   * Le point de départ, donné aux seuls clients qui ont payé.
+   *
+   * Les pages publiques ne l'affichent pas : c'est l'email de
+   * confirmation qui le porte. `carte` ouvre Google Maps sur Fidjrossè
+   * Plage ; l'épingle exacte de l'atelier, partagée depuis Google Maps
+   * (bouton Partager, lien maps.app.goo.gl), peut remplacer ce lien sans
+   * rien changer d'autre.
+   */
+  pointDeDepart: {
+    lieu: "Fidjrossè Plage, Cotonou",
+    indication: "Dans la von juste avant la station JNP.",
+    carte: "https://www.google.com/maps/search/?api=1&query=Fidjross%C3%A8%20Plage%2C%20Cotonou",
   },
   horaires: "Du lundi au samedi, 8 h - 19 h",
   /**

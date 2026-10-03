@@ -198,9 +198,39 @@ export async function envoyerReceptionDemande(reservation: Reservation, lienSuiv
   });
 }
 
+/** Où retrouver Bike Land, et comment joindre l'équipe le jour venu. */
+interface RendezVous {
+  lieu: string;
+  indication: string;
+  carte: string;
+  whatsapp: { numero: string; lien: string }[];
+}
+
+/**
+ * Le point de départ, tel que l'email de confirmation le donne.
+ *
+ * Réservé aux clients qui ont payé : les pages publiques ne donnent pas
+ * l'adresse. Chaque lien WhatsApp ouvre la conversation sur un premier
+ * message déjà écrit, avec la référence : l'équipe sait d'emblée de
+ * quelle réservation il s'agit.
+ */
+function rendezVousDe(reservation: Reservation): RendezVous {
+  const message = encodeURIComponent(
+    `Bonjour ${site.nom}, je suis ${reservation.client.prenom}, réservation ${reservation.reference}.`,
+  );
+  return {
+    ...site.pointDeDepart,
+    whatsapp: site.whatsapp.map((ligne) => ({
+      numero: ligne.numero,
+      lien: `${ligne.lien}?text=${message}`,
+    })),
+  };
+}
+
 export async function envoyerConfirmation(reservation: Reservation, lienSuivi: string) {
   const velo = reservation.lignes[0];
   const prevoir = aPrevoir(reservation);
+  const rendezVous = rendezVousDe(reservation);
 
   const texte = [
     `Bonjour ${reservation.client.prenom},`,
@@ -213,6 +243,13 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
     "",
     "À prévoir au départ :",
     ...prevoir.map((ligne) => `  - ${ligne}`),
+    "",
+    `Où nous trouver : ${rendezVous.lieu}.`,
+    rendezVous.indication,
+    `Carte : ${rendezVous.carte}`,
+    "",
+    "Une question, un retard ? Écrivez-nous sur WhatsApp :",
+    ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
     "",
     `Votre réservation, votre facture et son annulation éventuelle :`,
     lienSuivi,
@@ -249,6 +286,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
       // réservation n'avait rien à cliquer. C'est pourtant l'email vers
       // lequel il revient, bien plus que vers celui de la demande.
       action: { libelle: "Voir ma réservation", url: lienSuivi },
+      rendezVous,
       pied: `À prévoir au départ : ${prevoir.join(" ")}`,
     }),
   });
@@ -415,26 +453,66 @@ export async function envoyerAccuseContact(nom: string, email: string) {
   });
 }
 
+/**
+ * Neutralise le HTML d'un texte inséré dans un email.
+ *
+ * Le prénom, le nom, le sujet et les messages viennent des formulaires du
+ * site. Sans cet échappement, un visiteur pouvait glisser un lien ou un
+ * faux bouton dans un email parti de la boîte de Bike Land, et le faire
+ * envoyer à une adresse qui n'était pas la sienne. Tout ce que le gabarit
+ * affiche passe donc par ici, adresses des liens comprises.
+ */
+function echapper(texte: string): string {
+  return texte
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /** Gabarit HTML commun : tableau simple, compatible avec tous les clients mail. */
 function gabarit(contenu: {
   titre: string;
   intro: string;
   lignes: [string, string][];
   action?: { libelle: string; url: string };
+  rendezVous?: RendezVous;
   pied?: string;
 }): string {
   const lignes = contenu.lignes
     .map(
       ([libelle, valeur]) =>
         `<tr>
-           <td style="padding:10px 0;color:#6b6b6b;font-size:14px;border-bottom:1px solid #e0dcd3">${libelle}</td>
-           <td style="padding:10px 0;text-align:right;font-size:14px;font-weight:600;color:#0e0e0e;border-bottom:1px solid #e0dcd3">${valeur}</td>
+           <td style="padding:10px 0;color:#6b6b6b;font-size:14px;border-bottom:1px solid #e0dcd3">${echapper(libelle)}</td>
+           <td style="padding:10px 0;text-align:right;font-size:14px;font-weight:600;color:#0e0e0e;border-bottom:1px solid #e0dcd3">${echapper(valeur)}</td>
          </tr>`,
     )
     .join("");
 
   const action = contenu.action
-    ? `<a href="${contenu.action.url}" style="display:inline-block;margin-top:28px;background:#f25c05;color:#f2efe9;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:600;font-size:15px">${contenu.action.libelle}</a>`
+    ? `<a href="${echapper(contenu.action.url)}" style="display:inline-block;margin-top:28px;background:#f25c05;color:#f2efe9;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:600;font-size:15px">${echapper(contenu.action.libelle)}</a>`
+    : "";
+
+  // Les boutons sont en ligne : côte à côte sur un écran large, ils
+  // passent l'un sous l'autre sur un téléphone, sans règle CSS que
+  // certaines messageries ignoreraient.
+  const rendezVous = contenu.rendezVous
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;background:#f2efe9;border-radius:14px">
+        <tr><td style="padding:22px 24px">
+          <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">Où nous trouver</p>
+          <p style="margin:10px 0 0;font-size:16px;line-height:1.4;font-weight:700;color:#0e0e0e">${echapper(contenu.rendezVous.lieu)}</p>
+          <p style="margin:4px 0 0;font-size:14px;line-height:1.6;color:#6b6b6b">${echapper(contenu.rendezVous.indication)}</p>
+          <a href="${echapper(contenu.rendezVous.carte)}" style="display:inline-block;margin-top:16px;background:#0e0e0e;color:#f2efe9;text-decoration:none;padding:11px 22px;border-radius:999px;font-weight:600;font-size:14px">Voir sur la carte</a>
+          <p style="margin:22px 0 0;font-size:14px;line-height:1.6;color:#6b6b6b">Une question, un retard ? Écrivez-nous sur WhatsApp :</p>
+          ${contenu.rendezVous.whatsapp
+            .map(
+              (ligne) =>
+                `<a href="${echapper(ligne.lien)}" style="display:inline-block;margin:10px 8px 0 0;border:1px solid #0e0e0e;color:#0e0e0e;text-decoration:none;padding:10px 18px;border-radius:999px;font-weight:600;font-size:14px;white-space:nowrap">${echapper(ligne.numero)}</a>`,
+            )
+            .join("")}
+        </td></tr>
+      </table>`
     : "";
 
   return `<!doctype html>
@@ -444,11 +522,12 @@ function gabarit(contenu: {
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:20px;padding:36px">
         <tr><td>
           <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#f25c05;font-weight:700">${site.nom}</p>
-          <h1 style="margin:14px 0 0;font-size:26px;line-height:1.15;text-transform:uppercase;letter-spacing:-0.5px">${contenu.titre}</h1>
-          <p style="margin:14px 0 26px;font-size:15px;line-height:1.6;color:#6b6b6b">${contenu.intro}</p>
+          <h1 style="margin:14px 0 0;font-size:26px;line-height:1.15;text-transform:uppercase;letter-spacing:-0.5px">${echapper(contenu.titre)}</h1>
+          <p style="margin:14px 0 26px;font-size:15px;line-height:1.6;color:#6b6b6b">${echapper(contenu.intro)}</p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${lignes}</table>
           ${action}
-          ${contenu.pied ? `<p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#6b6b6b">${contenu.pied}</p>` : ""}
+          ${rendezVous}
+          ${contenu.pied ? `<p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#6b6b6b">${echapper(contenu.pied)}</p>` : ""}
         </td></tr>
       </table>
       <p style="max-width:520px;margin:20px auto 0;font-size:12px;color:#6b6b6b;text-align:center">
