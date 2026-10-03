@@ -14,7 +14,7 @@ import {
 import type { CodeOffre } from "@/lib/types";
 import { depot } from "@/lib/db";
 import { aujourdhui, estDateISOValide } from "@/lib/dates";
-import { lireOuverture, motifDeRefus } from "@/lib/ouverture";
+import { lireOuverture, motifDeRefus, personnesMaxPour } from "@/lib/ouverture";
 import { formatDate } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -87,10 +87,14 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   const velo = await depot.trouverVeloParSlug(slug);
   if (!velo) redirect("/velos");
 
-  const [disponible, points] = await Promise.all([
+  const [disponible, points, parc] = await Promise.all([
     depot.estDisponible(velo.id, debut, fin, heureDebut, heureFin),
     depot.listerPointsDeRetrait(),
+    depot.listerVelos(),
   ]);
+  // Pas plus de personnes que de vélos de cette gamme : une seule pour le
+  // Prestige, exemplaire unique.
+  const personnesMax = personnesMaxPour(velo, parc);
 
   const optionsDemandees = (
     Array.isArray(parametres.option) ? parametres.option : parametres.option ? [parametres.option] : []
@@ -123,7 +127,8 @@ export default async function PageReservation({ searchParams }: { searchParams: 
             point={points.find((point) => point.id === velo.pointDeRetraitId)}
             offre={offre}
             dureeHeures={dureeHeures}
-            nombrePersonnes={nombrePersonnes}
+            nombrePersonnes={Math.min(nombrePersonnes, personnesMax)}
+            personnesMax={personnesMax}
             dateDebut={debut}
             dateFin={fin}
             heureDebut={heureDebut}

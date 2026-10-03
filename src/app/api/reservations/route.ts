@@ -18,7 +18,7 @@ import { numeroDeFacture } from "@/lib/facture";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
 import { site } from "@/lib/site";
 import { erreursParChamp, schemaReservation } from "@/lib/validation";
-import { lireOuverture, motifDeRefus } from "@/lib/ouverture";
+import { lireOuverture, motifDeRefus, personnesMaxPour } from "@/lib/ouverture";
 
 /**
  * Création d'une réservation.
@@ -86,6 +86,22 @@ export async function POST(requete: Request) {
   const velo = await depot.trouverVeloParId(donnees.veloId);
   if (!velo) {
     return NextResponse.json({ erreur: "Ce vélo n'existe pas." }, { status: 404 });
+  }
+
+  // Une personne, un vélo : pas plus de personnes que de vélos de la
+  // gamme. Vérifié ici, le compteur du site pouvant être contourné.
+  const personnesMax = personnesMaxPour(velo, await depot.listerVelos());
+  if (donnees.nombrePersonnes > personnesMax) {
+    return NextResponse.json(
+      {
+        erreur:
+          personnesMax === 1
+            ? `Le ${velo.nom} est un exemplaire unique : il se réserve pour une seule personne.`
+            : `Cette gamme compte ${personnesMax} vélos : ${personnesMax} personnes au plus.`,
+        champs: { nombrePersonnes: "Trop de personnes pour ce vélo." },
+      },
+      { status: 422 },
+    );
   }
 
   // L'heure de fin découle de la formule : le road trip dure le temps de

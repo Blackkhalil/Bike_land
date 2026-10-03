@@ -16,6 +16,7 @@
  * facture à l'heure, le road trip au forfait.
  */
 
+import { DECALAGE_BENIN_MS } from "@/lib/dates";
 import type { CodeOffre } from "@/lib/types";
 
 export type { CodeOffre };
@@ -257,17 +258,12 @@ export function prochaineDatePour(
 
 /* ------------------------------------------------- L'heure du Bénin */
 
-/**
- * Décalage du Bénin sur UTC : une heure, toute l'année, sans heure d'été.
- *
- * Les serveurs tournent en UTC. Toute règle qui dépend de l'heure, la
- * fermeture des réservations le soir comme le départ du road trip, doit
- * donc être lue à l'heure de Cotonou, sans quoi elle se déclenche une
- * heure trop tard. Le décalage est écrit en dur plutôt que demandé à la
- * base des fuseaux : il ne change jamais, et toutes les plateformes ne
- * livrent pas cette base complète.
+/*
+ * Toute règle qui dépend de l'heure, la fermeture des réservations le soir
+ * comme le départ du road trip, se lit à l'heure de Cotonou, sans quoi
+ * elle se déclencherait une heure trop tard. Le décalage est défini dans
+ * src/lib/dates.ts.
  */
-const DECALAGE_BENIN_MS = 60 * 60 * 1000;
 
 /** La date, l'heure et le jour de la semaine qu'il est à Cotonou. */
 export function heureAuBenin(maintenant = new Date()) {
@@ -330,6 +326,30 @@ export const OUVERTURE_PAR_DEFAUT: OuvertureCreneaux = {
   joursFermes: [],
 };
 
+/**
+ * Quand la réservation d'un départ de road trip se ferme : le vendredi à
+ * 22 h qui précède son week-end, heure du Bénin. Rendu en millisecondes
+ * UTC, prêt à comparer avec l'heure courante.
+ *
+ * L'équipe prépare le week-end le vendredi soir : les vélos, les cocos,
+ * le coordinateur. Une sortie réservée le samedi pour le dimanche, ou la
+ * nuit pour le matin même, arrivait trop tard pour être préparée. À
+ * partir du vendredi 22 h, le site propose donc le week-end suivant.
+ */
+export function clotureRoadTrip(dateDepart: string): number {
+  const minuit = Date.parse(`${dateDepart}T00:00:00Z`);
+  const jourSemaine = new Date(minuit).getUTCDay();
+  // Jours écoulés depuis le vendredi précédent : 1 pour un samedi, 2 pour
+  // un dimanche. Un départ le vendredi même ferme le jour même à 22 h.
+  const recul = (jourSemaine - 5 + 7) % 7;
+  return (
+    minuit -
+    recul * 86_400_000 +
+    FERMETURE_RESERVATIONS_HEURE * 3_600_000 -
+    DECALAGE_BENIN_MS
+  );
+}
+
 /** Ce jour est-il fermé à cette formule ? */
 export function estJourFerme(
   joursFermes: OuvertureCreneaux["joursFermes"],
@@ -341,7 +361,8 @@ export function estJourFerme(
 
 /**
  * Les départs de road trip à proposer : un par créneau ouvert, à la
- * prochaine date qui n'est pas fermée.
+ * prochaine date qui n'est ni fermée, ni close parce que le vendredi
+ * 22 h qui la précède est passé.
  *
  * Un samedi complet ne fait pas disparaître le road trip du site : on
  * propose le samedi suivant. On cherche jusqu'à douze semaines, au-delà
@@ -355,7 +376,8 @@ export function creneauxDisponibles(
     (creneau) => {
       let date = prochaineDatePour(creneau.jourSemaine, creneau.heureDebut, maintenant);
       for (let semaine = 0; semaine < 12; semaine += 1) {
-        if (!estJourFerme(ouverture.joursFermes, date, "road-trip")) {
+        const encoreOuvert = maintenant.getTime() < clotureRoadTrip(date);
+        if (encoreOuvert && !estJourFerme(ouverture.joursFermes, date, "road-trip")) {
           return [{ ...creneau, date }];
         }
         date = new Date(Date.parse(`${date}T00:00:00Z`) + 7 * 86_400_000)

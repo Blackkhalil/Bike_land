@@ -13,13 +13,14 @@
 
 import { aujourdhui } from "@/lib/dates";
 import { libelleCommission, libelleReduction, type CodeParrainage } from "@/lib/parrainage";
-import { estEnAttente, seulementPayees } from "@/lib/reservations";
+import { estEnAttente, estPayee, seulementPayees } from "@/lib/reservations";
 import {
   calculerStatistiques,
   construirePeriode,
   type Granularite,
   type IndicateurCompare,
   type Statistiques,
+  dateEncaissement,
 } from "@/lib/statistiques";
 import type { Client, Reservation, StatistiquesPartenaire, Velo } from "@/lib/types";
 
@@ -281,8 +282,17 @@ export function construireRapport(entrees: {
     },
   ];
 
+  // Le détail réunit ce qui a roulé pendant la période et ce qui y a été
+  // payé. Sans la seconde moitié, une réservation payée aujourd'hui pour
+  // une sortie de demain entrerait dans le chiffre d'affaires sans
+  // figurer dans les lignes, et le total ne se retrouverait pas.
+  const dansLaPeriode = (jour: string) => jour >= periode.debut && jour <= periode.fin;
   const detail = reservations
-    .filter((r) => r.dateFin >= periode.debut && r.dateDebut <= periode.fin)
+    .filter(
+      (r) =>
+        (r.dateFin >= periode.debut && r.dateDebut <= periode.fin) ||
+        (estPayee(r) && dansLaPeriode(dateEncaissement(r))),
+    )
     .sort((a, b) =>
       a.dateDebut === b.dateDebut
         ? a.reference.localeCompare(b.reference)
@@ -299,10 +309,10 @@ export function construireRapport(entrees: {
    * jamais recalculée au taux du jour.
    */
   const partenaireDuCode = new Map(codes.map((c) => [c.code, c]));
-  const parrainees = seulementPayees(
-    reservations.filter(
-      (r) => r.codeParrainage && r.dateFin >= periode.debut && r.dateDebut <= periode.fin,
-    ),
+  // Comme l'argent, le parrainage se compte au jour du paiement : c'est
+  // l'encaissement qui ouvre le droit à commission.
+  const parrainees = seulementPayees(reservations).filter(
+    (r) => r.codeParrainage && dansLaPeriode(dateEncaissement(r)),
   );
   const parPartenaire = new Map<
     string,

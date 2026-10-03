@@ -10,6 +10,7 @@
 import {
   ajouterJours,
   aujourdhui,
+  dateAuBenin,
   listerJours,
   moisDe,
   nombreDeJours,
@@ -196,11 +197,29 @@ export function calculerStatistiques(
   const courantes = reservations.filter((r) => dansPeriode(r, fenetreCourante));
   const anciennes = reservations.filter((r) => dansPeriode(r, precedente));
 
-  // Seules les réservations payées entrent dans les comptes. Un panier
-  // non réglé n'est pas une vente, et le faire figurer au chiffre
-  // d'affaires afficherait de l'argent qui n'est jamais entré.
-  const facturees = seulementPayees(courantes);
-  const factureesAvant = seulementPayees(anciennes);
+  // Deux lectures, et il ne faut pas les mêler.
+  //
+  // L'activité se compte au jour de la sortie : qui a roulé, combien de
+  // vélos sont sortis, quelles heures ont été vendues.
+  //
+  // L'argent se compte au jour où il est encaissé. Compté au jour de la
+  // sortie, comme autrefois, un client qui payait le samedi un road trip
+  // du dimanche ne faisait apparaître son argent au tableau de bord que le
+  // lendemain, alors qu'il était déjà sur le compte SasPay. C'est arrivé.
+  //
+  // Seules les réservations payées entrent dans les comptes : un panier
+  // non réglé n'est pas une vente.
+  const roulees = seulementPayees(courantes);
+  const rouleesAvant = seulementPayees(anciennes);
+
+  const payees = seulementPayees(reservations);
+  const encaisseesDans = (bornes: Periode) =>
+    payees.filter((r) => {
+      const jour = dateEncaissement(r);
+      return jour >= bornes.debut && jour <= bornes.fin;
+    });
+  const facturees = encaisseesDans(fenetreCourante);
+  const factureesAvant = encaisseesDans(precedente);
 
   const ca = somme(facturees.map((r) => r.totalXof));
   const caAvant = somme(factureesAvant.map((r) => r.totalXof));
@@ -265,7 +284,7 @@ export function calculerStatistiques(
   const parcActif = velos.filter((velo) => velo.statut !== "RETIRE");
   const capacite = joursPeriode.length * Math.max(parcActif.length, 1);
   let joursLoues = 0;
-  for (const reservation of facturees) {
+  for (const reservation of roulees) {
     for (const jour of listerJours(reservation.dateDebut, reservation.dateFin)) {
       if (jour >= fenetreCourante.debut && jour <= fenetreCourante.fin) {
         joursLoues += reservation.lignes.length;
@@ -297,6 +316,10 @@ export function calculerStatistiques(
   const surDouzeMois = reservations.filter(
     (r) => estPayee(r) && r.dateDebut >= debutDouzeMois && r.dateDebut <= finSeries,
   );
+  const encaisseesSurDouzeMois = payees.filter((r) => {
+    const jour = dateEncaissement(r);
+    return jour >= debutDouzeMois && jour <= finSeries;
+  });
 
   const caParMois = new Map<string, number>();
   const reservationsParMois = new Map<string, number>();
@@ -309,8 +332,11 @@ export function calculerStatistiques(
 
   for (const reservation of surDouzeMois) {
     const mois = moisDe(reservation.dateDebut);
-    caParMois.set(mois, (caParMois.get(mois) ?? 0) + reservation.totalXof);
     reservationsParMois.set(mois, (reservationsParMois.get(mois) ?? 0) + 1);
+  }
+  for (const reservation of encaisseesSurDouzeMois) {
+    const mois = moisDe(dateEncaissement(reservation));
+    caParMois.set(mois, (caParMois.get(mois) ?? 0) + reservation.totalXof);
   }
 
   const moisTries = [...caParMois.keys()].sort();
@@ -327,7 +353,7 @@ export function calculerStatistiques(
 
   // --- Parc
   const compteurParVelo = new Map<string, number>();
-  for (const reservation of facturees) {
+  for (const reservation of roulees) {
     for (const ligne of reservation.lignes) {
       compteurParVelo.set(ligne.veloId, (compteurParVelo.get(ligne.veloId) ?? 0) + 1);
     }
@@ -361,7 +387,7 @@ export function calculerStatistiques(
       premiereReservation.set(reservation.clientId, reservation.dateDebut);
     }
   }
-  const clientsDeLaPeriode = new Set(facturees.map((r) => r.clientId));
+  const clientsDeLaPeriode = new Set(roulees.map((r) => r.clientId));
   let nouveauxClients = 0;
   for (const clientId of clientsDeLaPeriode) {
     const premiere = premiereReservation.get(clientId);
@@ -374,7 +400,7 @@ export function calculerStatistiques(
   // La répartition par point de départ a été retirée : il n'y en a qu'un,
   // sur la route des Pêches. Un graphique à une seule barre n'apprend rien.
 
-  const notes = facturees.map((r) => r.note).filter((note): note is number => typeof note === "number");
+  const notes = roulees.map((r) => r.note).filter((note): note is number => typeof note === "number");
 
   return {
     periode,
@@ -391,8 +417,8 @@ export function calculerStatistiques(
     tauxOccupation,
     tauxAnnulation: comparer(tauxAnnulation, tauxAnnulationAvant),
     parOffre,
-    participants: comparer(participantsDe(facturees), participantsDe(factureesAvant)),
-    heuresVendues: comparer(heuresDe(facturees), heuresDe(factureesAvant)),
+    participants: comparer(participantsDe(roulees), participantsDe(rouleesAvant)),
+    heuresVendues: comparer(heuresDe(roulees), heuresDe(rouleesAvant)),
     saisonnalite,
     evolutionChiffreAffaires,
     velosLesPlusLoues,
@@ -504,4 +530,15 @@ export function exporterCsv(reservations: Reservation[]): string {
 function echapperCsv(valeur: string | number): string {
   const texte = String(valeur);
   return /[";\n]/.test(texte) ? `"${texte.replace(/"/g, '""')}"` : texte;
+}
+
+/**
+ * Le jour où l'argent d'une réservation est entré, à l'heure de Cotonou.
+ *
+ * C'est la confirmation du paiement qui fait foi. Une réservation
+ * ancienne, d'avant que cette date soit enregistrée, retombe sur sa date
+ * de création.
+ */
+export function dateEncaissement(reservation: Reservation): DateISO {
+  return dateAuBenin(reservation.confirmeLe ?? reservation.creeLe);
 }

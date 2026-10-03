@@ -13,6 +13,7 @@
  */
 
 import {
+  clotureRoadTrip,
   CRENEAUX_ROAD_TRIP,
   creneauxDisponibles,
   estJourFerme,
@@ -22,7 +23,7 @@ import {
 } from "@/data/offres";
 import { depot } from "@/lib/db";
 import { listerJours, type DateISO } from "@/lib/dates";
-import type { JourFerme } from "@/lib/types";
+import type { JourFerme, Velo } from "@/lib/types";
 
 export interface Ouverture extends OuvertureCreneaux {
   joursFermes: JourFerme[];
@@ -72,6 +73,9 @@ export function motifDeRefus(
     if (estJourFerme(ouverture.joursFermes, demande.dateDebut, "road-trip")) {
       return "Le road trip de ce jour est complet. Choisissez une autre date.";
     }
+    if (Date.now() >= clotureRoadTrip(demande.dateDebut)) {
+      return "Les réservations de ce week-end sont closes depuis vendredi 22 h. Réservez le week-end suivant.";
+    }
     return null;
   }
 
@@ -81,4 +85,21 @@ export function motifDeRefus(
     }
   }
   return null;
+}
+
+/**
+ * Combien de personnes une réservation peut emmener sur ce vélo.
+ *
+ * Une personne, un vélo. Le client choisit un vélo, et ses compagnons
+ * roulent sur des vélos de la même gamme : le nombre de personnes ne peut
+ * donc pas dépasser le nombre de vélos de cette gamme en état de rouler.
+ * Le Prestige n'existant qu'en un exemplaire, il ne se réserve que pour
+ * une personne. Une réservation de trois personnes sur le Prestige a été
+ * acceptée avant cette limite, alors qu'un seul vélo pouvait les porter.
+ */
+export function personnesMaxPour(velo: Velo, parc: Velo[]): number {
+  const enEtat = parc.filter(
+    (v) => v.gamme === velo.gamme && v.statut !== "RETIRE" && v.statut !== "MAINTENANCE",
+  ).length;
+  return Math.max(1, enEtat);
 }

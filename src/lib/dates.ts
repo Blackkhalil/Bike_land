@@ -13,8 +13,26 @@ export type DateISO = string;
 
 const UN_JOUR_MS = 86_400_000;
 
+/**
+ * Décalage du Bénin sur UTC : une heure, toute l'année, sans heure d'été.
+ *
+ * Les serveurs tournent en UTC. Sans ce décalage, « aujourd'hui » restait
+ * la veille entre minuit et une heure du matin à Cotonou : une réservation
+ * faite à 0 h 15 pour le matin même, cas réellement survenu, tombait dans
+ * le mauvais jour au tableau de bord. Le décalage est écrit en dur plutôt
+ * que demandé à la base des fuseaux : il ne change jamais, et toutes les
+ * plateformes ne livrent pas cette base complète.
+ */
+export const DECALAGE_BENIN_MS = 60 * 60 * 1000;
+
+/** La date du jour à Cotonou. */
 export function aujourdhui(): DateISO {
-  return versISO(new Date());
+  return versISO(new Date(Date.now() + DECALAGE_BENIN_MS));
+}
+
+/** La date à Cotonou d'un instant donné, par exemple celui d'un paiement. */
+export function dateAuBenin(instant: string | Date): DateISO {
+  return versISO(new Date(new Date(instant).getTime() + DECALAGE_BENIN_MS));
 }
 
 export function versISO(date: Date): DateISO {

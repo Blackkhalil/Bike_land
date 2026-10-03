@@ -252,7 +252,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
         <TitreBloc
           id="titre-formules"
           titre="Les deux formules"
-          question="Laquelle fait tourner l'activité sur la période."
+          question="Ce que chaque formule a vendu sur la période."
         />
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           {stats.parOffre.map((offre) => (
@@ -295,7 +295,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
         <TitreBloc
           id="titre-argent"
           titre="L'argent"
-          question="Ce que la période a rapporté, et si c'est mieux qu'avant."
+          question="Ce qui a été encaissé pendant la période, quelle que soit la date de la sortie, et si c'est mieux qu'avant."
         />
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <TuileStat
@@ -347,7 +347,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
         <TitreBloc
           id="titre-exploitation"
           titre="Comment tournent les vélos"
-          question="Si le parc travaille assez, et si les clients vont au bout."
+          question="Les sorties de la période : si le parc travaille assez, et si les clients vont au bout."
           action={{ href: "/admin/velos", libelle: "Gérer le parc" }}
         />
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

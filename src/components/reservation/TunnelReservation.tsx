@@ -70,6 +70,11 @@ interface Props {
   offre: CodeOffre;
   dureeHeures: number;
   nombrePersonnes: number;
+  /**
+   * Personnes au plus : autant que de vélos de la gamme en état de rouler.
+   * Une seule pour le Prestige, qui n'existe qu'en un exemplaire.
+   */
+  personnesMax: number;
   point?: PointDeRetrait;
   dateDebut: DateISO;
   dateFin: DateISO;
@@ -85,6 +90,7 @@ export function TunnelReservation({
   offre: offreInitiale,
   dureeHeures: dureeInitiale,
   nombrePersonnes: personnesInitiales,
+  personnesMax,
   point,
   dateDebut: dateInitiale,
   dateFin: dateFinInitiale,
@@ -647,11 +653,25 @@ export function TunnelReservation({
               </fieldset>
             )}
 
-            {offre === "road-trip" && (
+            {offre === "road-trip" && personnesMax === 1 && (
+              // Un exemplaire unique : rien à choisir. On le dit plutôt
+              // que de montrer un compteur bloqué à 1, qui laisserait
+              // croire à une panne.
+              <p className="mt-7 rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.86rem] leading-relaxed">
+                <span className="font-semibold">Une personne.</span> Le {velo.nom} est un
+                exemplaire unique : il se réserve pour une seule personne. Pour venir à
+                plusieurs, choisissez un vélo Classique ou Premium.
+              </p>
+            )}
+
+            {offre === "road-trip" && personnesMax > 1 && (
               <fieldset className="mt-7">
                 <legend className="text-[0.9rem] font-semibold">
                   Combien de personnes ?
                 </legend>
+                <p className="mt-1.5 text-[0.8rem] text-gris-cadre">
+                  Jusqu&apos;à {personnesMax}, autant que de vélos de cette gamme.
+                </p>
                 <div className="mt-3 flex items-center gap-3">
                   <button
                     type="button"
@@ -669,8 +689,9 @@ export function TunnelReservation({
                   <button
                     type="button"
                     onClick={() =>
-                      setNombrePersonnes((n) => Math.min(12, n + 1))
+                      setNombrePersonnes((n) => Math.min(personnesMax, n + 1))
                     }
+                    disabled={nombrePersonnes >= personnesMax}
                     aria-label="Ajouter une personne"
                     className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white text-[1.2rem]"
                   >
