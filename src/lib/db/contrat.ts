@@ -30,6 +30,9 @@ import type {
   StatutVelo,
   TailleVelo,
   Velo,
+  FormuleFermee,
+  JourFerme,
+  ReglagesOuverture,
 } from "../types";
 
 /**
@@ -286,6 +289,20 @@ export interface Depot {
    * partenariat qui s'arrête se désactive. Les utilisations annulées, qui
    * n'engagent plus rien, ne bloquent pas.
    */
+  /* ------------------------------------ Ouverture des réservations */
+
+  /**
+   * Les créneaux et les jours que l'exploitant a ouverts ou fermés.
+   *
+   * Ne lève jamais : si les tables n'existent pas encore, la réservation
+   * reste ouverte selon les valeurs par défaut, plutôt que de tomber.
+   */
+  lireOuverture(): Promise<ReglagesOuverture>;
+  reglerCreneau(code: string, actif: boolean): Promise<void>;
+  /** Ferme un jour. Refermer un jour déjà fermé met seulement le motif à jour. */
+  fermerJour(champs: { date: DateISO; formule: FormuleFermee; motif?: string }): Promise<JourFerme>;
+  rouvrirJour(id: string): Promise<boolean>;
+
   supprimerPartenaire(id: string): Promise<{
     supprime: boolean;
     raison?: "commissions" | "en-attente";

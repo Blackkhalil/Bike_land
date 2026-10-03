@@ -51,6 +51,8 @@ import type {
   PointDeRetrait,
   Reservation,
   Velo,
+  FormuleFermee,
+  JourFerme,
 } from "../types";
 import {
   ConflitDisponibiliteError,
@@ -1130,6 +1132,52 @@ const depotDirect: Depot = {
     return ligne ? versCodeParrainage(ligne) : null;
   },
 
+  async lireOuverture() {
+    try {
+      const [creneaux, jours] = await Promise.all([
+        client().creneauReglage.findMany(),
+        client().jourFerme.findMany({ orderBy: [{ date: "asc" }, { formule: "asc" }] }),
+      ]);
+      return {
+        creneaux: Object.fromEntries(creneaux.map((c) => [c.code, c.actif])),
+        joursFermes: jours.map(versJourFerme),
+      };
+    } catch (erreur) {
+      // Tables pas encore créées (P2021) : la réservation reste ouverte
+      // selon les valeurs par défaut. Faire tomber tout le tunnel parce
+      // qu'un réglage facultatif manque serait bien pire.
+      if (codePrisma(erreur) === "P2021") {
+        console.error("[ouverture] tables absentes : valeurs par défaut appliquées.");
+        return { creneaux: {}, joursFermes: [] };
+      }
+      throw erreur;
+    }
+  },
+
+  async reglerCreneau(code, actif) {
+    await client().creneauReglage.upsert({
+      where: { code },
+      create: { code, actif },
+      update: { actif },
+    });
+  },
+
+  async fermerJour({ date, formule, motif }) {
+    const jour = await client().jourFerme.upsert({
+      where: { date_formule: { date: new Date(`${date}T00:00:00Z`), formule } },
+      create: { date: new Date(`${date}T00:00:00Z`), formule, motif: motif || null },
+      update: { motif: motif || null },
+    });
+    return versJourFerme(jour);
+  },
+
+  async rouvrirJour(id) {
+    return client()
+      .jourFerme.delete({ where: { id } })
+      .then(() => true)
+      .catch(() => false);
+  },
+
   async supprimerPartenaire(id) {
     const partner = await client().partner.findUnique({
       where: { id },
@@ -1487,5 +1535,21 @@ function versCodeParrainage(ligne: {
     utilisations: ligne.useCount,
     actif: ligne.isActive,
     creeLe: ligne.createdAt.toISOString(),
+  };
+}
+
+function versJourFerme(jour: {
+  id: string;
+  date: Date;
+  formule: string;
+  motif: string | null;
+  createdAt: Date;
+}): JourFerme {
+  return {
+    id: jour.id,
+    date: jour.date.toISOString().slice(0, 10),
+    formule: jour.formule as FormuleFermee,
+    motif: jour.motif ?? undefined,
+    creeLe: jour.createdAt.toISOString(),
   };
 }

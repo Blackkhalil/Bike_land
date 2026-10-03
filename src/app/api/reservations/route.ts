@@ -18,6 +18,7 @@ import { numeroDeFacture } from "@/lib/facture";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
 import { site } from "@/lib/site";
 import { erreursParChamp, schemaReservation } from "@/lib/validation";
+import { lireOuverture, motifDeRefus } from "@/lib/ouverture";
 
 /**
  * Création d'une réservation.
@@ -72,6 +73,14 @@ export async function POST(requete: Request) {
       },
       { status: 503 },
     );
+  }
+
+  // Créneau ou jour fermé depuis le tableau de bord : complet, ou
+  // volontairement retiré. Vérifié ici et non seulement à l'affichage,
+  // une page restée ouverte pouvant encore le proposer.
+  const refus = motifDeRefus(await lireOuverture(), donnees);
+  if (refus) {
+    return NextResponse.json({ erreur: refus, code: "COMPLET" }, { status: 409 });
   }
 
   const velo = await depot.trouverVeloParId(donnees.veloId);

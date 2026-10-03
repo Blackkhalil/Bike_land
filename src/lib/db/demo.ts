@@ -34,6 +34,7 @@ import type {
   Reservation,
   StatutReservation,
   Velo,
+  JourFerme,
 } from "../types";
 import {
   ConflitDisponibiliteError,
@@ -77,6 +78,10 @@ interface EtatDemo {
 // de Next.js réévalue les modules et réinitialiserait sinon les données à
 // chaque modification de fichier.
 const cle = Symbol.for("bikeland.demo.etat");
+
+/** Réglages d'ouverture en démonstration : en mémoire, comme le reste. */
+const reglagesCreneaux = new Map<string, boolean>();
+const joursFermesDemo: JourFerme[] = [];
 type PorteurGlobal = typeof globalThis & { [cle]?: EtatDemo };
 
 function etat(): EtatDemo {
@@ -597,6 +602,41 @@ export const depotDemo: Depot = {
     if (!ligne) return null;
     if (champs.actif !== undefined) ligne.actif = champs.actif;
     return copie(ligne);
+  },
+
+  async lireOuverture() {
+    return copie({
+      creneaux: Object.fromEntries(reglagesCreneaux),
+      joursFermes: [...joursFermesDemo].sort((a, b) => a.date.localeCompare(b.date)),
+    });
+  },
+
+  async reglerCreneau(code, actif) {
+    reglagesCreneaux.set(code, actif);
+  },
+
+  async fermerJour({ date, formule, motif }) {
+    const existant = joursFermesDemo.find((j) => j.date === date && j.formule === formule);
+    if (existant) {
+      existant.motif = motif || undefined;
+      return copie(existant);
+    }
+    const jour: JourFerme = {
+      id: `jf-${date}-${formule}`,
+      date,
+      formule,
+      motif: motif || undefined,
+      creeLe: new Date().toISOString(),
+    };
+    joursFermesDemo.push(jour);
+    return copie(jour);
+  },
+
+  async rouvrirJour(id) {
+    const index = joursFermesDemo.findIndex((j) => j.id === id);
+    if (index < 0) return false;
+    joursFermesDemo.splice(index, 1);
+    return true;
   },
 
   async supprimerPartenaire(id) {

@@ -14,6 +14,8 @@ import {
 import type { CodeOffre } from "@/lib/types";
 import { depot } from "@/lib/db";
 import { aujourdhui, estDateISOValide } from "@/lib/dates";
+import { lireOuverture, motifDeRefus } from "@/lib/ouverture";
+import { formatDate } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Réserver",
@@ -73,7 +75,14 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   // Les créneaux encadrés se calculent ici, sur le serveur : le tunnel
   // est un composant client, et y appeler `new Date()` donnerait une
   // valeur différente de celle du rendu serveur.
-  const creneaux = creneauxDisponibles();
+  const ouverture = await lireOuverture();
+  const creneaux = creneauxDisponibles(new Date(), ouverture);
+  // Un jour fermé depuis l'admin, arrivé par un lien ou une page restée
+  // ouverte : on le dit tout de suite, plutôt qu'au moment de payer.
+  const refusLocation =
+    offre === "location-libre"
+      ? motifDeRefus(ouverture, { offre, dateDebut: debut, dateFin: fin, heureDebut })
+      : null;
 
   const velo = await depot.trouverVeloParSlug(slug);
   if (!velo) redirect("/velos");
@@ -93,7 +102,21 @@ export default async function PageReservation({ searchParams }: { searchParams: 
         Plus que quelques minutes
       </TitreSection>
 
-      {disponible ? (
+      {refusLocation ? (
+        <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
+          <p className="titre-editorial text-[1.4rem]">Ce jour est complet</p>
+          <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
+            Toutes les places du {formatDate(debut)} sont prises. Aucun montant n&apos;a été
+            prélevé.
+          </p>
+          <Link
+            href={`/velos/${velo.slug}`}
+            className="mt-6 inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
+          >
+            Choisir une autre date
+          </Link>
+        </div>
+      ) : disponible ? (
         <div className="mt-12">
           <TunnelReservation
             velo={velo}

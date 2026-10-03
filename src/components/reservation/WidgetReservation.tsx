@@ -11,6 +11,7 @@ import type { DateISO } from "@/lib/dates";
 import { Calendrier, type PeriodeOccupee } from "./Calendrier";
 import type { CreneauProposable } from "./TunnelReservation";
 import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
+import { site } from "@/lib/site";
 
 /**
  * Encart de réservation de la fiche produit.
@@ -135,6 +136,13 @@ export function WidgetReservation({
                 La sortie part en groupe, avec un coordinateur qui ouvre la route.
               </p>
               <div className="mt-3 space-y-2">
+                {creneaux.length === 0 && (
+                  <p className="rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed">
+                    Aucun départ de road trip n&apos;est ouvert à la réservation en ce moment :
+                    les prochaines sorties sont complètes. La location libre reste possible, ou
+                    appelez-nous au {site.telephone}.
+                  </p>
+                )}
                 {creneaux.map((item) => {
                   const actif = creneauChoisi === item.code;
                   return (
@@ -187,8 +195,10 @@ export function WidgetReservation({
               ? "Un instant…"
               : ouvertes === false
                 ? "Réservations fermées"
-                : !pretAContinuer
-                  ? "Choisissez un jour"
+                : offre === "road-trip" && creneaux.length === 0
+                  ? "Aucun départ ouvert"
+                  : !pretAContinuer
+                    ? "Choisissez un jour"
                   : "Réserver ce vélo"}
           </Bouton>
 

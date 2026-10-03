@@ -172,7 +172,13 @@ export const EXPIRATION_PANIER_MINUTES = 30;
 /* ------------------------------------------------------------------ Horaires */
 
 /**
- * Le créneau du road trip : le samedi matin, et lui seul.
+ * Les créneaux du road trip.
+ *
+ * `actifParDefaut` dit si le créneau est proposé tant que personne n'y a
+ * touché. L'exploitant ouvre et ferme ensuite chaque créneau depuis le
+ * tableau de bord, sans passer par le code : le dimanche est aujourd'hui
+ * fermé parce qu'il est complet, des places ayant été vendues en espèces
+ * avant l'ouverture du site, et il se rouvrira d'un clic.
  *
  * La sortie est encadrée : elle part à heure fixe, en groupe, avec un
  * coordinateur. Il n'y a donc rien à choisir d'autre que le jour, d'où
@@ -182,10 +188,22 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  * `jourSemaine` suit la convention de JavaScript : 0 = dimanche, 6 = samedi.
  */
 export const CRENEAUX_ROAD_TRIP = [
-  { code: "samedi-matin", jourSemaine: 6, libelle: "Samedi", heureDebut: 8, heureFin: 11 },
-  // Le dimanche a été retiré : le road trip ne part plus que le samedi.
-  // Le reste du site suit cette liste, la validation côté serveur
-  // comprise : un dimanche envoyé à la main est refusé.
+  {
+    code: "samedi-matin",
+    jourSemaine: 6,
+    libelle: "Samedi",
+    heureDebut: 8,
+    heureFin: 11,
+    actifParDefaut: true,
+  },
+  {
+    code: "dimanche-matin",
+    jourSemaine: 0,
+    libelle: "Dimanche",
+    heureDebut: 8,
+    heureFin: 11,
+    actifParDefaut: false,
+  },
 ] as const;
 
 export type CodeCreneau = (typeof CRENEAUX_ROAD_TRIP)[number]["code"];
@@ -299,12 +317,54 @@ export function reouvertureReservations(maintenant = new Date()): string {
   return `${quand} à ${formatHeure(OUVERTURE_RESERVATIONS_HEURE)}`;
 }
 
-/** Le créneau, prêt à afficher : jour, date réelle et horaire. */
-export function creneauxDisponibles(maintenant = new Date()) {
-  return CRENEAUX_ROAD_TRIP.map((creneau) => ({
-    ...creneau,
-    date: prochaineDatePour(creneau.jourSemaine, creneau.heureDebut, maintenant),
-  }));
+/** Ce qu'il faut savoir des réglages pour proposer les départs. */
+export interface OuvertureCreneaux {
+  /** Codes des créneaux ouverts. */
+  creneauxActifs: ReadonlySet<string>;
+  joursFermes: readonly { date: string; formule: string }[];
+}
+
+/** Les réglages quand personne n'y a touché. */
+export const OUVERTURE_PAR_DEFAUT: OuvertureCreneaux = {
+  creneauxActifs: new Set(CRENEAUX_ROAD_TRIP.filter((c) => c.actifParDefaut).map((c) => c.code)),
+  joursFermes: [],
+};
+
+/** Ce jour est-il fermé à cette formule ? */
+export function estJourFerme(
+  joursFermes: OuvertureCreneaux["joursFermes"],
+  date: string,
+  formule: "road-trip" | "location-libre",
+): boolean {
+  return joursFermes.some((j) => j.date === date && (j.formule === formule || j.formule === "toutes"));
+}
+
+/**
+ * Les départs de road trip à proposer : un par créneau ouvert, à la
+ * prochaine date qui n'est pas fermée.
+ *
+ * Un samedi complet ne fait pas disparaître le road trip du site : on
+ * propose le samedi suivant. On cherche jusqu'à douze semaines, au-delà
+ * de quoi le créneau n'est simplement pas proposé.
+ */
+export function creneauxDisponibles(
+  maintenant = new Date(),
+  ouverture: OuvertureCreneaux = OUVERTURE_PAR_DEFAUT,
+) {
+  return CRENEAUX_ROAD_TRIP.filter((creneau) => ouverture.creneauxActifs.has(creneau.code)).flatMap(
+    (creneau) => {
+      let date = prochaineDatePour(creneau.jourSemaine, creneau.heureDebut, maintenant);
+      for (let semaine = 0; semaine < 12; semaine += 1) {
+        if (!estJourFerme(ouverture.joursFermes, date, "road-trip")) {
+          return [{ ...creneau, date }];
+        }
+        date = new Date(Date.parse(`${date}T00:00:00Z`) + 7 * 86_400_000)
+          .toISOString()
+          .slice(0, 10);
+      }
+      return [];
+    },
+  );
 }
 
 /**

@@ -269,3 +269,31 @@ export interface MessageContact {
   creeLe: string;
   traiteLe?: string;
 }
+
+/* ------------------------------------------- Ouverture des réservations */
+
+/** Ce qu'un jour fermé concerne : une formule, ou les deux. */
+export type FormuleFermee = "road-trip" | "location-libre" | "toutes";
+
+/**
+ * Un jour fermé à la réservation en ligne, depuis le tableau de bord.
+ *
+ * Complet parce que des places ont été vendues en espèces, sortie privée,
+ * atelier fermé : le site cesse de proposer ce jour, et le serveur refuse
+ * toute nouvelle réservation dessus. Les réservations déjà prises restent
+ * valables.
+ */
+export interface JourFerme {
+  id: string;
+  date: string;
+  formule: FormuleFermee;
+  motif?: string;
+  creeLe: string;
+}
+
+/** L'état de la réservation tel que l'exploitant l'a réglé. */
+export interface ReglagesOuverture {
+  /** État des créneaux de road trip modifiés depuis l'admin, par code. */
+  creneaux: Record<string, boolean>;
+  joursFermes: JourFerme[];
+}

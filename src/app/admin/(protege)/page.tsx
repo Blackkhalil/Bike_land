@@ -17,6 +17,9 @@ import {
   construirePeriode,
   type Granularite,
 } from "@/lib/statistiques";
+import { PilotageOuverture } from "@/components/admin/PilotageOuverture";
+import { CRENEAUX_ROAD_TRIP, creneauxDisponibles, heureAuBenin } from "@/data/offres";
+import { lireOuverture } from "@/lib/ouverture";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
 
@@ -99,6 +102,12 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
 
   const periode = construirePeriode(granularite);
   const stats = calculerStatistiques(reservations, velos, clients, periode);
+
+  // Les réglages d'ouverture, et ce qu'ils donnent côté client : le
+  // prochain départ réellement proposé pour chaque créneau ouvert.
+  const ouverture = await lireOuverture();
+  const departsProposes = creneauxDisponibles(new Date(), ouverture);
+  const aujourdhuiBenin = heureAuBenin().date;
 
   const totalClients = stats.nouveauxClients + stats.clientsRecurrents;
   const joursCompares = nombreDeJours(stats.fenetreCourante.debut, stats.fenetreCourante.fin);
@@ -216,6 +225,26 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
             aide="Ni sortis, ni immobilisés à l'atelier."
           />
         </div>
+      </section>
+
+      {/* ------------------------------------------ Ouverture des réservations */}
+      <section className="mt-12" aria-labelledby="titre-ouverture">
+        <TitreBloc
+          id="titre-ouverture"
+          titre="Ouverture des réservations"
+          question="Fermer un départ ou un jour complet, et le rouvrir quand il y a de la place."
+        />
+        <PilotageOuverture
+          creneaux={CRENEAUX_ROAD_TRIP.map((c) => ({
+            code: c.code,
+            libelle: c.libelle,
+            horaire: `${c.heureDebut} h - ${c.heureFin} h`,
+            actif: ouverture.creneauxActifs.has(c.code),
+            prochainDepart: departsProposes.find((d) => d.code === c.code)?.date,
+          }))}
+          joursFermes={ouverture.joursFermes.filter((j) => j.date >= aujourdhuiBenin)}
+          aujourdhui={aujourdhuiBenin}
+        />
       </section>
 
       {/* -------------------------------------------------- Les deux formules */}

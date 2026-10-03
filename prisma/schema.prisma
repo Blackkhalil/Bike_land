@@ -478,3 +478,29 @@ model PromoUsage {
   @@index([promoCode])
   @@index([status])
 }
+
+/// État d'un créneau de road trip, choisi depuis le tableau de bord.
+///
+/// Sans ligne, le créneau suit sa valeur par défaut, écrite dans
+/// src/data/offres.ts. Une ligne n'existe donc que pour un créneau dont
+/// l'exploitant a changé l'état.
+model CreneauReglage {
+  code      String   @id
+  actif     Boolean
+  updatedAt DateTime @updatedAt
+}
+
+/// Un jour fermé à la réservation en ligne : complet, sortie privée,
+/// atelier fermé. Les réservations déjà prises ce jour-là restent valables,
+/// seules les nouvelles sont refusées.
+model JourFerme {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  /// « road-trip », « location-libre » ou « toutes ».
+  formule   String
+  motif     String?
+  createdAt DateTime @default(now())
+
+  @@unique([date, formule])
+  @@index([date])
+}

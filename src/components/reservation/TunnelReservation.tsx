@@ -32,6 +32,7 @@ import type {
   Velo,
 } from "@/lib/types";
 import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
+import { site } from "@/lib/site";
 
 /**
  * Tunnel de réservation en trois étapes (§2.1).
@@ -320,6 +321,9 @@ export function TunnelReservation({
           // La page était restée ouverte au-delà de 22 h : le serveur a
           // refusé, et son message dit quand revenir.
           setErreurGlobale(donnees.erreur);
+        } else if (reponse.status === 409 && donnees.code === "COMPLET") {
+          // Jour ou départ fermé entre-temps depuis l'admin.
+          setErreurGlobale(`${donnees.erreur} Aucun montant n'a été prélevé.`);
         } else if (reponse.status === 409) {
           setErreurGlobale(
             "Ce vélo vient d'être réservé sur ce créneau. Choisissez une autre heure ou un autre vélo. Aucun montant n'a été prélevé.",
@@ -600,6 +604,15 @@ export function TunnelReservation({
                   La sortie est encadrée : elle part en groupe, à heure fixe,
                   avec un coordinateur qui ouvre la route.
                 </p>
+                {creneaux.length === 0 && (
+                  <div className="mt-3">
+                  <p className="rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed">
+                    Aucun départ de road trip n&apos;est ouvert à la réservation en ce moment :
+                    les prochaines sorties sont complètes. La location libre reste possible, ou
+                    appelez-nous au {site.telephone}.
+                  </p>
+                  </div>
+                )}
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {creneaux.map((creneau) => {
                     const actif =

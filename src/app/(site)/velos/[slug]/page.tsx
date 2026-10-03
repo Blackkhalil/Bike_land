@@ -21,6 +21,7 @@ import {
 import { depot } from "@/lib/db";
 import { estDateISOValide } from "@/lib/dates";
 import { formatDate, formatXof } from "@/lib/format";
+import { joursFermesCommeOccupes, lireOuverture } from "@/lib/ouverture";
 
 type Params = Promise<{ slug: string }>;
 
@@ -64,11 +65,16 @@ export default async function PageVelo({ params }: { params: Params }) {
   const velo = await depot.trouverVeloParSlug(slug);
   if (!velo) notFound();
 
-  const [periodesOccupees, points, tousLesVelos] = await Promise.all([
+  const [periodesReservees, points, tousLesVelos, ouverture] = await Promise.all([
     depot.periodesIndisponibles(velo.id),
     depot.listerPointsDeRetrait(),
     depot.listerVelos(),
+    lireOuverture(),
   ]);
+  // Les jours fermés depuis l'admin se lisent dans le calendrier comme des
+  // journées complètes : il les barre sans qu'on ait à lui apprendre quoi
+  // que ce soit.
+  const periodesOccupees = [...periodesReservees, ...joursFermesCommeOccupes(ouverture)];
 
   const point = points.find((p) => p.id === velo.pointDeRetraitId);
   // Les autres vélos du parc, sans trier par catégorie : elle ne guide
@@ -240,7 +246,7 @@ export default async function PageVelo({ params }: { params: Params }) {
                   dessus. */}
               <Suspense fallback={<SqueletteReservation />}>
                 <WidgetReservation
-                  creneaux={creneauxDisponibles()}
+                  creneaux={creneauxDisponibles(new Date(), ouverture)}
                   velo={velo}
                   periodesOccupees={periodesOccupees}
                 />
