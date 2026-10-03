@@ -46,12 +46,15 @@ export function VeloEnVedette() {
         className="pointer-events-none absolute -bottom-40 left-[18%] -z-20 h-[32rem] w-[32rem] rounded-full border-[4rem] border-craie/[0.03]"
       />
 
-      {/* Plan 2, la bande orange. Verticale et pleine hauteur sur grand
-          écran ; sur mobile elle devient un bandeau bas, où une colonne
-          traverserait le texte. */}
+      {/* Plan 2, la bande orange, verticale et pleine hauteur, sur grand
+          écran seulement. En dessous, le texte passe sous la photo et la
+          bande se retrouvait derrière lui : le prix et le bouton
+          Réserver, orange eux aussi, s'y fondaient au point de
+          disparaître. Le téléphone garde donc le fond sombre de
+          l'ordinateur, sur lequel ils ressortent. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[38%] bg-orange-signal sm:inset-y-0 sm:left-[52%] sm:h-auto sm:w-[22%] lg:left-[54%] lg:w-[20%]"
+        className="pointer-events-none absolute inset-y-0 left-[54%] -z-10 hidden w-[20%] bg-orange-signal lg:block"
       />
 
       <div className="mx-auto grid max-w-[1280px] grid-cols-1 items-center gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[1fr_1.15fr] lg:gap-0 lg:py-28">
