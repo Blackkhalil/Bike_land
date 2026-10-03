@@ -98,7 +98,59 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
         </form>
       </header>
 
-      <div className="mt-8 overflow-x-auto rounded-[var(--radius-carte)] bg-white p-6">
+      {/* Sur téléphone, une fiche par client plutôt qu'un tableau de
+          770 px qu'il faudrait faire glisser. */}
+      <ul className="mt-8 grid gap-3 md:hidden">
+        {fiches.slice(0, 80).map((fiche) => (
+          <li
+            key={fiche.client.id}
+            className="rounded-[var(--radius-carte)] border border-noir-piste/12 bg-white p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <p className="font-semibold">
+                {fiche.client.prenom} {fiche.client.nom}
+              </p>
+              {fiche.nombre > 2 ? (
+                <Pastille ton="succes">Fidèle</Pastille>
+              ) : fiche.nombre > 1 ? (
+                <Pastille ton="info">Récurrent</Pastille>
+              ) : (
+                <Pastille ton="neutre">Première fois</Pastille>
+              )}
+            </div>
+            <p className="mt-0.5 break-all text-[0.8rem] text-gris-cadre">{fiche.client.email}</p>
+            {fiche.client.telephone && (
+              <a
+                href={`tel:${fiche.client.telephone.replace(/\s+/g, "")}`}
+                className="mt-0.5 inline-block text-[0.84rem] font-semibold text-orange-sourd"
+              >
+                {fiche.client.telephone}
+              </a>
+            )}
+            <dl className="mt-3 grid grid-cols-3 gap-x-3 text-[0.82rem]">
+              <div>
+                <dt className="text-[0.72rem] text-gris-cadre">Locations</dt>
+                <dd className="font-semibold tabular-nums">{fiche.nombre}</dd>
+              </div>
+              <div>
+                <dt className="text-[0.72rem] text-gris-cadre">Dépensé</dt>
+                <dd className="font-semibold tabular-nums">{formatXof(fiche.total)}</dd>
+              </div>
+              <div>
+                <dt className="text-[0.72rem] text-gris-cadre">Dernière</dt>
+                <dd>{fiche.derniere ? formatDate(fiche.derniere) : "jamais"}</dd>
+              </div>
+            </dl>
+          </li>
+        ))}
+        {fiches.length === 0 && (
+          <li className="py-8 text-center text-[0.9rem] text-gris-cadre">
+            Aucun client ne correspond à cette recherche.
+          </li>
+        )}
+      </ul>
+
+      <div className="mt-8 hidden overflow-x-auto rounded-[var(--radius-carte)] bg-white p-6 md:block">
         <table className="w-full min-w-[48rem] border-collapse text-left text-[0.85rem]">
           <caption className="sr-only">Base clients constituée à partir des réservations</caption>
           <thead>

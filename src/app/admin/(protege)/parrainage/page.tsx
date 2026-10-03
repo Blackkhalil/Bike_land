@@ -93,7 +93,65 @@ export default async function PageCodesPromoAdmin() {
           </p>
         ) : (
           <>
-            <div className="mt-4 overflow-x-auto">
+            {/* Sur téléphone, une fiche par partenaire : le tableau fait
+                670 px de large et obligeait à le faire glisser pour lire
+                la commission, qui est pourtant la colonne qui compte. */}
+            <ul className="mt-4 grid gap-3 md:hidden">
+              {statistiques.map((ligne) => (
+                <li
+                  key={ligne.partenaire.id}
+                  className="rounded-[var(--radius-carte)] border border-noir-piste/12 bg-white p-4"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">{ligne.partenaire.nom}</span>
+                    {!ligne.partenaire.actif && <Pastille ton="neutre">inactif</Pastille>}
+                  </div>
+                  {ligne.partenaire.contact && (
+                    <p className="mt-0.5 text-[0.8rem] text-gris-cadre">{ligne.partenaire.contact}</p>
+                  )}
+                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2.5 text-[0.84rem]">
+                    <div>
+                      <dt className="text-[0.74rem] text-gris-cadre">Commission due</dt>
+                      <dd className="font-semibold tabular-nums text-orange-sourd">
+                        {ligne.commissionDueXof > 0 ? formatXof(ligne.commissionDueXof) : "aucune"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.74rem] text-gris-cadre">Clients apportés</dt>
+                      <dd className="font-semibold tabular-nums">{formatNombre(ligne.utilisations)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.74rem] text-gris-cadre">Chiffre apporté</dt>
+                      <dd className="tabular-nums">
+                        {ligne.chiffreAffairesXof > 0 ? formatXof(ligne.chiffreAffairesXof) : "aucun"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.74rem] text-gris-cadre">Réductions</dt>
+                      <dd className="tabular-nums text-gris-cadre">
+                        {ligne.reductionsAccordeesXof > 0
+                          ? `− ${formatXof(ligne.reductionsAccordeesXof)}`
+                          : "aucune"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.74rem] text-gris-cadre">Codes</dt>
+                      <dd className="break-all font-mono text-[0.78rem]">
+                        {ligne.codes.length > 0 ? ligne.codes.join(", ") : "aucun"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.74rem] text-gris-cadre">Dernière fois</dt>
+                      <dd className="text-gris-cadre">
+                        {ligne.derniereUtilisation ? formatDate(ligne.derniereUtilisation) : "jamais"}
+                      </dd>
+                    </div>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-4 hidden overflow-x-auto md:block">
               <table className="w-full min-w-[42rem] border-collapse text-left text-[0.88rem]">
                 <thead>
                   <tr className="border-b border-noir-piste/20 text-[0.74rem] uppercase tracking-[0.06em] text-gris-cadre">

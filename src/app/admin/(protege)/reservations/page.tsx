@@ -219,7 +219,65 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
           </form>
         </div>
 
-        <div className="mt-6 overflow-x-auto">
+        {/* Sur téléphone, une fiche par réservation : le tableau fait
+            860 px de large, et le statut comme le montant tombaient hors
+            de l'écran, au bout d'une ligne qu'il fallait faire glisser. */}
+        <ul className="mt-6 grid gap-3 md:hidden">
+          {filtrees.map((reservation) => (
+            <li
+              key={reservation.id}
+              className="rounded-[var(--radius-carte)] border border-noir-piste/12 bg-white p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">
+                    {reservation.client.prenom} {reservation.client.nom}
+                  </p>
+                  <p className="font-mono text-[0.76rem] text-gris-cadre">{reservation.reference}</p>
+                </div>
+                <Pastille ton={tons[reservation.statut]}>{libelles[reservation.statut]}</Pastille>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[0.84rem]">
+                <div>
+                  <dt className="text-[0.74rem] text-gris-cadre">Date</dt>
+                  <dd>
+                    {formatDate(reservation.dateDebut)}
+                    <span className="block text-[0.76rem] text-gris-cadre tabular-nums">
+                      {formatPlageHoraire(reservation.heureDebut, reservation.heureFin)}
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[0.74rem] text-gris-cadre">Total</dt>
+                  <dd className="font-semibold tabular-nums">{formatXof(reservation.totalXof)}</dd>
+                </div>
+                <div>
+                  <dt className="text-[0.74rem] text-gris-cadre">Vélo</dt>
+                  <dd>{reservation.lignes.map((ligne) => ligne.veloNom).join(", ")}</dd>
+                </div>
+                <div>
+                  <dt className="text-[0.74rem] text-gris-cadre">Formule</dt>
+                  <dd>
+                    {resumeOffre(reservation)}
+                    {reservation.cautionXof > 0 && (
+                      <span className="block text-[0.76rem] text-gris-cadre">
+                        caution {formatXof(reservation.cautionXof)} en espèces
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-2 break-all text-[0.76rem] text-gris-cadre">{reservation.client.email}</p>
+            </li>
+          ))}
+          {filtrees.length === 0 && (
+            <li className="py-8 text-center text-[0.9rem] text-gris-cadre">
+              Aucune réservation ne correspond à cette recherche.
+            </li>
+          )}
+        </ul>
+
+        <div className="mt-6 hidden overflow-x-auto md:block">
           <table className="w-full min-w-[54rem] border-collapse text-left text-[0.85rem]">
             <caption className="sr-only">Liste des réservations</caption>
             <thead>

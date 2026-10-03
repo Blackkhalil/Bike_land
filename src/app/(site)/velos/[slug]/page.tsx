@@ -108,7 +108,7 @@ export default async function PageVelo({ params }: { params: Params }) {
       >
         <div className="mx-auto max-w-[1280px] px-5 sm:px-8">
           <nav aria-label="Fil d'ariane" className="etiquette flex items-center gap-2 opacity-75">
-            <Link href="/velos" className="lien-souligne">
+            <Link href="/velos" className="lien-souligne cible-elargie">
               Nos vélos
             </Link>
             <span aria-hidden="true">/</span>

@@ -195,13 +195,13 @@ export default async function PageParcAdmin() {
               <div className="mt-5 flex flex-wrap gap-3 border-t border-noir-piste/10 pt-4 text-[0.82rem]">
                 <Link
                   href={`/velos/${velo.slug}`}
-                  className="lien-souligne font-semibold text-orange-sourd"
+                  className="lien-souligne cible-elargie font-semibold text-orange-sourd"
                 >
                   Voir la fiche publique
                 </Link>
                 <Link
                   href={`/admin/reservations?reference=${encodeURIComponent(velo.nom)}`}
-                  className="lien-souligne font-semibold text-orange-sourd"
+                  className="lien-souligne cible-elargie font-semibold text-orange-sourd"
                 >
                   Historique des sorties
                 </Link>

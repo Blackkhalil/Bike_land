@@ -154,16 +154,16 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
           lisible, là où trois colonnes séparées obligent à faire le
           calcul de tête. */}
       <div className="mt-10 overflow-x-auto">
-        <table className="w-full min-w-[34rem] border-collapse text-left text-[0.9rem]">
+        <table className="w-full border-collapse text-left text-[0.84rem] sm:min-w-[34rem] sm:text-[0.9rem]">
           <caption className="pb-3 text-left text-[0.86rem] text-gris-cadre">
-            Location libre : ce que coûte chaque durée, par gamme. Tous les tarifs sont frais
-            compris : le montant affiché est celui que vous payez.
+            Location libre : ce que coûte chaque durée, par gamme, en FCFA. Tous les tarifs
+            sont frais compris : le montant affiché est celui que vous payez.
           </caption>
           <thead>
             <tr className="border-b border-noir-piste/20 text-[0.74rem] uppercase tracking-[0.06em] text-gris-cadre">
-              <th className="py-2.5 pr-4 font-semibold">Gamme</th>
+              <th className="py-2.5 pr-2 font-semibold sm:pr-4">Gamme</th>
               {durees.map((heures) => (
-                <th key={heures} className="py-2.5 pr-4 text-right font-semibold">
+                <th key={heures} className="py-2.5 pr-2 text-right font-semibold sm:pr-4">
                   {heures} h
                 </th>
               ))}
@@ -172,10 +172,14 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
           <tbody>
             {GAMMES.map((gamme) => (
               <tr key={gamme.code} className="border-b border-noir-piste/10">
-                <td className="py-3 pr-4 font-semibold">{gamme.nom}</td>
+                <td className="py-3 pr-2 font-semibold sm:pr-4">{gamme.nom}</td>
                 {GRILLE_HORAIRE[gamme.code].map((palier) => (
-                  <td key={palier.heures} className="py-3 pr-4 text-right tabular-nums">
-                    {formatXof(palier.prixXof)}
+                  <td key={palier.heures} className="py-3 pr-2 text-right tabular-nums sm:pr-4">
+                    {/* L'unité est dite une fois dans la légende sur
+                        téléphone : répétée dans chaque case, elle faisait
+                        déborder le tableau et cachait les 3 h et 4 h. */}
+                    <span className="sm:hidden">{formatXof(palier.prixXof).replace(" FCFA", "")}</span>
+                    <span className="hidden sm:inline">{formatXof(palier.prixXof)}</span>
                   </td>
                 ))}
               </tr>

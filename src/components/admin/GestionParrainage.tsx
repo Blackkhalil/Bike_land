@@ -46,7 +46,7 @@ export function GestionParrainage({
   const rafraichir = () => demarrerTransition(() => routeur.refresh());
 
   return (
-    <div className="mt-10 grid gap-6 lg:grid-cols-2">
+    <div className="mt-10 grid gap-6 *:min-w-0 lg:grid-cols-2">
       <FormulairePartenaire onCree={rafraichir} />
       <FormulaireCode partenaires={partenaires} onCree={rafraichir} />
       <div className="lg:col-span-2">
@@ -371,7 +371,101 @@ function ListePartenaires({
       )}
       {succes && <p className="mt-4 text-[0.86rem] text-vert-lagune">{succes}</p>}
 
-      <div className="mt-4 overflow-x-auto">
+      {/* Sur téléphone, une fiche par partenaire, ses actions en bas, à
+          portée de pouce. Dans le tableau, elles tombaient hors de
+          l'écran, au bout d'une ligne qu'il fallait faire glisser. */}
+      <ul className="mt-4 grid gap-3 md:hidden">
+        {partenaires.map((partenaire) => {
+          const nombreCodes = codes.filter((c) => c.partenaireId === partenaire.id).length;
+          const clients = clientsParPartenaire[partenaire.id] ?? 0;
+          const occupe = action === partenaire.id || enCours;
+          return (
+            <li
+              key={partenaire.id}
+              className="rounded-[var(--radius-carte)] border border-noir-piste/12 bg-white p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{partenaire.nom}</p>
+                  <p className="text-[0.8rem] text-gris-cadre">
+                    {partenaire.contact || "contact non renseigné"}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold ${
+                    partenaire.actif
+                      ? "bg-vert-lagune/15 text-vert-lagune"
+                      : "bg-craie-ombre text-noir-piste"
+                  }`}
+                >
+                  {partenaire.actif ? "Actif" : "Désactivé"}
+                </span>
+              </div>
+              <p className="mt-2 text-[0.82rem] text-gris-cadre">
+                {nombreCodes} code{nombreCodes > 1 ? "s" : ""} · {clients} client
+                {clients > 1 ? "s" : ""} payant{clients > 1 ? "s" : ""}
+              </p>
+
+              {aConfirmer === partenaire.id ? (
+                <div className="mt-3 rounded-[var(--radius-carte)] bg-orange-signal/10 p-3">
+                  <p className="text-[0.84rem]">
+                    Supprimer {partenaire.nom}
+                    {nombreCodes > 0
+                      ? ` et ses ${nombreCodes} code${nombreCodes > 1 ? "s" : ""}`
+                      : ""}{" "}
+                    ?
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => supprimer(partenaire)}
+                      disabled={occupe}
+                      className="h-11 rounded-[var(--radius-bouton)] bg-orange-signal text-[0.84rem] font-semibold text-noir-piste disabled:opacity-40"
+                    >
+                      {action === partenaire.id ? "Suppression…" : "Oui, supprimer"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAConfirmer(null)}
+                      disabled={occupe}
+                      className="h-11 rounded-[var(--radius-bouton)] border border-noir-piste/25 text-[0.84rem] font-semibold"
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className={`mt-3 grid gap-2 ${clients === 0 ? "grid-cols-2" : "grid-cols-1"}`}>
+                  <button
+                    type="button"
+                    onClick={() => appeler(partenaire.id, "PATCH", { actif: !partenaire.actif })}
+                    disabled={occupe}
+                    className="h-11 rounded-[var(--radius-bouton)] border border-noir-piste/25 text-[0.84rem] font-semibold text-orange-sourd disabled:opacity-40"
+                  >
+                    {partenaire.actif ? "Désactiver" : "Réactiver"}
+                  </button>
+                  {clients === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setErreur(null);
+                        setSucces(null);
+                        setAConfirmer(partenaire.id);
+                      }}
+                      disabled={occupe}
+                      className="h-11 rounded-[var(--radius-bouton)] border border-noir-piste/25 text-[0.84rem] font-semibold text-gris-cadre disabled:opacity-40"
+                    >
+                      Supprimer
+                    </button>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-4 hidden overflow-x-auto md:block">
         <table className="w-full min-w-[44rem] border-collapse text-left text-[0.86rem]">
           <thead>
             <tr className="border-b border-noir-piste/20 text-[0.74rem] uppercase tracking-[0.06em] text-gris-cadre">
@@ -555,7 +649,85 @@ function ListeCodes({
         </p>
       )}
 
-      <div className="mt-4 overflow-x-auto">
+      {/* Sur téléphone, une fiche par code, les actions en bas. */}
+      <ul className="mt-4 grid gap-3 md:hidden">
+        {codes.map((code) => {
+          const occupe = action === code.code || enCours;
+          return (
+            <li
+              key={code.code}
+              className="rounded-[var(--radius-carte)] border border-noir-piste/12 bg-white p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="break-all font-mono text-[0.95rem] font-semibold">{code.code}</p>
+                  <p className="text-[0.8rem] text-gris-cadre">
+                    {code.partenaireNom || "non rattaché"}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[0.72rem] font-semibold ${
+                    code.actif
+                      ? "bg-vert-lagune/15 text-vert-lagune"
+                      : "bg-craie-ombre text-noir-piste"
+                  }`}
+                >
+                  {code.actif ? "Actif" : "Désactivé"}
+                </span>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[0.82rem]">
+                <div>
+                  <dt className="text-[0.74rem] text-gris-cadre">Utilisations</dt>
+                  <dd className="tabular-nums">
+                    {code.utilisations}
+                    {code.utilisationsMax !== undefined && (
+                      <span className="text-gris-cadre"> / {code.utilisationsMax}</span>
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[0.74rem] text-gris-cadre">Validité</dt>
+                  <dd>
+                    {code.debuteLe || code.finitLe ? (
+                      <>
+                        {code.debuteLe ? formatDate(code.debuteLe) : "dès maintenant"}
+                        {" → "}
+                        {code.finitLe ? formatDate(code.finitLe) : "sans fin"}
+                      </>
+                    ) : (
+                      <span className="text-gris-cadre">sans limite</span>
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <div
+                className={`mt-3 grid gap-2 ${code.utilisations === 0 ? "grid-cols-2" : "grid-cols-1"}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => basculer(code.code, !code.actif)}
+                  disabled={occupe}
+                  className="h-11 rounded-[var(--radius-bouton)] border border-noir-piste/25 text-[0.84rem] font-semibold text-orange-sourd disabled:opacity-40"
+                >
+                  {code.actif ? "Désactiver" : "Réactiver"}
+                </button>
+                {code.utilisations === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => supprimer(code.code)}
+                    disabled={occupe}
+                    className="h-11 rounded-[var(--radius-bouton)] border border-noir-piste/25 text-[0.84rem] font-semibold text-gris-cadre disabled:opacity-40"
+                  >
+                    Supprimer
+                  </button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className="mt-4 hidden overflow-x-auto md:block">
         <table className="w-full min-w-[46rem] border-collapse text-left text-[0.86rem]">
           <thead>
             <tr className="border-b border-noir-piste/20 text-[0.74rem] uppercase tracking-[0.06em] text-gris-cadre">

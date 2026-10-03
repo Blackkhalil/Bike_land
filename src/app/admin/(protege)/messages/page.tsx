@@ -90,12 +90,12 @@ export default async function PageMessagesAdmin({ searchParams }: { searchParams
                 <p className="mt-2 text-[0.85rem] text-gris-cadre">
                   {message.nom}
                   {" · "}
-                  <a href={`mailto:${message.email}`} className="lien-souligne">
+                  <a href={`mailto:${message.email}`} className="lien-souligne cible-elargie break-all">
                     {message.email}
                   </a>
                 </p>
               </div>
-              <div className="flex items-center gap-3 whitespace-nowrap">
+              <div className="flex flex-wrap items-center gap-3">
                 <span className="text-[0.8rem] text-gris-cadre">{formatDate(message.creeLe)}</span>
                 {message.traiteLe ? (
                   <Pastille ton="succes">Traité</Pastille>

@@ -53,13 +53,13 @@ export function BandeauAdmin() {
           Vous naviguez en tant qu&apos;exploitant
         </span>
         <span className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <Link href="/admin/aujourdhui" className="lien-souligne font-semibold">
+          <Link href="/admin/aujourdhui" className="lien-souligne cible-elargie font-semibold">
             La sortie du jour
           </Link>
-          <Link href="/admin/velos" className="lien-souligne font-semibold">
+          <Link href="/admin/velos" className="lien-souligne cible-elargie font-semibold">
             Gérer le parc
           </Link>
-          <Link href="/admin" className="lien-souligne font-semibold text-orange-signal">
+          <Link href="/admin" className="lien-souligne cible-elargie font-semibold text-orange-signal">
             Tableau de bord
           </Link>
         </span>
