@@ -31,6 +31,7 @@ import type {
   PointDeRetrait,
   Velo,
 } from "@/lib/types";
+import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
 
 /**
  * Tunnel de réservation en trois étapes (§2.1).
@@ -73,7 +74,7 @@ interface Props {
   dateFin: DateISO;
   /** Heure de départ retenue à l'arrivée sur la page. */
   heureDebut: number;
-  /** Les deux départs encadrés du week-end, pour la formule road trip. */
+  /** Les départs encadrés, pour la formule road trip : le samedi, aujourd'hui. */
   creneaux: CreneauProposable[];
   optionsInitiales: string[];
 }
@@ -134,6 +135,7 @@ export function TunnelReservation({
   const [messagePromo, setMessagePromo] = useState<string | null>(null);
 
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  const ouvertes = useReservationsOuvertes();
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<Record<string, string>>(
     {},
@@ -314,7 +316,11 @@ export function TunnelReservation({
       const donnees = await reponse.json().catch(() => ({}));
 
       if (!reponse.ok) {
-        if (reponse.status === 409) {
+        if (reponse.status === 403 && donnees.code === "FERME") {
+          // La page était restée ouverte au-delà de 22 h : le serveur a
+          // refusé, et son message dit quand revenir.
+          setErreurGlobale(donnees.erreur);
+        } else if (reponse.status === 409) {
           setErreurGlobale(
             "Ce vélo vient d'être réservé sur ce créneau. Choisissez une autre heure ou un autre vélo. Aucun montant n'a été prélevé.",
           );
@@ -373,6 +379,7 @@ export function TunnelReservation({
   return (
     <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
       <div className="lg:col-span-7">
+        <NoteHoraires className="mb-6" />
         {/* Fil des étapes */}
         <ol className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {etapes.map((item, index) => (
@@ -461,7 +468,7 @@ export function TunnelReservation({
                 </p>
               </div>
               {/* Le road trip n'a pas de date à changer : il part à l'un
-                  des deux créneaux proposés juste en dessous. */}
+                  du créneau proposé juste en dessous. */}
               {offre === "location-libre" && (
                 <a
                   href={`/velos/${velo.slug}?debut=${dateDebut}&fin=${dateFin}`}
@@ -1038,7 +1045,7 @@ export function TunnelReservation({
               ) : (
                 <Bouton
                   onClick={envoyer}
-                  disabled={!cgv || envoiEnCours}
+                  disabled={!cgv || envoiEnCours || ouvertes === false}
                   taille="lg"
                 >
                   {envoiEnCours

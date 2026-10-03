@@ -136,7 +136,7 @@ export const faq = [
       {
         question: "Combien de temps à l'avance faut-il réserver ?",
         reponse:
-          "La veille suffit souvent. Entre novembre et mars, comptez plutôt trois à quatre jours : le parc est volontairement restreint et les week-ends partent vite.",
+          "La veille suffit souvent, à condition de réserver avant 22 h : la réservation en ligne ferme à 22 h et rouvre le lendemain à 8 h. Entre novembre et mars, comptez plutôt trois à quatre jours : le parc est volontairement restreint et les samedis partent vite.",
       },
     ],
   },

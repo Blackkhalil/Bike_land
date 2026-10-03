@@ -14,7 +14,7 @@ export const pointsDeRetrait: PointDeRetrait[] = [
     nom: "Atelier Route des Pêches",
     ville: "Cotonou",
     adresse: "Route des Pêches, Fidjrossè, Cotonou",
-    horaires: "Actuellement 2 créneaux de sortie par semaine, horaires confirmés par téléphone",
+    horaires: "Road trip le samedi de 8 h à 11 h, location libre du lundi au samedi",
     actif: true,
   },
   // Points « à venir » avec l'ouverture des road trips longue distance :

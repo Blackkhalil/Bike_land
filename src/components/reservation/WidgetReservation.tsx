@@ -10,6 +10,7 @@ import type { CodeOffre, Velo } from "@/lib/types";
 import type { DateISO } from "@/lib/dates";
 import { Calendrier, type PeriodeOccupee } from "./Calendrier";
 import type { CreneauProposable } from "./TunnelReservation";
+import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
 
 /**
  * Encart de réservation de la fiche produit.
@@ -19,7 +20,7 @@ import type { CreneauProposable } from "./TunnelReservation";
  * formule, d'où le choix en tête d'encart :
  *
  *  - **Road trip** : la sortie est encadrée et part en groupe. Il n'y a
- *    donc rien à choisir d'autre que l'un des deux créneaux du week-end,
+ *    donc rien à choisir d'autre que le créneau du samedi matin,
  *    un calendrier laisserait croire qu'on peut partir un mardi.
  *  - **Location libre** : le vélo est à vous, le calendrier a tout son
  *    sens. L'heure de départ se choisit à l'étape suivante, une fois la
@@ -32,7 +33,7 @@ export function WidgetReservation({
 }: {
   velo: Velo;
   periodesOccupees: PeriodeOccupee[];
-  /** Les deux départs encadrés, calculés côté serveur. */
+  /** Les départs encadrés, calculés côté serveur : le samedi, aujourd'hui. */
   creneaux: CreneauProposable[];
 }) {
   const routeur = useRouter();
@@ -50,6 +51,7 @@ export function WidgetReservation({
   const [offre, setOffre] = useState<CodeOffre>("road-trip");
   const [jour, setJour] = useState<DateISO | null>(jourDemande);
   const [creneauChoisi, setCreneauChoisi] = useState<string>(creneaux[0]?.code ?? "");
+  const ouvertes = useReservationsOuvertes();
   const [redirection, setRedirection] = useState(false);
 
   const indisponible = velo.statut === "MAINTENANCE" || velo.statut === "RETIRE";
@@ -173,17 +175,21 @@ export function WidgetReservation({
             </div>
           )}
 
+          <NoteHoraires className="mt-6" />
+
           <Bouton
             onClick={continuer}
-            disabled={!pretAContinuer || redirection}
+            disabled={!pretAContinuer || redirection || ouvertes === false}
             taille="lg"
-            className="mt-6 w-full"
+            className="mt-3 w-full"
           >
             {redirection
               ? "Un instant…"
-              : !pretAContinuer
-                ? "Choisissez un jour"
-                : "Réserver ce vélo"}
+              : ouvertes === false
+                ? "Réservations fermées"
+                : !pretAContinuer
+                  ? "Choisissez un jour"
+                  : "Réserver ce vélo"}
           </Bouton>
 
           <p className="mt-3 text-center text-[0.76rem] text-gris-cadre">

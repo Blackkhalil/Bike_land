@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { DUREE_ROAD_TRIP_HEURES } from "@/data/offres";
+import {
+  DUREE_ROAD_TRIP_HEURES,
+  FERMETURE_RESERVATIONS_HEURE,
+  OUVERTURE_RESERVATIONS_HEURE,
+  reouvertureReservations,
+  reservationsOuvertes,
+} from "@/data/offres";
 import { ConflitDisponibiliteError, depot } from "@/lib/db";
 import {
   envoyerConfirmation,
@@ -25,6 +31,23 @@ import { erreursParChamp, schemaReservation } from "@/lib/validation";
  * que masqué.
  */
 export async function POST(requete: Request) {
+  // Avant toute autre chose : hors des heures de réservation, rien n'est
+  // créé. Le site prévient déjà, mais c'est ici que la règle tient, pour
+  // une page restée ouverte depuis l'après-midi comme pour un appel
+  // direct.
+  if (!reservationsOuvertes()) {
+    return NextResponse.json(
+      {
+        erreur:
+          `Les réservations en ligne sont fermées de ${FERMETURE_RESERVATIONS_HEURE} h à ` +
+          `${OUVERTURE_RESERVATIONS_HEURE} h. Elles rouvrent ${reouvertureReservations()}. ` +
+          `Aucun montant n'a été prélevé.`,
+        code: "FERME",
+      },
+      { status: 403 },
+    );
+  }
+
   const corps = await requete.json().catch(() => null);
   const analyse = schemaReservation.safeParse(corps);
 

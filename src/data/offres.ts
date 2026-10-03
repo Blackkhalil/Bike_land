@@ -172,7 +172,7 @@ export const EXPIRATION_PANIER_MINUTES = 30;
 /* ------------------------------------------------------------------ Horaires */
 
 /**
- * Les deux créneaux du road trip.
+ * Le créneau du road trip : le samedi matin, et lui seul.
  *
  * La sortie est encadrée : elle part à heure fixe, en groupe, avec un
  * coordinateur. Il n'y a donc rien à choisir d'autre que le jour, d'où
@@ -183,7 +183,9 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  */
 export const CRENEAUX_ROAD_TRIP = [
   { code: "samedi-matin", jourSemaine: 6, libelle: "Samedi", heureDebut: 8, heureFin: 11 },
-  { code: "dimanche-matin", jourSemaine: 0, libelle: "Dimanche", heureDebut: 8, heureFin: 11 },
+  // Le dimanche a été retiré : le road trip ne part plus que le samedi.
+  // Le reste du site suit cette liste, la validation côté serveur
+  // comprise : un dimanche envoyé à la main est refusé.
 ] as const;
 
 export type CodeCreneau = (typeof CRENEAUX_ROAD_TRIP)[number]["code"];
@@ -225,16 +227,76 @@ export function prochaineDatePour(
   heureDebut: number,
   maintenant = new Date(),
 ): string {
-  const date = new Date(maintenant);
-  date.setHours(0, 0, 0, 0);
+  // Le jour et l'heure se lisent au Bénin, pas sur l'horloge du serveur,
+  // qui tourne en UTC : à 8 h 30 à Cotonou, il n'est que 7 h 30 pour lui,
+  // et le départ de 8 h, déjà parti, aurait encore été proposé.
+  const ici = heureAuBenin(maintenant);
+  let ecart = (jourSemaine - ici.jourSemaine + 7) % 7;
+  if (ecart === 0 && ici.heure >= heureDebut) ecart = 7;
+  const date = new Date(Date.parse(`${ici.date}T00:00:00Z`) + ecart * 86_400_000);
+  return date.toISOString().slice(0, 10);
+}
 
-  let ecart = (jourSemaine - maintenant.getDay() + 7) % 7;
-  if (ecart === 0 && maintenant.getHours() >= heureDebut) ecart = 7;
-  date.setDate(date.getDate() + ecart);
+/* ------------------------------------------------- L'heure du Bénin */
 
-  const mois = String(date.getMonth() + 1).padStart(2, "0");
-  const jour = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${mois}-${jour}`;
+/**
+ * Décalage du Bénin sur UTC : une heure, toute l'année, sans heure d'été.
+ *
+ * Les serveurs tournent en UTC. Toute règle qui dépend de l'heure, la
+ * fermeture des réservations le soir comme le départ du road trip, doit
+ * donc être lue à l'heure de Cotonou, sans quoi elle se déclenche une
+ * heure trop tard. Le décalage est écrit en dur plutôt que demandé à la
+ * base des fuseaux : il ne change jamais, et toutes les plateformes ne
+ * livrent pas cette base complète.
+ */
+const DECALAGE_BENIN_MS = 60 * 60 * 1000;
+
+/** La date, l'heure et le jour de la semaine qu'il est à Cotonou. */
+export function heureAuBenin(maintenant = new Date()) {
+  const ici = new Date(maintenant.getTime() + DECALAGE_BENIN_MS);
+  return {
+    date: ici.toISOString().slice(0, 10),
+    heure: ici.getUTCHours(),
+    minute: ici.getUTCMinutes(),
+    /** 0 = dimanche, 6 = samedi. */
+    jourSemaine: ici.getUTCDay(),
+  };
+}
+
+/* ----------------------------------- Les heures de réservation en ligne */
+
+/**
+ * La réservation en ligne est ouverte de 8 h à 22 h, heure du Bénin.
+ *
+ * À partir de 22 h, plus aucune réservation n'est prise, jusqu'au
+ * lendemain 8 h, l'heure d'ouverture de l'atelier. L'équipe n'a ainsi
+ * jamais à découvrir au réveil une sortie réservée dans la nuit pour le
+ * matin même, sans avoir pu préparer le vélo, les cocos ni le
+ * coordinateur.
+ *
+ * La règle est appliquée par le serveur, qui refuse toute réservation
+ * hors de ces heures : masquer le bouton ne suffirait pas, une page
+ * restée ouverte ou un appel direct passeraient outre. Le site, lui,
+ * prévient avant qu'on remplisse quoi que ce soit.
+ *
+ * Seules les nouvelles réservations sont concernées. Un client qui a
+ * réservé à 21 h 50 peut terminer son paiement après 22 h : son vélo est
+ * déjà retenu, et le lui refuser n'aurait aucun sens.
+ */
+export const OUVERTURE_RESERVATIONS_HEURE = 8;
+export const FERMETURE_RESERVATIONS_HEURE = 22;
+
+/** La réservation en ligne est-elle ouverte en ce moment ? */
+export function reservationsOuvertes(maintenant = new Date()): boolean {
+  const { heure } = heureAuBenin(maintenant);
+  return heure >= OUVERTURE_RESERVATIONS_HEURE && heure < FERMETURE_RESERVATIONS_HEURE;
+}
+
+/** Quand la réservation rouvre, en toutes lettres : « demain à 8 h ». */
+export function reouvertureReservations(maintenant = new Date()): string {
+  const { heure } = heureAuBenin(maintenant);
+  const quand = heure >= FERMETURE_RESERVATIONS_HEURE ? "demain" : "ce matin";
+  return `${quand} à ${formatHeure(OUVERTURE_RESERVATIONS_HEURE)}`;
 }
 
 /** Le créneau, prêt à afficher : jour, date réelle et horaire. */

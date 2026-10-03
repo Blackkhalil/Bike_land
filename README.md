@@ -120,7 +120,14 @@ widget, le tunnel, l'API et l'admin lisent la même grille.
 | Premium | 3 125 | 2 |
 | Prestige | 3 625 | 2 |
 
-Le road trip part sur créneaux fixes, samedi et dimanche de 8 h à 11 h. Les prix
+Le road trip part sur un créneau fixe, le samedi de 8 h à 11 h.
+
+**La réservation en ligne est ouverte de 8 h à 22 h, heure du Bénin.** Hors de ces
+heures, le site le signale et le serveur refuse toute nouvelle réservation, jusqu'au
+lendemain 8 h. Un paiement déjà commencé, lui, peut se terminer. Toutes les règles
+horaires sont lues à l'heure de Cotonou (UTC+1), pas sur l'horloge du serveur.
+
+Les prix
 ne sont pas arrondis : ils sont affichés tels quels, à l'unité.
 
 Le parc compte six vélos Classique, quatre Premium et un Prestige.
