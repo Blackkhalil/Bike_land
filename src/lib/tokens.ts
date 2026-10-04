@@ -51,10 +51,23 @@ export function genererReference(): string {
   return `BL-${suffixe}`;
 }
 
+/**
+ * Le jeton de suivi d'une réservation, déduit de sa référence et du
+ * secret.
+ *
+ * Le serveur peut ainsi le reconstituer à tout moment, en particulier
+ * dans le webhook de paiement, qui confirme une réservation sans avoir vu
+ * passer le client. Tiré au hasard, il ne pouvait l'être : l'email de
+ * confirmation parti du webhook ne donnait que la page générique de
+ * suivi, où le client devait recoller le lien du premier email.
+ *
+ * La base n'en garde toujours que le hachage : une fuite de la base ne
+ * permet pas de fabriquer un lien, il faut aussi le secret.
+ */
 export function genererToken(reference: string): string {
-  const aleatoire = randomBytes(18).toString("base64url");
-  const signature = signer(`${reference}.${aleatoire}`);
-  return `${reference}.${aleatoire}.${signature}`;
+  const partie = signer(`suivi:${reference}`).slice(0, 24);
+  const signature = signer(`${reference}.${partie}`);
+  return `${reference}.${partie}.${signature}`;
 }
 
 export function hacherToken(token: string): string {

@@ -46,9 +46,11 @@ export default async function PageReservation({ searchParams }: { searchParams: 
 
   // Heure de départ. Le road trip part au créneau encadré ; la location
   // libre accepte l'heure passée dans l'URL, à condition qu'elle laisse
-  // le temps de rendre le vélo avant la fermeture.
+  // le temps de rendre le vélo avant la fermeture, qu'elle n'empiète pas
+  // sur le road trip du week-end et qu'elle ne soit pas déjà passée.
+  const maintenant = new Date();
   const heureBrute = Number(parametres.heure);
-  const departsPossibles = heuresDepartPossibles(dureeHeures);
+  const departsPossibles = heuresDepartPossibles(dureeHeures, debut ?? undefined, maintenant);
   const heureDebut =
     offre === "road-trip"
       ? CRENEAUX_ROAD_TRIP[0].heureDebut
@@ -76,7 +78,7 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   // est un composant client, et y appeler `new Date()` donnerait une
   // valeur différente de celle du rendu serveur.
   const ouverture = await lireOuverture();
-  const creneaux = creneauxDisponibles(new Date(), ouverture);
+  const creneaux = creneauxDisponibles(maintenant, ouverture);
   // Un jour fermé depuis l'admin, arrivé par un lien ou une page restée
   // ouverte : on le dit tout de suite, plutôt qu'au moment de payer.
   const refusLocation =
@@ -133,6 +135,7 @@ export default async function PageReservation({ searchParams }: { searchParams: 
             dateFin={fin}
             heureDebut={heureDebut}
             creneaux={creneaux}
+            instant={maintenant.getTime()}
             optionsInitiales={optionsDemandees}
           />
         </div>

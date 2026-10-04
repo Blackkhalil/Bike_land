@@ -1,8 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Bouton } from "@/components/Bouton";
 import { VeloIllustration } from "@/components/VeloIllustration";
@@ -17,7 +18,9 @@ import {
   GRILLE_HORAIRE,
   heuresDepartPossibles,
   OFFRES,
+  OUVERTURE_HEURE as ouvertureAtelier,
   PRIX_ROAD_TRIP_XOF,
+  roadTripsDuJour,
 } from "@/data/offres";
 import type { DateISO } from "@/lib/dates";
 import { diagnostiquer } from "@/lib/echecs-paiement";
@@ -82,6 +85,13 @@ interface Props {
   heureDebut: number;
   /** Les départs encadrés, pour la formule road trip : le samedi, aujourd'hui. */
   creneaux: CreneauProposable[];
+  /**
+   * L'instant du rendu serveur, en millisecondes. Les heures de départ
+   * se calculent d'abord sur lui, pour que le navigateur affiche à
+   * l'hydratation exactement ce que le serveur a rendu ; elles suivent
+   * ensuite l'horloge, minute par minute.
+   */
+  instant: number;
   optionsInitiales: string[];
 }
 
@@ -96,6 +106,7 @@ export function TunnelReservation({
   dateFin: dateFinInitiale,
   heureDebut: heureInitiale,
   creneaux,
+  instant,
   optionsInitiales,
 }: Props) {
   const routeur = useRouter();
@@ -235,12 +246,34 @@ export function TunnelReservation({
     setMessagePromo(null);
   };
 
-  // Heures de départ compatibles avec la durée choisie : au-delà, le
-  // retour tomberait après la fermeture de l'atelier.
+  // L'horloge du tunnel : l'instant du rendu serveur, puis l'heure réelle
+  // chaque minute. Une page laissée ouverte le matin ne propose donc plus
+  // à midi un départ à 10 h.
+  const [maintenant, setMaintenant] = useState(instant);
+  useEffect(() => {
+    const minuteur = setInterval(() => setMaintenant(Date.now()), 60_000);
+    return () => clearInterval(minuteur);
+  }, []);
+
+  // Heures de départ compatibles avec la durée et le jour choisis : retour
+  // avant la fermeture, rien pendant le road trip du week-end, rien de
+  // déjà passé.
   const departsPossibles = useMemo(
-    () => heuresDepartPossibles(dureeHeures),
-    [dureeHeures],
+    () => heuresDepartPossibles(dureeHeures, dateDebut, maintenant),
+    [dureeHeures, dateDebut, maintenant],
   );
+
+  // L'heure affichée et envoyée est toujours l'une de celles proposées :
+  // si l'heure retenue vient de passer, on prend le premier départ encore
+  // possible plutôt que d'envoyer au serveur une heure qu'il refuserait.
+  // `undefined` quand il n'en reste aucun ce jour-là pour cette durée.
+  const heureRetenue =
+    offre === "location-libre" && !departsPossibles.includes(heureDebut)
+      ? departsPossibles[0]
+      : heureDebut;
+  const aucunDepart = heureRetenue === undefined;
+  const heureAffichee = heureRetenue ?? heureDebut;
+  const roadTripsCeJour = offre === "location-libre" ? roadTripsDuJour(dateDebut) : [];
 
   /**
    * Change de formule, et remet jour et heure en accord avec elle.
@@ -259,10 +292,9 @@ export function TunnelReservation({
       }
     } else {
       setDateDebut(dateInitiale);
+      const possibles = heuresDepartPossibles(dureeHeures, dateInitiale, maintenant);
       setHeureDebut(
-        heuresDepartPossibles(dureeHeures).includes(heureInitiale)
-          ? heureInitiale
-          : (heuresDepartPossibles(dureeHeures)[0] ?? heureInitiale),
+        possibles.includes(heureInitiale) ? heureInitiale : (possibles[0] ?? heureInitiale),
       );
     }
   };
@@ -270,7 +302,7 @@ export function TunnelReservation({
   /** Change la durée, en ramenant l'heure de départ dans les clous. */
   const choisirDuree = (heures: number) => {
     setDureeHeures(heures);
-    const possibles = heuresDepartPossibles(heures);
+    const possibles = heuresDepartPossibles(heures, dateDebut, maintenant);
     if (!possibles.includes(heureDebut))
       setHeureDebut(possibles[possibles.length - 1] ?? heureDebut);
   };
@@ -310,7 +342,7 @@ export function TunnelReservation({
           dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
           dateDebut,
           dateFin,
-          heureDebut,
+          heureDebut: heureRetenue,
           options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
           codeParrainage: remise?.code,
           client: { prenom, nom, email, telephone },
@@ -463,12 +495,12 @@ export function TunnelReservation({
                   </strong>
                   , de{" "}
                   <strong className="font-semibold">
-                    {formatHeure(heureDebut)}
+                    {formatHeure(heureAffichee)}
                   </strong>{" "}
                   à{" "}
                   <strong className="font-semibold">
                     {formatHeure(
-                      heureDebut +
+                      heureAffichee +
                         (offre === "road-trip" ? dureeRoadTrip : dureeHeures),
                     )}
                   </strong>
@@ -571,14 +603,37 @@ export function TunnelReservation({
                   À quelle heure ?
                 </legend>
                 <p className="mt-1.5 text-[0.8rem] text-gris-cadre">
-                  L&apos;atelier ouvre à{" "}
-                  {formatHeure(departsPossibles[0] ?? heureDebut)} et ferme à{" "}
+                  L&apos;atelier ouvre à {formatHeure(ouvertureAtelier)} et ferme à{" "}
                   {formatHeure(fermeture)} : nous ne proposons que les départs
                   qui vous laissent le temps de rendre le vélo.
                 </p>
+                {roadTripsCeJour.map((creneau) => (
+                  <p
+                    key={creneau.code}
+                    className="mt-2 text-[0.8rem] leading-relaxed text-gris-cadre"
+                  >
+                    Le {creneau.libelle.toLowerCase()}, de{" "}
+                    {formatHeure(creneau.heureDebut)} à {formatHeure(creneau.heureFin)}, les
+                    vélos partent en road trip : la location libre commence à{" "}
+                    {formatHeure(creneau.heureFin)} ce jour-là.
+                  </p>
+                ))}
+                {aucunDepart && (
+                  <p className="mt-3 rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed">
+                    Il ne reste plus de départ possible le {formatDate(dateDebut)} pour{" "}
+                    {dureeHeures} h de location.{" "}
+                    {heuresDepartPossibles(1, dateDebut, maintenant).length > 0
+                      ? "Choisissez une durée plus courte, ou "
+                      : "Choisissez "}
+                    <Link href={`/velos/${velo.slug}`} className="font-semibold underline">
+                      un autre jour
+                    </Link>
+                    .
+                  </p>
+                )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   {departsPossibles.map((heure) => {
-                    const actif = heureDebut === heure;
+                    const actif = heureRetenue === heure;
                     return (
                       <button
                         key={heure}
@@ -763,7 +818,12 @@ export function TunnelReservation({
               </div>
             </fieldset>
 
-            <Bouton onClick={() => setEtape(2)} taille="lg" className="mt-8">
+            <Bouton
+              onClick={() => setEtape(2)}
+              disabled={aucunDepart}
+              taille="lg"
+              className="mt-8"
+            >
               Continuer
             </Bouton>
           </div>
@@ -1079,7 +1139,7 @@ export function TunnelReservation({
               ) : (
                 <Bouton
                   onClick={envoyer}
-                  disabled={!cgv || envoiEnCours || ouvertes === false}
+                  disabled={!cgv || envoiEnCours || ouvertes === false || aucunDepart}
                   taille="lg"
                 >
                   {envoiEnCours
@@ -1106,9 +1166,9 @@ export function TunnelReservation({
             </div>
 
             <p className="mt-3 text-[0.82rem] text-gris-cadre">
-              {formatDate(dateDebut)}, de {formatHeure(heureDebut)} à{" "}
+              {formatDate(dateDebut)}, de {formatHeure(heureAffichee)} à{" "}
               {formatHeure(
-                heureDebut +
+                heureAffichee +
                   (offre === "road-trip" ? dureeRoadTrip : dureeHeures),
               )}
             </p>

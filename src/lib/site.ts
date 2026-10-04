@@ -34,15 +34,13 @@ export const site = {
    * Le point de départ, donné aux seuls clients qui ont payé.
    *
    * Les pages publiques ne l'affichent pas : c'est l'email de
-   * confirmation qui le porte. `carte` ouvre Google Maps sur Fidjrossè
-   * Plage ; l'épingle exacte de l'atelier, partagée depuis Google Maps
-   * (bouton Partager, lien maps.app.goo.gl), peut remplacer ce lien sans
-   * rien changer d'autre.
+   * confirmation qui le porte. `carte` est l'épingle Google Maps de
+   * l'atelier, partagée par Bike Land (6,3511 N, 2,3534 E).
    */
   pointDeDepart: {
     lieu: "Fidjrossè Plage, Cotonou",
     indication: "Dans la von juste avant la station JNP.",
-    carte: "https://www.google.com/maps/search/?api=1&query=Fidjross%C3%A8%20Plage%2C%20Cotonou",
+    carte: "https://maps.app.goo.gl/tkfdXyVonxogwVek8",
   },
   horaires: "Du lundi au samedi, 8 h - 19 h",
   /**

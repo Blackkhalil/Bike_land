@@ -18,11 +18,13 @@ import {
   creneauxDisponibles,
   estJourFerme,
   FERMETURE_HEURE,
+  motifHoraireLocation,
   OUVERTURE_HEURE,
   type OuvertureCreneaux,
 } from "@/data/offres";
 import { depot } from "@/lib/db";
 import { listerJours, type DateISO } from "@/lib/dates";
+import { formatDate } from "@/lib/format";
 import type { JourFerme, Velo } from "@/lib/types";
 
 export interface Ouverture extends OuvertureCreneaux {
@@ -54,13 +56,26 @@ export function joursFermesCommeOccupes(ouverture: Ouverture) {
     .map((j) => ({ debut: j.date, fin: j.date, heureDebut: OUVERTURE_HEURE, heureFin: FERMETURE_HEURE }));
 }
 
+const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
+
 /**
  * Pourquoi cette réservation ne peut pas être prise, ou `null` si elle le
  * peut. C'est la vérification du serveur, appelée avant toute écriture.
+ *
+ * Avec la durée, l'heure de départ d'une location libre est vérifiée
+ * aussi : pas pendant le road trip du week-end, pas dans le passé. La page
+ * de réservation l'appelle sans durée, le tunnel recalculant les heures
+ * proposées à chaque changement de durée.
  */
 export function motifDeRefus(
   ouverture: Ouverture,
-  demande: { offre: "road-trip" | "location-libre"; dateDebut: DateISO; dateFin: DateISO; heureDebut: number },
+  demande: {
+    offre: "road-trip" | "location-libre";
+    dateDebut: DateISO;
+    dateFin: DateISO;
+    heureDebut: number;
+    dureeHeures?: number;
+  },
 ): string | null {
   if (demande.offre === "road-trip") {
     const jourSemaine = new Date(`${demande.dateDebut}T12:00:00Z`).getUTCDay();
@@ -74,7 +89,11 @@ export function motifDeRefus(
       return "Le road trip de ce jour est complet. Choisissez une autre date.";
     }
     if (Date.now() >= clotureRoadTrip(demande.dateDebut)) {
-      return "Les réservations de ce week-end sont closes depuis vendredi 22 h. Réservez le week-end suivant.";
+      return (
+        `Les réservations du road trip du ${creneau.libelle.toLowerCase()} ` +
+        `${formatDate(demande.dateDebut)} sont closes depuis ${JOURS[(jourSemaine + 6) % 7]} ` +
+        `22 h. Réservez le départ de la semaine suivante.`
+      );
     }
     return null;
   }
@@ -83,6 +102,9 @@ export function motifDeRefus(
     if (estJourFerme(ouverture.joursFermes, jour, "location-libre")) {
       return "Ce jour est complet en location libre. Choisissez une autre date.";
     }
+  }
+  if (demande.dureeHeures !== undefined) {
+    return motifHoraireLocation(demande.dateDebut, demande.heureDebut, demande.dureeHeures);
   }
   return null;
 }

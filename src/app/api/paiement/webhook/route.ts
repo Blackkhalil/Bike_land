@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { depot } from "@/lib/db";
 import { confirmerParSasPay } from "@/lib/paiement-confirmation";
 import {
   referenceDepuisCharge,
@@ -7,6 +8,7 @@ import {
   verifierPaiement,
 } from "@/lib/saspay";
 import { site } from "@/lib/site";
+import { genererToken } from "@/lib/tokens";
 
 /**
  * Notification de paiement envoyée par SasPay.
@@ -113,13 +115,20 @@ export async function POST(requete: Request) {
     return NextResponse.json({ recu: true, confirme: false, raison: "non-abouti" });
   }
 
-  // Lien générique, et non personnel : la base ne conserve que le haché
-  // du jeton de suivi, impossible de le reconstituer ici. Le client a
-  // déjà reçu son lien personnel dans l'accusé de réception.
+  // Le lien personnel se reconstitue à partir de la référence et du
+  // secret. On vérifie qu'il ouvre bien la réservation : celles créées
+  // avant ce calcul portent un jeton tiré au hasard, et reçoivent alors
+  // la page générique de suivi, leur lien personnel étant dans l'accusé
+  // de réception.
+  const jeton = genererToken(reference);
+  const lienSuivi = (await depot.trouverReservationParToken(jeton))
+    ? `${site.url}/reservation/${jeton}`
+    : `${site.url}/reservation/suivi`;
+
   const resultat = await confirmerParSasPay({
     reference,
     paiement: verification.paiement,
-    lienSuivi: `${site.url}/reservation/suivi`,
+    lienSuivi,
   });
 
   const confirme = resultat.issue === "confirmee" || resultat.issue === "deja-confirmee";

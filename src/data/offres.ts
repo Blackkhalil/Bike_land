@@ -218,16 +218,75 @@ export const OUVERTURE_HEURE = 8;
 export const FERMETURE_HEURE = 19;
 
 /**
- * Heures de départ proposées pour une durée donnée.
+ * Heures de départ proposées pour une durée donnée, et pour un jour
+ * quand on le connaît.
  *
  * On ne propose que les départs dont le retour tombe avant la fermeture :
  * inutile d'offrir 17 h pour quatre heures de location si l'atelier
  * ferme à 19 h, le client ne pourrait pas rendre le vélo.
+ *
+ * Le jour connu, les règles de `motifHoraireLocation` s'ajoutent : pas de
+ * location libre pendant le road trip du week-end, ni sur une heure déjà
+ * passée le jour même.
  */
-export function heuresDepartPossibles(dureeHeures: number): number[] {
+export function heuresDepartPossibles(
+  dureeHeures: number,
+  date?: string,
+  maintenant: Date | number = new Date(),
+): number[] {
   const heures: number[] = [];
-  for (let h = OUVERTURE_HEURE; h + dureeHeures <= FERMETURE_HEURE; h += 1) heures.push(h);
+  for (let h = OUVERTURE_HEURE; h + dureeHeures <= FERMETURE_HEURE; h += 1) {
+    if (date && motifHoraireLocation(date, h, dureeHeures, maintenant)) continue;
+    heures.push(h);
+  }
   return heures;
+}
+
+/**
+ * Les road trips qui partent ce jour-là : 8 h - 11 h le samedi et le
+ * dimanche.
+ *
+ * Ils comptent que leur créneau soit ouvert ou non à la réservation en
+ * ligne : un dimanche fermé parce que complet, ses places vendues en
+ * espèces, part quand même, et les vélos avec lui.
+ */
+export function roadTripsDuJour(date: string) {
+  const jourSemaine = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return CRENEAUX_ROAD_TRIP.filter((creneau) => creneau.jourSemaine === jourSemaine);
+}
+
+/**
+ * Pourquoi ce départ n'est pas proposé en location libre, ou `null` s'il
+ * l'est. Le tunnel s'en sert pour n'afficher que les bonnes heures, le
+ * serveur pour refuser les autres.
+ *
+ *  - Le week-end, de 8 h à 11 h, les vélos sont sur la route avec le
+ *    groupe du road trip : aucune location libre ne peut empiéter sur
+ *    ces heures. Elle commence donc à 11 h le samedi et le dimanche.
+ *  - Le jour même, seules les heures à venir restent : à 15 h, un départ
+ *    à 9 h n'a plus de sens, et le client l'aurait payé pour rien.
+ */
+export function motifHoraireLocation(
+  date: string,
+  heureDebut: number,
+  dureeHeures: number,
+  maintenant: Date | number = new Date(),
+): string | null {
+  const roadTrip = roadTripsDuJour(date).find(
+    (creneau) => heureDebut < creneau.heureFin && heureDebut + dureeHeures > creneau.heureDebut,
+  );
+  if (roadTrip) {
+    return (
+      `Le ${roadTrip.libelle.toLowerCase()}, de ${formatHeure(roadTrip.heureDebut)} à ` +
+      `${formatHeure(roadTrip.heureFin)}, les vélos sont en road trip : la location libre ` +
+      `ne peut pas empiéter sur ces heures.`
+    );
+  }
+  const ici = heureAuBenin(new Date(maintenant));
+  if (date === ici.date && heureDebut <= ici.heure) {
+    return "Cette heure de départ est déjà passée. Choisissez un départ plus tard dans la journée, ou un autre jour.";
+  }
+  return null;
 }
 
 /** « 8 h » ou « 14 h », les minutes ne servent à rien ici. */
@@ -327,27 +386,20 @@ export const OUVERTURE_PAR_DEFAUT: OuvertureCreneaux = {
 };
 
 /**
- * Quand la réservation d'un départ de road trip se ferme : le vendredi à
- * 22 h qui précède son week-end, heure du Bénin. Rendu en millisecondes
- * UTC, prêt à comparer avec l'heure courante.
+ * Quand la réservation d'un départ de road trip se ferme : la veille à
+ * 22 h, heure du Bénin. Le road trip du samedi se ferme le vendredi à
+ * 22 h, celui du dimanche le samedi à 22 h, et ainsi chaque semaine,
+ * sans que personne ait à y toucher. Rendu en millisecondes UTC, prêt à
+ * comparer avec l'heure courante.
  *
- * L'équipe prépare le week-end le vendredi soir : les vélos, les cocos,
- * le coordinateur. Une sortie réservée le samedi pour le dimanche, ou la
- * nuit pour le matin même, arrivait trop tard pour être préparée. À
- * partir du vendredi 22 h, le site propose donc le week-end suivant.
+ * L'équipe prépare la sortie la veille au soir : les vélos, les cocos,
+ * le coordinateur. Une réservation prise dans la nuit pour le matin même
+ * arriverait trop tard pour être préparée. Passé la veille 22 h, le site
+ * propose le même départ la semaine suivante.
  */
 export function clotureRoadTrip(dateDepart: string): number {
   const minuit = Date.parse(`${dateDepart}T00:00:00Z`);
-  const jourSemaine = new Date(minuit).getUTCDay();
-  // Jours écoulés depuis le vendredi précédent : 1 pour un samedi, 2 pour
-  // un dimanche. Un départ le vendredi même ferme le jour même à 22 h.
-  const recul = (jourSemaine - 5 + 7) % 7;
-  return (
-    minuit -
-    recul * 86_400_000 +
-    FERMETURE_RESERVATIONS_HEURE * 3_600_000 -
-    DECALAGE_BENIN_MS
-  );
+  return minuit - 86_400_000 + FERMETURE_RESERVATIONS_HEURE * 3_600_000 - DECALAGE_BENIN_MS;
 }
 
 /** Ce jour est-il fermé à cette formule ? */
@@ -361,8 +413,8 @@ export function estJourFerme(
 
 /**
  * Les départs de road trip à proposer : un par créneau ouvert, à la
- * prochaine date qui n'est ni fermée, ni close parce que le vendredi
- * 22 h qui la précède est passé.
+ * prochaine date qui n'est ni fermée, ni close parce que sa veille 22 h
+ * est passée.
  *
  * Un samedi complet ne fait pas disparaître le road trip du site : on
  * propose le samedi suivant. On cherche jusqu'à douze semaines, au-delà

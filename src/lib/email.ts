@@ -162,11 +162,10 @@ function aPrevoir(reservation: Reservation): string[] {
 /**
  * Accuse de reception, envoye des l'enregistrement.
  *
- * C'est le SEUL email qui porte le lien de suivi personnel : le jeton
- * n'existe qu'a la creation, et la base n'en stocke que le hache. Le
- * webhook de paiement, qui confirme ensuite, ne peut donc pas le
- * reconstituer, et c'est voulu : une fuite de la base ne doit pas
- * permettre de forger un lien vers une reservation.
+ * Il porte le lien de suivi personnel, que la confirmation redonne
+ * ensuite. La base n'en stocke que le hache : le serveur le reconstitue
+ * avec le secret de signature (voir `genererToken`), une fuite de la base
+ * seule ne permet donc pas de forger un lien vers une reservation.
  */
 export async function envoyerReceptionDemande(reservation: Reservation, lienSuivi: string) {
   return envoyer({
