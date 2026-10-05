@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 
 import { ControlesVelo } from "@/components/admin/ControlesVelo";
@@ -116,16 +117,30 @@ export default async function PageParcAdmin() {
           return (
             <article key={velo.id} className="rounded-[var(--radius-carte)] bg-white p-6">
               <div className="flex flex-wrap items-start gap-6">
-                <div
-                  className="grid h-24 w-36 shrink-0 place-items-center rounded-[var(--radius-bouton)] px-3"
-                  style={{ background: velo.teintes[1] }}
-                >
-                  <VeloIllustration
-                    categorie={velo.categorie}
-                    teintes={velo.teintes}
-                    className="w-full"
-                  />
-                </div>
+                {/* La photo du vélo, pour le reconnaître d'un coup d'œil ; le
+                    dessin ne sert que tant qu'aucune photo n'existe. */}
+                {velo.photo ? (
+                  <div className="relative h-24 w-36 shrink-0 overflow-hidden rounded-[var(--radius-bouton)] bg-craie">
+                    <Image
+                      src={velo.photo}
+                      alt={velo.nom}
+                      fill
+                      sizes="144px"
+                      className="object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="grid h-24 w-36 shrink-0 place-items-center rounded-[var(--radius-bouton)] px-3"
+                    style={{ background: velo.teintes[1] }}
+                  >
+                    <VeloIllustration
+                      categorie={velo.categorie}
+                      teintes={velo.teintes}
+                      className="w-full"
+                    />
+                  </div>
+                )}
 
                 <div className="min-w-[14rem] flex-1">
                   <div className="flex flex-wrap items-center gap-2">
