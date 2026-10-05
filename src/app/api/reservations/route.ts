@@ -32,23 +32,6 @@ import { lireOuverture, motifDeRefus, personnesMaxPour } from "@/lib/ouverture";
  * que masqué.
  */
 export async function POST(requete: Request) {
-  // Avant toute autre chose : hors des heures de réservation, rien n'est
-  // créé. Le site prévient déjà, mais c'est ici que la règle tient, pour
-  // une page restée ouverte depuis l'après-midi comme pour un appel
-  // direct.
-  if (!reservationsOuvertes()) {
-    return NextResponse.json(
-      {
-        erreur:
-          `Les réservations en ligne sont fermées de ${FERMETURE_RESERVATIONS_HEURE} h à ` +
-          `${OUVERTURE_RESERVATIONS_HEURE} h. Elles rouvrent ${reouvertureReservations()}. ` +
-          `Aucun montant n'a été prélevé.`,
-        code: "FERME",
-      },
-      { status: 403 },
-    );
-  }
-
   const corps = await requete.json().catch(() => null);
   const analyse = schemaReservation.safeParse(corps);
 
@@ -60,6 +43,23 @@ export async function POST(requete: Request) {
   }
 
   const donnees = analyse.data;
+
+  // La nuit, aucun road trip n'est créé. Le site prévient déjà, mais
+  // c'est ici que la règle tient, pour une page restée ouverte depuis
+  // l'après-midi comme pour un appel direct. La location libre, elle, se
+  // réserve à toute heure.
+  if (donnees.offre === "road-trip" && !reservationsOuvertes()) {
+    return NextResponse.json(
+      {
+        erreur:
+          `Le road trip se réserve en ligne de ${OUVERTURE_RESERVATIONS_HEURE} h à ` +
+          `${FERMETURE_RESERVATIONS_HEURE} h. La réservation rouvre ${reouvertureReservations()} ; ` +
+          `la location libre, elle, reste ouverte. Aucun montant n'a été prélevé.`,
+        code: "FERME",
+      },
+      { status: 403 },
+    );
+  }
 
   // Contrôle avant toute écriture : sans moyen d'encaisser, on ne crée pas
   // de réservation qui resterait éternellement en attente de paiement.

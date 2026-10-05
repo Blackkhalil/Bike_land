@@ -291,6 +291,72 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
   });
 }
 
+/**
+ * Rappel envoyé la veille de la sortie.
+ *
+ * Il redonne ce qui sert le jour même, et rien d'autre : l'heure, ce
+ * qu'il faut apporter, où nous trouver et comment nous joindre. Le road
+ * trip part en groupe à heure fixe, d'où l'heure de rendez-vous, un quart
+ * d'heure avant le départ.
+ */
+export async function envoyerRappel(reservation: Reservation, lienSuivi: string) {
+  const velo = reservation.lignes[0];
+  const prevoir = aPrevoir(reservation);
+  const rendezVous = rendezVousDe(reservation);
+  const roadTrip = reservation.offre === "road-trip";
+  const arrivee = `${reservation.heureDebut - 1} h 45`;
+
+  const texte = [
+    `Bonjour ${reservation.client.prenom},`,
+    "",
+    `Votre sortie ${site.nom}, c'est demain.`,
+    `Référence : ${reservation.reference}`,
+    `Vélo : ${velo?.veloNom}`,
+    `Date : ${formatCreneau(reservation)}`,
+    ...(roadTrip
+      ? [`Rendez-vous à ${arrivee}, un quart d'heure avant le départ : le groupe part à l'heure.`]
+      : []),
+    "",
+    "À prévoir au départ :",
+    ...prevoir.map((ligne) => `  - ${ligne}`),
+    "",
+    `Où nous trouver : ${rendezVous.lieu}.`,
+    rendezVous.indication,
+    `Carte : ${rendezVous.carte}`,
+    "",
+    "Un empêchement, un retard ? Écrivez-nous sur WhatsApp :",
+    ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
+    "",
+    "Votre réservation :",
+    lienSuivi,
+    "",
+    `À demain sur la route,`,
+    `L'équipe ${site.nom}, ${site.telephone}`,
+  ].join("\n");
+
+  return envoyer({
+    destinataire: reservation.client.email,
+    sujet: `C'est demain : votre sortie ${site.nom} à ${reservation.heureDebut} h`,
+    texte,
+    html: gabarit({
+      titre: "C'est demain",
+      intro: `Bonjour ${reservation.client.prenom}, votre sortie approche. Voici l'essentiel pour demain.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ["Vélo", velo?.veloNom ?? "non précisé"],
+        ...detailsOffre(reservation),
+        ["Date", formatCreneau(reservation)],
+        ...(roadTrip
+          ? ([["Rendez-vous", `${arrivee}, un quart d'heure avant le départ`]] as [string, string][])
+          : []),
+      ],
+      action: { libelle: "Voir ma réservation", url: lienSuivi },
+      rendezVous,
+      pied: `À prévoir au départ : ${prevoir.join(" ")}`,
+    }),
+  });
+}
+
 export async function envoyerFacture(reservation: Reservation, numeroFacture: string, lienSuivi: string) {
   return envoyer({
     destinataire: reservation.client.email,

@@ -154,6 +154,9 @@ export function TunnelReservation({
 
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const ouvertes = useReservationsOuvertes();
+  // Seul le road trip ferme la nuit : la location libre se réserve à
+  // toute heure.
+  const fermeLaNuit = offre === "road-trip" && ouvertes === false;
   const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
   const [erreursChamps, setErreursChamps] = useState<Record<string, string>>(
     {},
@@ -421,7 +424,7 @@ export function TunnelReservation({
   return (
     <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
       <div className="lg:col-span-7">
-        <NoteHoraires className="mb-6" />
+        <NoteHoraires offre={offre} className="mb-6" />
         {/* Fil des étapes */}
         <ol className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {etapes.map((item, index) => (
@@ -1139,7 +1142,7 @@ export function TunnelReservation({
               ) : (
                 <Bouton
                   onClick={envoyer}
-                  disabled={!cgv || envoiEnCours || ouvertes === false || aucunDepart}
+                  disabled={!cgv || envoiEnCours || fermeLaNuit || aucunDepart}
                   taille="lg"
                 >
                   {envoiEnCours

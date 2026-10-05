@@ -205,6 +205,10 @@ model Booking {
 
   confirmedAt DateTime?
   cancelledAt DateTime?
+  /// Quand le rappel de la veille est parti, `null` tant qu'il ne l'est
+  /// pas. La tâche quotidienne le marque avant d'envoyer : un rappel ne
+  /// part jamais deux fois, même si la tâche est appelée plusieurs fois.
+  reminderSentAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

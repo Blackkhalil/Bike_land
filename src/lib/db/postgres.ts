@@ -876,6 +876,35 @@ const depotDirect: Depot = {
     );
   },
 
+  async listerRappelsAEnvoyer(date: DateISO) {
+    const bookings = await client().booking.findMany({
+      where: {
+        status: "CONFIRMEE",
+        startDate: new Date(`${date}T00:00:00Z`),
+        reminderSentAt: null,
+      },
+      include: inclusionReservation,
+      orderBy: { startHour: "asc" },
+    });
+    return bookings.map(versReservation);
+  },
+
+  async retenirRappel(reservationId: string) {
+    // Conditionnel : seul l'appel qui trouve encore le champ vide l'écrit.
+    const { count } = await client().booking.updateMany({
+      where: { id: reservationId, reminderSentAt: null },
+      data: { reminderSentAt: new Date() },
+    });
+    return count === 1;
+  },
+
+  async libererRappel(reservationId: string) {
+    await client().booking.updateMany({
+      where: { id: reservationId },
+      data: { reminderSentAt: null },
+    });
+  },
+
   async listerReservations(options) {
     const where: Prisma.BookingWhereInput = {};
     if (options?.statut) where.status = options.statut;

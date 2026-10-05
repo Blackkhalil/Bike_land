@@ -16,7 +16,7 @@ import {
   heuresDepartPossibles,
   OUVERTURE_HEURE,
 } from "@/data/offres";
-import { estDateISOValide } from "./dates";
+import { aujourdhui, estDateISOValide } from "./dates";
 
 const dateISO = z
   .string()
@@ -150,9 +150,10 @@ export const schemaReservation = z
   })
   .refine(
     (valeurs) => {
-      // Une location ne peut pas démarrer dans le passé.
-      const aujourdHui = new Date().toISOString().slice(0, 10);
-      return valeurs.dateDebut >= aujourdHui;
+      // Une location ne peut pas démarrer dans le passé. Le jour se lit
+      // au Bénin : la location libre se réservant aussi la nuit, juste
+      // après minuit l'horloge du serveur, en UTC, est encore à la veille.
+      return valeurs.dateDebut >= aujourdhui();
     },
     { message: "La date de départ est déjà passée.", path: ["dateDebut"] },
   )

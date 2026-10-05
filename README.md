@@ -120,12 +120,23 @@ widget, le tunnel, l'API et l'admin lisent la même grille.
 | Premium | 3 125 | 2 |
 | Prestige | 3 625 | 2 |
 
-Le road trip part sur un créneau fixe, le samedi de 8 h à 11 h.
+Le road trip part sur un créneau fixe, le samedi et le dimanche de 8 h à 11 h (chaque
+créneau s'ouvre et se ferme depuis le tableau de bord).
 
-**La réservation en ligne est ouverte de 8 h à 22 h, heure du Bénin.** Hors de ces
-heures, le site le signale et le serveur refuse toute nouvelle réservation, jusqu'au
-lendemain 8 h. Un paiement déjà commencé, lui, peut se terminer. Toutes les règles
-horaires sont lues à l'heure de Cotonou (UTC+1), pas sur l'horloge du serveur.
+**Chaque départ de road trip se ferme la veille à 22 h**, heure du Bénin : le samedi le
+vendredi à 22 h, le dimanche le samedi à 22 h, chaque semaine. Le road trip ne se réserve
+pas non plus en ligne entre 22 h et 8 h. Le site le signale et le serveur refuse la
+réservation ; un paiement déjà commencé, lui, peut se terminer.
+
+**La location libre se réserve à toute heure**, la nuit comprise. Le samedi et le
+dimanche, elle commence à 11 h, les vélos étant en road trip de 8 h à 11 h, et le jour
+même seules les heures à venir sont proposées. Toutes les règles horaires sont lues à
+l'heure de Cotonou (UTC+1), pas sur l'horloge du serveur.
+
+**Rappel de la veille** : chaque soir à 18 h (heure du Bénin), une tâche planifiée de
+Vercel (`vercel.json`, `/api/cron/rappels`) écrit aux clients qui partent le lendemain.
+Chaque rappel ne part qu'une fois, marqué en base (`Booking.reminderSentAt`). Définir
+`CRON_SECRET` sur Vercel réserve cette adresse à la tâche planifiée.
 
 Les prix
 ne sont pas arrondis : ils sont affichés tels quels, à l'unité.

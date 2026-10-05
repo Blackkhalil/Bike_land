@@ -136,7 +136,7 @@ export const faq = [
       {
         question: "Combien de temps à l'avance faut-il réserver ?",
         reponse:
-          "La veille suffit souvent, à condition de réserver avant 22 h : la réservation en ligne ferme à 22 h et rouvre le lendemain à 8 h. Entre novembre et mars, comptez plutôt trois à quatre jours : le parc est volontairement restreint et les samedis partent vite.",
+          "Pour un road trip, la veille suffit souvent, à condition de réserver avant 22 h : le départ du samedi se ferme le vendredi à 22 h, celui du dimanche le samedi à 22 h, et le road trip ne se réserve plus en ligne entre 22 h et 8 h. La location libre se réserve à toute heure, même la nuit. Entre novembre et mars, comptez plutôt trois à quatre jours : le parc est volontairement restreint et les samedis partent vite.",
       },
     ],
   },

@@ -82,6 +82,8 @@ const cle = Symbol.for("bikeland.demo.etat");
 /** Réglages d'ouverture en démonstration : en mémoire, comme le reste. */
 const reglagesCreneaux = new Map<string, boolean>();
 const joursFermesDemo: JourFerme[] = [];
+/** Identifiants des réservations dont le rappel de la veille est parti. */
+const rappelsEnvoyes = new Set<string>();
 type PorteurGlobal = typeof globalThis & { [cle]?: EtatDemo };
 
 function etat(): EtatDemo {
@@ -420,6 +422,26 @@ export const depotDemo: Depot = {
     }
 
     return copie(reservation);
+  },
+
+  async listerRappelsAEnvoyer(date: DateISO) {
+    return copie(
+      etat()
+        .reservations.filter(
+          (r) => r.statut === "CONFIRMEE" && r.dateDebut === date && !rappelsEnvoyes.has(r.id),
+        )
+        .sort((a, b) => a.heureDebut - b.heureDebut),
+    );
+  },
+
+  async retenirRappel(reservationId: string) {
+    if (rappelsEnvoyes.has(reservationId)) return false;
+    rappelsEnvoyes.add(reservationId);
+    return true;
+  },
+
+  async libererRappel(reservationId: string) {
+    rappelsEnvoyes.delete(reservationId);
   },
 
   async listerReservations(options?: { statut?: StatutReservation; depuis?: DateISO; jusqua?: DateISO }) {

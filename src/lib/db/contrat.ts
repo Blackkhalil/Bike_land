@@ -200,6 +200,22 @@ export interface Depot {
    */
   supprimerReservation(reference: string): Promise<boolean>;
 
+  /**
+   * Les réservations payées qui partent ce jour-là et n'ont pas encore
+   * reçu leur rappel de la veille.
+   */
+  listerRappelsAEnvoyer(date: DateISO): Promise<Reservation[]>;
+
+  /**
+   * Retient l'envoi du rappel avant de l'envoyer : vrai si cet appel l'a
+   * obtenu, faux si un autre l'avait déjà. C'est ce qui empêche un
+   * rappel de partir deux fois, même si la tâche tourne deux fois.
+   */
+  retenirRappel(reservationId: string): Promise<boolean>;
+
+  /** Libère le rappel retenu, quand son envoi a échoué. */
+  libererRappel(reservationId: string): Promise<void>;
+
   listerReservations(options?: {
     statut?: StatutReservation;
     depuis?: DateISO;

@@ -283,6 +283,11 @@ export function motifHoraireLocation(
     );
   }
   const ici = heureAuBenin(new Date(maintenant));
+  // La date se compare au jour du Bénin : réservée de nuit, juste après
+  // minuit, une location de la veille passerait sinon pour celle du jour.
+  if (date < ici.date) {
+    return "Cette date est déjà passée. Choisissez un autre jour.";
+  }
   if (date === ici.date && heureDebut <= ici.heure) {
     return "Cette heure de départ est déjà passée. Choisissez un départ plus tard dans la journée, ou un autre jour.";
   }
@@ -339,18 +344,23 @@ export function heureAuBenin(maintenant = new Date()) {
 /* ----------------------------------- Les heures de réservation en ligne */
 
 /**
- * La réservation en ligne est ouverte de 8 h à 22 h, heure du Bénin.
+ * La réservation en ligne du road trip est ouverte de 8 h à 22 h, heure
+ * du Bénin.
  *
- * À partir de 22 h, plus aucune réservation n'est prise, jusqu'au
- * lendemain 8 h, l'heure d'ouverture de l'atelier. L'équipe n'a ainsi
- * jamais à découvrir au réveil une sortie réservée dans la nuit pour le
- * matin même, sans avoir pu préparer le vélo, les cocos ni le
- * coordinateur.
+ * À partir de 22 h, plus aucun road trip ne se réserve, jusqu'au
+ * lendemain 8 h. Avec la clôture de chaque départ la veille à 22 h (voir
+ * `clotureRoadTrip`), l'équipe n'a jamais à découvrir au réveil une
+ * sortie réservée dans la nuit pour le matin même, sans avoir pu préparer
+ * les vélos, les cocos ni le coordinateur.
  *
- * La règle est appliquée par le serveur, qui refuse toute réservation
- * hors de ces heures : masquer le bouton ne suffirait pas, une page
- * restée ouverte ou un appel direct passeraient outre. Le site, lui,
- * prévient avant qu'on remplisse quoi que ce soit.
+ * La location libre, elle, se réserve à toute heure, la nuit comprise :
+ * le client choisit son vélo et son heure, et seules les heures à venir
+ * lui sont proposées. Rien n'est donc à préparer en urgence.
+ *
+ * La règle est appliquée par le serveur, qui refuse un road trip hors de
+ * ces heures : masquer le bouton ne suffirait pas, une page restée
+ * ouverte ou un appel direct passeraient outre. Le site, lui, prévient
+ * avant qu'on remplisse quoi que ce soit.
  *
  * Seules les nouvelles réservations sont concernées. Un client qui a
  * réservé à 21 h 50 peut terminer son paiement après 22 h : son vélo est
@@ -359,7 +369,7 @@ export function heureAuBenin(maintenant = new Date()) {
 export const OUVERTURE_RESERVATIONS_HEURE = 8;
 export const FERMETURE_RESERVATIONS_HEURE = 22;
 
-/** La réservation en ligne est-elle ouverte en ce moment ? */
+/** La réservation en ligne du road trip est-elle ouverte en ce moment ? */
 export function reservationsOuvertes(maintenant = new Date()): boolean {
   const { heure } = heureAuBenin(maintenant);
   return heure >= OUVERTURE_RESERVATIONS_HEURE && heure < FERMETURE_RESERVATIONS_HEURE;

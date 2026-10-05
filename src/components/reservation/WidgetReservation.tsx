@@ -53,6 +53,9 @@ export function WidgetReservation({
   const [jour, setJour] = useState<DateISO | null>(jourDemande);
   const [creneauChoisi, setCreneauChoisi] = useState<string>(creneaux[0]?.code ?? "");
   const ouvertes = useReservationsOuvertes();
+  // Seul le road trip ferme la nuit : la location libre se réserve à
+  // toute heure.
+  const fermeLaNuit = offre === "road-trip" && ouvertes === false;
   const [redirection, setRedirection] = useState(false);
 
   const indisponible = velo.statut === "MAINTENANCE" || velo.statut === "RETIRE";
@@ -183,17 +186,17 @@ export function WidgetReservation({
             </div>
           )}
 
-          <NoteHoraires className="mt-6" />
+          <NoteHoraires offre={offre} className="mt-6" />
 
           <Bouton
             onClick={continuer}
-            disabled={!pretAContinuer || redirection || ouvertes === false}
+            disabled={!pretAContinuer || redirection || fermeLaNuit}
             taille="lg"
             className="mt-3 w-full"
           >
             {redirection
               ? "Un instant…"
-              : ouvertes === false
+              : fermeLaNuit
                 ? "Réservations fermées"
                 : offre === "road-trip" && creneaux.length === 0
                   ? "Aucun départ ouvert"
