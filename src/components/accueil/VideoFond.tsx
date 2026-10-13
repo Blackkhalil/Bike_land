@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { afficheOptimisee } from "@/lib/affiche";
-import { connexionAEpargner } from "@/lib/connexion";
+import { economieDeDonnees } from "@/lib/connexion";
 
 /**
  * Vidéo de fond du héros, avec commande de son.
@@ -34,12 +34,12 @@ export function VideoFond({
 }) {
   const reference = useRef<HTMLVideoElement>(null);
   const [muet, setMuet] = useState(true);
-  // Sur téléphone ou réseau lent, l'affiche suffit : la vidéo pèserait
-  // trois mégaoctets avant même que le visiteur ait lu le titre.
+  // La vidéo joue partout, téléphone compris, sauf pour qui a demandé
+  // d'économiser ses données : l'affiche suffit alors.
   const [active, setActive] = useState(false);
 
   useEffect(() => {
-    if (connexionAEpargner()) return;
+    if (economieDeDonnees()) return;
     const depart = setTimeout(() => setActive(true), 0);
     return () => clearTimeout(depart);
   }, []);

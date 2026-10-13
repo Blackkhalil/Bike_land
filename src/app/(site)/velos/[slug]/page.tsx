@@ -8,7 +8,6 @@ import { CarteVelo } from "@/components/CarteVelo";
 import { SpecificationsAnnotees } from "@/components/SpecificationsAnnotees";
 import Image from "next/image";
 import { VeloIllustration } from "@/components/VeloIllustration";
-import { VideoVelo } from "@/components/VideoVelo";
 import { WidgetReservation } from "@/components/reservation/WidgetReservation";
 import { Etoiles, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue } from "@/data/catalogue";
@@ -155,11 +154,10 @@ export default async function PageVelo({ params }: { params: Params }) {
                 que ce qu'ils ont écrit. */}
           </div>
 
-          {/* La vidéo passe devant la photo : elle montre le vélo sous
-              tous les angles, avec sa fiche technique incrustée. */}
-          {velo.video ? (
-            <VideoVelo source={velo.video} affiche={velo.photo} nom={velo.nom} />
-          ) : velo.photo ? (
+          {/* La photo, et non la vidéo du vélo : seule la vidéo de
+              l'accueil est gardée sur le site, pour qu'une fiche
+              s'affiche vite même sur un réseau mobile. */}
+          {velo.photo ? (
             <div className="relative mx-auto mt-4 aspect-16/9 w-full max-w-4xl overflow-hidden">
               <Image
                 src={velo.photo}
