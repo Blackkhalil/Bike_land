@@ -4,7 +4,8 @@ import { sessionAdminValide } from "@/lib/admin";
 import { depot } from "@/lib/db";
 import { exporterPdf } from "@/lib/export-pdf";
 import { construireRapport, exporterRapportCsv } from "@/lib/rapport";
-import { exporterCsv, type Granularite } from "@/lib/statistiques";
+import { estDateISOValide } from "@/lib/dates";
+import { construirePeriode, exporterCsv, type Granularite } from "@/lib/statistiques";
 
 /**
  * Export des réservations de la période (§2.3).
@@ -35,8 +36,16 @@ export async function GET(requete: Request) {
     depot.listerCodesParrainage(),
     depot.statistiquesPartenaires(),
   ]);
-  const rapport = construireRapport({ reservations, velos, clients, granularite, codes, partenaires });
-  const nomBase = `bikeland-tableau-de-bord-${rapport.statistiques.periode.debut}-${rapport.statistiques.periode.fin}`;
+  // `?semaine=AAAA-MM-JJ` : le bilan de la semaine (lundi à dimanche) qui
+  // contient ce jour, depuis la page Bilan. Sans lui, la période en cours.
+  const semaine = url.searchParams.get("semaine");
+  const periode =
+    semaine && estDateISOValide(semaine)
+      ? { ...construirePeriode("semaine", semaine), libelle: "La semaine" }
+      : undefined;
+
+  const rapport = construireRapport({ reservations, velos, clients, granularite, codes, partenaires, periode });
+  const nomBase = `bikeland-${periode ? "bilan-semaine" : "tableau-de-bord"}-${rapport.statistiques.periode.debut}-${rapport.statistiques.periode.fin}`;
 
   if (url.searchParams.get("format") === "pdf") {
     const pdf = await exporterPdf(rapport);

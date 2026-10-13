@@ -19,6 +19,7 @@ import {
   construirePeriode,
   type Granularite,
   type IndicateurCompare,
+  type Periode,
   type Statistiques,
   dateEncaissement,
 } from "@/lib/statistiques";
@@ -153,9 +154,11 @@ export function construireRapport(entrees: {
   codes?: CodeParrainage[];
   /** Le cumul par partenaire depuis le début, tel que le montre la page parrainage. */
   partenaires?: StatistiquesPartenaire[];
+  /** Une période précise, une semaine passée par exemple, à la place de la période en cours. */
+  periode?: Periode;
 }): Rapport {
   const { reservations, velos, clients, granularite, codes = [], partenaires = [] } = entrees;
-  const periode = construirePeriode(granularite);
+  const periode = entrees.periode ?? construirePeriode(granularite);
   const stats = calculerStatistiques(reservations, velos, clients, periode);
   const jour = indicateursDuJour(reservations);
   const totalClients = stats.nouveauxClients + stats.clientsRecurrents;

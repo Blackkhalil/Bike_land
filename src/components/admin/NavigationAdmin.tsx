@@ -17,6 +17,7 @@ import { Marque } from "@/components/Marque";
 const liens = [
   { href: "/admin/aujourdhui", libelle: "La sortie du jour" },
   { href: "/admin", libelle: "Tableau de bord", exact: true },
+  { href: "/admin/bilan", libelle: "Bilan des semaines" },
   { href: "/admin/reservations", libelle: "Réservations" },
   { href: "/admin/velos", libelle: "Parc de vélos" },
   { href: "/admin/clients", libelle: "Clients" },
