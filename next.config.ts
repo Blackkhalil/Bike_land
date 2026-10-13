@@ -1,12 +1,20 @@
 import type { NextConfig } from "next";
 
+/** Les photos et vidéos de vélos déposées depuis l'admin, dans Vercel Blob. */
+const BLOB = "https://*.public.blob.vercel-storage.com";
+const IMAGES = `'self' data: blob: https://res.cloudinary.com ${BLOB}`;
+const MEDIAS = `'self' blob: ${BLOB}`;
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   images: {
     formats: ["image/avif", "image/webp"],
-    // Les photos de vélos sont servies par Cloudinary (cf. cahier des charges §6.1).
-    remotePatterns: [{ protocol: "https", hostname: "res.cloudinary.com" }],
+    // Les photos de vélos déposées depuis l'admin vivent dans Vercel Blob.
+    remotePatterns: [
+      { protocol: "https", hostname: "res.cloudinary.com" },
+      { protocol: "https", hostname: "*.public.blob.vercel-storage.com" },
+    ],
   },
   async headers() {
     return [
@@ -50,9 +58,38 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
-              "img-src 'self' data: blob: https://res.cloudinary.com",
-              "media-src 'self' blob:",
+              `img-src ${IMAGES}`,
+              `media-src ${MEDIAS}`,
               "connect-src 'self'",
+              "object-src 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              "frame-ancestors 'self'",
+              "upgrade-insecure-requests",
+            ].join("; "),
+          },
+        ],
+      },
+      // L'administration a besoin de deux choses de plus, et elle seule :
+      // déposer les fichiers directement dans Vercel Blob, et lire les
+      // affiches, dont la bibliothèque (WebAssembly, travailleur, données
+      // de langue) se charge depuis jsDelivr au premier dépôt. Cette
+      // règle vient après la précédente : pour les pages /admin, son en-tête
+      // remplace celui du site.
+      {
+        source: "/admin/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net",
+              "worker-src 'self' blob:",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "font-src 'self' https://fonts.gstatic.com data:",
+              `img-src ${IMAGES}`,
+              `media-src ${MEDIAS}`,
+              "connect-src 'self' https://cdn.jsdelivr.net https://vercel.com https://*.vercel-storage.com",
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",

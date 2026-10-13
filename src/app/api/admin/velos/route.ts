@@ -54,6 +54,7 @@ export async function POST(requete: Request) {
         .filter(Boolean),
       pointDeRetraitId: donnees.pointDeRetraitId || undefined,
       photo: donnees.photo || undefined,
+      video: donnees.video || undefined,
     });
 
     return NextResponse.json({ id: velo.id, slug: velo.slug, nom: velo.nom }, { status: 201 });

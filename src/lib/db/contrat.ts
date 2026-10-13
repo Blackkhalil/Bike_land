@@ -145,8 +145,10 @@ export interface NouveauVelo {
   autonomieConseilleeKm: number;
   equipementInclus: string[];
   pointDeRetraitId?: string;
-  /** Chemin de la photo servie depuis `public`, si elle existe déjà. */
+  /** Photo du vélo : un fichier de `public` ou une adresse Vercel Blob. */
   photo?: string;
+  /** Vidéo du vélo, déposée depuis l'admin. Gardée, pas affichée sur le site. */
+  video?: string;
 }
 
 export interface ResultatReservation {

@@ -539,6 +539,7 @@ export const depotDemo: Depot = {
       nombreAvis: 0,
       teintes: ["#1c1b19", "#f25c05"],
       photo: champs.photo,
+      video: champs.video,
     };
     velos.push(velo);
     return copie(velo);

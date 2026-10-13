@@ -1040,6 +1040,7 @@ const depotDirect: Depot = {
         suggestedRangeKm: champs.autonomieConseilleeKm,
         includedEquipment: champs.equipementInclus,
         heroImageUrl: champs.photo ?? null,
+        videoUrl: champs.video ?? null,
         ...(champs.pointDeRetraitId
           ? { pickupPointId: champs.pointDeRetraitId }
           : {}),

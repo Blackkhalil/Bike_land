@@ -209,6 +209,17 @@ export function erreursParChamp(erreur: z.ZodError): Record<string, string> {
 }
 
 /**
+ * Une photo ou une vidéo de vélo : un fichier du site (`/images/…`) ou un
+ * fichier déposé depuis l'admin dans Vercel Blob. Aucune autre adresse :
+ * le site n'affiche pas d'image venue d'un domaine qu'il ne contrôle pas.
+ */
+const fichierDuParc = z
+  .string()
+  .trim()
+  .max(500)
+  .regex(/^(\/images\/|https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/)/, "Fichier non reconnu.");
+
+/**
  * Un vélo ajouté au parc depuis l'espace d'exploitation.
  *
  * Les bornes ne sont pas décoratives : une charge maximale de 5 kg ou un
@@ -229,7 +240,8 @@ export const schemaNouveauVelo = z.object({
   autonomieConseilleeKm: z.number().int().min(5).max(300),
   equipementInclus: z.string().trim().max(400).default(""),
   pointDeRetraitId: z.string().trim().max(60).optional().or(z.literal("")),
-  photo: z.string().trim().max(200).optional().or(z.literal("")),
+  photo: fichierDuParc.optional().or(z.literal("")),
+  video: fichierDuParc.optional().or(z.literal("")),
 });
 
 export type EntreeNouveauVelo = z.infer<typeof schemaNouveauVelo>;
