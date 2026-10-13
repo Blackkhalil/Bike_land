@@ -128,10 +128,10 @@ export default async function PageBilan() {
           <tbody>
             {semaines.map(({ debut, fin, stats, commissions }) => (
               <tr key={debut} className="border-b border-noir-piste/5 last:border-0">
-                <td className="px-3 py-3">
-                  <span className="font-semibold">{intitule(debut, fin)}</span>
+                <td className="px-3 py-3" title={intitule(debut, fin)}>
+                  <span className="font-semibold">{intituleCourt(debut, fin)}</span>
                   {stats.periodeEnCours && (
-                    <span className="ml-2 align-middle">
+                    <span className="mt-1 block">
                       <Pastille ton="info">En cours</Pastille>
                     </span>
                   )}
@@ -191,6 +191,17 @@ function veloEnTete(classement: { etiquette: string; valeur: number }[]): string
  * deux jours écoulés comparés à une semaine pleine afficheraient une
  * chute qui n'existe pas.
  */
+const jourNumero = new Intl.DateTimeFormat("fr-FR", { day: "numeric", timeZone: "UTC" });
+const jourMois = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/** « 5 - 11 oct. », ou « 28 sept. - 4 oct. » à cheval sur deux mois : pour le tableau. */
+function intituleCourt(debut: DateISO, fin: DateISO): string {
+  const d = new Date(`${debut}T12:00:00Z`);
+  const f = new Date(`${fin}T12:00:00Z`);
+  const memeMois = debut.slice(0, 7) === fin.slice(0, 7);
+  return `${memeMois ? jourNumero.format(d) : jourMois.format(d)} - ${jourMois.format(f)}`;
+}
+
 function Variation({ valeur, court = false }: { valeur: number | null; court?: boolean }) {
   if (valeur === null) return null;
   const arrondie = Math.round(valeur);
