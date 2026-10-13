@@ -84,6 +84,8 @@ const reglagesCreneaux = new Map<string, boolean>();
 const joursFermesDemo: JourFerme[] = [];
 /** Identifiants des réservations dont le rappel de la veille est parti. */
 const rappelsEnvoyes = new Set<string>();
+/** Réglages sensibles de l'administration, en mémoire en démonstration. */
+const parametresAdmin = new Map<string, string>();
 type PorteurGlobal = typeof globalThis & { [cle]?: EtatDemo };
 
 function etat(): EtatDemo {
@@ -543,6 +545,18 @@ export const depotDemo: Depot = {
     };
     velos.push(velo);
     return copie(velo);
+  },
+
+  async lireParametreAdmin(cle: string) {
+    return parametresAdmin.get(cle) ?? null;
+  },
+
+  async ecrireParametreAdmin(cle: string, valeur: string) {
+    parametresAdmin.set(cle, valeur);
+  },
+
+  async effacerParametreAdmin(cle: string) {
+    parametresAdmin.delete(cle);
   },
 
   async majVelo(id, champs) {

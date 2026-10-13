@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { EXPIRATION_PANIER_MINUTES } from "@/data/offres";
 import { sessionAdminValide } from "@/lib/admin";
 import { depot } from "@/lib/db";
+import { rafraichirSitePublic } from "@/lib/rafraichir";
 import { paniersAbandonnes } from "@/lib/reservations";
 
 /**
@@ -42,6 +43,8 @@ export async function POST() {
     }
   }
 
+  // Un panier effacé libère son vélo : le calendrier public doit le voir.
+  if (effaces > 0) await rafraichirSitePublic();
   return NextResponse.json({
     effaces,
     echecs,

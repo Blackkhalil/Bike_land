@@ -13,6 +13,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ----------------------------------------------------- Sécurité de l'administration
+
+/// Réglages sensibles de l'administration, aujourd'hui le secret de la
+/// double authentification, rangé chiffré (cf. src/lib/double-authentification.ts).
+model ParametreAdmin {
+  cle       String   @id
+  valeur    String
+  updatedAt DateTime @updatedAt
+}
+
 // ---------------------------------------------------------------- Parc de vélos
 
 enum BikeTier {

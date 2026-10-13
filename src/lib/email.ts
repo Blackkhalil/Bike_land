@@ -396,7 +396,7 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
   const destinataire = process.env.ADMIN_EMAIL || site.email;
   const velos = reservation.lignes.map((ligne) => ligne.veloNom).join(", ") || "non précisé";
   const contact = reservation.client.telephone || reservation.client.email;
-  const lienAdmin = `${site.url}/admin/reservations?reference=${reservation.reference}`;
+  const lienAdmin = `${site.urlAdmin}/admin/reservations?reference=${reservation.reference}`;
 
   // Référence du paiement chez l'agrégateur : c'est elle qu'il faut
   // citer pour retrouver la transaction, réclamer un remboursement ou
@@ -496,7 +496,7 @@ export async function envoyerMessageContactAdmin(message: {
         ["Email", message.email],
         ["Sujet", message.sujet],
       ],
-      action: { libelle: "Voir dans l'administration", url: `${site.url}/admin/messages` },
+      action: { libelle: "Voir dans l'administration", url: `${site.urlAdmin}/admin/messages` },
       pied: `« ${message.message} »`,
     }),
   });

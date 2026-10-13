@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { sessionAdminValide } from "@/lib/admin";
 import { depot } from "@/lib/db";
+import { rafraichirSitePublic } from "@/lib/rafraichir";
 
 /**
  * Constat de départ et de retour, déclenché depuis la fiche du jour.
@@ -38,5 +39,6 @@ export async function PATCH(
     return NextResponse.json({ erreur: "Réservation introuvable." }, { status: 404 });
   }
 
+  await rafraichirSitePublic();
   return NextResponse.json({ reference: reservation.reference, statut: reservation.statut });
 }

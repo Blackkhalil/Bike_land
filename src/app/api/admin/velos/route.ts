@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { sessionAdminValide } from "@/lib/admin";
 import { depot } from "@/lib/db";
+import { rafraichirSitePublic } from "@/lib/rafraichir";
 import { erreursParChamp, schemaNouveauVelo } from "@/lib/validation";
 
 /**
@@ -57,6 +58,7 @@ export async function POST(requete: Request) {
       video: donnees.video || undefined,
     });
 
+    await rafraichirSitePublic();
     return NextResponse.json({ id: velo.id, slug: velo.slug, nom: velo.nom }, { status: 201 });
   } catch (erreur) {
     console.error("[admin/velos] création impossible", erreur);

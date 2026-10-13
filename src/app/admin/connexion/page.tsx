@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { FormulaireConnexion } from "@/components/admin/FormulaireConnexion";
 import { Marque } from "@/components/Marque";
 import { emailAdminConfigure, modeAcces, sessionAdminValide } from "@/lib/admin";
+import { etatDoubleAuthentification } from "@/lib/securite-admin";
 
 export const metadata: Metadata = {
   title: "Connexion à l'administration",
@@ -45,7 +46,9 @@ export default async function PageConnexionAdmin() {
                 activer ce second contrôle.
               </p>
             )}
-            <FormulaireConnexion />
+            <FormulaireConnexion
+              codeDemande={(await etatDoubleAuthentification()).etat !== "inactive"}
+            />
           </div>
         )}
       </div>

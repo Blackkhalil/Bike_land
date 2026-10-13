@@ -10,6 +10,12 @@ export const site = {
   description:
     "Location de vélos sur la route des Pêches à Cotonou : randonneurs, gravels, VTC et tandem, réservables en ligne en deux minutes, sans créer de compte. Les road trips à travers le Bénin arrivent bientôt.",
   url: process.env.NEXT_PUBLIC_SITE_URL ?? "https://bikeland.bj",
+  /**
+   * Adresse de l'administration. Elle a son propre projet Vercel, séparé
+   * du site public (voir src/lib/deploiement.ts) ; tant que ce projet
+   * n'existe pas, c'est l'adresse du site.
+   */
+  urlAdmin: process.env.NEXT_PUBLIC_ADMIN_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "https://bikeland.bj",
   email: "bikeland06@gmail.com",
   telephone: "+229 01 59 68 81 03",
   telephoneLien: "+2290159688103",

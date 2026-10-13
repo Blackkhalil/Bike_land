@@ -263,6 +263,14 @@ export interface Depot {
   creerVelo(champs: NouveauVelo): Promise<Velo>;
 
   /**
+   * Réglages sensibles de l'administration (secret de double
+   * authentification, chiffré). `null` quand la clé n'existe pas.
+   */
+  lireParametreAdmin(cle: string): Promise<string | null>;
+  ecrireParametreAdmin(cle: string, valeur: string): Promise<void>;
+  effacerParametreAdmin(cle: string): Promise<void>;
+
+  /**
    * Met a jour les champs d'un velo modifiables depuis l'admin.
    *
    * Deux champs seulement, et ce sont les deux qui changent en cours

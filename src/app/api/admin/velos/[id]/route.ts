@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { sessionAdminValide } from "@/lib/admin";
 import { depot } from "@/lib/db";
+import { rafraichirSitePublic } from "@/lib/rafraichir";
 import type { GammeVelo } from "@/data/offres";
 import type { StatutVelo } from "@/lib/types";
 
@@ -72,5 +73,6 @@ export async function PATCH(requete: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ erreur: "Vélo introuvable." }, { status: 404 });
   }
 
+  await rafraichirSitePublic();
   return NextResponse.json({ id: velo.id, statut: velo.statut, gamme: velo.gamme });
 }

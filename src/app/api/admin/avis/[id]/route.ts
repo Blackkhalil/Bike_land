@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { sessionAdminValide } from "@/lib/admin";
 import { depot } from "@/lib/db";
+import { rafraichirSitePublic } from "@/lib/rafraichir";
 
 /**
  * Publication ou retrait d'un avis.
@@ -34,5 +35,6 @@ export async function PATCH(requete: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ erreur: "Avis introuvable." }, { status: 404 });
   }
 
+  await rafraichirSitePublic();
   return NextResponse.json({ id: avis.id, publie: avis.publie });
 }

@@ -1052,6 +1052,23 @@ const depotDirect: Depot = {
     return versVelo(bike);
   },
 
+  async lireParametreAdmin(cle: string) {
+    const ligne = await client().parametreAdmin.findUnique({ where: { cle } });
+    return ligne?.valeur ?? null;
+  },
+
+  async ecrireParametreAdmin(cle: string, valeur: string) {
+    await client().parametreAdmin.upsert({
+      where: { cle },
+      create: { cle, valeur },
+      update: { valeur },
+    });
+  },
+
+  async effacerParametreAdmin(cle: string) {
+    await client().parametreAdmin.deleteMany({ where: { cle } });
+  },
+
   async majVelo(id, champs) {
     const donnees: Prisma.BikeUpdateInput = {};
     if (champs.statut !== undefined) donnees.status = champs.statut;

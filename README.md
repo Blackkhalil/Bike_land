@@ -135,8 +135,38 @@ l'heure de Cotonou (UTC+1), pas sur l'horloge du serveur.
 
 **Rappel de la veille** : chaque soir à 18 h (heure du Bénin), une tâche planifiée de
 Vercel (`vercel.json`, `/api/cron/rappels`) écrit aux clients qui partent le lendemain.
-Chaque rappel ne part qu'une fois, marqué en base (`Booking.reminderSentAt`). Définir
-`CRON_SECRET` sur Vercel réserve cette adresse à la tâche planifiée.
+Chaque rappel ne part qu'une fois, marqué en base (`Booking.reminderSentAt`).
+`CRON_SECRET` est obligatoire : sans lui la tâche ne tourne pas, avec lui seule la
+tâche planifiée de Vercel peut l'appeler.
+
+## Site public et administration séparés
+
+Le même dépôt alimente deux projets Vercel, branchés sur la même base :
+
+| Projet | `BIKELAND_ROLE` | Sert |
+|---|---|---|
+| bike-land | `site` | le site public, le webhook SasPay, les rappels |
+| projet d'administration | `admin` | /admin et ses API, rien d'autre |
+
+Sur le site, /admin répond « page introuvable ». Sur l'administration, la racine mène à
+/admin et les pages publiques renvoient vers le site. Sans `BIKELAND_ROLE`, un
+déploiement sert les deux (`src/proxy.ts`, `src/lib/deploiement.ts`).
+
+Variables propres à la séparation : `NEXT_PUBLIC_ADMIN_URL` (adresse de
+l'administration, pour les liens des emails) et `REVALIDATION_SECRET` (identique sur
+les deux projets : l'administration demande au site de rafraîchir ses pages après un
+changement, par `/api/revalider`).
+
+La connexion à l'administration peut exiger un code à six chiffres (double
+authentification, page « Sécurité du compte ») ; le secret est rangé chiffré dans la
+table `ParametreAdmin` (`prisma/securite-admin.sql`).
+
+## Photos des vélos
+
+Le formulaire d'ajout de l'admin dépose photos et vidéos dans Vercel Blob
+(`BLOB_READ_WRITE_TOKEN`, ajoutée par Vercel en connectant le stockage au projet) et
+lit la fiche technique des affiches pour remplir la fiche du vélo
+(`src/lib/lecture-affiche.ts`).
 
 Les prix
 ne sont pas arrondis : ils sont affichés tels quels, à l'unité.

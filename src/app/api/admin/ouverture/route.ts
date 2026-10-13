@@ -1,4 +1,3 @@
-import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -6,6 +5,7 @@ import { CRENEAUX_ROAD_TRIP, heureAuBenin } from "@/data/offres";
 import { sessionAdminValide } from "@/lib/admin";
 import { estDateISOValide } from "@/lib/dates";
 import { depot } from "@/lib/db";
+import { rafraichirSitePublic } from "@/lib/rafraichir";
 
 /**
  * Ouvrir ou fermer la réservation, depuis le tableau de bord.
@@ -76,6 +76,6 @@ export async function POST(requete: Request) {
     );
   }
 
-  revalidatePath("/velos/[slug]", "page");
+  await rafraichirSitePublic();
   return NextResponse.json({ ok: true });
 }

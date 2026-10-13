@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { NOM_COOKIE, creerJeton, identifiantsCorrects, modeAcces } from "@/lib/admin";
+import { codeValide } from "@/lib/double-authentification";
+import { etatDoubleAuthentification } from "@/lib/securite-admin";
 import {
   delaiAvantNouvelEssai,
   enregistrerEchec,
@@ -35,20 +37,41 @@ export async function POST(requete: Request) {
   const corps = (await requete.json().catch(() => ({}))) as {
     email?: string;
     motDePasse?: string;
+    code?: string;
   };
 
+  const deuxFacteurs = await etatDoubleAuthentification();
+  if (deuxFacteurs.etat === "indeterminee") {
+    return NextResponse.json(
+      { erreur: "Vérification impossible pour le moment. Réessayez dans un instant." },
+      { status: 503 },
+    );
+  }
+
   // Un seul message d'erreur, quel que soit le champ fautif : préciser
-  // « adresse inconnue » indiquerait quelles adresses existent.
+  // « adresse inconnue » ou « code faux » indiquerait ce qui est juste.
+  const codeAccepte =
+    deuxFacteurs.etat === "inactive" ||
+    (typeof corps.code === "string" && codeValide(deuxFacteurs.secret, corps.code));
   if (
     typeof corps.email !== "string" ||
     typeof corps.motDePasse !== "string" ||
-    !identifiantsCorrects(corps.email, corps.motDePasse)
+    !identifiantsCorrects(corps.email, corps.motDePasse) ||
+    !codeAccepte
   ) {
     enregistrerEchec(appelant);
     // Délai fixe : évite de distinguer « mauvais mot de passe » de
     // « traitement rapide » par le temps de réponse.
     await new Promise((resoudre) => setTimeout(resoudre, 400));
-    return NextResponse.json({ erreur: "Adresse ou mot de passe incorrect." }, { status: 401 });
+    return NextResponse.json(
+      {
+        erreur:
+          deuxFacteurs.etat === "active"
+            ? "Adresse, mot de passe ou code incorrect."
+            : "Adresse ou mot de passe incorrect.",
+      },
+      { status: 401 },
+    );
   }
 
   reinitialiser(appelant);

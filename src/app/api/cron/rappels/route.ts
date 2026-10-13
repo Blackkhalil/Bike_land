@@ -18,14 +18,17 @@ export const maxDuration = 60;
  * Chaque rappel est retenu en base avant d'être envoyé : appelée deux
  * fois, la tâche n'écrit pas deux fois au même client.
  *
- * Quand CRON_SECRET est défini sur Vercel, Vercel l'envoie dans l'en-tête
- * Authorization, et toute autre requête est refusée. Sans lui, l'adresse
- * reste appelable mais sans danger : elle n'envoie que les rappels du
- * lendemain qui ne sont pas encore partis, une seule fois chacun.
+ * Vercel envoie CRON_SECRET dans l'en-tête Authorization ; toute autre
+ * requête est refusée. Sans CRON_SECRET, la tâche ne tourne pas du tout :
+ * un serveur de développement branché sur la vraie base ne doit jamais
+ * pouvoir écrire aux clients.
  */
 export async function GET(requete: Request) {
   const secret = process.env.CRON_SECRET;
-  if (secret && !egaux(requete.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
+  if (!secret) {
+    return NextResponse.json({ erreur: "CRON_SECRET absent : rappels désactivés." }, { status: 503 });
+  }
+  if (!egaux(requete.headers.get("authorization") ?? "", `Bearer ${secret}`)) {
     return NextResponse.json({ erreur: "Accès refusé." }, { status: 401 });
   }
 

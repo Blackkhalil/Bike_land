@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Marque } from "@/components/Marque";
+import { site } from "@/lib/site";
 
 /**
  * Barre latérale de l'espace exploitant.
@@ -113,11 +114,20 @@ export function NavigationAdmin({
             )}
           </p>
 
-          <Link
-            href="/"
+          {/* Lien complet et non relatif : l'administration peut avoir
+              sa propre adresse, où « / » ne mènerait pas au site. */}
+          <a
+            href={site.url}
             className="block rounded-[var(--radius-bouton)] px-3.5 py-2 text-[0.85rem] text-craie/60 transition-colors hover:text-craie"
           >
-            ← Retour au site
+            ← Voir le site public
+          </a>
+          <Link
+            href="/admin/securite"
+            onClick={() => setOuvert(false)}
+            className="block rounded-[var(--radius-bouton)] px-3.5 py-2 text-[0.85rem] text-craie/60 transition-colors hover:text-craie"
+          >
+            Sécurité du compte
           </Link>
 
           {protege && (

@@ -52,6 +52,9 @@ export const depot: Depot = {
   marquerDepart: async (reference) => (await obtenirDepot()).marquerDepart(reference),
   marquerRetour: async (reference) => (await obtenirDepot()).marquerRetour(reference),
   creerVelo: async (champs) => (await obtenirDepot()).creerVelo(champs),
+  lireParametreAdmin: async (cle) => (await obtenirDepot()).lireParametreAdmin(cle),
+  ecrireParametreAdmin: async (cle, valeur) => (await obtenirDepot()).ecrireParametreAdmin(cle, valeur),
+  effacerParametreAdmin: async (cle) => (await obtenirDepot()).effacerParametreAdmin(cle),
   majVelo: async (id, champs) => (await obtenirDepot()).majVelo(id, champs),
   verifierCodeParrainage: async (code, montantXof) =>
     (await obtenirDepot()).verifierCodeParrainage(code, montantXof),
