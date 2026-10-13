@@ -23,6 +23,15 @@ model ParametreAdmin {
   updatedAt DateTime @updatedAt
 }
 
+/// Compteurs d'essais partagés par tous les serveurs : connexions, codes
+/// de double authentification, messages de contact. Incrémentés en une
+/// seule requête atomique (cf. src/lib/db/postgres.ts, compterEssai).
+model CompteurEssais {
+  cle      String   @id
+  nombre   Int
+  expireLe DateTime
+}
+
 // ---------------------------------------------------------------- Parc de vélos
 
 enum BikeTier {
@@ -179,6 +188,14 @@ model Booking {
 
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id])
+  /// Prénom, nom et téléphone tels que saisis pour CETTE réservation. La
+  /// fiche client, partagée par toutes les réservations d'une même
+  /// adresse, n'est plus réécrite par un inconnu qui réserverait avec
+  /// l'adresse d'un autre ; c'est cette copie qui sert aux emails et à
+  /// l'admin. Vides sur les réservations antérieures : la fiche sert alors.
+  contactFirstName String?
+  contactLastName  String?
+  contactPhone     String?
 
   pickupPointId String?
   pickupPoint   PickupPoint? @relation(fields: [pickupPointId], references: [id])

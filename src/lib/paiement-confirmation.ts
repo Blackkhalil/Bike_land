@@ -50,10 +50,24 @@ export async function confirmerParSasPay(parametres: {
   const reservation = await depot.trouverReservationParReference(reference);
   if (!reservation) return { issue: "introuvable" };
 
+  // Un paiement ne confirme que la réservation pour laquelle il a été
+  // poussé. Sans ce contrôle, le navigateur pouvait présenter le paiement
+  // d'une autre de ses réservations, par exemple d'une réservation
+  // annulée, remboursée ensuite, pour en confirmer une nouvelle.
+  if (paiement.reference && paiement.reference.toUpperCase() !== reservation.reference.toUpperCase()) {
+    console.warn(
+      `[paiement] ${reference} : le paiement ${paiement.id} appartient à la réservation ${paiement.reference}.`,
+    );
+    return { issue: "refusee", raison: "Ce paiement appartient à une autre réservation." };
+  }
+
   if (reservation.statut === "ANNULEE") {
     console.error(
       `[paiement] ${reference} : paiement ${paiement.id} reçu sur une réservation annulée. Remboursement à faire.`,
     );
+    // Noté sur la réservation annulée : il ne pourra plus en confirmer une
+    // autre, l'identifiant d'un paiement étant unique en base.
+    await depot.marquerTransactionRecue(reference, paiement.id);
     return { issue: "annulee", reservation };
   }
 
@@ -95,6 +109,7 @@ export async function confirmerParSasPay(parametres: {
       console.error(
         `[paiement] ${reference} : paiement ${paiement.id} encaissé hors délai, le vélo n'est plus disponible. Remboursement à faire.`,
       );
+      await depot.marquerTransactionRecue(reference, paiement.id);
       return { issue: "creneau-perdu", reservation };
     }
   }

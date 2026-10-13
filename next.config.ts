@@ -1,8 +1,16 @@
 import type { NextConfig } from "next";
 
-/** Les photos et vidéos de vélos déposées depuis l'admin, dans Vercel Blob. */
-const BLOB = "https://*.public.blob.vercel-storage.com";
-const IMAGES = `'self' data: blob: https://res.cloudinary.com ${BLOB}`;
+/**
+ * Le stockage Vercel Blob de Bike Land (bikeland-photos), et lui seul.
+ *
+ * Autoriser tous les magasins Blob laissait n'importe qui faire
+ * optimiser, servir et facturer ses propres images par le site, jusqu'à
+ * épuiser son quota d'optimisation d'images. Même valeur dans
+ * src/lib/validation.ts (fichierDuParc).
+ */
+const HOTE_BLOB = "plbf2xjc382kgpsz.public.blob.vercel-storage.com";
+const BLOB = `https://${HOTE_BLOB}`;
+const IMAGES = `'self' data: blob: ${BLOB}`;
 const MEDIAS = `'self' blob: ${BLOB}`;
 
 const nextConfig: NextConfig = {
@@ -10,11 +18,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   images: {
     formats: ["image/avif", "image/webp"],
-    // Les photos de vélos déposées depuis l'admin vivent dans Vercel Blob.
-    remotePatterns: [
-      { protocol: "https", hostname: "res.cloudinary.com" },
-      { protocol: "https", hostname: "*.public.blob.vercel-storage.com" },
-    ],
+    // Les photos de vélos déposées depuis l'admin : notre magasin Blob, son
+    // dossier velos/, sans paramètres d'adresse.
+    remotePatterns: [{ protocol: "https", hostname: HOTE_BLOB, pathname: "/velos/**", search: "" }],
   },
   async headers() {
     return [
@@ -89,7 +95,7 @@ const nextConfig: NextConfig = {
               "font-src 'self' https://fonts.gstatic.com data:",
               `img-src ${IMAGES}`,
               `media-src ${MEDIAS}`,
-              "connect-src 'self' https://cdn.jsdelivr.net https://vercel.com https://*.vercel-storage.com",
+              "connect-src 'self' https://cdn.jsdelivr.net https://vercel.com https://blob.vercel-storage.com",
               "object-src 'none'",
               "base-uri 'self'",
               "form-action 'self'",

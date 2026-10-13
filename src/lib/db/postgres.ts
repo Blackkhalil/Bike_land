@@ -251,7 +251,13 @@ function versReservation(booking: BookingComplet): Reservation {
     nombrePersonnes: booking.peopleCount,
     dureeHeures: booking.durationHours ?? undefined,
     clientId: booking.customerId,
-    client: versClient(booking.customer),
+    // Le contact saisi pour cette réservation passe avant la fiche client.
+    client: {
+      ...versClient(booking.customer),
+      prenom: booking.contactFirstName ?? booking.customer.firstName,
+      nom: booking.contactLastName ?? booking.customer.lastName,
+      telephone: booking.contactPhone ?? booking.customer.phone ?? undefined,
+    },
     pointDeRetraitId: booking.pickupPointId ?? "",
     dateDebut: versISO(booking.startDate),
     dateFin: versISO(booking.endDate),
@@ -653,23 +659,26 @@ const depotDirect: Depot = {
               })
             : devisBrut;
 
-          // Le client est créé au fil de l'eau, sans compte (§2.2).
-          const customer = await tx.customer.upsert({
+          // Le client est créé au fil de l'eau, sans compte (§2.2). Une
+          // fiche existante n'est jamais réécrite : n'importe qui peut
+          // réserver avec l'adresse d'un autre, et il changerait sinon son
+          // nom et son téléphone partout. Tout au plus, un téléphone
+          // manquant est complété. Ce que la personne a saisi est gardé
+          // sur la réservation elle-même (contact*).
+          const prenom = demande.client.prenom.trim();
+          const nom = demande.client.nom.trim();
+          const telephone = demande.client.telephone?.trim() || undefined;
+          // `upsert` sans rien à mettre à jour : deux réservations
+          // simultanées d'un nouveau client ne se heurtent pas à l'unicité
+          // de l'adresse.
+          let customer = await tx.customer.upsert({
             where: { email },
-            create: {
-              email,
-              firstName: demande.client.prenom.trim(),
-              lastName: demande.client.nom.trim(),
-              phone: demande.client.telephone?.trim(),
-            },
-            update: {
-              firstName: demande.client.prenom.trim(),
-              lastName: demande.client.nom.trim(),
-              ...(demande.client.telephone
-                ? { phone: demande.client.telephone.trim() }
-                : {}),
-            },
+            create: { email, firstName: prenom, lastName: nom, phone: telephone },
+            update: {},
           });
+          if (!customer.phone && telephone) {
+            customer = await tx.customer.update({ where: { id: customer.id }, data: { phone: telephone } });
+          }
 
           return tx.booking.create({
             data: {
@@ -682,6 +691,9 @@ const depotDirect: Depot = {
               peopleCount: devis.nombrePersonnes,
               durationHours: devis.dureeHeures,
               customerId: customer.id,
+              contactFirstName: prenom,
+              contactLastName: nom,
+              contactPhone: telephone,
               pickupPointId: bike.pickupPointId,
               startDate: debut,
               endDate: fin,
@@ -1067,6 +1079,53 @@ const depotDirect: Depot = {
 
   async effacerParametreAdmin(cle: string) {
     await client().parametreAdmin.deleteMany({ where: { cle } });
+  },
+
+  async avancerParametreAdmin(cle: string, valeur: number) {
+    // Une seule requête : l'insertion, ou la mise à jour à condition que la
+    // nouvelle valeur dépasse l'ancienne. Deux requêtes simultanées avec le
+    // même code ne peuvent donc pas réussir toutes les deux.
+    const lignes = await client().$queryRaw<{ cle: string }[]>`
+      INSERT INTO "ParametreAdmin" ("cle", "valeur", "updatedAt")
+      VALUES (${cle}, ${String(valeur)}, NOW())
+      ON CONFLICT ("cle") DO UPDATE SET "valeur" = EXCLUDED."valeur", "updatedAt" = NOW()
+      WHERE "ParametreAdmin"."valeur" ~ '^-?[0-9]+$'
+        AND "ParametreAdmin"."valeur"::bigint < EXCLUDED."valeur"::bigint
+      RETURNING "cle"`;
+    return lignes.length === 1;
+  },
+
+  async compterEssai(cle: string, fenetreSecondes: number) {
+    const lignes = await client().$queryRaw<{ nombre: number }[]>`
+      INSERT INTO "CompteurEssais" ("cle", "nombre", "expireLe")
+      VALUES (${cle}, 1, NOW() + make_interval(secs => ${fenetreSecondes}))
+      ON CONFLICT ("cle") DO UPDATE SET
+        "nombre" = CASE WHEN "CompteurEssais"."expireLe" < NOW() THEN 1 ELSE "CompteurEssais"."nombre" + 1 END,
+        "expireLe" = CASE WHEN "CompteurEssais"."expireLe" < NOW()
+          THEN NOW() + make_interval(secs => ${fenetreSecondes}) ELSE "CompteurEssais"."expireLe" END
+      RETURNING "nombre"`;
+    return Number(lignes[0]?.nombre ?? 1);
+  },
+
+  async effacerCompteur(cle: string) {
+    await client().compteurEssais.deleteMany({ where: { cle } });
+  },
+
+  async marquerTransactionRecue(reference: string, referenceTransaction: string) {
+    const booking = await client().booking.findUnique({
+      where: { reference: reference.toUpperCase() },
+      select: { id: true },
+    });
+    if (!booking) return;
+    try {
+      await client().payment.updateMany({
+        where: { bookingId: booking.id, isDeposit: false, providerReference: null },
+        data: { providerReference: referenceTransaction },
+      });
+    } catch (erreur) {
+      // Déjà notée sur une autre réservation : elle est donc déjà bloquée.
+      if (!(erreur instanceof Prisma.PrismaClientKnownRequestError && erreur.code === "P2002")) throw erreur;
+    }
   },
 
   async majVelo(id, champs) {

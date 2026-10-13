@@ -269,6 +269,29 @@ export interface Depot {
   lireParametreAdmin(cle: string): Promise<string | null>;
   ecrireParametreAdmin(cle: string, valeur: string): Promise<void>;
   effacerParametreAdmin(cle: string): Promise<void>;
+  /**
+   * Écrit `valeur` (un entier) sous `cle` seulement si elle dépasse celle
+   * déjà enregistrée, en une seule opération atomique. Vrai si l'écriture
+   * a eu lieu. Sert à refuser qu'un code de double authentification
+   * serve deux fois, même pour deux requêtes simultanées.
+   */
+  avancerParametreAdmin(cle: string, valeur: number): Promise<boolean>;
+
+  /**
+   * Compte un essai sous `cle` et renvoie le total sur la fenêtre en
+   * cours (`fenetreSecondes` depuis le premier essai). Atomique et commun
+   * à tous les serveurs : c'est ce qui borne vraiment les essais de mot de
+   * passe et de code, et les envois du formulaire de contact.
+   */
+  compterEssai(cle: string, fenetreSecondes: number): Promise<number>;
+  effacerCompteur(cle: string): Promise<void>;
+
+  /**
+   * Note l'identifiant d'un paiement reçu sur une réservation qui ne peut
+   * pas le prendre (annulée, ou payée trop tard). L'unicité de
+   * l'identifiant empêche alors qu'il confirme une autre réservation.
+   */
+  marquerTransactionRecue(reference: string, referenceTransaction: string): Promise<void>;
 
   /**
    * Met a jour les champs d'un velo modifiables depuis l'admin.

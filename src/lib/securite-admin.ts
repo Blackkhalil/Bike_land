@@ -2,8 +2,9 @@
  * État de la double authentification de l'administration.
  *
  * Trois réponses possibles, et la troisième compte : si la base ne
- * répond pas, on ne sait pas si un code est exigé, et la connexion est
- * refusée plutôt que d'ouvrir l'admin sur le seul mot de passe.
+ * répond pas, ou si le secret enregistré ne se déchiffre plus, on ne sait
+ * pas si un code est exigé, et la connexion est refusée plutôt que
+ * d'ouvrir l'admin sur le seul mot de passe.
  */
 
 import { depot } from "@/lib/db";
@@ -12,48 +13,31 @@ import { dechiffrer, pasDuCode } from "@/lib/double-authentification";
 export const CLE_SECRET_ACTIF = "totp_secret";
 export const CLE_SECRET_EN_ATTENTE = "totp_en_attente";
 const CLE_DERNIER_PAS = "totp_dernier_pas";
-const CLE_ESSAIS = "totp_essais";
+const COMPTEUR_CODES = "codes-double-authentification";
 
 /**
- * Dix codes faux en quinze minutes, et plus aucun code n'est accepté
- * pendant quinze minutes. Le compteur est en base, donc commun à tous
- * les serveurs : en mémoire, chaque nouvelle instance de Vercel repartait
- * de zéro, et un million de combinaisons devenaient essayables.
+ * Dix essais de code en quinze minutes, puis plus aucun code n'est
+ * accepté pendant le reste de la fenêtre. Le compteur est en base, commun
+ * à tous les serveurs, et chaque essai est compté AVANT d'être examiné :
+ * en mémoire, chaque nouvelle instance de Vercel repartait de zéro, et
+ * des essais simultanés passaient tous avant d'être comptés.
  */
 const MAX_ESSAIS = 10;
-const FENETRE_MS = 15 * 60 * 1000;
-
-async function lireEssais(): Promise<{ echecs: number; expireLe: number }> {
-  try {
-    const essais = JSON.parse((await depot.lireParametreAdmin(CLE_ESSAIS)) ?? "null");
-    if (essais && typeof essais.echecs === "number" && essais.expireLe > Date.now()) return essais;
-  } catch {
-    // Valeur illisible : on repart d'une ardoise vide.
-  }
-  return { echecs: 0, expireLe: 0 };
-}
+const FENETRE_SECONDES = 15 * 60;
 
 /**
  * Vérifie un code de l'application : juste, jamais servi, essais non
- * épuisés. Un code accepté note son pas de temps, pour qu'il ne serve pas
- * une seconde fois pendant ses trente secondes de validité.
+ * épuisés. Un code accepté note son pas de temps, de façon atomique, pour
+ * qu'il ne serve pas une seconde fois pendant ses trente secondes.
  */
 export async function verifierCode(secret: string, saisi: string): Promise<"accepte" | "refuse" | "bloque"> {
-  const essais = await lireEssais();
-  if (essais.echecs >= MAX_ESSAIS) return "bloque";
+  const essais = await depot.compterEssai(COMPTEUR_CODES, FENETRE_SECONDES);
+  if (essais > MAX_ESSAIS) return "bloque";
 
   const pas = pasDuCode(secret, saisi);
-  const dernier = Number((await depot.lireParametreAdmin(CLE_DERNIER_PAS)) ?? "-1");
-  if (pas === null || pas <= dernier) {
-    await depot.ecrireParametreAdmin(
-      CLE_ESSAIS,
-      JSON.stringify({ echecs: essais.echecs + 1, expireLe: Date.now() + FENETRE_MS }),
-    );
-    return "refuse";
-  }
+  if (pas === null || !(await depot.avancerParametreAdmin(CLE_DERNIER_PAS, pas))) return "refuse";
 
-  await depot.ecrireParametreAdmin(CLE_DERNIER_PAS, String(pas));
-  await depot.effacerParametreAdmin(CLE_ESSAIS);
+  await depot.effacerCompteur(COMPTEUR_CODES);
   return "accepte";
 }
 
@@ -77,10 +61,12 @@ export async function etatDoubleAuthentification(): Promise<EtatDoubleAuthentifi
 
   const secret = dechiffrer(enregistre);
   if (!secret) {
-    // Mot de passe d'administration changé depuis l'activation : l'ancien
-    // secret ne se déchiffre plus. Elle est à réactiver depuis Sécurité.
-    console.error("[securite] secret de double authentification indéchiffrable : à réactiver.");
-    return { etat: "inactive" };
+    // La clé du serveur (ADMIN_SESSION_SECRET) a changé depuis
+    // l'activation. Plutôt que d'ouvrir l'admin sans code, on refuse :
+    // remettre l'ancienne clé, ou effacer la ligne `totp_secret` de la
+    // table ParametreAdmin pour repartir sans double authentification.
+    console.error("[securite] secret de double authentification indéchiffrable : clé du serveur changée ?");
+    return { etat: "indeterminee" };
   }
   return { etat: "active", secret };
 }

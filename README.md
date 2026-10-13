@@ -152,10 +152,15 @@ Sur le site, /admin répond « page introuvable ». Sur l'administration, la rac
 /admin et les pages publiques renvoient vers le site. Sans `BIKELAND_ROLE`, un
 déploiement sert les deux (`src/proxy.ts`, `src/lib/deploiement.ts`).
 
-Variables propres à la séparation : `NEXT_PUBLIC_ADMIN_URL` (adresse de
-l'administration, pour les liens des emails) et `REVALIDATION_SECRET` (identique sur
-les deux projets : l'administration demande au site de rafraîchir ses pages après un
-changement, par `/api/revalider`).
+Variables propres à la séparation : `ADMIN_URL` (adresse de l'administration, pour les
+liens des emails ; variable du serveur, jamais envoyée aux visiteurs),
+`REVALIDATION_SECRET` (identique sur les deux projets : l'administration demande au
+site de rafraîchir ses pages après un changement, par `/api/revalider`) et
+`ADMIN_SESSION_SECRET` (projet d'administration seulement : signe les sessions et
+chiffre le secret de double authentification).
+
+Les essais de connexion, de code et les envois du formulaire de contact sont comptés
+dans la table `CompteurEssais`, commune à tous les serveurs (`prisma/durcissement.sql`).
 
 La connexion à l'administration peut exiger un code à six chiffres (double
 authentification, page « Sécurité du compte ») ; le secret est rangé chiffré dans la

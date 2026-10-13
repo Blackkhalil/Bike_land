@@ -14,11 +14,12 @@ export const site = {
   // doit jamais partir vers un tiers parce qu'une variable manque.
   url: process.env.NEXT_PUBLIC_SITE_URL || "https://bike-land.vercel.app",
   /**
-   * Adresse de l'administration. Elle a son propre projet Vercel, séparé
-   * du site public (voir src/lib/deploiement.ts) ; sans elle, c'est
-   * l'adresse du site.
+   * Adresse de l'administration, qui a son propre projet Vercel (voir
+   * src/lib/deploiement.ts). Lue dans ADMIN_URL, variable du serveur et
+   * non NEXT_PUBLIC_ : elle ne sert qu'aux emails, et ne doit pas se
+   * retrouver dans le JavaScript que télécharge chaque visiteur du site.
    */
-  urlAdmin: process.env.NEXT_PUBLIC_ADMIN_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://bike-land.vercel.app",
+  urlAdmin: process.env.ADMIN_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://bike-land.vercel.app",
   email: "bikeland06@gmail.com",
   telephone: "+229 01 59 68 81 03",
   telephoneLien: "+2290159688103",

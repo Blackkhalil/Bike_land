@@ -210,14 +210,19 @@ export function erreursParChamp(erreur: z.ZodError): Record<string, string> {
 
 /**
  * Une photo ou une vidéo de vélo : un fichier du site (`/images/…`) ou un
- * fichier déposé depuis l'admin dans Vercel Blob. Aucune autre adresse :
- * le site n'affiche pas d'image venue d'un domaine qu'il ne contrôle pas.
+ * fichier déposé depuis l'admin dans le dossier velos/ du stockage Blob de
+ * Bike Land (même hôte que dans next.config.ts). Aucune autre adresse, et
+ * l'adresse entière est contrôlée, sans paramètre ni fragment : le site
+ * n'affiche pas d'image venue d'un domaine qu'il ne contrôle pas.
  */
 const fichierDuParc = z
   .string()
   .trim()
   .max(500)
-  .regex(/^(\/images\/|https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/)/, "Fichier non reconnu.");
+  .regex(
+    /^(\/images\/[\w./-]+|https:\/\/plbf2xjc382kgpsz\.public\.blob\.vercel-storage\.com\/velos\/[\w.-]+)$/,
+    "Fichier non reconnu.",
+  );
 
 /**
  * Un vélo ajouté au parc depuis l'espace d'exploitation.

@@ -89,6 +89,13 @@ export interface PaiementSasPay {
    * nous ne proposons pas, mais autant ne pas l'ignorer silencieusement.
    */
   urlCheckout: string;
+  /**
+   * La référence de réservation attachée au paiement quand nous l'avons
+   * poussé (`metadata.reference`), si SasPay la renvoie. Elle lie le
+   * paiement à SA réservation : un paiement ne doit jamais en confirmer
+   * une autre.
+   */
+  reference?: string;
 }
 
 export type ResultatSasPay =
@@ -349,6 +356,7 @@ function versPaiement(corps: Record<string, unknown> | null): PaiementSasPay | n
     montantDebiteXof: debite,
     montantNetXof: net,
     urlCheckout: typeof donnees.checkout_url === "string" ? donnees.checkout_url : "",
+    reference: referenceDepuisCharge(donnees) ?? undefined,
   };
 }
 

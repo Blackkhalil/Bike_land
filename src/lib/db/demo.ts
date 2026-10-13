@@ -86,6 +86,8 @@ const joursFermesDemo: JourFerme[] = [];
 const rappelsEnvoyes = new Set<string>();
 /** Réglages sensibles de l'administration, en mémoire en démonstration. */
 const parametresAdmin = new Map<string, string>();
+/** Compteurs d'essais, en mémoire en démonstration. */
+const compteursDemo = new Map<string, { nombre: number; expireLe: number }>();
 type PorteurGlobal = typeof globalThis & { [cle]?: EtatDemo };
 
 function etat(): EtatDemo {
@@ -277,7 +279,18 @@ export const depotDemo: Depot = {
         creeLe: new Date().toISOString(),
       };
       donnees.clients.push(client);
+    } else if (!client.telephone && demande.client.telephone) {
+      // Même règle qu'en base : une fiche existante n'est jamais réécrite,
+      // un téléphone manquant est seulement complété.
+      client.telephone = demande.client.telephone.trim();
     }
+    // Ce que la personne a saisi pour cette réservation, à part de la fiche.
+    const contact = {
+      ...client,
+      prenom: demande.client.prenom.trim(),
+      nom: demande.client.nom.trim(),
+      telephone: demande.client.telephone?.trim() || client.telephone,
+    };
 
     const reference = genererReference();
     const token = genererToken(reference);
@@ -294,7 +307,7 @@ export const depotDemo: Depot = {
       nombrePersonnes: devis.nombrePersonnes,
       dureeHeures: devis.dureeHeures ?? undefined,
       clientId: client.id,
-      client,
+      client: contact,
       pointDeRetraitId: velo.pointDeRetraitId,
       dateDebut: demande.dateDebut,
       dateFin: demande.dateFin,
@@ -557,6 +570,41 @@ export const depotDemo: Depot = {
 
   async effacerParametreAdmin(cle: string) {
     parametresAdmin.delete(cle);
+  },
+
+  async avancerParametreAdmin(cle: string, valeur: number) {
+    const actuelle = Number(parametresAdmin.get(cle) ?? Number.NEGATIVE_INFINITY);
+    if (!(valeur > actuelle)) return false;
+    parametresAdmin.set(cle, String(valeur));
+    return true;
+  },
+
+  async compterEssai(cle: string, fenetreSecondes: number) {
+    const maintenant = Date.now();
+    const actuel = compteursDemo.get(cle);
+    if (!actuel || actuel.expireLe < maintenant) {
+      compteursDemo.set(cle, { nombre: 1, expireLe: maintenant + fenetreSecondes * 1000 });
+      return 1;
+    }
+    actuel.nombre += 1;
+    return actuel.nombre;
+  },
+
+  async effacerCompteur(cle: string) {
+    compteursDemo.delete(cle);
+  },
+
+  async marquerTransactionRecue(reference: string, referenceTransaction: string) {
+    const reservation = trouver(reference);
+    const deja = etat().reservations.some((r) =>
+      r.paiements.some((p) => p.referenceFournisseur === referenceTransaction),
+    );
+    // En démonstration, le paiement naît avec une référence provisoire
+    // « TX-… » ; en base, il naît sans : les deux comptent comme vides.
+    const paiement = reservation?.paiements.find(
+      (p) => !p.estCaution && (!p.referenceFournisseur || p.referenceFournisseur.startsWith("TX-")),
+    );
+    if (paiement && !deja) paiement.referenceFournisseur = referenceTransaction;
   },
 
   async majVelo(id, champs) {

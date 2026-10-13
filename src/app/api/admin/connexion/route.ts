@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { NOM_COOKIE, creerJeton, identifiantsCorrects, modeAcces } from "@/lib/admin";
+import { identifiantAppelant } from "@/lib/anti-force-brute";
+import { depot } from "@/lib/db";
 import { roleDuDeploiement } from "@/lib/deploiement";
 import { etatDoubleAuthentification, verifierCode } from "@/lib/securite-admin";
-import {
-  delaiAvantNouvelEssai,
-  enregistrerEchec,
-  identifiantAppelant,
-  reinitialiser,
-} from "@/lib/anti-force-brute";
+
+/** Huit essais de connexion par appelant sur un quart d'heure. */
+const MAX_ESSAIS = 8;
+const FENETRE_SECONDES = 15 * 60;
 
 /** Ouverture et fermeture de session de l'espace d'exploitation. */
 export async function POST(requete: Request) {
@@ -24,17 +24,25 @@ export async function POST(requete: Request) {
   }
 
   // Un mot de passe unique et partagé se casse par essais successifs : on
-  // borne donc le nombre d'essais avant même de regarder ce qui est saisi.
-  const appelant = identifiantAppelant(requete);
-  const attente = delaiAvantNouvelEssai(appelant);
-  if (attente !== null) {
+  // borne donc le nombre d'essais, et chaque essai est compté AVANT d'être
+  // examiné, en base, pour tous les serveurs à la fois. Compté en mémoire
+  // après coup, chaque nouvelle instance de Vercel repartait de zéro et
+  // des essais simultanés passaient tous.
+  const compteur = `connexion:${identifiantAppelant(requete)}`;
+  let essais: number;
+  try {
+    essais = await depot.compterEssai(compteur, FENETRE_SECONDES);
+  } catch (erreur) {
+    console.error("[connexion] compteur d'essais injoignable", erreur);
     return NextResponse.json(
-      {
-        erreur: `Trop de tentatives. Réessayez dans ${Math.ceil(attente / 60)} minute${
-          attente > 60 ? "s" : ""
-        }.`,
-      },
-      { status: 429, headers: { "Retry-After": String(attente) } },
+      { erreur: "Vérification impossible pour le moment. Réessayez dans un instant." },
+      { status: 503 },
+    );
+  }
+  if (essais > MAX_ESSAIS) {
+    return NextResponse.json(
+      { erreur: "Trop de tentatives. Réessayez dans un quart d'heure." },
+      { status: 429, headers: { "Retry-After": String(FENETRE_SECONDES) } },
     );
   }
 
@@ -76,9 +84,9 @@ export async function POST(requete: Request) {
   // Un seul message d'erreur, quel que soit le champ fautif : préciser
   // « adresse inconnue » ou « code faux » indiquerait ce qui est juste.
   if (!identifiantsBons || verdictCode !== "accepte") {
-    enregistrerEchec(appelant);
-    // Délai fixe : évite de distinguer « mauvais mot de passe » de
-    // « traitement rapide » par le temps de réponse.
+    // L'essai est déjà compté, avant l'examen. Délai fixe : évite de
+    // distinguer « mauvais mot de passe » de « traitement rapide » par le
+    // temps de réponse.
     await new Promise((resoudre) => setTimeout(resoudre, 400));
     return NextResponse.json(
       {
@@ -91,7 +99,7 @@ export async function POST(requete: Request) {
     );
   }
 
-  reinitialiser(appelant);
+  await depot.effacerCompteur(compteur);
   const reponse = NextResponse.json({ connecte: true });
   reponse.cookies.set(NOM_COOKIE, creerJeton(), {
     httpOnly: true,
