@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { afficheOptimisee } from "@/lib/affiche";
+import { connexionAEpargner } from "@/lib/connexion";
 
 /**
  * Présentation filmée d'un vélo, sur sa fiche.
@@ -35,8 +36,25 @@ export function VideoVelo({
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [enPause, setEnPause] = useState(false);
+  // Lecture automatique sur ordinateur et bonne connexion seulement. Sur
+  // téléphone ou réseau lent, la fiche montre l'affiche et la vidéo ne
+  // se télécharge que si le client appuie sur lecture.
+  const [auto, setAuto] = useState(false);
+  const [demandee, setDemandee] = useState(false);
+  const chargee = auto || demandee;
+
+  useEffect(() => {
+    if (connexionAEpargner()) return;
+    const depart = setTimeout(() => setAuto(true), 0);
+    return () => clearTimeout(depart);
+  }, []);
 
   const basculer = () => {
+    if (!chargee) {
+      setDemandee(true);
+      setEnPause(false);
+      return;
+    }
     const element = video.current;
     if (!element) return;
     if (element.paused) {
@@ -52,7 +70,7 @@ export function VideoVelo({
     <div className="relative mx-auto mt-4 aspect-16/9 w-full max-w-4xl overflow-hidden rounded-[var(--radius-bloc)] bg-craie">
       <video
         ref={video}
-        src={source}
+        src={chargee ? source : undefined}
         poster={afficheOptimisee(affiche, 600)}
         autoPlay
         muted
@@ -72,10 +90,18 @@ export function VideoVelo({
       <button
         type="button"
         onClick={basculer}
-        aria-label={enPause ? "Relancer la présentation" : "Mettre la présentation en pause"}
-        className="absolute bottom-3 right-3 grid h-10 w-10 place-items-center rounded-full bg-noir-piste/70 text-craie backdrop-blur transition-opacity hover:opacity-85"
+        aria-label={
+          !chargee
+            ? "Lancer la présentation"
+            : enPause
+              ? "Relancer la présentation"
+              : "Mettre la présentation en pause"
+        }
+        className={`absolute grid place-items-center rounded-full bg-noir-piste/70 text-craie backdrop-blur transition-opacity hover:opacity-85 ${
+          chargee ? "bottom-3 right-3 h-10 w-10" : "inset-0 m-auto h-16 w-16"
+        }`}
       >
-        {enPause ? (
+        {!chargee || enPause ? (
           <svg width="14" height="14" viewBox="0 0 12 14" aria-hidden="true" fill="currentColor">
             <path d="M0 0l12 7-12 7z" />
           </svg>

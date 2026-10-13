@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { afficheOptimisee } from "@/lib/affiche";
+import { connexionAEpargner } from "@/lib/connexion";
 
 /**
  * Vidéo de fond du héros, avec commande de son.
@@ -33,6 +34,15 @@ export function VideoFond({
 }) {
   const reference = useRef<HTMLVideoElement>(null);
   const [muet, setMuet] = useState(true);
+  // Sur téléphone ou réseau lent, l'affiche suffit : la vidéo pèserait
+  // trois mégaoctets avant même que le visiteur ait lu le titre.
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    if (connexionAEpargner()) return;
+    const depart = setTimeout(() => setActive(true), 0);
+    return () => clearTimeout(depart);
+  }, []);
 
   const basculerSon = () => {
     const video = reference.current;
@@ -51,7 +61,7 @@ export function VideoFond({
     <>
       <video
         ref={reference}
-        src={source}
+        src={active ? source : undefined}
         poster={afficheOptimisee(affiche, 600)}
         autoPlay
         muted
@@ -71,6 +81,7 @@ export function VideoFond({
         className="absolute inset-0 -z-10 bg-gradient-to-b from-noir-piste/70 via-noir-piste/60 to-noir-piste/85"
       />
 
+      {active && (
       <button
         type="button"
         onClick={basculerSon}
@@ -80,6 +91,7 @@ export function VideoFond({
         <span aria-hidden="true">{muet ? "🔇" : "🔊"}</span>
         {muet ? "Activer le son" : "Couper le son"}
       </button>
+      )}
     </>
   );
 }

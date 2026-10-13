@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { afficheOptimisee } from "@/lib/affiche";
+import { connexionAEpargner } from "@/lib/connexion";
 
 /**
  * La présentation filmée d'un vélo, sur sa carte du catalogue.
@@ -33,22 +34,38 @@ export function VideoCarteVelo({
   nom: string;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  // Sans source tant que le navigateur n'a pas dit qu'on pouvait se la
+  // permettre : sur téléphone ou réseau lent, la carte garde sa photo et
+  // rien n'est téléchargé.
+  const [active, setActive] = useState(false);
+  // Et, même permise, la vidéo n'a de source qu'une fois sa carte venue à
+  // l'écran. Posée d'emblée sur les onze cartes, elle faisait télécharger
+  // les onze vidéos entières à l'ouverture du catalogue, près de 28 Mo,
+  // y compris celles des vélos tout en bas que personne n'avait vus.
+  const [vue, setVue] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (connexionAEpargner()) return;
+    const depart = setTimeout(() => setActive(true), 0);
+    return () => clearTimeout(depart);
+  }, []);
 
   useEffect(() => {
     const element = video.current;
-    if (!element) return;
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (!element || !active) return;
 
     const observateur = new IntersectionObserver(
       ([entree]) => {
         if (entree.isIntersecting) {
+          setVue(true);
           // Un refus du navigateur laisse simplement l'affiche : c'est
-          // un agrément, rien n'en dépend.
-          void element.play().catch(() => undefined);
+          // un agrément, rien n'en dépend. Au premier passage, la source
+          // vient d'être posée et c'est `autoPlay` qui lance la lecture.
+          if (element.currentSrc) void element.play().catch(() => undefined);
         } else {
           element.pause();
-          element.currentTime = 0;
+          if (element.currentSrc) element.currentTime = 0;
         }
       },
       // Il faut qu'un bon tiers de la carte soit visible : sans ce
@@ -59,18 +76,17 @@ export function VideoCarteVelo({
 
     observateur.observe(element);
     return () => observateur.disconnect();
-  }, []);
+  }, [active]);
 
   return (
     <video
       ref={video}
-      src={source}
+      src={active && vue ? source : undefined}
       poster={afficheOptimisee(affiche, 400)}
+      autoPlay={active && vue}
       muted
       loop
       playsInline
-      // Les métadonnées seules : de quoi démarrer vite quand la carte
-      // arrive, sans télécharger la vidéo entière d'avance.
       preload="metadata"
       aria-label={`Présentation du vélo ${nom}`}
       className="h-full w-full object-cover"
