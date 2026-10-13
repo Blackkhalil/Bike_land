@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Pastille } from "@/components/ui";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { seulementPayees } from "@/lib/reservations";
 import { depot } from "@/lib/db";
 import { formatDate, formatNombre, formatXof } from "@/lib/format";
@@ -25,6 +26,7 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
  * des obligations, pas une décoration.
  */
 export default async function PageClientsAdmin({ searchParams }: { searchParams: Recherche }) {
+  await exigerSessionAdmin();
   const parametres = await searchParams;
   const recherche = typeof parametres.q === "string" ? parametres.q.trim().toLowerCase() : "";
 

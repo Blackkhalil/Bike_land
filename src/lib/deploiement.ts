@@ -2,8 +2,11 @@
  * Ce que sert ce déploiement : le site public, l'administration, ou les deux.
  *
  * Le même dépôt GitHub alimente deux projets Vercel, pour que
- * l'administration ait sa propre adresse, ses propres clés et rien de
- * commun avec le site public que la base de données :
+ * l'administration ait sa propre adresse et ses propres clés de session.
+ * Elle ne partage avec le site public que la base de données et deux
+ * secrets : REVALIDATION_SECRET, pour lui faire rafraîchir ses pages, et
+ * BOOKING_TOKEN_SECRET, avec lequel les ventes en espèces signent le lien
+ * de suivi envoyé au client, qui doit s'ouvrir sur le site :
  *
  *  - `BIKELAND_ROLE=site`  : le site public seul. /admin et ses API
  *    n'existent pas, elles répondent « page introuvable ».

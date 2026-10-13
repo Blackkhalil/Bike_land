@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 
 import { GestionSecurite } from "@/components/admin/GestionSecurite";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { etatDoubleAuthentification } from "@/lib/securite-admin";
 
 export const metadata: Metadata = { title: "Sécurité du compte" };
 
 /** La protection de l'accès à l'administration. */
 export default async function PageSecurite() {
+  await exigerSessionAdmin();
   const etat = await etatDoubleAuthentification();
 
   return (

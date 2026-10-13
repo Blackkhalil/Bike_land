@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
+import { envoyerAnnulationAdmin } from "@/lib/email";
+import { montantARendre, paiementPrincipal } from "@/lib/reservations";
 
 type Params = Promise<{ token: string }>;
 
@@ -40,5 +42,19 @@ export async function DELETE(_requete: Request, { params }: { params: Params }) 
   }
 
   const annulee = await depot.annulerReservation(reservation.reference);
+  if (!annulee) {
+    // Rien n'a été annulé par cet appel : déjà annulée entre-temps (second
+    // clic, ou vente annulée au comptoir au même instant), ou partie. On
+    // renvoie l'état réel, sans prévenir personne.
+    const actuelle = await depot.trouverReservationParReference(reservation.reference);
+    return NextResponse.json({ reservation: actuelle });
+  }
+
+  // Une réservation payée laisse de l'argent à rendre : le gérant en est
+  // prévenu tout de suite, avec le montant dû selon les CGV et le moyen
+  // par lequel le rendre. L'email ne doit pas faire échouer l'annulation.
+  if (reservation.statut === "CONFIRMEE" && paiementPrincipal(annulee)?.statut === "REUSSI") {
+    await Promise.allSettled([envoyerAnnulationAdmin(annulee, montantARendre(annulee, aujourdhui()))]);
+  }
   return NextResponse.json({ reservation: annulee });
 }

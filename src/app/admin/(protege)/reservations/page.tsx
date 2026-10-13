@@ -3,11 +3,19 @@ import type { Metadata } from "next";
 import { CalendrierParc } from "@/components/admin/CalendrierParc";
 import { Pastille } from "@/components/ui";
 import { NettoyerPaniers } from "@/components/admin/NettoyerPaniers";
-import { estEnAttente, paniersAbandonnes, seulementPayees } from "@/lib/reservations";
+import {
+  estEnAttente,
+  estVenteEspeces,
+  paiementARembourser,
+  paiementPrincipal,
+  paniersAbandonnes,
+  seulementPayees,
+} from "@/lib/reservations";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
 import { formatDate, formatPlageHoraire, formatXof, resumeOffre } from "@/lib/format";
-import type { StatutReservation } from "@/lib/types";
+import type { Reservation, StatutReservation } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Réservations" };
 
@@ -46,6 +54,7 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
  * réservations.
  */
 export default async function PageReservationsAdmin({ searchParams }: { searchParams: Recherche }) {
+  await exigerSessionAdmin();
   const parametres = await searchParams;
   const recherche = typeof parametres.reference === "string" ? parametres.reference.trim() : "";
   const filtreStatut = typeof parametres.statut === "string" ? parametres.statut : "";
@@ -66,6 +75,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
   // client n'a pas payé, ce n'est pas une réservation.
   const enAttente = reservations.filter(estEnAttente);
   const abandonnes = paniersAbandonnes(reservations);
+  const aRembourser = reservations.filter(paiementARembourser);
   const departsDuJour = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retoursDuJour = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
 
@@ -107,6 +117,16 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
               {abandonnes.length} panier{abandonnes.length > 1 ? "s" : ""} abandonné
               {abandonnes.length > 1 ? "s" : ""} : jamais payé
               {abandonnes.length > 1 ? "s" : ""}, le vélo est reparti à la location.
+            </>
+          )}
+          {aRembourser.length > 0 && (
+            <>
+              {" "}
+              <strong className="font-semibold text-orange-sourd">
+                {aRembourser.length} paiement{aRembourser.length > 1 ? "s" : ""} reçu
+                {aRembourser.length > 1 ? "s" : ""} hors délai
+              </strong>
+              , le vélo ayant été repris entre-temps : à rembourser au client.
             </>
           )}
         </p>
@@ -235,7 +255,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                   </p>
                   <p className="font-mono text-[0.76rem] text-gris-cadre">{reservation.reference}</p>
                 </div>
-                <Pastille ton={tons[reservation.statut]}>{libelles[reservation.statut]}</Pastille>
+                <Pastille ton={etiquette(reservation).ton}>{etiquette(reservation).texte}</Pastille>
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[0.84rem]">
                 <div>
@@ -249,7 +269,10 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                 </div>
                 <div>
                   <dt className="text-[0.74rem] text-gris-cadre">Total</dt>
-                  <dd className="font-semibold tabular-nums">{formatXof(reservation.totalXof)}</dd>
+                  <dd className="font-semibold tabular-nums">
+                    {formatXof(reservation.totalXof)}
+                    <ReglementEspeces reservation={reservation} />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-[0.74rem] text-gris-cadre">Vélo</dt>
@@ -322,9 +345,10 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                   </td>
                   <td className="py-3 pr-4 text-right tabular-nums">
                     {formatXof(reservation.totalXof)}
+                    <ReglementEspeces reservation={reservation} />
                   </td>
                   <td className="py-3">
-                    <Pastille ton={tons[reservation.statut]}>{libelles[reservation.statut]}</Pastille>
+                    <Pastille ton={etiquette(reservation).ton}>{etiquette(reservation).texte}</Pastille>
                   </td>
                 </tr>
               ))}
@@ -347,5 +371,27 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * Le statut affiché. Un paiement reçu hors délai passe avant tout : la
+ * réservation est restée « à payer », mais l'argent est arrivé, et il est
+ * à rendre.
+ */
+function etiquette(reservation: Reservation): { texte: string; ton: (typeof tons)[StatutReservation] } {
+  return paiementARembourser(reservation)
+    ? { texte: "À rembourser", ton: "alerte" }
+    : { texte: libelles[reservation.statut], ton: tons[reservation.statut] };
+}
+
+/** « Espèces, reçu par Koffi » sous le montant d'une vente au comptoir. */
+function ReglementEspeces({ reservation }: { reservation: Reservation }) {
+  if (!estVenteEspeces(reservation)) return null;
+  const par = paiementPrincipal(reservation)?.encaissePar;
+  return (
+    <span className="block text-[0.76rem] font-normal text-gris-cadre">
+      Espèces{par ? `, reçu par ${par}` : ""}
+    </span>
   );
 }

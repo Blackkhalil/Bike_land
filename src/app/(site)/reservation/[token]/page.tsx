@@ -13,7 +13,14 @@ import { velos as catalogue, optionsLocation } from "@/data/catalogue";
 import { depot } from "@/lib/db";
 import { ajouterJours, aujourdhui } from "@/lib/dates";
 import { motifDepuisCode } from "@/lib/echecs-paiement";
-import { formatDate, formatDateAvecJour, formatXof, resumeOffre } from "@/lib/format";
+import {
+  formatDate,
+  formatDateAvecJour,
+  formatXof,
+  libelleReglement,
+  libelleRemise,
+  resumeOffre,
+} from "@/lib/format";
 import { numeroDeFacture } from "@/lib/facture";
 import { site } from "@/lib/site";
 import type { StatutReservation } from "@/lib/types";
@@ -275,7 +282,7 @@ export default async function PageSuiviReservation({
               </div>
               {reservation.remiseXof > 0 && (
                 <div className="flex justify-between gap-4">
-                  <dt className="text-gris-cadre">Remise durée</dt>
+                  <dt className="text-gris-cadre">{libelleRemise(reservation)}</dt>
                   <dd className="tabular-nums text-vert-lagune">− {formatXof(reservation.remiseXof)}</dd>
                 </div>
               )}
@@ -296,8 +303,7 @@ export default async function PageSuiviReservation({
                 {reservation.paiements.map((paiement) => (
                   <li key={paiement.id} className="flex justify-between gap-3">
                     <span>
-                      {paiement.estCaution ? "Caution" : "Paiement"} ·{" "}
-                      {paiement.moyen.replace(/_/g, " ").toLowerCase()}
+                      {paiement.estCaution ? "Caution" : "Paiement"} · {libelleReglement(paiement.moyen)}
                     </span>
                     <span className="shrink-0 tabular-nums">
                       {formatXof(paiement.montantXof)}
@@ -312,7 +318,7 @@ export default async function PageSuiviReservation({
               <p className="mt-4 text-[0.78rem] leading-relaxed text-gris-cadre">
                 La caution de {formatXof(reservation.cautionXof)} est remise en espèces au départ
                 et vous est rendue à la restitution du vélo, après contrôle. Elle n&apos;est pas
-                comprise dans le montant payé en ligne.
+                comprise dans le montant réglé.
               </p>
             )}
 

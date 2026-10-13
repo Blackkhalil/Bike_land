@@ -16,7 +16,7 @@ import {
   heuresDepartPossibles,
   OUVERTURE_HEURE,
 } from "@/data/offres";
-import { aujourdhui, estDateISOValide } from "./dates";
+import { ajouterJours, aujourdhui, estDateISOValide } from "./dates";
 
 const dateISO = z
   .string()
@@ -197,6 +197,106 @@ export const schemaContact = z.object({
 
 export type EntreeReservation = z.infer<typeof schemaReservation>;
 export type EntreeContact = z.infer<typeof schemaContact>;
+
+/* ------------------------------------------------- Ventes au comptoir */
+
+/**
+ * Une vente au comptoir : la formule, le vélo et le créneau.
+ *
+ * Mêmes garde-fous que la réservation en ligne sur tout ce qui fait le
+ * prix (durée de la grille, créneau du road trip, retour avant la
+ * fermeture) : c'est `calculerDevis` qui décide du montant, partout.
+ *
+ * Ce qui ne règle que la réservation en ligne ne s'applique pas : le
+ * client est devant le commercial, l'argent à la main. Le road trip se
+ * vend donc encore après sa clôture de la veille à 22 h, ou un dimanche
+ * fermé en ligne parce que presque complet, et une location libre peut
+ * partir dans l'heure qui a commencé, ou être saisie après coup dans la
+ * journée.
+ */
+const champsComptoir = z.object({
+  veloId: z.string().min(1, "Choisissez un vélo."),
+  offre: z.enum(["road-trip", "location-libre"]),
+  nombrePersonnes: z.number().int().min(1).max(12).default(1),
+  dureeHeures: z
+    .number()
+    .int()
+    .refine((h) => DUREES_TARIFEES.includes(h), { message: "Durée non proposée." })
+    .optional(),
+  date: dateISO,
+  heureDebut: heureOuvrable,
+  codeParrainage: z.string().trim().max(32).optional().or(z.literal("")),
+});
+
+function reglesComptoir(valeurs: z.infer<typeof champsComptoir>, contexte: z.RefinementCtx) {
+  const signaler = (chemin: string, message: string) =>
+    contexte.addIssue({ code: z.ZodIssueCode.custom, message, path: [chemin] });
+
+  if (valeurs.offre === "road-trip" ? valeurs.dureeHeures !== undefined : valeurs.dureeHeures === undefined) {
+    signaler("dureeHeures", "La location libre exige une durée ; le road trip n'en prend pas.");
+  }
+  if (valeurs.offre === "road-trip") {
+    const jourSemaine = new Date(`${valeurs.date}T12:00:00Z`).getUTCDay();
+    const creneau = CRENEAUX_ROAD_TRIP.some(
+      (c) => c.jourSemaine === jourSemaine && c.heureDebut === valeurs.heureDebut,
+    );
+    if (!creneau) signaler("date", "Le road trip part le samedi et le dimanche, à 8 h.");
+  } else if (valeurs.dureeHeures !== undefined && valeurs.heureDebut + valeurs.dureeHeures > FERMETURE_HEURE) {
+    signaler(
+      "heureDebut",
+      `Le vélo rentrerait après ${FERMETURE_HEURE} h : partez plus tôt, ou louez moins longtemps.`,
+    );
+  }
+
+  // Le jour se lit au Bénin, comme partout ailleurs.
+  const jour = aujourdhui();
+  if (valeurs.date < jour) signaler("date", "Cette date est passée.");
+  else if (valeurs.date > ajouterJours(jour, 60)) signaler("date", "Au-delà de 60 jours, la vente n'est pas prise.");
+}
+
+/** Le devis d'une vente au comptoir, avant de l'encaisser. */
+export const schemaDevisComptoir = champsComptoir.superRefine(reglesComptoir);
+
+export const schemaVenteComptoir = champsComptoir
+  .extend({
+    client: z.object({
+      prenom: z.string().trim().min(2, "Prénom trop court.").max(60),
+      nom: z.string().trim().min(2, "Nom trop court.").max(60),
+      // La facture part à cette adresse : sans elle, pas de facture.
+      email: z.string().trim().toLowerCase().email("Adresse email invalide."),
+      // Facultatif au comptoir : on ne pousse aucun paiement sur ce numéro.
+      telephone: z
+        .string()
+        .trim()
+        .regex(/^[+0-9 ().-]{8,20}$/, "Numéro de téléphone invalide.")
+        .optional()
+        .or(z.literal("")),
+    }),
+    /**
+     * Qui a reçu l'argent. Lettres, chiffres, espaces, points, apostrophes
+     * et tirets : il figure dans l'objet de l'email envoyé au gérant.
+     */
+    encaissePar: z
+      .string()
+      .trim()
+      .min(2, "Indiquez qui a reçu l'argent.")
+      .max(40, "Nom trop long.")
+      .regex(/^[\p{L}\p{N} .'’-]+$/u, "Lettres, chiffres, espaces et tirets seulement."),
+    /**
+     * Le montant affiché au commercial, donc celui qu'il a encaissé. Le
+     * serveur refuse d'enregistrer un autre montant que celui-là.
+     */
+    montantAttenduXof: z.number().int().min(0).max(5_000_000),
+    /** Identifiant de la saisie : une vente envoyée deux fois n'est enregistrée qu'une fois. */
+    cleVente: z.string().regex(/^[A-Za-z0-9-]{8,64}$/, "Saisie invalide : rechargez la page."),
+    cgvAcceptees: z.literal(true, {
+      errorMap: () => ({ message: "Le client doit accepter les conditions générales." }),
+    }),
+  })
+  .superRefine(reglesComptoir);
+
+export type EntreeDevisComptoir = z.infer<typeof schemaDevisComptoir>;
+export type EntreeVenteComptoir = z.infer<typeof schemaVenteComptoir>;
 
 /** Met une erreur Zod en forme pour l'affichage champ par champ. */
 export function erreursParChamp(erreur: z.ZodError): Record<string, string> {

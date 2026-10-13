@@ -57,10 +57,29 @@ serveur.
 
 ### Espace d'exploitation
 
-`/admin`, protégé par mot de passe. Tableau de bord, sortie du jour, réservations,
-parc, clients, avis à modérer, partenaires et codes de parrainage. Le parc
-s'édite depuis l'interface : ajouter un vélo, le mettre en entretien, le retirer,
-changer sa gamme.
+`/admin`, protégé par mot de passe. Tableau de bord, sortie du jour, ventes en
+espèces, réservations, parc, clients, avis à modérer, partenaires et codes de
+parrainage. Le parc s'édite depuis l'interface : ajouter un vélo, le mettre en
+entretien, le retirer, changer sa gamme.
+
+### Ventes en espèces
+
+`/admin/especes`, pour le client qui paie au comptoir. Le commercial choisit la
+formule, le créneau et le vélo, saisit le client et son nom à lui, et encaisse le
+montant affiché. Ce montant vient de `calculerDevis`, comme en ligne, au prix de la
+plaquette (sans les 125 F de frais du paiement en ligne, voir
+[Tarification](#tarification)) : il n'est jamais saisi, et le serveur refuse d'en
+enregistrer un autre. La réservation naît
+confirmée et payée (paiement `ESPECES`, `collectedBy` = qui a reçu l'argent), le
+client reçoit aussitôt sa confirmation et sa facture, et le gérant un email
+« Vente en espèces ». Une saisie envoyée deux fois n'est enregistrée qu'une fois
+(sa référence de paiement est unique en base).
+
+Le bas de la page fait le rapprochement de caisse : encaissé du jour, de la
+semaine et du mois, détail par vendeur, ventes une par une avec renvoi de la
+facture. Les règles de la réservation en ligne (fermeture de nuit, clôture du
+road trip la veille à 22 h, jours fermés) ne s'y appliquent pas : le client est
+sur place. La colonne `collectedBy` est ajoutée par `prisma/especes.sql`.
 
 ---
 
@@ -120,6 +139,11 @@ widget, le tunnel, l'API et l'admin lisent la même grille.
 | Premium | 3 125 | 2 |
 | Prestige | 3 625 | 2 |
 
+Ces tarifs comprennent 125 F de frais du paiement en ligne, par location libre et par
+personne en road trip (`FRAIS_PAIEMENT_EN_LIGNE_XOF`). **Au comptoir, en espèces, on paie
+le prix de la plaquette**, ces 125 F en moins : 1 000 F l'heure en Classique, 2 500 F le
+road trip Classique. Seule une vente saisie dans l'administration y a droit.
+
 Le road trip part sur un créneau fixe, le samedi et le dimanche de 8 h à 11 h (chaque
 créneau s'ouvre et se ferme depuis le tableau de bord).
 
@@ -158,6 +182,16 @@ liens des emails ; variable du serveur, jamais envoyée aux visiteurs),
 site de rafraîchir ses pages après un changement, par `/api/revalider`) et
 `ADMIN_SESSION_SECRET` (projet d'administration seulement : signe les sessions et
 chiffre le secret de double authentification).
+
+Les ventes en espèces partent du projet d'administration : il lui faut aussi
+`BOOKING_TOKEN_SECRET`, **avec la même valeur que sur le site** (sinon le lien de suivi
+envoyé au client ne s'ouvre pas sur le site), `NEXT_PUBLIC_SITE_URL` (l'adresse du site,
+pour ce lien), `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `EMAIL_EXPEDITEUR` et `ADMIN_EMAIL`
+(sinon la confirmation, la facture et l'avis au gérant ne partent pas ; l'écran le dit et
+propose de renvoyer la facture).
+
+Toute page de l'administration exige une session valide, vérifiée par le proxy et par la
+page elle-même : un gabarit ne suffit pas, Next pouvant rendre une page sans lui.
 
 Les essais de connexion, de code et les envois du formulaire de contact sont comptés
 dans la table `CompteurEssais`, commune à tous les serveurs (`prisma/durcissement.sql`).

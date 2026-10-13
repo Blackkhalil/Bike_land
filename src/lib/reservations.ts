@@ -23,7 +23,8 @@
  */
 
 import { EXPIRATION_PANIER_MINUTES, panierExpire } from "@/data/offres";
-import type { Reservation, StatutReservation } from "@/lib/types";
+import { ajouterJours, type DateISO } from "@/lib/dates";
+import type { Paiement, Reservation, StatutReservation } from "@/lib/types";
 
 export { EXPIRATION_PANIER_MINUTES };
 
@@ -51,6 +52,31 @@ export function estEnAttente(reservation: {
 }
 
 /**
+ * Vrai si un paiement est arrivé sur cette réservation alors qu'elle ne
+ * pouvait plus le prendre : payée après son délai, le vélo ayant été
+ * repris entre-temps. L'identifiant de la transaction y est noté, et
+ * l'argent est à rembourser : ce n'est pas un panier abandonné, et la
+ * ligne ne doit surtout pas être effacée avec eux.
+ *
+ * En démonstration, tout paiement en ligne naît avec une référence
+ * provisoire « TX-… » : elle ne compte pas.
+ */
+export function paiementARembourser(reservation: {
+  statut: StatutReservation;
+  paiements?: Paiement[];
+}): boolean {
+  return (
+    reservation.statut === "EN_ATTENTE_PAIEMENT" &&
+    (reservation.paiements ?? []).some(
+      (paiement) =>
+        !paiement.estCaution &&
+        Boolean(paiement.referenceFournisseur) &&
+        !paiement.referenceFournisseur?.startsWith("TX-"),
+    )
+  );
+}
+
+/**
  * Vrai si le délai est passé sans paiement.
  *
  * Ces lignes ne bloquent plus aucun vélo, mais elles restent en base. Il
@@ -60,8 +86,13 @@ export function estEnAttente(reservation: {
 export function estAbandonnee(reservation: {
   statut: StatutReservation;
   creeLe: string;
+  paiements?: Paiement[];
 }): boolean {
-  return reservation.statut === "EN_ATTENTE_PAIEMENT" && panierExpire(reservation.creeLe);
+  return (
+    reservation.statut === "EN_ATTENTE_PAIEMENT" &&
+    panierExpire(reservation.creeLe) &&
+    !paiementARembourser(reservation)
+  );
 }
 
 /**
@@ -87,7 +118,9 @@ export function libelleAttente(reservation: {
 }
 
 /** Les paniers abandonnés d'une liste, les seuls qu'il soit sûr d'effacer. */
-export function paniersAbandonnes<T extends { statut: StatutReservation; creeLe: string }>(
+export function paniersAbandonnes<
+  T extends { statut: StatutReservation; creeLe: string; paiements?: Paiement[] },
+>(
   reservations: T[],
 ): T[] {
   return reservations.filter(estAbandonnee);
@@ -98,4 +131,31 @@ export function aEncaisse(reservation: Reservation): boolean {
   return reservation.paiements.some(
     (paiement) => !paiement.estCaution && paiement.statut === "REUSSI",
   );
+}
+
+/** Le règlement de la réservation, caution exclue. */
+export function paiementPrincipal(reservation: Reservation): Paiement | undefined {
+  return reservation.paiements.find((paiement) => !paiement.estCaution);
+}
+
+/**
+ * Vrai pour une vente au comptoir : réglée en espèces, de la main à la
+ * main, et saisie dans l'administration. Elle ne passe pas par SasPay.
+ */
+export function estVenteEspeces(reservation: Reservation): boolean {
+  return paiementPrincipal(reservation)?.moyen === "ESPECES";
+}
+
+/**
+ * Ce qu'une annulation par le client lui rend, selon l'article 5 des CGV :
+ * tout jusqu'à 72 heures avant le départ, la moitié ensuite. Le jour se lit
+ * comme sur la page de suivi, qui annonce au client si l'annulation est
+ * gratuite.
+ */
+export function montantARendre(
+  reservation: Pick<Reservation, "totalXof" | "dateDebut">,
+  dateAnnulation: DateISO,
+): number {
+  const gratuite = dateAnnulation <= ajouterJours(reservation.dateDebut, -3);
+  return gratuite ? reservation.totalXof : reservation.totalXof - Math.round(reservation.totalXof / 2);
 }

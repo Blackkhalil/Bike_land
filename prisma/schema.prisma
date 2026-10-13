@@ -320,6 +320,14 @@ model Payment {
   isDeposit  Boolean   @default(false)
   refundedAt DateTime?
 
+  /// Qui a reçu l'argent d'une vente en espèces saisie dans
+  /// l'administration. Vide pour un paiement en ligne.
+  collectedBy String?
+  /// Ce qui a été rendu au client, en FCFA, quand le paiement passe à
+  /// REMBOURSE : tout pour une vente annulée au comptoir, la part prévue
+  /// par les CGV quand le client a annulé lui-même.
+  refundedXof Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

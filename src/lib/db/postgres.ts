@@ -291,6 +291,8 @@ function versReservation(booking: BookingComplet): Reservation {
       referenceFournisseur: paiement.providerReference ?? undefined,
       estCaution: paiement.isDeposit,
       rembourseLe: paiement.refundedAt?.toISOString(),
+      encaissePar: paiement.collectedBy ?? undefined,
+      montantRenduXof: paiement.refundedXof ?? undefined,
       creeLe: paiement.createdAt.toISOString(),
     })),
     message: booking.notes ?? undefined,
@@ -376,30 +378,27 @@ function conflitHoraire(
  * Une reservation annulee n'est jamais reactivee par un clic sur la
  * fiche du jour : le coordinateur constate un depart ou un retour, il
  * n'annule pas une annulation.
+ *
+ * La transition est conditionnelle et atomique : un depart ne part que
+ * d'une reservation CONFIRMEE, un retour que d'une reservation EN_COURS.
+ * Lue puis ecrite en deux temps, une annulation au comptoir glissee entre
+ * les deux laissait une vente remboursee repartir EN_COURS. Le statut
+ * renvoye est celui qui est en base : l'appelant voit si le geste a pris.
  */
 async function changerStatutReservation(
   reference: string,
   statut: "EN_COURS" | "TERMINEE",
 ): Promise<Reservation | null> {
-  const existante = await client().booking.findUnique({
-    where: { reference },
-    select: { id: true, status: true },
-  });
-  if (!existante) return null;
-  if (existante.status === "ANNULEE") {
-    const inchangee = await client().booking.findUnique({
-      where: { id: existante.id },
-      include: inclusionReservation,
-    });
-    return inchangee ? versReservation(inchangee) : null;
-  }
-
-  const booking = await client().booking.update({
-    where: { id: existante.id },
+  const cible = reference.toUpperCase();
+  await client().booking.updateMany({
+    where: { reference: cible, status: statut === "EN_COURS" ? "CONFIRMEE" : "EN_COURS" },
     data: { status: statut },
+  });
+  const booking = await client().booking.findUnique({
+    where: { reference: cible },
     include: inclusionReservation,
   });
-  return versReservation(booking);
+  return booking ? versReservation(booking) : null;
 }
 
 const depotDirect: Depot = {
@@ -563,6 +562,14 @@ const depotDirect: Depot = {
     });
     if (!bike) throw new Error("Vélo introuvable.");
 
+    // Une vente au comptoir ne se règle qu'en espèces : sans ce contrôle,
+    // une réservation pourrait naître payée par un Mobile Money qui n'a
+    // jamais eu lieu.
+    const encaissement = demande.encaissement;
+    if (encaissement && demande.moyenPaiement !== "ESPECES") {
+      throw new Error("Une vente encaissée au comptoir se règle en espèces.");
+    }
+
     // Devis sans remise d'abord : c'est sur son total que le code de parrainage
     // s'applique, et c'est lui qu'on compare au montant plafond.
     const devisBrut = calculerDevis({
@@ -574,6 +581,9 @@ const depotDirect: Depot = {
       nombrePersonnes: demande.nombrePersonnes,
       dureeHeures: demande.dureeHeures,
       options: demande.options,
+      // Le prix de la plaquette ne vaut que pour une vente encaissée au
+      // comptoir, que seule l'administration peut saisir.
+      especes: Boolean(encaissement),
     });
 
     const codeSaisi = demande.codeParrainage
@@ -655,6 +665,7 @@ const depotDirect: Depot = {
                 nombrePersonnes: demande.nombrePersonnes,
                 dureeHeures: demande.dureeHeures,
                 options: demande.options,
+                especes: Boolean(encaissement),
                 remise,
               })
             : devisBrut;
@@ -684,8 +695,10 @@ const depotDirect: Depot = {
             data: {
               reference,
               // Voir demo.ts : la reservation nait en attente, seul le
-              // paiement verifie la confirme.
-              status: "EN_ATTENTE_PAIEMENT",
+              // paiement verifie la confirme. Sauf la vente au comptoir :
+              // l'argent est deja encaisse, elle nait confirmee.
+              status: encaissement ? "CONFIRMEE" : "EN_ATTENTE_PAIEMENT",
+              confirmedAt: encaissement ? new Date() : undefined,
               offer:
                 demande.offre === "road-trip" ? "ROAD_TRIP" : "LOCATION_LIBRE",
               peopleCount: devis.nombrePersonnes,
@@ -741,12 +754,20 @@ const depotDirect: Depot = {
                         // de l'an dernier avec le taux d'aujourd'hui
                         // fausserait l'historique des versements.
                         commissionXof: commissionPour(devis.totalXof),
+                        // Payée au comptoir : le client est acquis au
+                        // partenaire tout de suite, comme à la confirmation
+                        // d'un paiement en ligne.
+                        ...(encaissement
+                          ? { status: "VALIDE" as const, validatedAt: new Date() }
+                          : {}),
                       },
                     },
                   }
                 : {}),
               // Une seule ligne de paiement : celle réglée en ligne, encore
-              // à l'état INITIE tant que SasPay n'a rien confirmé.
+              // à l'état INITIE tant que SasPay n'a rien confirmé, ou celle
+              // des espèces reçues au comptoir, réussie d'emblée et signée
+              // du nom de qui les a reçues.
               //
               // La caution de la location libre n'en crée aucune, et c'est
               // volontaire : elle est remise en espèces au coordinateur au
@@ -761,9 +782,11 @@ const depotDirect: Depot = {
                         ? "ESPECES"
                         : "SASPAY",
                     method: demande.moyenPaiement,
-                    status: "INITIE",
+                    status: encaissement ? "REUSSI" : "INITIE",
                     amountXof: devis.totalXof,
                     isDeposit: false,
+                    collectedBy: encaissement?.par,
+                    providerReference: encaissement?.reference,
                   },
                 ],
               },
@@ -783,7 +806,19 @@ const depotDirect: Depot = {
           timeout: DELAI_TRANSACTION_MS,
         },
       ),
-    );
+    ).catch((erreur: unknown) => {
+      // La référence d'une saisie au comptoir déjà rangée : la même vente
+      // revient une seconde fois. Rien n'a été écrit par cet appel-ci.
+      if (
+        encaissement?.reference &&
+        erreur instanceof Prisma.PrismaClientKnownRequestError &&
+        erreur.code === "P2002" &&
+        String(erreur.meta?.target ?? "").includes("providerReference")
+      ) {
+        throw new TransactionDejaUtiliseeError("Cette vente est déjà enregistrée.");
+      }
+      throw erreur;
+    });
 
     return { reservation: versReservation(booking), token };
   },
@@ -808,12 +843,52 @@ const depotDirect: Depot = {
     return booking ? versReservation(booking) : null;
   },
 
-  async annulerReservation(reference: string) {
+  async trouverReservationParPaiement(referencePaiement: string) {
+    const paiement = await client().payment.findUnique({
+      where: { providerReference: referencePaiement },
+      select: { booking: { include: inclusionReservation } },
+    });
+    return paiement ? versReservation(paiement.booking) : null;
+  },
+
+  async annulerReservation(reference: string, options?: { rembourseAuComptoir?: boolean }) {
     return client().$transaction(
       async (tx) => {
-        const booking = await tx.booking.update({
-          where: { reference: reference.toUpperCase() },
+        const cible = reference.toUpperCase();
+        const comptoir = Boolean(options?.rembourseAuComptoir);
+
+        // Transition sous condition : seul l'appel qui annule réellement
+        // renvoie la réservation. Un appel concurrent, ou sur une réservation
+        // déjà annulée, partie ou terminée, renvoie null et n'a rien écrit :
+        // ni seconde annulation, ni second remboursement, ni email en double.
+        // Une vente au comptoir ne s'annule que tant que le vélo n'est pas
+        // parti, pour qu'un départ noté au même instant ne soit pas défait.
+        const passage = await tx.booking.updateMany({
+          where: {
+            reference: cible,
+            status: comptoir ? "CONFIRMEE" : { in: ["EN_ATTENTE_PAIEMENT", "CONFIRMEE"] },
+          },
           data: { status: "ANNULEE", cancelledAt: new Date() },
+        });
+        if (passage.count === 0) return null;
+
+        if (comptoir) {
+          // L'argent est rendu sur-le-champ, en entier : le paiement passe à
+          // REMBOURSE, daté, avec le montant rendu.
+          const paiements = await tx.payment.findMany({
+            where: { booking: { reference: cible }, isDeposit: false, method: "ESPECES", status: "REUSSI" },
+            select: { id: true, amountXof: true },
+          });
+          for (const paiement of paiements) {
+            await tx.payment.update({
+              where: { id: paiement.id },
+              data: { status: "REMBOURSE", refundedAt: new Date(), refundedXof: paiement.amountXof },
+            });
+          }
+        }
+
+        const booking = await tx.booking.findUniqueOrThrow({
+          where: { reference: cible },
           include: inclusionReservation,
         });
 
@@ -825,8 +900,10 @@ const depotDirect: Depot = {
         // Seuls les usages encore en attente sont libérés : un usage
         // déjà validé correspond à un paiement encaissé, et le rendre
         // effacerait un client que le partenaire a bel et bien apporté.
+        // Sauf la vente au comptoir annulée et remboursée sur-le-champ :
+        // c'était une erreur de saisie, personne n'a été apporté.
         const libere = await tx.promoUsage.updateMany({
-          where: { bookingId: booking.id, status: "EN_ATTENTE" },
+          where: { bookingId: booking.id, status: comptoir ? { in: ["EN_ATTENTE", "VALIDE"] } : "EN_ATTENTE" },
           data: { status: "ANNULE" },
         });
 
@@ -849,6 +926,24 @@ const depotDirect: Depot = {
     );
   },
 
+  async noterRemboursementEspeces(reference: string, montantXof: number) {
+    const cible = reference.toUpperCase();
+    // Sous condition, lui aussi : un second clic ne rend pas l'argent une
+    // seconde fois.
+    const { count } = await client().payment.updateMany({
+      where: {
+        booking: { reference: cible, status: "ANNULEE" },
+        isDeposit: false,
+        method: "ESPECES",
+        status: "REUSSI",
+      },
+      data: { status: "REMBOURSE", refundedAt: new Date(), refundedXof: montantXof },
+    });
+    if (count === 0) return null;
+    const booking = await client().booking.findUnique({ where: { reference: cible }, include: inclusionReservation });
+    return booking ? versReservation(booking) : null;
+  },
+
   async supprimerReservation(reference: string) {
     return client().$transaction(
       async (tx) => {
@@ -861,9 +956,13 @@ const depotDirect: Depot = {
         // Garde-fou, et il n'est pas décoratif : une réservation qui a
         // encaissé est une pièce comptable. Elle s'annule, se rembourse,
         // mais ne s'efface pas, sans quoi un contrôle trouverait un trou
-        // dans la suite des factures.
+        // dans la suite des factures. Un identifiant de transaction noté
+        // compte aussi : c'est un paiement reçu hors délai, à rembourser,
+        // et cet identifiant ne doit pas redevenir utilisable ailleurs.
         const aEncaisse = booking.payments.some(
-          (paiement) => !paiement.isDeposit && paiement.status === "REUSSI",
+          (paiement) =>
+            !paiement.isDeposit &&
+            (paiement.status === "REUSSI" || paiement.providerReference !== null),
         );
         if (aEncaisse || booking.status !== "EN_ATTENTE_PAIEMENT") return false;
 

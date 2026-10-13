@@ -8,6 +8,7 @@ import { Colonnes } from "@/components/graphiques/Colonnes";
 import { Courbe } from "@/components/graphiques/Courbe";
 import { Jauge, TuileStat } from "@/components/graphiques/TuileStat";
 import { SelecteurPeriode } from "@/components/admin/SelecteurPeriode";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { indicateursDuJour } from "@/lib/rapport";
 import { depot } from "@/lib/db";
 import { aujourdhui, nombreDeJours } from "@/lib/dates";
@@ -88,6 +89,7 @@ function TitreBloc({
  * Aucun calcul métier ici, tout vient de `calculerStatistiques`.
  */
 export default async function PageTableauDeBord({ searchParams }: { searchParams: Recherche }) {
+  await exigerSessionAdmin();
   const parametres = await searchParams;
   const demandee = typeof parametres.periode === "string" ? parametres.periode : "mois";
   const granularite = granularitesValides.includes(demandee as Granularite)
@@ -304,16 +306,22 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
             indicateur={stats.chiffreAffaires}
             aide="Aucune période précédente à comparer."
           />
-          {/* Ce qui arrive réellement dans le portefeuille SasPay. Les
-              frais sont compris dans les tarifs affichés : sans cette
+          {/* Ce que la période rapporte réellement, frais de SasPay payés.
+              Les frais sont compris dans les tarifs affichés : sans cette
               tuile, le tableau de bord annoncerait un encaissement que le
-              compte ne verra jamais. Le retrait vers la banque coûte
-              en plus 1,5 % + 100 F, par versement et non par
-              réservation, il n'a donc pas sa place ici. */}
+              compte ne verra jamais. Les espèces du comptoir n'en paient
+              pas, et elles sont dans la caisse, pas sur SasPay : la tuile
+              le dit. Le retrait vers la banque coûte en plus 1,5 % + 100 F,
+              par versement et non par réservation, il n'a donc pas sa
+              place ici. */}
           <TuileStat
             libelle="Encaissé net"
             valeur={formatXof(stats.encaisseNet)}
-            aide={`Après ${formatXof(stats.fraisRetenus)} de frais d'encaissement SasPay (3,25 %). Le retrait vers la banque coûte 1,5 % + 100 F par versement.`}
+            aide={`Après ${formatXof(stats.fraisRetenus)} de frais d'encaissement SasPay (3,25 %) sur les paiements en ligne.${
+              stats.encaisseEspeces > 0
+                ? ` Dont ${formatXof(stats.encaisseEspeces)} en espèces, dans la caisse et non sur SasPay.`
+                : ""
+            } Le retrait vers la banque coûte 1,5 % + 100 F par versement.`}
           />
           <TuileStat
             libelle="Panier moyen"

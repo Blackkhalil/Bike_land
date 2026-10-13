@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { GestionParrainage } from "@/components/admin/GestionParrainage";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { libelleCommission, libelleReduction } from "@/lib/parrainage";
 import { Pastille } from "@/components/ui";
 import { depot } from "@/lib/db";
@@ -31,6 +32,7 @@ export const dynamic = "force-dynamic";
  * client qui s'est décommandé.
  */
 export default async function PageCodesPromoAdmin() {
+  await exigerSessionAdmin();
   const [partenaires, codes, statistiques] = await Promise.all([
     depot.listerPartenaires({ inclureInactifs: true }),
     depot.listerCodesParrainage(),

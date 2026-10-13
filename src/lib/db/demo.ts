@@ -118,6 +118,61 @@ function trouver(reference: string) {
   );
 }
 
+/*
+ * Les contrôles qui précèdent une écriture sont faits sans aucune attente
+ * (`await`) entre eux et l'écriture. Le mode démonstration n'a qu'un
+ * processus, mais deux requêtes peuvent s'y entrelacer à chaque attente :
+ * un contrôle fait avant une attente pouvait être périmé au moment
+ * d'écrire, et deux réservations du même créneau passaient toutes deux.
+ */
+
+/** Les créneaux qui bloquent ce vélo : tout sauf l'annulé et le panier abandonné. */
+function creneauxBloquants(veloId: string) {
+  const limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000;
+  return etat()
+    .reservations.filter(
+      (reservation) =>
+        reservation.statut !== "ANNULEE" &&
+        // Un panier abandonne cesse de bloquer le velo.
+        !(
+          reservation.statut === "EN_ATTENTE_PAIEMENT" &&
+          new Date(reservation.creeLe).getTime() < limite
+        ) &&
+        reservation.lignes.some((ligne) => ligne.veloId === veloId),
+    )
+    .map((reservation) => ({
+      debut: reservation.dateDebut,
+      fin: reservation.dateFin,
+      heureDebut: reservation.heureDebut,
+      heureFin: reservation.heureFin,
+    }));
+}
+
+function veloLibre(
+  veloId: string,
+  debut: DateISO,
+  fin: DateISO,
+  heureDebut: number,
+  heureFin: number,
+): boolean {
+  const velo = velos.find((v) => v.id === veloId);
+  if (!velo || velo.statut === "RETIRE" || velo.statut === "MAINTENANCE") return false;
+  return !creneauxBloquants(veloId).some((periode) =>
+    creneauxSeChevauchent({ debut, fin, heureDebut, heureFin }, periode),
+  );
+}
+
+function controleCode(code: string, montantXof: number) {
+  const normalise = normaliserCode(code);
+  const donnees = etat();
+  const ligne = donnees.codesPromo.find((c) => c.code === normalise) ?? null;
+  // Un partenariat désactivé retire toute valeur à ses codes.
+  const partenaire = ligne
+    ? donnees.partenaires.find((p) => p.id === ligne.partenaireId)
+    : undefined;
+  return verifierCode(ligne && partenaire?.actif ? ligne : null, montantXof);
+}
+
 export const depotDemo: Depot = {
   async listerVelos(filtre?: FiltreCatalogue): Promise<Velo[]> {
     let resultat = filtre?.inclureRetires
@@ -166,24 +221,7 @@ export const depotDemo: Depot = {
   },
 
   async periodesIndisponibles(veloId: string) {
-    const limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000;
-    return etat()
-      .reservations.filter(
-        (reservation) =>
-          reservation.statut !== "ANNULEE" &&
-          // Un panier abandonne cesse de bloquer le velo.
-          !(
-            reservation.statut === "EN_ATTENTE_PAIEMENT" &&
-            new Date(reservation.creeLe).getTime() < limite
-          ) &&
-          reservation.lignes.some((ligne) => ligne.veloId === veloId),
-      )
-      .map((reservation) => ({
-        debut: reservation.dateDebut,
-        fin: reservation.dateFin,
-        heureDebut: reservation.heureDebut,
-        heureFin: reservation.heureFin,
-      }));
+    return creneauxBloquants(veloId);
   },
 
   async estDisponible(
@@ -193,18 +231,18 @@ export const depotDemo: Depot = {
     heureDebut: number,
     heureFin: number,
   ) {
-    const velo = velos.find((v) => v.id === veloId);
-    if (!velo || velo.statut === "RETIRE" || velo.statut === "MAINTENANCE") return false;
-
-    const periodes = await this.periodesIndisponibles(veloId);
-    return !periodes.some((periode) =>
-      creneauxSeChevauchent({ debut, fin, heureDebut, heureFin }, periode),
-    );
+    return veloLibre(veloId, debut, fin, heureDebut, heureFin);
   },
 
   async creerReservation(demande: DemandeReservation): Promise<ResultatReservation> {
     const velo = velos.find((v) => v.id === demande.veloId);
     if (!velo) throw new Error("Vélo introuvable.");
+
+    // Même règle qu'en base : une vente au comptoir se règle en espèces.
+    const encaissement = demande.encaissement;
+    if (encaissement && demande.moyenPaiement !== "ESPECES") {
+      throw new Error("Une vente encaissée au comptoir se règle en espèces.");
+    }
 
     // Devis sans remise d'abord : c'est sur son total que le code de parrainage
     // s'applique.
@@ -216,15 +254,37 @@ export const depotDemo: Depot = {
       nombrePersonnes: demande.nombrePersonnes,
       dureeHeures: demande.dureeHeures,
       options: demande.options,
+      // Prix de la plaquette pour une vente encaissée au comptoir, comme en base.
+      especes: Boolean(encaissement),
     });
 
-    // Vérification et consommation du code dans la foulée. Le mode
-    // démonstration est mono-processus, il n'y a pas de concurrence à
-    // protéger, mais la règle appliquée est exactement la même qu'en
-    // production, sans quoi les deux modes ne répondraient pas pareil.
+    // L'heure de fin découle de la formule : le road trip dure le temps
+    // de son créneau, la location libre le nombre d'heures choisi.
+    const heureFin =
+      demande.offre === "road-trip"
+        ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
+        : demande.heureDebut + (devisBrut.dureeHeures ?? 1);
+
+    // Dernières vérifications, puis l'écriture, sans aucune attente d'ici à
+    // l'enregistrement (voir `creneauxBloquants`) : c'est ici que se joue
+    // l'absence de double réservation, et de double vente au comptoir.
+    if (
+      encaissement?.reference &&
+      etat().reservations.some((r) =>
+        r.paiements.some((p) => p.referenceFournisseur === encaissement.reference),
+      )
+    ) {
+      throw new TransactionDejaUtiliseeError("Cette vente est déjà enregistrée.");
+    }
+    if (!veloLibre(velo.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin)) {
+      throw new ConflitDisponibiliteError();
+    }
+
+    // Le code est vérifié et consommé dans la foulée, avec la même règle
+    // qu'en production, sans quoi les deux modes ne répondraient pas pareil.
     let remise: { code: string; montantXof: number } | undefined;
     if (demande.codeParrainage) {
-      const controle = await this.verifierCodeParrainage(demande.codeParrainage, devisBrut.totalXof);
+      const controle = controleCode(demande.codeParrainage, devisBrut.totalXof);
       if (controle.valide && controle.remiseXof > 0) {
         const ligne = etat().codesPromo.find((c) => c.code === controle.code.code);
         if (ligne) {
@@ -241,30 +301,10 @@ export const depotDemo: Depot = {
           nombrePersonnes: demande.nombrePersonnes,
           dureeHeures: demande.dureeHeures,
           options: demande.options,
+          especes: Boolean(encaissement),
           remise,
         })
       : devisBrut;
-
-    // L'heure de fin découle de la formule : le road trip dure le temps
-    // de son créneau, la location libre le nombre d'heures choisi.
-    const heureFin =
-      demande.offre === "road-trip"
-        ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
-        : demande.heureDebut + (devis.dureeHeures ?? 1);
-
-    // Dernière vérification avant écriture : c'est ici que se joue
-    // l'absence de double réservation.
-    if (
-      !(await this.estDisponible(
-        velo.id,
-        demande.dateDebut,
-        demande.dateFin,
-        demande.heureDebut,
-        heureFin,
-      ))
-    ) {
-      throw new ConflitDisponibiliteError();
-    }
     const donnees = etat();
 
     const emailNormalise = demande.client.email.trim().toLowerCase();
@@ -302,7 +342,9 @@ export const depotDemo: Depot = {
       reference,
       // La reservation nait EN ATTENTE : seul le paiement verifie la
       // confirme. Sans cela, on pourrait reserver un velo sans payer.
-      statut: "EN_ATTENTE_PAIEMENT",
+      // La vente au comptoir, deja encaissee, nait confirmee.
+      statut: encaissement ? "CONFIRMEE" : "EN_ATTENTE_PAIEMENT",
+      confirmeLe: encaissement ? maintenant : undefined,
       offre: demande.offre,
       nombrePersonnes: devis.nombrePersonnes,
       dureeHeures: devis.dureeHeures ?? undefined,
@@ -341,10 +383,13 @@ export const depotDemo: Depot = {
           id: `pay-${reference}`,
           fournisseur: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "SASPAY",
           moyen: demande.moyenPaiement,
-          statut: "INITIE",
+          statut: encaissement ? "REUSSI" : "INITIE",
           montantXof: devis.totalXof,
-          referenceFournisseur: `TX-${reference}`,
+          // Référence provisoire d'un paiement en ligne ; pour les espèces,
+          // celle de la saisie au comptoir, comme en base.
+          referenceFournisseur: encaissement ? encaissement.reference : `TX-${reference}`,
           estCaution: false,
+          encaissePar: encaissement?.par,
           creeLe: maintenant,
         },
       ],
@@ -362,7 +407,7 @@ export const depotDemo: Depot = {
         reference: reservation.reference,
         remiseXof: remise.montantXof,
         commissionXof: commissionPour(devis.totalXof),
-        statut: "EN_ATTENTE",
+        statut: encaissement ? "VALIDE" : "EN_ATTENTE",
         le: maintenant,
       });
     }
@@ -388,6 +433,13 @@ export const depotDemo: Depot = {
     return reservation ? copie(reservation) : null;
   },
 
+  async trouverReservationParPaiement(referencePaiement: string) {
+    const reservation = etat().reservations.find((r) =>
+      r.paiements.some((p) => p.referenceFournisseur === referencePaiement),
+    );
+    return reservation ? copie(reservation) : null;
+  },
+
   async supprimerReservation(reference: string) {
     const donnees = etat();
     const index = donnees.reservations.findIndex(
@@ -396,9 +448,14 @@ export const depotDemo: Depot = {
     if (index === -1) return false;
 
     const reservation = donnees.reservations[index];
-    // Même garde-fou qu'en base : ce qui a encaissé ne s'efface pas.
+    // Même garde-fou qu'en base : ce qui a encaissé ne s'efface pas, ni ce
+    // qui porte un paiement reçu hors délai (la référence provisoire
+    // « TX-… » de la démonstration ne compte pas).
     const aEncaisse = reservation.paiements.some(
-      (paiement) => !paiement.estCaution && paiement.statut === "REUSSI",
+      (paiement) =>
+        !paiement.estCaution &&
+        (paiement.statut === "REUSSI" ||
+          Boolean(paiement.referenceFournisseur && !paiement.referenceFournisseur.startsWith("TX-"))),
     );
     if (aEncaisse || reservation.statut !== "EN_ATTENTE_PAIEMENT") return false;
 
@@ -415,20 +472,41 @@ export const depotDemo: Depot = {
     return true;
   },
 
-  async annulerReservation(reference: string) {
+  async annulerReservation(reference: string, options?: { rembourseAuComptoir?: boolean }) {
     const reservation = etat().reservations.find(
       (r) => r.reference.toUpperCase() === reference.toUpperCase(),
     );
     if (!reservation) return null;
+    const comptoir = Boolean(options?.rembourseAuComptoir);
+    // Même règle qu'en base : seul l'appel qui annule réellement renvoie la
+    // réservation ; une vente au comptoir ne s'annule que tant que le vélo
+    // n'est pas parti, et l'argent est rendu sur-le-champ, en entier.
+    const annulable = comptoir
+      ? reservation.statut === "CONFIRMEE"
+      : reservation.statut === "EN_ATTENTE_PAIEMENT" || reservation.statut === "CONFIRMEE";
+    if (!annulable) return null;
+    const maintenant = new Date().toISOString();
     reservation.statut = "ANNULEE";
-    reservation.annuleLe = new Date().toISOString();
+    reservation.annuleLe = maintenant;
+    if (comptoir) {
+      for (const paiement of reservation.paiements) {
+        if (!paiement.estCaution && paiement.moyen === "ESPECES" && paiement.statut === "REUSSI") {
+          paiement.statut = "REMBOURSE";
+          paiement.rembourseLe = maintenant;
+          paiement.montantRenduXof = paiement.montantXof;
+        }
+      }
+    }
 
     // Un usage encore en attente libère le quota qu'il retenait. Un
     // usage validé, lui, correspond à un paiement encaissé : on n'y
-    // touche pas.
+    // touche pas, sauf pour une vente au comptoir annulée et remboursée,
+    // qui n'était qu'une erreur de saisie.
     const donnees = etat();
     const usage = donnees.utilisationsPromo.find(
-      (u) => u.reference === reservation.reference && u.statut === "EN_ATTENTE",
+      (u) =>
+        u.reference === reservation.reference &&
+        (u.statut === "EN_ATTENTE" || (comptoir && u.statut === "VALIDE")),
     );
     if (usage) {
       usage.statut = "ANNULE";
@@ -436,6 +514,19 @@ export const depotDemo: Depot = {
       if (code && code.utilisations > 0) code.utilisations -= 1;
     }
 
+    return copie(reservation);
+  },
+
+  async noterRemboursementEspeces(reference: string, montantXof: number) {
+    const reservation = trouver(reference);
+    if (!reservation || reservation.statut !== "ANNULEE") return null;
+    const paiement = reservation.paiements.find(
+      (p) => !p.estCaution && p.moyen === "ESPECES" && p.statut === "REUSSI",
+    );
+    if (!paiement) return null;
+    paiement.statut = "REMBOURSE";
+    paiement.rembourseLe = new Date().toISOString();
+    paiement.montantRenduXof = montantXof;
     return copie(reservation);
   },
 
@@ -515,18 +606,18 @@ export const depotDemo: Depot = {
   async marquerDepart(reference: string) {
     const reservation = trouver(reference);
     if (!reservation) return null;
-    // Une reservation annulee ne repart pas ; une deja en cours reste
-    // en cours (le coordinateur a pu cliquer deux fois).
-    if (reservation.statut === "ANNULEE") return copie(reservation);
-    reservation.statut = "EN_COURS";
+    // Même règle qu'en base : un départ ne part que d'une réservation
+    // confirmée. Une réservation annulée ne repart pas ; une déjà en cours
+    // reste en cours (le coordinateur a pu cliquer deux fois).
+    if (reservation.statut === "CONFIRMEE") reservation.statut = "EN_COURS";
     return copie(reservation);
   },
 
   async marquerRetour(reference: string) {
     const reservation = trouver(reference);
     if (!reservation) return null;
-    if (reservation.statut === "ANNULEE") return copie(reservation);
-    reservation.statut = "TERMINEE";
+    // Un retour ne part que d'une réservation en cours.
+    if (reservation.statut === "EN_COURS") reservation.statut = "TERMINEE";
     return copie(reservation);
   },
 
@@ -621,14 +712,7 @@ export const depotDemo: Depot = {
   /* ------------------------------------------------ Parrainage partenaires */
 
   async verifierCodeParrainage(code, montantXof) {
-    const normalise = normaliserCode(code);
-    const donnees = etat();
-    const ligne = donnees.codesPromo.find((c) => c.code === normalise) ?? null;
-    // Un partenariat désactivé retire toute valeur à ses codes.
-    const partenaire = ligne
-      ? donnees.partenaires.find((p) => p.id === ligne.partenaireId)
-      : undefined;
-    return verifierCode(ligne && partenaire?.actif ? ligne : null, montantXof);
+    return controleCode(code, montantXof);
   },
 
   async listerPartenaires(options) {

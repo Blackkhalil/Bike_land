@@ -7,6 +7,7 @@ import { FormulaireNouveauVelo } from "@/components/admin/FormulaireNouveauVelo"
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Pastille } from "@/components/ui";
 import { libellesStatut } from "@/data/catalogue";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { seulementPayees } from "@/lib/reservations";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
@@ -51,6 +52,7 @@ const tons: Record<StatutVelo, "succes" | "info" | "alerte" | "neutre"> = {
  * plus.
  */
 export default async function PageParcAdmin() {
+  await exigerSessionAdmin();
   const [velos, reservations, points] = await Promise.all([
     depot.listerVelos({ inclureRetires: true }),
     depot.listerReservations(),

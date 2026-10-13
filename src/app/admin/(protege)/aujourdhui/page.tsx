@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { FicheDuJour } from "@/components/admin/FicheDuJour";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { seulementPayees } from "@/lib/reservations";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
@@ -18,6 +19,7 @@ export const metadata: Metadata = { title: "La sortie du jour" };
  * historique, tarifs, est à un clic, mais pas ici.
  */
 export default async function PageAujourdhui() {
+  await exigerSessionAdmin();
   const jour = aujourdhui();
   const reservations = await depot.listerReservations();
 

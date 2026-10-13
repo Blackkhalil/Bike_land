@@ -19,6 +19,7 @@ import { optionsLocation } from "@/data/catalogue";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   COCOS_ROAD_TRIP,
+  FRAIS_PAIEMENT_EN_LIGNE_XOF,
   PRIX_ROAD_TRIP_XOF,
   prixLocationLibre,
   type CodeOffre,
@@ -61,6 +62,13 @@ export interface ParametresDevis {
    * transaction qui crée la réservation, puis passe ici le montant retenu.
    */
   remise?: { code: string; montantXof: number };
+  /**
+   * Vente réglée en espèces au comptoir : au prix de la plaquette, sans les
+   * frais du paiement en ligne que portent les tarifs du site (cf.
+   * `FRAIS_PAIEMENT_EN_LIGNE_XOF`). Le serveur ne l'accorde qu'à une vente
+   * saisie dans l'administration, jamais à une réservation en ligne.
+   */
+  especes?: boolean;
 }
 
 export interface Devis {
@@ -101,9 +109,12 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
   let sousTotalXof: number;
   let cautionXof: number;
   let dureeHeures: number | null = null;
+  // En espèces au comptoir : le prix de la plaquette, sans les frais du
+  // paiement en ligne que portent les tarifs du site.
+  const fraisRetires = parametres.especes ? FRAIS_PAIEMENT_EN_LIGNE_XOF : 0;
 
   if (offre === "road-trip") {
-    const prixUnitaire = PRIX_ROAD_TRIP_XOF[gamme];
+    const prixUnitaire = PRIX_ROAD_TRIP_XOF[gamme] - fraisRetires;
     const cocos = COCOS_ROAD_TRIP[gamme];
     sousTotalXof = prixUnitaire * nombrePersonnes;
     cautionXof = 0;
@@ -122,7 +133,7 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
     // refusée. Inventer un prix serait pire que de renvoyer une erreur.
     if (prix === null) throw new DureeNonTarifeeError(dureeHeures);
 
-    sousTotalXof = prix;
+    sousTotalXof = prix - fraisRetires;
     cautionXof = CAUTION_LOCATION_LIBRE_XOF;
     lignes.push({
       libelle: `Location libre, ${dureeHeures} h`,

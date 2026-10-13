@@ -15,6 +15,7 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { notFound, redirect } from "next/navigation";
 
 import { roleDuDeploiement } from "@/lib/deploiement";
 
@@ -26,11 +27,17 @@ const DUREE_SESSION_MS = 12 * 60 * 60 * 1000; // 12 heures
  *
  * ADMIN_SESSION_SECRET n'existe que dans le projet d'administration : le
  * site public, qui détient BOOKING_TOKEN_SECRET pour les liens de suivi,
- * ne peut donc pas fabriquer une session d'administration. Les autres
- * valeurs ne servent que tant que l'admin et le site partagent un même
- * déploiement.
+ * ne peut donc pas fabriquer une session d'administration. L'admin détient
+ * aussi BOOKING_TOKEN_SECRET (les ventes en espèces signent le lien de
+ * suivi du client) : il ne doit donc jamais lui servir de clé de session,
+ * d'où ADMIN_SESSION_SECRET, obligatoire sur ce projet. Les autres valeurs
+ * ne servent que tant que l'admin et le site partagent un même déploiement.
  */
 function secret(): string {
+  // Sur le projet d'administration, ADMIN_SESSION_SECRET et rien d'autre :
+  // sans lui, l'accès est verrouillé (`modeAcces`) plutôt que de signer les
+  // sessions avec un secret que le site détient aussi.
+  if (roleDuDeploiement() === "admin") return process.env.ADMIN_SESSION_SECRET ?? "";
   return (
     process.env.ADMIN_SESSION_SECRET ||
     process.env.BOOKING_TOKEN_SECRET ||
@@ -47,7 +54,11 @@ function secret(): string {
  *                 pour ne pas exposer les données clients par omission.
  */
 export function modeAcces(): "protege" | "ouvert" | "verrouille" {
-  if (process.env.ADMIN_PASSWORD) return "protege";
+  if (process.env.ADMIN_PASSWORD) {
+    // Le projet d'administration sans sa clé de session reste fermé.
+    if (roleDuDeploiement() === "admin" && !process.env.ADMIN_SESSION_SECRET) return "verrouille";
+    return "protege";
+  }
   return process.env.NODE_ENV === "production" ? "verrouille" : "ouvert";
 }
 
@@ -131,4 +142,20 @@ export async function sessionAdminValide(): Promise<boolean> {
 
   const magasin = await cookies();
   return jetonValide(magasin.get(NOM_COOKIE)?.value);
+}
+
+/**
+ * À appeler en tête de chaque page d'administration, avant toute lecture.
+ *
+ * Le gabarit du groupe `(protege)` vérifie déjà la session, mais cela ne
+ * suffit pas : un gabarit ne se réexécute pas à chaque navigation, et Next
+ * rend une page sans lui quand le routeur le croit déjà affiché. Une
+ * requête forgée obtenait ainsi les données d'une page, clients compris,
+ * sans session (voir « Layouts and auth checks » dans la documentation de
+ * Next). La vérification se fait donc ici, au plus près des données ; le
+ * proxy en fait autant pour toute page de l'administration.
+ */
+export async function exigerSessionAdmin(): Promise<void> {
+  if (roleDuDeploiement() === "site") notFound();
+  if (!(await sessionAdminValide())) redirect("/admin/connexion");
 }

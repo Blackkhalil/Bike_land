@@ -5,6 +5,38 @@
  * CFA n'a pas de subdivision utilisée, donc aucun arrondi flottant à gérer.
  */
 
+import type { MoyenPaiement } from "./types";
+
+const libellesMoyens: Record<MoyenPaiement, string> = {
+  MTN_MONEY: "MTN MoMo",
+  MOOV_MONEY: "Moov Money",
+  CELTIIS_CASH: "Celtiis Cash",
+  ESPECES: "Espèces",
+};
+
+/** Le nom d'un moyen de paiement, tel que le client le connaît. */
+export function libelleMoyen(moyen: MoyenPaiement): string {
+  return libellesMoyens[moyen] ?? moyen;
+}
+
+/**
+ * Le règlement tel que la facture le nomme : « Espèces » au comptoir,
+ * « Mobile Money » en ligne. L'opérateur n'y figure pas : une relance du
+ * paiement peut changer d'opérateur sans que la ligne de paiement le note,
+ * et une facture ne doit pas affirmer ce qu'on ne sait pas.
+ */
+export function libelleReglement(moyen: MoyenPaiement): string {
+  return moyen === "ESPECES" ? "Espèces" : "Mobile Money";
+}
+
+/**
+ * L'intitulé d'une remise sur la facture. Seul un code de parrainage en
+ * accorde aujourd'hui ; les remises de durée d'avant n'avaient pas de code.
+ */
+export function libelleRemise(reservation: { codeParrainage?: string }): string {
+  return reservation.codeParrainage ? `Remise (code ${reservation.codeParrainage})` : "Remise";
+}
+
 const formatteurMontant = new Intl.NumberFormat("fr-FR", {
   maximumFractionDigits: 0,
 });

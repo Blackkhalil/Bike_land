@@ -199,7 +199,9 @@ export function construireRapport(entrees: {
         {
           libelle: "Encaissé net",
           valeur: montant(stats.encaisseNet),
-          aide: `Après ${montant(stats.fraisRetenus)} de frais d'encaissement SasPay (3,25 %).`,
+          aide:
+            `Après ${montant(stats.fraisRetenus)} de frais d'encaissement SasPay (3,25 %) sur les paiements en ligne.` +
+            (stats.encaisseEspeces > 0 ? ` Dont ${montant(stats.encaisseEspeces)} en espèces, dans la caisse.` : ""),
         },
         { libelle: "Frais d'encaissement", valeur: montant(stats.fraisRetenus) },
         compare("Panier moyen", stats.revenuMoyenParReservation, montant),

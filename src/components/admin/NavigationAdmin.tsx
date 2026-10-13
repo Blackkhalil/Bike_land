@@ -17,6 +17,7 @@ import { site } from "@/lib/site";
 
 const liens = [
   { href: "/admin/aujourdhui", libelle: "La sortie du jour" },
+  { href: "/admin/especes", libelle: "Ventes en espèces" },
   { href: "/admin", libelle: "Tableau de bord", exact: true },
   { href: "/admin/bilan", libelle: "Bilan des semaines" },
   { href: "/admin/reservations", libelle: "Réservations" },

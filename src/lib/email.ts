@@ -8,7 +8,8 @@
  */
 
 import { site } from "./site";
-import { formatCreneau, formatXof, resumeOffre } from "./format";
+import { formatCreneau, formatXof, libelleReglement, libelleRemise, resumeOffre } from "./format";
+import { paiementPrincipal } from "./reservations";
 import type { Reservation } from "./types";
 
 interface Message {
@@ -55,6 +56,13 @@ async function envoyerParGmail(
     port: 465,
     secure: true,
     auth: { user: identifiants.utilisateur, pass: identifiants.motDePasse },
+    // Délais courts : par défaut, nodemailer attend jusqu'à deux minutes
+    // une connexion qui ne vient pas, bien plus que le temps accordé à une
+    // route. Un envoi bloqué échoue vite et se dit, au lieu de faire perdre
+    // la réponse d'une réservation ou d'une vente déjà enregistrée.
+    connectionTimeout: 8_000,
+    greetingTimeout: 8_000,
+    socketTimeout: 15_000,
   });
 
   try {
@@ -358,13 +366,18 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
 }
 
 export async function envoyerFacture(reservation: Reservation, numeroFacture: string, lienSuivi: string) {
+  // Le règlement figure sur la facture : un client qui a payé en espèces au
+  // comptoir doit pouvoir la produire comme reçu.
+  const paiement = paiementPrincipal(reservation);
+  const reglement = paiement ? libelleReglement(paiement.moyen) : null;
   return envoyer({
     destinataire: reservation.client.email,
     sujet: `Facture ${numeroFacture}, ${site.nom}`,
     texte:
       `Bonjour ${reservation.client.prenom},\n\n` +
       `Voici votre facture ${numeroFacture} d'un montant de ${formatXof(reservation.totalXof)} ` +
-      `pour la réservation ${reservation.reference}.\n\n` +
+      `pour la réservation ${reservation.reference}` +
+      `${reglement ? `, réglée ${paiement?.moyen === "ESPECES" ? "en espèces" : `par ${reglement}`}` : ""}.\n\n` +
       `Elle est téléchargeable à tout moment depuis ${lienSuivi}.\n`,
     html: gabarit({
       titre: `Facture ${numeroFacture}`,
@@ -372,12 +385,13 @@ export async function envoyerFacture(reservation: Reservation, numeroFacture: st
       lignes: [
         ["Sous-total location", formatXof(reservation.sousTotalXof)],
         ...(reservation.remiseXof > 0
-          ? ([["Remise durée", `− ${formatXof(reservation.remiseXof)}`]] as [string, string][])
+          ? ([[libelleRemise(reservation), `− ${formatXof(reservation.remiseXof)}`]] as [string, string][])
           : []),
         ...(reservation.optionsXof > 0
           ? ([["Options", formatXof(reservation.optionsXof)]] as [string, string][])
           : []),
         ["Total réglé", formatXof(reservation.totalXof)],
+        ...(reglement ? ([["Règlement", reglement]] as [string, string][]) : []),
       ],
       action: { libelle: "Télécharger la facture", url: `${lienSuivi}#facture` },
       pied: "Montants exprimés en francs CFA (XOF).",
@@ -401,17 +415,27 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
   // Référence du paiement chez l'agrégateur : c'est elle qu'il faut
   // citer pour retrouver la transaction, réclamer un remboursement ou
   // rapprocher un versement. Sans elle, il faut fouiller.
-  const paiement = reservation.paiements.find((ligne) => !ligne.estCaution);
+  const paiement = paiementPrincipal(reservation);
   const referencePaiement = paiement?.referenceFournisseur ?? "non communiquée";
+
+  // Une vente au comptoir : l'argent est dans la caisse, et ce qui compte
+  // pour le gérant, c'est qui l'a reçu. Chaque vente en espèces lui arrive
+  // ainsi au moment où elle est saisie, sans qu'il ait à ouvrir l'admin.
+  const especes = paiement?.moyen === "ESPECES";
+  const encaissePar = paiement?.encaissePar ?? "non renseigné";
 
   return envoyer({
     destinataire,
-    sujet: `Réservation payée ${reservation.reference} : ${velos}`,
+    sujet: especes
+      ? `Vente en espèces ${reservation.reference} : ${formatXof(reservation.totalXof)}, ${encaissePar}`
+      : `Réservation payée ${reservation.reference} : ${velos}`,
     texte: [
-      `Réservation confirmée : le paiement est encaissé.`,
+      especes
+        ? `Vente au comptoir : ${formatXof(reservation.totalXof)} reçus en espèces par ${encaissePar}.`
+        : `Réservation confirmée : le paiement est encaissé.`,
       "",
       `Référence réservation : ${reservation.reference}`,
-      `Référence paiement : ${referencePaiement}`,
+      especes ? `Encaissé par : ${encaissePar}` : `Référence paiement : ${referencePaiement}`,
       "",
       `Client : ${reservation.client.prenom} ${reservation.client.nom}`,
       `Email : ${reservation.client.email}`,
@@ -434,8 +458,10 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
       .filter(Boolean)
       .join("\n"),
     html: gabarit({
-      titre: "Réservation payée",
-      intro: `${reservation.client.prenom} ${reservation.client.nom} vient de réserver et de payer.`,
+      titre: especes ? "Vente en espèces" : "Réservation payée",
+      intro: especes
+        ? `${encaissePar} a encaissé ${formatXof(reservation.totalXof)} en espèces pour ${reservation.client.prenom} ${reservation.client.nom}.`
+        : `${reservation.client.prenom} ${reservation.client.nom} vient de réserver et de payer.`,
       lignes: [
         ["Référence", reservation.reference],
         ["Client", `${reservation.client.prenom} ${reservation.client.nom}`],
@@ -444,13 +470,114 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
         ["Vélo", velos],
         ["Départ", formatCreneau(reservation)],
         ["Montant payé", formatXof(reservation.totalXof)],
-        ["Référence paiement", referencePaiement],
+        especes ? ["Encaissé par", encaissePar] : ["Référence paiement", referencePaiement],
         ...(reservation.codeParrainage
           ? ([["Code de parrainage", reservation.codeParrainage]] as [string, string][])
           : []),
       ],
       action: { libelle: "Voir la réservation", url: lienAdmin },
       pied: reservation.message ? `Message du client : « ${reservation.message} »` : undefined,
+    }),
+  });
+}
+
+/**
+ * Prévient le gérant qu'une réservation payée vient d'être annulée.
+ *
+ * Personne n'en était averti : le client annulait depuis son lien de
+ * suivi, et l'argent à rendre ne se voyait qu'en ouvrant l'admin. Le
+ * montant suit l'article 5 des CGV (`montantARendre`), et le moyen dit par
+ * où le rendre : en espèces au comptoir, ou par Mobile Money.
+ *
+ * Une vente au comptoir annulée depuis l'administration le dit aussi :
+ * l'argent est rendu sur-le-champ, mais le gérant suit chaque sortie de
+ * caisse, comme chaque entrée.
+ */
+export async function envoyerAnnulationAdmin(
+  reservation: Reservation,
+  aRendreXof: number,
+  origine: "client" | "comptoir" = "client",
+) {
+  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const paiement = paiementPrincipal(reservation);
+  const especes = paiement?.moyen === "ESPECES";
+  const lienAdmin = `${site.urlAdmin}/admin/reservations?reference=${reservation.reference}`;
+  const encaissement = paiement?.encaissePar ? ` (vente encaissée par ${paiement.encaissePar})` : "";
+  const commentRendre = especes ? `en espèces, au comptoir${encaissement}` : "par Mobile Money";
+  const comptoir = origine === "comptoir";
+  const constat = comptoir
+    ? `La vente en espèces ${reservation.reference} a été annulée depuis l'administration : ${formatXof(aRendreXof)} rendus sur-le-champ${encaissement}.`
+    : `${reservation.client.prenom} ${reservation.client.nom} a annulé sa réservation ${reservation.reference}.`;
+
+  return envoyer({
+    destinataire,
+    sujet: comptoir
+      ? `Vente en espèces annulée ${reservation.reference} : ${formatXof(aRendreXof)} rendus`
+      : `Annulation ${reservation.reference} : ${formatXof(aRendreXof)} à rendre`,
+    texte: [
+      constat,
+      "",
+      `Client : ${reservation.client.prenom} ${reservation.client.nom}`,
+      `Payé : ${formatXof(reservation.totalXof)}`,
+      comptoir ? `Rendu : ${formatXof(aRendreXof)}` : `À rendre : ${formatXof(aRendreXof)}, ${commentRendre}`,
+      `Départ prévu : ${formatCreneau(reservation)}`,
+      `Téléphone : ${reservation.client.telephone ?? "non renseigné"}`,
+      `Email : ${reservation.client.email}`,
+      "",
+      `Voir dans l'administration : ${lienAdmin}`,
+    ].join("\n"),
+    html: gabarit({
+      titre: comptoir ? "Vente en espèces annulée" : "Réservation annulée",
+      intro: comptoir
+        ? constat
+        : `${reservation.client.prenom} ${reservation.client.nom} a annulé sa réservation : ${formatXof(aRendreXof)} à lui rendre.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ["Client", `${reservation.client.prenom} ${reservation.client.nom}`],
+        ["Payé", formatXof(reservation.totalXof)],
+        comptoir ? ["Rendu", formatXof(aRendreXof)] : ["À rendre", `${formatXof(aRendreXof)}, ${commentRendre}`],
+        ["Départ prévu", formatCreneau(reservation)],
+        ["Téléphone", reservation.client.telephone ?? "non renseigné"],
+        ["Email", reservation.client.email],
+      ],
+      action: { libelle: "Voir la réservation", url: lienAdmin },
+      pied: comptoir
+        ? undefined
+        : "Selon les CGV : tout est rendu jusqu'à 72 heures avant le départ, la moitié ensuite.",
+    }),
+  });
+}
+
+/**
+ * Prévient le client que sa vente au comptoir a été annulée par Bike Land
+ * (erreur de saisie, ou renoncement sur place), et que son argent lui a été
+ * rendu. Il avait reçu une confirmation et une facture : sans cet email,
+ * il garderait une facture pour une location qui n'existe plus.
+ */
+export async function envoyerAnnulationComptoir(reservation: Reservation) {
+  return envoyer({
+    destinataire: reservation.client.email,
+    sujet: `Votre réservation ${reservation.reference} est annulée`,
+    texte: [
+      `Bonjour ${reservation.client.prenom},`,
+      "",
+      `Votre réservation ${reservation.reference} (${formatCreneau(reservation)}) est annulée.`,
+      `Les ${formatXof(reservation.totalXof)} réglés en espèces vous ont été rendus au comptoir.`,
+      "La facture correspondante est annulée.",
+      "",
+      `Une question ? Appelez-nous au ${site.telephone}.`,
+      "",
+      `L'équipe ${site.nom}`,
+    ].join("\n"),
+    html: gabarit({
+      titre: "Réservation annulée",
+      intro: `Bonjour ${reservation.client.prenom}, votre réservation est annulée et votre argent vous a été rendu.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ["Date prévue", formatCreneau(reservation)],
+        ["Rendu en espèces", formatXof(reservation.totalXof)],
+      ],
+      pied: `La facture correspondante est annulée. Une question ? ${site.telephone}.`,
     }),
   });
 }

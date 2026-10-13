@@ -123,6 +123,20 @@ export interface DemandeReservation {
   message?: string;
   /** Accepte les conditions générales : obligatoire côté serveur aussi. */
   cgvAcceptees: boolean;
+  /**
+   * Vente au comptoir, réglée en espèces et saisie dans l'administration.
+   *
+   * L'argent est déjà dans la caisse : la réservation naît donc confirmée
+   * et payée, dans la transaction même qui la crée. Il n'y a aucun
+   * paiement à attendre, et rien ne doit pouvoir la laisser « en attente »
+   * entre deux écritures. `par` nomme qui a reçu l'argent.
+   *
+   * `reference` identifie la saisie. Elle est rangée comme référence du
+   * paiement, unique en base : la même saisie envoyée deux fois (double
+   * clic, réponse perdue puis nouvel envoi) lève alors
+   * `TransactionDejaUtiliseeError` au lieu de compter deux fois l'argent.
+   */
+  encaissement?: { par: string; reference?: string };
 }
 
 /**
@@ -191,7 +205,35 @@ export interface Depot {
   creerReservation(demande: DemandeReservation): Promise<ResultatReservation>;
   trouverReservationParToken(token: string): Promise<Reservation | null>;
   trouverReservationParReference(reference: string): Promise<Reservation | null>;
-  annulerReservation(reference: string): Promise<Reservation | null>;
+  /**
+   * La réservation dont le paiement porte cette référence : identifiant
+   * SasPay, ou référence d'une saisie au comptoir. `null` si aucune.
+   */
+  trouverReservationParPaiement(referencePaiement: string): Promise<Reservation | null>;
+  /**
+   * Annule une réservation en attente de paiement ou confirmée.
+   *
+   * Renvoie la réservation annulée, ou `null` si cet appel n'a rien annulé
+   * (introuvable, déjà annulée, partie ou terminée, ou annulée au même
+   * instant par un autre appel) : l'appelant ne prévient alors personne et
+   * ne rend rien.
+   *
+   * `rembourseAuComptoir` : vente en espèces annulée depuis l'administration
+   * (erreur de saisie, client qui renonce sur place). Elle ne s'annule que
+   * tant que le vélo n'est pas parti (statut CONFIRMEE), l'argent est rendu
+   * sur-le-champ et en entier (paiement REMBOURSE, daté, montant noté), et
+   * le partenaire du code de parrainage perd l'utilisation : personne n'a
+   * été apporté.
+   */
+  annulerReservation(reference: string, options?: { rembourseAuComptoir?: boolean }): Promise<Reservation | null>;
+
+  /**
+   * Note le remboursement d'une vente en espèces que le client a annulée
+   * lui-même : le paiement passe à REMBOURSE, daté du jour où l'argent sort
+   * de la caisse, avec le montant rendu. `null` si rien n'était à rendre
+   * (vente non annulée, déjà rendue, ou pas en espèces).
+   */
+  noterRemboursementEspeces(reference: string, montantXof: number): Promise<Reservation | null>;
 
   /**
    * Efface définitivement une réservation jamais payée.

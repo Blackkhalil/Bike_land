@@ -18,8 +18,9 @@ import {
   type DateISO,
 } from "./dates";
 import { OFFRES } from "@/data/offres";
+import { libelleMoyen } from "./format";
 import { fraisEncaissement } from "./paiement";
-import { estPayee, seulementPayees } from "./reservations";
+import { estPayee, estVenteEspeces, paiementPrincipal, seulementPayees } from "./reservations";
 import type { Client, CodeOffre, MoyenPaiement, Reservation, Velo } from "./types";
 
 export type Granularite = "jour" | "semaine" | "mois" | "annee";
@@ -70,8 +71,15 @@ export interface Statistiques {
    * par réservation.
    */
   fraisRetenus: number;
-  /** Ce qui arrive dans le portefeuille SasPay, frais d'encaissement déduits. */
+  /**
+   * L'encaissé, frais d'encaissement de SasPay déduits : ce que la période
+   * rapporte réellement. Les espèces du comptoir y sont, sans frais ; elles
+   * sont dans la caisse et non sur le portefeuille SasPay
+   * (`encaisseEspeces`).
+   */
   encaisseNet: number;
+  /** Ce qui a été encaissé en espèces au comptoir : dans la caisse, pas sur SasPay. */
+  encaisseEspeces: number;
   revenuMoyenParReservation: IndicateurCompare;
   repartitionPaiements: Serie[];
   /**
@@ -119,13 +127,6 @@ export interface Statistiques {
   noteMoyenne: number | null;
   nombreAvis: number;
 }
-
-const libellesMoyens: Record<MoyenPaiement, string> = {
-  MTN_MONEY: "MTN MoMo",
-  MOOV_MONEY: "Moov Money",
-  CELTIIS_CASH: "Celtiis Cash",
-  ESPECES: "Espèces",
-};
 
 /** Bornes de la période demandée, à partir d'une granularité. */
 export function construirePeriode(granularite: Granularite, reference = aujourdhui()): Periode {
@@ -228,8 +229,11 @@ export function calculerStatistiques(
   // chaque paiement, donc réservation par réservation. Les frais de
   // retrait, eux, dépendent du rythme des versements et non des
   // réservations, les mêler donnerait un chiffre qu'aucun relevé ne
-  // confirmerait jamais.
-  const fraisRetenus = somme(facturees.map((r) => fraisEncaissement(r.totalXof)));
+  // confirmerait jamais. Les espèces reçues au comptoir ne passent pas par
+  // SasPay : elles n'en paient aucun.
+  const fraisRetenus = somme(
+    facturees.filter((r) => !estVenteEspeces(r)).map((r) => fraisEncaissement(r.totalXof)),
+  );
 
   const moyenne = facturees.length ? Math.round(ca / facturees.length) : 0;
   const moyenneAvant = factureesAvant.length ? Math.round(caAvant / factureesAvant.length) : 0;
@@ -275,7 +279,7 @@ export function calculerStatistiques(
     parMoyen.set(paiement.moyen, (parMoyen.get(paiement.moyen) ?? 0) + paiement.montantXof);
   }
   const repartitionPaiements = [...parMoyen.entries()]
-    .map(([moyen, montant]) => ({ clef: moyen, etiquette: libellesMoyens[moyen], valeur: montant }))
+    .map(([moyen, montant]) => ({ clef: moyen, etiquette: libelleMoyen(moyen), valeur: montant }))
     .sort((a, b) => b.valeur - a.valeur);
 
   // --- Taux d'occupation : jours-vélos loués rapportés aux jours-vélos
@@ -410,6 +414,7 @@ export function calculerStatistiques(
     chiffreAffaires: comparer(ca, caAvant),
     fraisRetenus,
     encaisseNet: ca - fraisRetenus,
+    encaisseEspeces: somme(facturees.filter(estVenteEspeces).map((r) => r.totalXof)),
     revenuMoyenParReservation: comparer(moyenne, moyenneAvant),
     repartitionPaiements,
     cautionsEnCirculation,
@@ -489,6 +494,7 @@ export function exporterCsv(reservations: Reservation[]): string {
     "total_xof",
     "caution_especes_xof",
     "moyen_paiement",
+    "encaisse_par",
     "code_parrainage",
     "remise_parrainage_xof",
     "commission_partenaire_xof",
@@ -512,7 +518,8 @@ export function exporterCsv(reservations: Reservation[]): string {
       reservation.optionsXof,
       reservation.totalXof,
       reservation.cautionXof,
-      reservation.paiements.find((p) => !p.estCaution)?.moyen ?? "",
+      paiementPrincipal(reservation)?.moyen ?? "",
+      paiementPrincipal(reservation)?.encaissePar ?? "",
       reservation.codeParrainage ?? "",
       reservation.codeParrainage ? reservation.remiseXof : "",
       reservation.commissionParrainageXof ?? "",

@@ -120,6 +120,18 @@ export function prixLocationLibre(gamme: GammeVelo, heures: number): number | nu
   return GRILLE_HORAIRE[gamme].find((palier) => palier.heures === heures)?.prixXof ?? null;
 }
 
+/**
+ * Les frais du paiement en ligne, compris dans chaque tarif du site : par
+ * location libre, et par personne en road trip.
+ *
+ * La plaquette annonce 1 000 F l'heure en Classique et 2 500 F le road
+ * trip ; le site affiche 1 125 F et 2 625 F, ces 125 F couvrant les frais
+ * de l'agrégateur Mobile Money. Une vente réglée en espèces au comptoir ne
+ * passe pas par lui : elle se fait au prix de la plaquette, sans ces frais.
+ * C'est ce que pratique l'exploitant au point de départ.
+ */
+export const FRAIS_PAIEMENT_EN_LIGNE_XOF = 125;
+
 /** Ce que le client doit apporter ou accepter, par offre. */
 export const EXIGENCES: Record<CodeOffre, string[]> = {
   "road-trip": [

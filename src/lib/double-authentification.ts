@@ -15,6 +15,8 @@
 
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { roleDuDeploiement } from "@/lib/deploiement";
+
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const PAS_SECONDES = 30;
 const CHIFFRES = 6;
@@ -104,10 +106,15 @@ export function adresseApplication(secretBase32: string, compte: string): string
  * La clé de chiffrement, déduite d'un secret à haute entropie du serveur
  * (ADMIN_SESSION_SECRET, à défaut BOOKING_TOKEN_SECRET), jamais du mot de
  * passe : une copie de la base ne doit pas permettre de tester des mots
- * de passe hors ligne contre le secret chiffré.
+ * de passe hors ligne contre le secret chiffré. Sur le projet
+ * d'administration, ADMIN_SESSION_SECRET seul : BOOKING_TOKEN_SECRET y est
+ * aussi, mais le site le détient.
  */
 function cle(): Buffer | null {
-  const racine = process.env.ADMIN_SESSION_SECRET || process.env.BOOKING_TOKEN_SECRET;
+  const racine =
+    roleDuDeploiement() === "admin"
+      ? process.env.ADMIN_SESSION_SECRET
+      : process.env.ADMIN_SESSION_SECRET || process.env.BOOKING_TOKEN_SECRET;
   if (!racine || racine.length < 16) return null;
   return createHmac("sha256", racine).update("bikeland-double-authentification").digest();
 }

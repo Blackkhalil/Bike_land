@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Pastille } from "@/components/ui";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { ajouterJours, aujourdhui, type DateISO } from "@/lib/dates";
 import { depot } from "@/lib/db";
 import { formatNombre, formatXof } from "@/lib/format";
@@ -21,6 +22,7 @@ export const metadata: Metadata = { title: "Bilan des semaines" };
  * l'export du tableau de bord.
  */
 export default async function PageBilan() {
+  await exigerSessionAdmin();
   const [reservations, velos, clients] = await Promise.all([
     depot.listerReservations(),
     depot.listerVelos(),

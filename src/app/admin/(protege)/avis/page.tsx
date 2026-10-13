@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { ControlesAvis } from "@/components/admin/ControlesAvis";
 import { Etoiles, Pastille } from "@/components/ui";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { depot } from "@/lib/db";
 import { formatDate, formatNombre } from "@/lib/format";
 
@@ -22,6 +23,7 @@ export const dynamic = "force-dynamic";
  * une action sur cet écran.
  */
 export default async function PageAvisAdmin() {
+  await exigerSessionAdmin();
   const avis = await depot.listerAvis();
 
   const enAttente = avis.filter((element) => !element.publie);

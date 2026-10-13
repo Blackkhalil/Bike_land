@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { jetonValide, modeAcces, NOM_COOKIE } from "@/lib/admin";
+
 /**
  * Sépare le site public et l'administration, selon le rôle du déploiement
  * (`BIKELAND_ROLE`, voir src/lib/deploiement.ts).
@@ -11,8 +13,9 @@ import { NextResponse, type NextRequest } from "next/server";
  *    publique renvoie vers le site public. Les tâches planifiées et le
  *    webhook de paiement n'y tournent pas : c'est le site qui les tient.
  *
- * Sans rôle défini, rien n'est filtré : le déploiement sert tout, comme
- * avant la séparation.
+ * Sans rôle défini, rien n'est filtré par rôle : le déploiement sert tout,
+ * comme avant la séparation. Dans tous les cas, une page d'administration
+ * exige une session valide (voir plus bas).
  *
  * Le chemin est comparé décodé et en minuscules : « /%61dmin » ou
  * « /ADMIN » ne doivent pas passer là où « /admin » est refusé. Et le
@@ -28,7 +31,10 @@ function cheminNormalise(pathname: string): string {
   } catch {
     // Encodage invalide : on garde le chemin tel quel, il sera refusé plus loin.
   }
-  return chemin.toLowerCase().replace(/\/{2,}/g, "/");
+  // Un préchargement de segment (« /admin.segments/_tree.segment ») vise la
+  // page qui le précède, comme Next le comprend lui-même : sans cela, il
+  // échappait aux deux contrôles ci-dessous.
+  return chemin.toLowerCase().replace(/\/{2,}/g, "/").replace(/\.segments\/.*$/, "");
 }
 
 export function proxy(requete: NextRequest) {
@@ -57,6 +63,23 @@ export function proxy(requete: NextRequest) {
     cible.pathname = pathname;
     cible.search = requete.nextUrl.search;
     return NextResponse.redirect(cible);
+  }
+
+  // Les pages d'administration ne se rendent qu'avec une session valide, y
+  // compris les requêtes du routeur (RSC) : Next peut rendre une page sans
+  // son gabarit, et la vérification du gabarit ne suffit donc pas. Le
+  // proxy voit toutes les requêtes ; les pages revérifient de leur côté,
+  // et les routes /api/admin vérifient chacune la session.
+  const pageAdmin = (chemin === "/admin" || chemin.startsWith("/admin/")) && chemin !== "/admin/connexion";
+  if (pageAdmin && role !== "site") {
+    const mode = modeAcces();
+    const autorise =
+      mode === "ouvert" || (mode === "protege" && jetonValide(requete.cookies.get(NOM_COOKIE)?.value));
+    if (!autorise) {
+      const reponse = NextResponse.redirect(new URL("/admin/connexion", requete.url));
+      reponse.headers.set("X-Robots-Tag", "noindex, nofollow");
+      return reponse;
+    }
   }
 
   const reponse = NextResponse.next();

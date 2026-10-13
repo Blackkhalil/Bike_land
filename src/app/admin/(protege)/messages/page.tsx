@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Pastille } from "@/components/ui";
+import { exigerSessionAdmin } from "@/lib/admin";
 import { depot } from "@/lib/db";
 import { formatDate, formatNombre } from "@/lib/format";
 import { site } from "@/lib/site";
@@ -29,6 +30,7 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
  * obligerait à cliquer pour lire ce qui tient à l'écran.
  */
 export default async function PageMessagesAdmin({ searchParams }: { searchParams: Recherche }) {
+  await exigerSessionAdmin();
   const parametres = await searchParams;
   const recherche = typeof parametres.q === "string" ? parametres.q.trim().toLowerCase() : "";
 

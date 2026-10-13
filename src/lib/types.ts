@@ -129,6 +129,10 @@ export interface Paiement {
   referenceFournisseur?: string;
   estCaution: boolean;
   rembourseLe?: string;
+  /** Qui a reçu l'argent, pour une vente en espèces saisie dans l'administration. */
+  encaissePar?: string;
+  /** Ce qui a été rendu au client, quand le paiement est REMBOURSE. */
+  montantRenduXof?: number;
   creeLe: string;
 }
 

@@ -40,7 +40,11 @@ export const depot: Depot = {
   trouverReservationParToken: async (token) => (await obtenirDepot()).trouverReservationParToken(token),
   trouverReservationParReference: async (reference) =>
     (await obtenirDepot()).trouverReservationParReference(reference),
-  annulerReservation: async (reference) => (await obtenirDepot()).annulerReservation(reference),
+  trouverReservationParPaiement: async (referencePaiement) =>
+    (await obtenirDepot()).trouverReservationParPaiement(referencePaiement),
+  annulerReservation: async (reference, options) => (await obtenirDepot()).annulerReservation(reference, options),
+  noterRemboursementEspeces: async (reference, montantXof) =>
+    (await obtenirDepot()).noterRemboursementEspeces(reference, montantXof),
   supprimerReservation: async (reference) => (await obtenirDepot()).supprimerReservation(reference),
   listerRappelsAEnvoyer: async (date) => (await obtenirDepot()).listerRappelsAEnvoyer(date),
   retenirRappel: async (reservationId) => (await obtenirDepot()).retenirRappel(reservationId),
