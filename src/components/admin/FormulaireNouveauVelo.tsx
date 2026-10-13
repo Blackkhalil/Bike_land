@@ -273,9 +273,9 @@ export function FormulaireNouveauVelo({ points }: { points: PointDeRetrait[] }) 
         <div className="text-[0.86rem] leading-relaxed">
           {stockageActif === false && (
             <p className="rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-4 py-3">
-              Le stockage des photos n&apos;est pas encore activé. Dans Vercel : <strong>Storage</strong>,{" "}
-              <strong>Create</strong>, <strong>Blob</strong>, puis connectez-le au projet bike-land. La
-              lecture de l&apos;affiche fonctionne déjà.
+              Le stockage des photos n&apos;est pas branché sur ce projet. Dans Vercel :{" "}
+              <strong>Storage</strong>, ouvrez <strong>bikeland-photos</strong>, puis connectez-le au
+              projet de l&apos;administration. La lecture de l&apos;affiche fonctionne déjà.
             </p>
           )}
           {media.etape === "vide" && (

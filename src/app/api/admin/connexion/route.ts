@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { NOM_COOKIE, creerJeton, identifiantsCorrects, modeAcces } from "@/lib/admin";
-import { codeValide } from "@/lib/double-authentification";
-import { etatDoubleAuthentification } from "@/lib/securite-admin";
+import { roleDuDeploiement } from "@/lib/deploiement";
+import { etatDoubleAuthentification, verifierCode } from "@/lib/securite-admin";
 import {
   delaiAvantNouvelEssai,
   enregistrerEchec,
@@ -12,6 +12,10 @@ import {
 
 /** Ouverture et fermeture de session de l'espace d'exploitation. */
 export async function POST(requete: Request) {
+  // Le site public n'ouvre jamais de session d'administration.
+  if (roleDuDeploiement() === "site") {
+    return NextResponse.json({ erreur: "Introuvable." }, { status: 404 });
+  }
   if (modeAcces() !== "protege") {
     return NextResponse.json(
       { erreur: "Aucun mot de passe d'administration n'est configuré." },
@@ -48,17 +52,30 @@ export async function POST(requete: Request) {
     );
   }
 
+  const identifiantsBons =
+    typeof corps.email === "string" &&
+    typeof corps.motDePasse === "string" &&
+    identifiantsCorrects(corps.email, corps.motDePasse);
+
+  // Le code n'est vérifié, et un échec compté contre lui, qu'avec le bon
+  // mot de passe : sinon n'importe qui épuiserait les essais de code et
+  // bloquerait l'exploitant sans rien connaître.
+  let verdictCode: "accepte" | "refuse" | "bloque" = "accepte";
+  if (identifiantsBons && deuxFacteurs.etat === "active") {
+    verdictCode = typeof corps.code === "string"
+      ? await verifierCode(deuxFacteurs.secret, corps.code)
+      : "refuse";
+  }
+  if (verdictCode === "bloque") {
+    return NextResponse.json(
+      { erreur: "Trop de codes incorrects. Réessayez dans un quart d'heure." },
+      { status: 429, headers: { "Retry-After": "900" } },
+    );
+  }
+
   // Un seul message d'erreur, quel que soit le champ fautif : préciser
   // « adresse inconnue » ou « code faux » indiquerait ce qui est juste.
-  const codeAccepte =
-    deuxFacteurs.etat === "inactive" ||
-    (typeof corps.code === "string" && codeValide(deuxFacteurs.secret, corps.code));
-  if (
-    typeof corps.email !== "string" ||
-    typeof corps.motDePasse !== "string" ||
-    !identifiantsCorrects(corps.email, corps.motDePasse) ||
-    !codeAccepte
-  ) {
+  if (!identifiantsBons || verdictCode !== "accepte") {
     enregistrerEchec(appelant);
     // Délai fixe : évite de distinguer « mauvais mot de passe » de
     // « traitement rapide » par le temps de réponse.

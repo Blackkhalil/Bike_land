@@ -16,13 +16,25 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
+import { roleDuDeploiement } from "@/lib/deploiement";
+
 export const NOM_COOKIE = "bikeland_admin";
 const DUREE_SESSION_MS = 12 * 60 * 60 * 1000; // 12 heures
 
+/**
+ * Clé de signature des sessions.
+ *
+ * ADMIN_SESSION_SECRET n'existe que dans le projet d'administration : le
+ * site public, qui détient BOOKING_TOKEN_SECRET pour les liens de suivi,
+ * ne peut donc pas fabriquer une session d'administration. Les autres
+ * valeurs ne servent que tant que l'admin et le site partagent un même
+ * déploiement.
+ */
 function secret(): string {
   return (
-    process.env.BOOKING_TOKEN_SECRET ??
-    process.env.ADMIN_PASSWORD ??
+    process.env.ADMIN_SESSION_SECRET ||
+    process.env.BOOKING_TOKEN_SECRET ||
+    process.env.ADMIN_PASSWORD ||
     "bike-land-admin-developpement"
   );
 }
@@ -50,6 +62,9 @@ export function jetonValide(jeton: string | undefined): boolean {
   const [expirationBrute, signature] = jeton.split(".");
   const expiration = Number(expirationBrute);
   if (!Number.isFinite(expiration) || expiration < Date.now()) return false;
+  // Jamais plus de douze heures devant soi : un jeton signé pour durer des
+  // années, si la clé fuyait un jour, ne passerait pas.
+  if (expiration > Date.now() + DUREE_SESSION_MS + 60_000) return false;
 
   const attendue = createHmac("sha256", secret()).update(expirationBrute).digest("base64url");
   const a = Buffer.from(signature ?? "");
@@ -101,8 +116,15 @@ export function identifiantsCorrects(email: string, motDePasse: string): boolean
   return egalConstant(email.trim().toLowerCase(), attendu.trim().toLowerCase());
 }
 
-/** Vrai si la requête courante a le droit d'entrer dans /admin. */
+/**
+ * Vrai si la requête courante a le droit d'entrer dans /admin.
+ *
+ * Toujours faux sur le déploiement du site public (BIKELAND_ROLE=site) :
+ * le proxy y masque déjà l'administration, et ce refus tient même si une
+ * requête passait entre ses mailles.
+ */
 export async function sessionAdminValide(): Promise<boolean> {
+  if (roleDuDeploiement() === "site") return false;
   const mode = modeAcces();
   if (mode === "verrouille") return false;
   if (mode === "ouvert") return true;

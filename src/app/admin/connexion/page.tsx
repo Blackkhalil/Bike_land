@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { FormulaireConnexion } from "@/components/admin/FormulaireConnexion";
 import { Marque } from "@/components/Marque";
 import { emailAdminConfigure, modeAcces, sessionAdminValide } from "@/lib/admin";
+import { roleDuDeploiement } from "@/lib/deploiement";
 import { etatDoubleAuthentification } from "@/lib/securite-admin";
 
 export const metadata: Metadata = {
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function PageConnexionAdmin() {
+  if (roleDuDeploiement() === "site") notFound();
   if (await sessionAdminValide()) redirect("/admin");
   const mode = modeAcces();
 

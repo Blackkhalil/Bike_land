@@ -9,10 +9,8 @@
  *
  * Le secret partagé avec l'application est tiré au hasard sur le serveur,
  * montré une seule fois sous forme de QR code, puis rangé en base chiffré
- * (AES-256-GCM) avec une clé déduite du mot de passe d'administration :
- * une fuite de la base seule ne le révèle pas. Changer le mot de passe
- * rend donc l'ancien secret illisible, et la double authentification est
- * alors à réactiver depuis la page Sécurité.
+ * (AES-256-GCM) avec une clé que seul le serveur détient : une fuite de
+ * la base seule ne le révèle pas.
  */
 
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
@@ -70,21 +68,28 @@ function codeAuPas(secret: Buffer, pas: number): string {
 }
 
 /**
- * Le code saisi est-il celui de l'application ?
+ * Le pas de temps auquel correspond le code saisi, ou `null` s'il n'est
+ * pas celui de l'application.
  *
  * Un pas de trente secondes de tolérance de part et d'autre : l'heure du
  * téléphone n'est jamais tout à fait celle du serveur, et le code peut
- * changer pendant qu'on le tape.
+ * changer pendant qu'on le tape. Le pas rendu sert à refuser qu'un même
+ * code serve deux fois (voir src/lib/securite-admin.ts).
  */
-export function codeValide(secretBase32: string, saisi: string, maintenant = Date.now()): boolean {
+export function pasDuCode(secretBase32: string, saisi: string, maintenant = Date.now()): number | null {
   const code = saisi.replace(/\s/g, "");
-  if (!/^\d{6}$/.test(code)) return false;
+  if (!/^\d{6}$/.test(code)) return null;
   const secret = depuisBase32(secretBase32);
   const pas = Math.floor(maintenant / 1000 / PAS_SECONDES);
-  return [-1, 0, 1].some((ecart) => {
-    const attendu = Buffer.from(codeAuPas(secret, pas + ecart));
-    return timingSafeEqual(attendu, Buffer.from(code));
-  });
+  for (const ecart of [-1, 0, 1]) {
+    if (timingSafeEqual(Buffer.from(codeAuPas(secret, pas + ecart)), Buffer.from(code))) return pas + ecart;
+  }
+  return null;
+}
+
+/** Le code saisi est-il celui de l'application, à un pas près ? */
+export function codeValide(secretBase32: string, saisi: string, maintenant = Date.now()): boolean {
+  return pasDuCode(secretBase32, saisi, maintenant) !== null;
 }
 
 /** L'adresse que lit l'application en scannant le QR code. */
@@ -95,22 +100,28 @@ export function adresseApplication(secretBase32: string, compte: string): string
 
 /* ------------------------------------------------- Rangement en base */
 
+/**
+ * La clé de chiffrement, déduite d'un secret à haute entropie du serveur
+ * (ADMIN_SESSION_SECRET, à défaut BOOKING_TOKEN_SECRET), jamais du mot de
+ * passe : une copie de la base ne doit pas permettre de tester des mots
+ * de passe hors ligne contre le secret chiffré.
+ */
 function cle(): Buffer | null {
-  const motDePasse = process.env.ADMIN_PASSWORD;
-  if (!motDePasse) return null;
-  return createHmac("sha256", motDePasse).update("bikeland-double-authentification").digest();
+  const racine = process.env.ADMIN_SESSION_SECRET || process.env.BOOKING_TOKEN_SECRET;
+  if (!racine || racine.length < 16) return null;
+  return createHmac("sha256", racine).update("bikeland-double-authentification").digest();
 }
 
 export function chiffrer(secretBase32: string): string {
   const k = cle();
-  if (!k) throw new Error("ADMIN_PASSWORD absent");
+  if (!k) throw new Error("clé de chiffrement absente");
   const iv = randomBytes(12);
   const chiffreur = createCipheriv("aes-256-gcm", k, iv);
   const corps = Buffer.concat([chiffreur.update(secretBase32, "utf8"), chiffreur.final()]);
   return [iv, chiffreur.getAuthTag(), corps].map((b) => b.toString("base64url")).join(".");
 }
 
-/** Le secret en clair, ou `null` s'il ne se déchiffre plus (mot de passe changé). */
+/** Le secret en clair, ou `null` s'il ne se déchiffre plus (clé du serveur changée). */
 export function dechiffrer(enregistre: string): string | null {
   const k = cle();
   if (!k) return null;

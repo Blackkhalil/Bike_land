@@ -31,7 +31,7 @@ export async function POST(requete: Request) {
     return NextResponse.json(
       {
         erreur:
-          "Le stockage des photos n'est pas encore activé. Dans Vercel : Storage, Create, Blob, puis connectez-le au projet bike-land.",
+          "Le stockage des photos n'est pas branché sur ce projet. Dans Vercel : Storage, ouvrez le stockage bikeland-photos, puis connectez-le au projet de l'administration.",
       },
       { status: 503 },
     );
