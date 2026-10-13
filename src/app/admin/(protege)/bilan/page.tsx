@@ -94,7 +94,7 @@ export default async function PageBilan() {
               {stats.periodeEnCours && <Pastille ton="info">En cours</Pastille>}
             </div>
             <p className="mt-3 font-display text-[1.5rem] font-bold tabular-nums">
-              {formatXof(stats.chiffreAffaires.valeur)} <Variation valeur={stats.chiffreAffaires.variation} />
+              {formatXof(stats.chiffreAffaires.valeur)}{" "}{!stats.periodeEnCours && <Variation valeur={stats.chiffreAffaires.variation} />}
             </p>
             <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[0.82rem]">
               <Ligne titre="Net après frais" valeur={formatXof(stats.encaisseNet)} />
@@ -102,7 +102,7 @@ export default async function PageBilan() {
               <Ligne titre="Road trip" valeur={`${formatNombre(stats.participants.valeur)} pers.`} />
               <Ligne titre="Location libre" valeur={`${formatNombre(stats.heuresVendues.valeur)} h`} />
               <Ligne titre="Commissions" valeur={formatXof(commissions)} />
-              <Ligne titre="Vélo en tête" valeur={stats.velosLesPlusLoues[0]?.etiquette ?? "-"} />
+              <Ligne titre="Vélo en tête" valeur={veloEnTete(stats.velosLesPlusLoues)} />
             </dl>
             <Exports debut={debut} />
           </article>
@@ -111,24 +111,24 @@ export default async function PageBilan() {
 
       {/* Ordinateur : un tableau. */}
       <div className="mt-8 hidden overflow-x-auto rounded-[var(--radius-carte)] bg-white md:block">
-        <table className="w-full text-left text-[0.85rem]">
+        <table className="w-full whitespace-nowrap text-left text-[0.85rem]">
           <thead className="border-b border-noir-piste/10 text-[0.76rem] text-gris-cadre">
             <tr>
-              <th className="px-4 py-3 font-semibold">Semaine</th>
-              <th className="px-4 py-3 text-right font-semibold">Encaissé</th>
-              <th className="px-4 py-3 text-right font-semibold">Net après frais</th>
-              <th className="px-4 py-3 text-right font-semibold">Réservations</th>
-              <th className="px-4 py-3 text-right font-semibold">Road trip</th>
-              <th className="px-4 py-3 text-right font-semibold">Location libre</th>
-              <th className="px-4 py-3 text-right font-semibold">Commissions</th>
-              <th className="px-4 py-3 font-semibold">Vélo en tête</th>
-              <th className="px-4 py-3 font-semibold">Exporter</th>
+              <th className="px-3 py-3 font-semibold">Semaine</th>
+              <th className="px-3 py-3 text-right font-semibold">Encaissé (évolution)</th>
+              <th className="px-3 py-3 text-right font-semibold">Net après frais</th>
+              <th className="px-3 py-3 text-right font-semibold">Réservations</th>
+              <th className="px-3 py-3 text-right font-semibold">Road trip</th>
+              <th className="px-3 py-3 text-right font-semibold">Location libre</th>
+              <th className="px-3 py-3 text-right font-semibold">Commissions</th>
+              <th className="px-3 py-3 font-semibold">Vélo en tête</th>
+              <th className="px-3 py-3 font-semibold">Exporter</th>
             </tr>
           </thead>
           <tbody>
             {semaines.map(({ debut, fin, stats, commissions }) => (
               <tr key={debut} className="border-b border-noir-piste/5 last:border-0">
-                <td className="px-4 py-3">
+                <td className="px-3 py-3">
                   <span className="font-semibold">{intitule(debut, fin)}</span>
                   {stats.periodeEnCours && (
                     <span className="ml-2 align-middle">
@@ -136,19 +136,21 @@ export default async function PageBilan() {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                <td className="px-3 py-3 text-right font-semibold tabular-nums">
                   {formatXof(stats.chiffreAffaires.valeur)}
-                  <span className="block text-[0.74rem] font-normal">
-                    <Variation valeur={stats.chiffreAffaires.variation} />
-                  </span>
+                  {!stats.periodeEnCours && (
+                    <span className="block">
+                      <Variation valeur={stats.chiffreAffaires.variation} court />
+                    </span>
+                  )}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums">{formatXof(stats.encaisseNet)}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{formatNombre(stats.nombreReservations.valeur)}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{formatNombre(stats.participants.valeur)} pers.</td>
-                <td className="px-4 py-3 text-right tabular-nums">{formatNombre(stats.heuresVendues.valeur)} h</td>
-                <td className="px-4 py-3 text-right tabular-nums">{formatXof(commissions)}</td>
-                <td className="px-4 py-3">{stats.velosLesPlusLoues[0]?.etiquette ?? "-"}</td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3 text-right tabular-nums">{formatXof(stats.encaisseNet)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{formatNombre(stats.nombreReservations.valeur)}</td>
+                <td className="px-3 py-3 text-right tabular-nums">{formatNombre(stats.participants.valeur)} pers.</td>
+                <td className="px-3 py-3 text-right tabular-nums">{formatNombre(stats.heuresVendues.valeur)} h</td>
+                <td className="px-3 py-3 text-right tabular-nums">{formatXof(commissions)}</td>
+                <td className="px-3 py-3">{veloEnTete(stats.velosLesPlusLoues)}</td>
+                <td className="px-3 py-3">
                   <Exports debut={debut} />
                 </td>
               </tr>
@@ -156,13 +158,13 @@ export default async function PageBilan() {
           </tbody>
           <tfoot className="border-t border-noir-piste/15 font-semibold">
             <tr>
-              <td className="px-4 py-3">Depuis le début</td>
-              <td className="px-4 py-3 text-right tabular-nums">{formatXof(total.encaisse)}</td>
-              <td className="px-4 py-3 text-right tabular-nums">{formatXof(total.net)}</td>
-              <td className="px-4 py-3 text-right tabular-nums">{formatNombre(total.reservations)}</td>
-              <td className="px-4 py-3" colSpan={2} />
-              <td className="px-4 py-3 text-right tabular-nums">{formatXof(total.commissions)}</td>
-              <td className="px-4 py-3" colSpan={2} />
+              <td className="px-3 py-3">Depuis le début</td>
+              <td className="px-3 py-3 text-right tabular-nums">{formatXof(total.encaisse)}</td>
+              <td className="px-3 py-3 text-right tabular-nums">{formatXof(total.net)}</td>
+              <td className="px-3 py-3 text-right tabular-nums">{formatNombre(total.reservations)}</td>
+              <td className="px-3 py-3" colSpan={2} />
+              <td className="px-3 py-3 text-right tabular-nums">{formatXof(total.commissions)}</td>
+              <td className="px-3 py-3" colSpan={2} />
             </tr>
           </tfoot>
         </table>
@@ -179,14 +181,28 @@ function intitule(debut: DateISO, fin: DateISO): string {
   return `Du ${f(debut)} au ${f(fin)}`;
 }
 
-function Variation({ valeur }: { valeur: number | null }) {
+/** Le vélo le plus loué, ou un tiret pour une semaine sans sortie. */
+function veloEnTete(classement: { etiquette: string; valeur: number }[]): string {
+  return classement[0] && classement[0].valeur > 0 ? classement[0].etiquette : "-";
+}
+
+/**
+ * L'évolution sur la semaine d'avant. Jamais pour la semaine en cours :
+ * deux jours écoulés comparés à une semaine pleine afficheraient une
+ * chute qui n'existe pas.
+ */
+function Variation({ valeur, court = false }: { valeur: number | null; court?: boolean }) {
   if (valeur === null) return null;
   const arrondie = Math.round(valeur);
-  if (arrondie === 0) return <span className="text-[0.78rem] font-normal text-gris-cadre">stable</span>;
+  if (arrondie === 0) return <span className="text-[0.76rem] font-normal text-gris-cadre">stable</span>;
   return (
-    <span className={`text-[0.78rem] font-semibold ${arrondie > 0 ? "text-vert-lagune" : "text-orange-sourd"}`}>
+    <span
+      title="Par rapport à la semaine d'avant"
+      className={`text-[0.76rem] font-semibold ${arrondie > 0 ? "text-vert-lagune" : "text-orange-sourd"}`}
+    >
       {arrondie > 0 ? "+" : "−"}
-      {Math.abs(arrondie)} % <span className="font-normal text-gris-cadre">vs semaine d&apos;avant</span>
+      {Math.abs(arrondie)} %
+      {!court && <span className="font-normal text-gris-cadre"> vs semaine d&apos;avant</span>}
     </span>
   );
 }
