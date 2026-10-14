@@ -63,6 +63,8 @@ const etapes: { numero: Etape; titre: string }[] = [
 export interface CreneauProposable {
   code: string;
   libelle: string;
+  /** Le nom sous lequel ce départ se vend, s'il en a un : Gbashi bike le dimanche. */
+  produit?: string | null;
   date: DateISO;
   heureDebut: number;
   heureFin: number;
@@ -122,12 +124,20 @@ export function TunnelReservation({
   // réservent plus de la même façon : le road trip part à l'un des deux
   // créneaux encadrés du week-end, la location libre au jour choisi dans
   // le calendrier, à l'heure que le client retient.
+  //
+  // Le départ choisi sur la fiche vélo est gardé : sans cela, un client
+  // venu pour le dimanche, Gbashi bike, retombait sur le samedi, premier
+  // créneau de la liste, et risquait de payer le mauvais jour.
+  const creneauDemande =
+    creneaux.find((creneau) => creneau.date === dateInitiale) ?? creneaux[0];
   const [dateDebut, setDateDebut] = useState<DateISO>(
     offreInitiale === "road-trip"
-      ? (creneaux[0]?.date ?? dateInitiale)
+      ? (creneauDemande?.date ?? dateInitiale)
       : dateInitiale,
   );
-  const [heureDebut, setHeureDebut] = useState(heureInitiale);
+  const [heureDebut, setHeureDebut] = useState(
+    offreInitiale === "road-trip" && creneauDemande ? creneauDemande.heureDebut : heureInitiale,
+  );
   // Une sortie tient toujours dans la journée : la date de fin suit.
   const dateFin: DateISO = dateDebut;
   const [nombrePersonnes, setNombrePersonnes] = useState(personnesInitiales);
@@ -288,7 +298,7 @@ export function TunnelReservation({
   const choisirOffre = (code: CodeOffre) => {
     setOffre(code);
     if (code === "road-trip") {
-      const creneau = creneaux[0];
+      const creneau = creneauDemande;
       if (creneau) {
         setDateDebut(creneau.date);
         setHeureDebut(creneau.heureDebut);
@@ -703,6 +713,7 @@ export function TunnelReservation({
                         <span className="mt-0.5 block text-[0.78rem] opacity-75">
                           {formatHeure(creneau.heureDebut)} -{" "}
                           {formatHeure(creneau.heureFin)}
+                          {creneau.produit && ` · ${creneau.produit}, sport devant la plage`}
                         </span>
                       </button>
                     );

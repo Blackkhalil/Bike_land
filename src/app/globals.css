@@ -29,6 +29,15 @@
   --color-craie-ombre: #e0dcd3;
   --color-vert-lagune-vif: #268a72;
 
+  /* --- Saison : Octobre rose ----------------------------------------- */
+  /* La seule teinte hors charte, réservée à la campagne d'octobre : la
+     carte de la page Nos produits et l'annonce du site. Comme le vert
+     lagune pour les tours, le rose désigne un univers, jamais une action.
+     Encre noire dessus (5,2:1) ; la craie n'y tient qu'en très grand
+     (3,2:1). L'orange y disparaît (1,1:1) : sur un aplat rose, les
+     boutons prennent la variante `sombre`. */
+  --color-rose-octobre: #e8458b;
+
   /* --- Typographie ------------------------------------------------ */
   /* Titres : grotesque condensée lourde, en casse phrase (jamais de
      capitales). Texte : sans-serif neutre lisible en petit corps. */
@@ -78,9 +87,17 @@ body {
   [class~="bg-white"],
   [class~="bg-white/60"],
   [class~="bg-craie"],
-  [class~="bg-craie-ombre"]
+  [class~="bg-craie-ombre"],
+  [class~="bg-rose-octobre"]
 ) {
   color: var(--color-noir-piste);
+}
+
+/* Annonce de saison ouverte : la page derrière ne défile plus. Écrit en
+   CSS, et non dans `body.style` : l'en-tête y règle déjà le défilement de
+   son menu, et chacun remettrait à zéro ce que l'autre a posé. */
+html:has(dialog[data-annonce][open]) {
+  overflow: hidden;
 }
 
 /* ------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { AnnonceOctobreRose } from "@/components/AnnonceOctobreRose";
 import { BandeauAdmin } from "@/components/BandeauAdmin";
 import { EnTete } from "@/components/EnTete";
 import { PiedDePage } from "@/components/PiedDePage";
@@ -17,6 +18,7 @@ export default function LayoutSite({ children }: { children: React.ReactNode }) 
       <main id="contenu">{children}</main>
       <PiedDePage />
       <BandeauAdmin />
+      <AnnonceOctobreRose />
       <Reveal />
     </>
   );

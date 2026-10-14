@@ -72,6 +72,13 @@ interface EtatDemo {
   }[];
   /** reference -> hachage du token de suivi. */
   tokens: Map<string, string>;
+  /**
+   * Réglages d'ouverture : ici, et non dans le module, pour que la page
+   * qui propose les départs et l'API qui les ouvre lisent les mêmes. En
+   * développement, Next charge le module une fois pour chacune.
+   */
+  reglagesCreneaux: Map<string, boolean>;
+  joursFermes: JourFerme[];
 }
 
 // L'état vit sur `globalThis` : en développement, le rechargement à chaud
@@ -79,9 +86,6 @@ interface EtatDemo {
 // chaque modification de fichier.
 const cle = Symbol.for("bikeland.demo.etat");
 
-/** Réglages d'ouverture en démonstration : en mémoire, comme le reste. */
-const reglagesCreneaux = new Map<string, boolean>();
-const joursFermesDemo: JourFerme[] = [];
 /** Identifiants des réservations dont le rappel de la veille est parti. */
 const rappelsEnvoyes = new Set<string>();
 /** Réglages sensibles de l'administration, en mémoire en démonstration. */
@@ -103,8 +107,13 @@ function etat(): EtatDemo {
       codesPromo: [],
       utilisationsPromo: [],
       tokens: new Map(),
+      reglagesCreneaux: new Map(),
+      joursFermes: [],
     };
   }
+  // Un état créé avant l'ajout de ces réglages, gardé par le rechargement à chaud.
+  porteur[cle].reglagesCreneaux ??= new Map();
+  porteur[cle].joursFermes ??= [];
   return porteur[cle]!;
 }
 
@@ -774,17 +783,19 @@ export const depotDemo: Depot = {
   },
 
   async lireOuverture() {
+    const { reglagesCreneaux, joursFermes } = etat();
     return copie({
       creneaux: Object.fromEntries(reglagesCreneaux),
-      joursFermes: [...joursFermesDemo].sort((a, b) => a.date.localeCompare(b.date)),
+      joursFermes: [...joursFermes].sort((a, b) => a.date.localeCompare(b.date)),
     });
   },
 
   async reglerCreneau(code, actif) {
-    reglagesCreneaux.set(code, actif);
+    etat().reglagesCreneaux.set(code, actif);
   },
 
   async fermerJour({ date, formule, motif }) {
+    const joursFermesDemo = etat().joursFermes;
     const existant = joursFermesDemo.find((j) => j.date === date && j.formule === formule);
     if (existant) {
       existant.motif = motif || undefined;
@@ -802,6 +813,7 @@ export const depotDemo: Depot = {
   },
 
   async rouvrirJour(id) {
+    const joursFermesDemo = etat().joursFermes;
     const index = joursFermesDemo.findIndex((j) => j.id === id);
     if (index < 0) return false;
     joursFermesDemo.splice(index, 1);

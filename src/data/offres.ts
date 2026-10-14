@@ -165,7 +165,7 @@ export const OFFRES: {
     nom: "Location libre",
     accroche: "Le vélo pour vous, à l'heure",
     description:
-      "Vous prenez le vélo et vous roulez où vous voulez, à votre rythme. De une à cinq heures. Pièce d'identité et engagement signé demandés au départ.",
+      "Vous prenez le vélo et vous roulez où vous voulez, à votre rythme. De une à quatre heures. Pièce d'identité et engagement signé demandés au départ.",
     cautionXof: CAUTION_LOCATION_LIBRE_XOF,
   },
 ];
@@ -199,12 +199,18 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  * libre où le client dispose du vélo comme il l'entend.
  *
  * `jourSemaine` suit la convention de JavaScript : 0 = dimanche, 6 = samedi.
+ *
+ * `produit` nomme le créneau quand il est vendu sous son propre nom : le
+ * road trip du dimanche est Gbashi bike, avec une séance de sport devant
+ * la plage à l'arrivée (voir src/data/produits.ts). Même réservation et
+ * même prix que le road trip ; le nom s'affiche à côté du jour.
  */
 export const CRENEAUX_ROAD_TRIP = [
   {
     code: "samedi-matin",
     jourSemaine: 6,
     libelle: "Samedi",
+    produit: null,
     heureDebut: 8,
     heureFin: 11,
     actifParDefaut: true,
@@ -213,6 +219,7 @@ export const CRENEAUX_ROAD_TRIP = [
     code: "dimanche-matin",
     jourSemaine: 0,
     libelle: "Dimanche",
+    produit: "Gbashi bike",
     heureDebut: 8,
     heureFin: 11,
     actifParDefaut: false,
@@ -220,6 +227,12 @@ export const CRENEAUX_ROAD_TRIP = [
 ] as const;
 
 export type CodeCreneau = (typeof CRENEAUX_ROAD_TRIP)[number]["code"];
+
+/** Le créneau encadré d'un départ : le jour de la semaine et l'heure suffisent. */
+export function creneauDuDepart(date: string, heureDebut: number) {
+  const jourSemaine = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return CRENEAUX_ROAD_TRIP.find((c) => c.jourSemaine === jourSemaine && c.heureDebut === heureDebut);
+}
 
 /** Durée d'une sortie encadrée, déduite du créneau lui-même. */
 export const DUREE_ROAD_TRIP_HEURES =

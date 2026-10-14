@@ -117,9 +117,12 @@ export function EnTete() {
       </div>
 
       {menuOuvert && (
+        // Le panneau défile en lui-même : la page derrière est bloquée, et
+        // sur un téléphone tenu à l'horizontale ses derniers liens
+        // tomberaient sous l'écran, hors d'atteinte.
         <div
           id="menu-mobile"
-          className="border-t border-craie/15 bg-noir-piste px-5 pb-10 pt-6 lg:hidden"
+          className="max-h-[calc(100dvh-72px)] overflow-y-auto overscroll-contain border-t border-craie/15 bg-noir-piste px-5 pb-10 pt-6 lg:hidden"
         >
           <nav aria-label="Navigation mobile" className="flex flex-col">
             {[...navigationPrincipale, ...navigationSecondaire].map((lien) => (

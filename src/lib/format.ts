@@ -5,6 +5,8 @@
  * CFA n'a pas de subdivision utilisée, donc aucun arrondi flottant à gérer.
  */
 
+import { creneauDuDepart } from "@/data/offres";
+
 import type { MoyenPaiement } from "./types";
 
 const libellesMoyens: Record<MoyenPaiement, string> = {
@@ -145,10 +147,22 @@ export function resumeOffre(reservation: {
   offre: "road-trip" | "location-libre";
   nombrePersonnes: number;
   dureeHeures?: number;
+  dateDebut?: string;
+  heureDebut?: number;
 }): string {
   if (reservation.offre === "road-trip") {
     const n = reservation.nombrePersonnes;
-    return `Road trip · ${n} personne${n > 1 ? "s" : ""}`;
+    return `${nomDuRoadTrip(reservation)} · ${n} personne${n > 1 ? "s" : ""}`;
   }
   return `Location libre · ${reservation.dureeHeures ?? "?"} h`;
+}
+
+/**
+ * Le nom sous lequel ce road trip est vendu : « Gbashi bike » le dimanche,
+ * « Road trip » sinon. Le jour et l'heure retrouvent le créneau, qui porte
+ * le nom (voir CRENEAUX_ROAD_TRIP).
+ */
+export function nomDuRoadTrip(reservation: { dateDebut?: string; heureDebut?: number }): string {
+  if (reservation.dateDebut === undefined || reservation.heureDebut === undefined) return "Road trip";
+  return creneauDuDepart(reservation.dateDebut, reservation.heureDebut)?.produit ?? "Road trip";
 }

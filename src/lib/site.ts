@@ -84,7 +84,18 @@ export const site = {
   ],
 } as const;
 
+/**
+ * Une discussion WhatsApp avec l'équipe, message déjà écrit.
+ *
+ * Sur la seconde ligne, celle que le site public donne partout (voir
+ * `reseaux`). À ouvrir dans un nouvel onglet, comme le pied de page.
+ */
+export function lienWhatsApp(message: string): string {
+  return `${site.whatsapp[1].lien}?text=${encodeURIComponent(message)}`;
+}
+
 export const navigationPrincipale = [
+  { libelle: "Nos produits", href: "/produits" },
   { libelle: "Nos vélos", href: "/velos" },
   { libelle: "Itinéraires", href: "/itineraires" },
   { libelle: "Comment ça marche", href: "/comment-ca-marche" },

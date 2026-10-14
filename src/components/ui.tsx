@@ -21,6 +21,7 @@ type FondSection =
   | "noir-releve"
   | "craie"
   | "lagune"
+  | "rose"
   | "transparent"
   | "sable"
   | "blanc"
@@ -36,7 +37,8 @@ type FondSection =
  * les héros et les aplats de couleur, qui doivent casser la grille.
  *
  * `lagune` est réservé à l'univers « tours » : c'est ce qui permet de
- * distinguer les deux offres d'un coup d'œil, sans lire.
+ * distinguer les deux offres d'un coup d'œil, sans lire. `rose` l'est à
+ * Octobre rose, la seule campagne de saison.
  */
 export function Section({
   children,
@@ -56,6 +58,7 @@ export function Section({
     "noir-releve": "bg-noir-releve text-craie",
     craie: "bg-craie text-noir-piste",
     lagune: "bg-vert-lagune text-craie",
+    rose: "bg-rose-octobre text-noir-piste",
     transparent: "",
     // Alias de migration, voir FondSection.
     sable: "bg-craie text-noir-piste",

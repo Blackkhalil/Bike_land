@@ -38,6 +38,7 @@ const LARGEURS = [
 
 const PAGES = [
   "/",
+  "/produits",
   "/velos",
   "/velos/emeraude",
   "/itineraires",

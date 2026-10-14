@@ -21,8 +21,9 @@ import { site } from "@/lib/site";
  * formule, d'où le choix en tête d'encart :
  *
  *  - **Road trip** : la sortie est encadrée et part en groupe. Il n'y a
- *    donc rien à choisir d'autre que le créneau du samedi matin,
- *    un calendrier laisserait croire qu'on peut partir un mardi.
+ *    donc rien à choisir d'autre que le créneau, samedi ou dimanche matin
+ *    (le dimanche, c'est Gbashi bike) : un calendrier laisserait croire
+ *    qu'on peut partir un mardi.
  *  - **Location libre** : le vélo est à vous, le calendrier a tout son
  *    sens. L'heure de départ se choisit à l'étape suivante, une fois la
  *    durée connue.
@@ -51,7 +52,11 @@ export function WidgetReservation({
   const jourDemande = parametres.get("debut");
   const [offre, setOffre] = useState<CodeOffre>("road-trip");
   const [jour, setJour] = useState<DateISO | null>(jourDemande);
-  const [creneauChoisi, setCreneauChoisi] = useState<string>(creneaux[0]?.code ?? "");
+  // Un jour demandé qui tombe sur un départ encadré le présélectionne :
+  // `?debut=` d'un dimanche ouvre l'encart sur Gbashi bike.
+  const [creneauChoisi, setCreneauChoisi] = useState<string>(
+    (creneaux.find((item) => item.date === jourDemande) ?? creneaux[0])?.code ?? "",
+  );
   const ouvertes = useReservationsOuvertes();
   // Seul le road trip ferme la nuit : la location libre se réserve à
   // toute heure.
@@ -165,6 +170,7 @@ export function WidgetReservation({
                       </span>
                       <span className="mt-0.5 block text-[0.78rem] opacity-75">
                         {formatHeure(item.heureDebut)} - {formatHeure(item.heureFin)}
+                        {item.produit && ` · ${item.produit}, sport devant la plage`}
                       </span>
                     </button>
                   );

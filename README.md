@@ -39,6 +39,7 @@ En ligne : <https://bike-land.vercel.app>
 | Page | Route | Contenu |
 |---|---|---|
 | Accueil | `/` | Vélo en vedette en 3D, les trois gammes, le parc, carrousel de photos, avis |
+| Nos produits | `/produits` | Gbashi bike (le road trip du dimanche, sport devant la plage), road trip du samedi, location libre ; Octobre rose en octobre |
 | Catalogue | `/velos` | Les onze vélos groupés par gamme, chacun présenté par une vidéo |
 | Fiche vélo | `/velos/[slug]` | Gamme et tarif, caractéristiques, disponibilité à l'heure, avis |
 | Itinéraires | `/itineraires`, `/itineraires/[slug]` | Deux parcours de la route des Pêches, étape par étape |
@@ -80,6 +81,27 @@ semaine et du mois, détail par vendeur, ventes une par une avec renvoi de la
 facture. Les règles de la réservation en ligne (fermeture de nuit, clôture du
 road trip la veille à 22 h, jours fermés) ne s'y appliquent pas : le client est
 sur place. La colonne `collectedBy` est ajoutée par `prisma/especes.sql`.
+
+### Nos produits et Octobre rose
+
+`/produits` présente les façons de rouler, toutes tirées des mêmes données que la
+réservation (`src/data/produits.ts`, prix dans `src/data/offres.ts`) :
+
+- **Gbashi bike** est le road trip du dimanche, avec une séance de sport devant la
+  plage à l'arrivée. Même réservation, même prix : c'est le créneau « Dimanche » du
+  tableau de bord, qui affiche son nom. Le formulaire, les emails et l'admin le
+  nomment aussi.
+- **Road trip** est la sortie du samedi, **location libre** le vélo à l'heure.
+- **Octobre rose** n'existe qu'en octobre. Sa carte ouvre la page, et une annonce
+  s'ouvre une fois sur le site public, sauf pendant la réservation et le paiement.
+  Les deux s'effacent d'eux-mêmes le 1er novembre, heure du Bénin, sans
+  redéploiement : le mois est lu dans le navigateur, la page est régénérée chaque
+  minute. Pour publier la sortie, remplir `OCTOBRE_ROSE` (date, heure, prix) : la
+  carte et l'annonce les affichent, et l'annonce s'ouvre une fois de plus chez ceux
+  qui l'avaient fermée. Passé la date, elles s'effacent sans attendre la fin du mois.
+
+Une carte dont le départ est fermé dans le tableau de bord propose WhatsApp au lieu
+de la réservation en ligne.
 
 ---
 
@@ -145,7 +167,8 @@ le prix de la plaquette**, ces 125 F en moins : 1 000 F l'heure en Classique, 2 
 road trip Classique. Seule une vente saisie dans l'administration y a droit.
 
 Le road trip part sur un créneau fixe, le samedi et le dimanche de 8 h à 11 h (chaque
-créneau s'ouvre et se ferme depuis le tableau de bord).
+créneau s'ouvre et se ferme depuis le tableau de bord). Le dimanche, il se vend sous le
+nom de Gbashi bike (voir [Nos produits](#nos-produits-et-octobre-rose)).
 
 **Chaque départ de road trip se ferme la veille à 22 h**, heure du Bénin : le samedi le
 vendredi à 22 h, le dimanche le samedi à 22 h, chaque semaine. Le road trip ne se réserve

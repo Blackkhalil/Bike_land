@@ -131,6 +131,12 @@ export default function PageDonneesPersonnelles() {
           cookies strictement nécessaires au fonctionnement peuvent être utilisés, notamment pour
           l&apos;accès à l&apos;espace d&apos;administration.
         </p>
+        <p>
+          Quand vous fermez une annonce de saison, comme celle d&apos;Octobre rose, votre navigateur
+          retient sur votre appareil que vous l&apos;avez vue, pour ne pas vous la remontrer. Cette
+          information ne nous est pas transmise, et vous pouvez l&apos;effacer en vidant les données
+          du site dans votre navigateur.
+        </p>
       </ArticleLegal>
     </PageLegale>
   );

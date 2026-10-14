@@ -10,6 +10,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   const pages = [
     { chemin: "", priorite: 1, frequence: "weekly" as const },
+    { chemin: "/produits", priorite: 0.9, frequence: "weekly" as const },
     { chemin: "/velos", priorite: 0.9, frequence: "daily" as const },
     { chemin: "/itineraires", priorite: 0.8, frequence: "monthly" as const },
     { chemin: "/comment-ca-marche", priorite: 0.7, frequence: "monthly" as const },

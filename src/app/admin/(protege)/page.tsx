@@ -239,7 +239,8 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
         <PilotageOuverture
           creneaux={CRENEAUX_ROAD_TRIP.map((c) => ({
             code: c.code,
-            libelle: c.libelle,
+            // Le dimanche est Gbashi bike : l'ouvrir ici ouvre Gbashi bike.
+            libelle: c.produit ? `${c.libelle} · ${c.produit}` : c.libelle,
             horaire: `${c.heureDebut} h - ${c.heureFin} h`,
             actif: ouverture.creneauxActifs.has(c.code),
             prochainDepart: departsProposes.find((d) => d.code === c.code)?.date,

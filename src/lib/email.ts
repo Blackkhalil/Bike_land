@@ -8,7 +8,14 @@
  */
 
 import { site } from "./site";
-import { formatCreneau, formatXof, libelleReglement, libelleRemise, resumeOffre } from "./format";
+import {
+  formatCreneau,
+  formatXof,
+  libelleReglement,
+  libelleRemise,
+  nomDuRoadTrip,
+  resumeOffre,
+} from "./format";
 import { paiementPrincipal } from "./reservations";
 import type { Reservation } from "./types";
 
@@ -137,8 +144,9 @@ function detailsOffre(reservation: Reservation): [string, string][] {
       ["Durée", `${reservation.dureeHeures} h`],
     ];
   }
+  const nom = nomDuRoadTrip(reservation);
   return [
-    ["Formule", "Road trip encadré"],
+    ["Formule", nom === "Road trip" ? "Road trip encadré" : `${nom}, road trip encadré`],
     [
       "Participants",
       `${reservation.nombrePersonnes} personne${reservation.nombrePersonnes > 1 ? "s" : ""}`,
