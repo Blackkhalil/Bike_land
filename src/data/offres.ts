@@ -487,6 +487,35 @@ export function creneauxDisponibles(
 }
 
 /**
+ * Les départs que l'exploitant a fermés, affichés « Sold out » plutôt que
+ * de disparaître du site.
+ *
+ * Pour chaque créneau, son prochain départ encore dans les délais (avant
+ * la veille 22 h), s'il est fermé : le créneau entier depuis le tableau de
+ * bord, ou ce jour-là seulement. Fermer, c'est dire que c'est complet ; le
+ * client voit la sortie, pleine, au lieu de la croire supprimée. Le
+ * suivant, s'il est ouvert, reste proposé par `creneauxDisponibles`.
+ *
+ * Un départ dont la réservation est close (la veille 22 h passée) n'y
+ * figure pas : il n'est pas complet, il est parti.
+ */
+export function departsComplets(
+  maintenant = new Date(),
+  ouverture: OuvertureCreneaux = OUVERTURE_PAR_DEFAUT,
+) {
+  return CRENEAUX_ROAD_TRIP.flatMap((creneau) => {
+    let date = prochaineDatePour(creneau.jourSemaine, creneau.heureDebut, maintenant);
+    if (maintenant.getTime() >= clotureRoadTrip(date)) {
+      date = new Date(Date.parse(`${date}T00:00:00Z`) + 7 * 86_400_000).toISOString().slice(0, 10);
+    }
+    const ferme =
+      !ouverture.creneauxActifs.has(creneau.code) ||
+      estJourFerme(ouverture.joursFermes, date, "road-trip");
+    return ferme ? [{ ...creneau, date }] : [];
+  });
+}
+
+/**
  * Ce panier a-t-il dépassé son délai de paiement ?
  *
  * Écrit ici, au plus près du délai, et non recopié dans chaque appelant :

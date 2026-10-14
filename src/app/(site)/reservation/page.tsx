@@ -8,6 +8,7 @@ import { optionsLocation } from "@/data/catalogue";
 import {
   CRENEAUX_ROAD_TRIP,
   creneauxDisponibles,
+  departsComplets,
   DUREE_ROAD_TRIP_HEURES,
   heuresDepartPossibles,
 } from "@/data/offres";
@@ -79,6 +80,8 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   // valeur différente de celle du rendu serveur.
   const ouverture = await lireOuverture();
   const creneaux = creneauxDisponibles(maintenant, ouverture);
+  // Les départs fermés depuis l'admin s'affichent « Sold out », sans se réserver.
+  const complets = departsComplets(maintenant, ouverture);
   // Un jour fermé depuis l'admin, arrivé par un lien ou une page restée
   // ouverte : on le dit tout de suite, plutôt qu'au moment de payer.
   const refusLocation =
@@ -135,6 +138,7 @@ export default async function PageReservation({ searchParams }: { searchParams: 
             dateFin={fin}
             heureDebut={heureDebut}
             creneaux={creneaux}
+            complets={complets}
             instant={maintenant.getTime()}
             optionsInitiales={optionsDemandees}
           />

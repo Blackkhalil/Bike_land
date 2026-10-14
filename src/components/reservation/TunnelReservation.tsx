@@ -35,6 +35,7 @@ import type {
   PointDeRetrait,
   Velo,
 } from "@/lib/types";
+import { DepartComplet, departsDansLOrdre } from "./DepartComplet";
 import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
 import { site } from "@/lib/site";
 
@@ -90,6 +91,8 @@ interface Props {
   heureDebut: number;
   /** Les départs encadrés, pour la formule road trip : le samedi, aujourd'hui. */
   creneaux: CreneauProposable[];
+  /** Les départs fermés par l'exploitant, montrés « Sold out » (voir `departsComplets`). */
+  complets: CreneauProposable[];
   /**
    * L'instant du rendu serveur, en millisecondes. Les heures de départ
    * se calculent d'abord sur lui, pour que le navigateur affiche à
@@ -111,6 +114,7 @@ export function TunnelReservation({
   dateFin: dateFinInitiale,
   heureDebut: heureInitiale,
   creneaux,
+  complets,
   instant,
   optionsInitiales,
 }: Props) {
@@ -693,9 +697,10 @@ export function TunnelReservation({
                 {creneaux.length === 0 && (
                   <div className="mt-3">
                   <p className="rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed">
-                    Aucun départ de road trip n&apos;est ouvert à la réservation en ce moment :
-                    les prochaines sorties sont complètes. La location libre reste possible, ou
-                    appelez-nous au {site.telephone}.
+                    {complets.length > 0
+                      ? "Les prochains départs de road trip sont sold out. "
+                      : "Aucun départ de road trip n'est ouvert à la réservation en ce moment : les prochaines sorties sont complètes. "}
+                    La location libre reste possible, ou appelez-nous au {site.telephone}.
                   </p>
                   </div>
                 )}
@@ -704,12 +709,16 @@ export function TunnelReservation({
                     role="status"
                     className="mt-3 rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed"
                   >
-                    Le départ du {formatDate(dateInitiale)} n&apos;est plus ouvert à la réservation :
-                    nous vous proposons le suivant.
+                    {complets.some((depart) => depart.date === dateInitiale)
+                      ? `Le départ du ${formatDate(dateInitiale)} est sold out : nous vous proposons le suivant.`
+                      : `Le départ du ${formatDate(dateInitiale)} n'est plus ouvert à la réservation : nous vous proposons le suivant.`}
                   </p>
                 )}
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {creneaux.map((creneau) => {
+                  {departsDansLOrdre(creneaux, complets).map(({ depart: creneau, complet }) => {
+                    if (complet) {
+                      return <DepartComplet key={`complet-${creneau.code}-${creneau.date}`} depart={creneau} />;
+                    }
                     const actif =
                       dateDebut === creneau.date &&
                       heureDebut === creneau.heureDebut;

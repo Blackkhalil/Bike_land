@@ -11,6 +11,7 @@ import type { CodeOffre, Velo } from "@/lib/types";
 import type { DateISO } from "@/lib/dates";
 import { Calendrier, type PeriodeOccupee } from "./Calendrier";
 import type { CreneauProposable } from "./TunnelReservation";
+import { DepartComplet, departsDansLOrdre } from "./DepartComplet";
 import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
 import { site } from "@/lib/site";
 
@@ -33,11 +34,14 @@ export function WidgetReservation({
   velo,
   periodesOccupees,
   creneaux,
+  complets,
 }: {
   velo: Velo;
   periodesOccupees: PeriodeOccupee[];
   /** Les départs encadrés, calculés côté serveur : le samedi, aujourd'hui. */
   creneaux: CreneauProposable[];
+  /** Les départs fermés par l'exploitant, montrés « Sold out » (voir `departsComplets`). */
+  complets: CreneauProposable[];
 }) {
   const routeur = useRouter();
 
@@ -184,12 +188,16 @@ export function WidgetReservation({
               <div className="mt-3 space-y-2">
                 {creneaux.length === 0 && (
                   <p className="rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed">
-                    Aucun départ de road trip n&apos;est ouvert à la réservation en ce moment :
-                    les prochaines sorties sont complètes. La location libre reste possible, ou
-                    appelez-nous au {site.telephone}.
+                    {complets.length > 0
+                      ? "Les prochains départs de road trip sont sold out. "
+                      : "Aucun départ de road trip n'est ouvert à la réservation en ce moment : les prochaines sorties sont complètes. "}
+                    La location libre reste possible, ou appelez-nous au {site.telephone}.
                   </p>
                 )}
-                {creneaux.map((item) => {
+                {departsDansLOrdre(creneaux, complets).map(({ depart: item, complet }) => {
+                  if (complet) {
+                    return <DepartComplet key={`complet-${item.code}-${item.date}`} depart={item} />;
+                  }
                   const actif = creneauChoisi === item.code;
                   return (
                     <button
@@ -243,13 +251,15 @@ export function WidgetReservation({
           >
             {redirection
               ? "Un instant…"
-              : fermeLaNuit
-                ? "Réservations fermées"
-                : offre === "road-trip" && creneaux.length === 0
-                  ? "Aucun départ ouvert"
-                  : !pretAContinuer
-                    ? "Choisissez un jour"
-                  : "Réserver ce vélo"}
+              : offre === "road-trip" && creneaux.length === 0 && complets.length > 0
+                ? "Sold out"
+                : fermeLaNuit
+                  ? "Réservations fermées"
+                  : offre === "road-trip" && creneaux.length === 0
+                    ? "Aucun départ ouvert"
+                    : !pretAContinuer
+                      ? "Choisissez un jour"
+                    : "Réserver ce vélo"}
           </Bouton>
 
           <p className="mt-3 text-center text-[0.76rem] text-gris-cadre">

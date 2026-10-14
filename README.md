@@ -174,7 +174,10 @@ road trip Classique. Seule une vente saisie dans l'administration y a droit.
 
 Le road trip part sur un créneau fixe, le samedi et le dimanche de 8 h à 11 h (chaque
 créneau s'ouvre et se ferme depuis le tableau de bord). Le dimanche, il se vend sous le
-nom de Gbashi bike (voir [Nos produits](#nos-produits-et-octobre-rose)).
+nom de Gbashi bike (voir [Nos produits](#nos-produits-et-octobre-rose)). **Un départ fermé
+reste affiché, « Sold out »** : le créneau entier ou ce jour seulement, il paraît à sa date
+dans la fiche vélo, le formulaire et la page Nos produits, sans pouvoir être choisi, et le
+départ ouvert suivant reste proposé (`departsComplets`).
 
 **Chaque départ de road trip se ferme la veille à 22 h**, heure du Bénin : le samedi le
 vendredi à 22 h, le dimanche le samedi à 22 h, chaque semaine. Le road trip ne se réserve

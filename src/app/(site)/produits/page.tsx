@@ -12,6 +12,7 @@ import {
   CAUTION_LOCATION_LIBRE_XOF,
   CRENEAUX_ROAD_TRIP,
   creneauxDisponibles,
+  departsComplets,
   DUREE_MAX_LOCATION_LIBRE,
   FERMETURE_HEURE,
   formatHeure,
@@ -56,6 +57,45 @@ const majuscule = (texte: string) => texte.charAt(0).toUpperCase() + texte.slice
 function heureDuCreneau(code: string): string {
   const creneau = CRENEAUX_ROAD_TRIP.find((c) => c.code === code) ?? CRENEAUX_ROAD_TRIP[0];
   return formatHeure(creneau.heureDebut);
+}
+
+/** La mention d'un départ plein, fermé par l'exploitant dans le tableau de bord. */
+function SoldOut({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-block rounded-[var(--radius-bouton)] bg-craie px-1.5 py-0.5 align-middle text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-noir-piste ${className}`}
+    >
+      Sold out
+    </span>
+  );
+}
+
+/**
+ * Les repères de départ d'une sortie du week-end : le prochain départ, et
+ * s'il est « Sold out », la prochaine date encore ouverte.
+ */
+function ReperesDepart({
+  complet,
+  ouvert,
+}: {
+  complet?: { date: string };
+  ouvert?: { date: string };
+}) {
+  if (complet) {
+    return (
+      <>
+        <Repere terme="Prochain départ">
+          {majuscule(formatDateAvecJour(complet.date))} <SoldOut className="ml-1" />
+        </Repere>
+        {ouvert && <Repere terme="Places disponibles">{majuscule(formatDateAvecJour(ouvert.date))}</Repere>}
+      </>
+    );
+  }
+  return (
+    <Repere terme="Prochain départ">
+      {ouvert ? majuscule(formatDateAvecJour(ouvert.date)) : "Pas ouvert en ligne en ce moment"}
+    </Repere>
+  );
 }
 
 /** Une ligne de repères : le terme à gauche, la valeur à droite. */
@@ -109,9 +149,10 @@ function PhotoProduit({
  * Nos produits : les façons de rouler, côte à côte (voir src/data/produits.ts).
  *
  * Gbashi bike et le road trip se réservent en ligne tant que leur départ
- * est ouvert dans le tableau de bord ; fermé, leur bouton passe à
- * WhatsApp plutôt que de mener à un départ introuvable. Octobre rose ne
- * paraît qu'en octobre, en tête de page.
+ * est ouvert dans le tableau de bord. Fermé, leur prochain départ reste
+ * affiché, « Sold out », avec la date suivante encore ouverte s'il y en
+ * a une ; sinon leur bouton passe à WhatsApp plutôt que de mener à un
+ * départ introuvable. Octobre rose ne paraît qu'en octobre, en tête de page.
  */
 export default async function PageProduits() {
   const ouverture = await lireOuverture();
@@ -119,6 +160,10 @@ export default async function PageProduits() {
   const departs = creneauxDisponibles(maintenant, ouverture);
   const dimanche = departs.find((depart) => depart.code === CRENEAU_GBASHI_BIKE);
   const samedi = departs.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
+  // Un départ fermé dans le tableau de bord reste affiché, « Sold out ».
+  const complets = departsComplets(maintenant, ouverture);
+  const dimancheComplet = complets.find((depart) => depart.code === CRENEAU_GBASHI_BIKE);
+  const samediComplet = complets.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
   const avecOctobreRose = octobreRoseEnCours(maintenant);
   const rendezVous = rendezVousOctobreRose();
 
@@ -225,7 +270,10 @@ export default async function PageProduits() {
             cadrage="object-[50%_62%]"
           />
           <div>
-            <Pastille ton="sombre">Le dimanche</Pastille>
+            <div className="flex flex-wrap gap-2">
+              <Pastille ton="sombre">Le dimanche</Pastille>
+              {dimancheComplet && <Pastille ton="neutre">Sold out</Pastille>}
+            </div>
             <TitreSection className="mt-5">Gbashi bike</TitreSection>
             <p className="mt-3 font-display text-[1.4rem] leading-tight">
               Le road trip du dimanche, version sport
@@ -237,9 +285,7 @@ export default async function PageProduits() {
             </p>
             <dl className="mt-8 max-w-md">
               <Repere terme="Départ">Le dimanche à {heureDuCreneau(CRENEAU_GBASHI_BIKE)}, en groupe</Repere>
-              <Repere terme="Prochain départ">
-                {dimanche ? majuscule(formatDateAvecJour(dimanche.date)) : "Pas ouvert en ligne en ce moment"}
-              </Repere>
+              <ReperesDepart complet={dimancheComplet} ouvert={dimanche} />
               <Repere terme="Tarif">
                 <span className="font-display text-[1.2rem]">dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}</span>{" "}
                 par personne
@@ -267,10 +313,12 @@ export default async function PageProduits() {
                     variante="clair"
                     taille="lg"
                   >
-                    Réserver sur WhatsApp
+                    Écrire sur WhatsApp
                   </BoutonLien>
                   <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/85">
-                    Le départ du dimanche ne se réserve pas en ligne en ce moment&nbsp;: écrivez-nous.
+                    {dimancheComplet
+                      ? "Le prochain dimanche est sold out : écrivez-nous pour les suivants."
+                      : "Le départ du dimanche ne se réserve pas en ligne en ce moment : écrivez-nous."}
                   </p>
                 </>
               )}
@@ -289,7 +337,10 @@ export default async function PageProduits() {
             className="lg:order-last"
           />
           <div>
-            <Pastille ton="succes">Le samedi</Pastille>
+            <div className="flex flex-wrap gap-2">
+              <Pastille ton="succes">Le samedi</Pastille>
+              {samediComplet && <Pastille ton="neutre">Sold out</Pastille>}
+            </div>
             <TitreSection className="mt-5">Road trip</TitreSection>
             <p className="mt-3 font-display text-[1.4rem] leading-tight">{roadTrip?.accroche}</p>
             <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-craie/75">
@@ -298,9 +349,7 @@ export default async function PageProduits() {
             </p>
             <dl className="mt-8 max-w-md">
               <Repere terme="Départ">Le samedi à {heureDuCreneau(CRENEAU_ROAD_TRIP)}, en groupe</Repere>
-              <Repere terme="Prochain départ">
-                {samedi ? majuscule(formatDateAvecJour(samedi.date)) : "Pas ouvert en ligne en ce moment"}
-              </Repere>
+              <ReperesDepart complet={samediComplet} ouvert={samedi} />
               <Repere terme="Tarif">
                 <span className="font-display text-[1.2rem] text-orange-signal">
                   dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}
@@ -335,7 +384,7 @@ export default async function PageProduits() {
                   variante="primaire"
                   taille="lg"
                 >
-                  Réserver sur WhatsApp
+                  Écrire sur WhatsApp
                 </BoutonLien>
               )}
               <BoutonLien href="/itineraires" variante="contour" taille="lg" className="text-craie">
@@ -344,7 +393,9 @@ export default async function PageProduits() {
             </div>
             {!samedi && (
               <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/75">
-                Le départ du samedi ne se réserve pas en ligne en ce moment&nbsp;: écrivez-nous.
+                {samediComplet
+                  ? "Le prochain samedi est sold out : écrivez-nous pour les suivants."
+                  : "Le départ du samedi ne se réserve pas en ligne en ce moment : écrivez-nous."}
               </p>
             )}
           </div>

@@ -13,6 +13,7 @@ import { Etoiles, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue } from "@/data/catalogue";
 import {
   creneauxDisponibles,
+  departsComplets,
   GAMMES,
   GRILLE_HORAIRE,
   PRIX_ROAD_TRIP_XOF,
@@ -245,6 +246,7 @@ export default async function PageVelo({ params }: { params: Params }) {
               <Suspense fallback={<SqueletteReservation />}>
                 <WidgetReservation
                   creneaux={creneauxDisponibles(new Date(), ouverture)}
+                  complets={departsComplets(new Date(), ouverture)}
                   velo={velo}
                   periodesOccupees={periodesOccupees}
                 />

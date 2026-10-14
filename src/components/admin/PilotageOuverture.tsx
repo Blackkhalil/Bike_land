@@ -91,8 +91,8 @@ export function PilotageOuverture({
       <div className="rounded-[var(--radius-carte)] border border-noir-piste/8 bg-white p-6">
         <h3 className="text-[0.95rem] font-semibold">Départs du road trip</h3>
         <p className="mt-1 text-[0.82rem] leading-relaxed text-gris-cadre">
-          Un départ fermé n&apos;est plus proposé, toutes les semaines, jusqu&apos;à ce que vous le
-          rouvriez.
+          Un départ fermé ne se réserve plus en ligne, toutes les semaines, jusqu&apos;à ce que
+          vous le rouvriez. Le site l&apos;affiche « Sold out » au lieu de le retirer.
         </p>
         <ul className="mt-4 divide-y divide-noir-piste/10">
           {creneaux.map((c) => (
@@ -106,7 +106,7 @@ export function PilotageOuverture({
                     ? c.prochainDepart
                       ? `Ouvert. Prochain départ proposé : ${formatDate(c.prochainDepart)}.`
                       : "Ouvert, mais toutes les dates proches sont fermées."
-                    : "Fermé à la réservation en ligne."}
+                    : "Fermé : affiché « Sold out » sur le site."}
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -140,7 +140,8 @@ export function PilotageOuverture({
         <h3 className="text-[0.95rem] font-semibold">Fermer un jour complet</h3>
         <p className="mt-1 text-[0.82rem] leading-relaxed text-gris-cadre">
           Pour un jour déjà rempli autrement, par exemple avec des réservations prises en espèces.
-          Les réservations déjà faites ce jour-là restent valables.
+          Les réservations déjà faites ce jour-là restent valables. Fermé au road trip, ce jour
+          s&apos;affiche « Sold out » sur le site.
         </p>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
