@@ -82,14 +82,6 @@ export async function POST(requete: Request) {
     return NextResponse.json({ erreur: "Identifiant de paiement absent." }, { status: 400 });
   }
 
-  // Notre référence de réservation voyage dans `metadata`, où nous l'avons
-  // mise en poussant le paiement.
-  const reference = referenceDepuisCharge(enveloppe.data);
-  if (!reference) {
-    console.warn(`[webhook] paiement ${paiementId} sans référence de réservation.`);
-    return NextResponse.json({ recu: true, confirme: false, raison: "sans-reference" });
-  }
-
   const verification = await verifierPaiement(paiementId);
 
   if (verification.issue === "indisponible") {
@@ -101,6 +93,17 @@ export async function POST(requete: Request) {
   if (verification.issue === "introuvable" || verification.issue === "refusee") {
     console.warn(`[webhook] paiement inconnu de SasPay : ${paiementId}`);
     return NextResponse.json({ recu: true, confirme: false, raison: "introuvable" });
+  }
+
+  // Notre référence de réservation voyage dans `metadata`, où nous l'avons
+  // mise en poussant le paiement. Si la notification ne la porte pas, on
+  // la prend dans la réponse de SasPay à la vérification, qui la renvoie :
+  // sans cela, une notification d'un autre format ne confirmerait plus
+  // rien, et le client qui a fermé son navigateur aurait payé pour rien.
+  const reference = referenceDepuisCharge(enveloppe.data) ?? verification.paiement.reference;
+  if (!reference) {
+    console.warn(`[webhook] paiement ${paiementId} sans référence de réservation.`);
+    return NextResponse.json({ recu: true, confirme: false, raison: "sans-reference" });
   }
 
   // Un échec ou une annulation n'a rien à confirmer. On le journalise et

@@ -35,7 +35,7 @@ import type {
   PointDeRetrait,
   Velo,
 } from "@/lib/types";
-import { DepartComplet, departsDansLOrdre } from "./DepartComplet";
+import { DepartComplet, departsDansLOrdre, premierDepart } from "./DepartComplet";
 import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
 import { site } from "@/lib/site";
 
@@ -140,7 +140,7 @@ export function TunnelReservation({
   const creneauDemande =
     creneaux.find((creneau) => creneau.date === dateInitiale) ??
     creneaux.find((creneau) => creneau.code === creneauDuJour(dateInitiale)?.code) ??
-    creneaux[0];
+    premierDepart(creneaux);
   const departRemplace =
     offreInitiale === "road-trip" &&
     creneauDuJour(dateInitiale) !== undefined &&

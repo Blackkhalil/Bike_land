@@ -16,6 +16,7 @@ import {
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_HEURE,
   OUVERTURE_HEURE,
+  panierExpire,
 } from "@/data/offres";
 import { calculerDevis } from "../tarification";
 import { genererReference, genererToken, hacherToken, lireToken } from "../tokens";
@@ -328,11 +329,9 @@ export const depotDemo: Depot = {
         creeLe: new Date().toISOString(),
       };
       donnees.clients.push(client);
-    } else if (!client.telephone && demande.client.telephone) {
-      // Même règle qu'en base : une fiche existante n'est jamais réécrite,
-      // un téléphone manquant est seulement complété.
-      client.telephone = demande.client.telephone.trim();
     }
+    // Même règle qu'en base : une fiche existante n'est jamais réécrite,
+    // pas même pour compléter un téléphone manquant.
     // Ce que la personne a saisi pour cette réservation, à part de la fiche.
     const contact = {
       ...client,
@@ -594,12 +593,34 @@ export const depotDemo: Depot = {
       return { reservation: copie(reservation), dejaConfirmee: true };
     }
 
+    // Même contrôle qu'en base : un panier expiré ne bloquait plus le vélo,
+    // quelqu'un a pu le reprendre. Fait sans attente avant l'écriture.
+    if (panierExpire(reservation.creeLe)) {
+      const creneau = {
+        debut: reservation.dateDebut,
+        fin: reservation.dateFin,
+        heureDebut: reservation.heureDebut,
+        heureFin: reservation.heureFin,
+      };
+      const repris = reservation.lignes.some((ligne) =>
+        creneauxBloquants(ligne.veloId).some((periode) => creneauxSeChevauchent(creneau, periode)),
+      );
+      if (repris) throw new ConflitDisponibiliteError();
+    }
+
     reservation.statut = "CONFIRMEE";
     reservation.confirmeLe = new Date().toISOString();
     for (const paiement of reservation.paiements) {
       if (paiement.estCaution) continue;
       paiement.statut = "REUSSI";
-      if (referenceTransaction) paiement.referenceFournisseur = referenceTransaction;
+      if (referenceTransaction) {
+        if (paiement.referenceFournisseur && paiement.referenceFournisseur !== referenceTransaction) {
+          console.warn(
+            `[paiement] ${reservation.reference} : la transaction ${referenceTransaction} remplace ${paiement.referenceFournisseur}, déjà notée sur ce paiement. Vérifiez un double paiement.`,
+          );
+        }
+        paiement.referenceFournisseur = referenceTransaction;
+      }
     }
 
     // Le parrainage n'est acquis au partenaire qu'ici. Le filtre sur

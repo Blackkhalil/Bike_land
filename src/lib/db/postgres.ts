@@ -28,6 +28,7 @@ import {
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_HEURE,
   OUVERTURE_HEURE,
+  panierExpire,
 } from "@/data/offres";
 import { calculerDevis } from "../tarification";
 import {
@@ -671,25 +672,23 @@ const depotDirect: Depot = {
             : devisBrut;
 
           // Le client est créé au fil de l'eau, sans compte (§2.2). Une
-          // fiche existante n'est jamais réécrite : n'importe qui peut
-          // réserver avec l'adresse d'un autre, et il changerait sinon son
-          // nom et son téléphone partout. Tout au plus, un téléphone
-          // manquant est complété. Ce que la personne a saisi est gardé
-          // sur la réservation elle-même (contact*).
+          // fiche existante n'est jamais réécrite, pas même pour compléter
+          // un téléphone manquant : n'importe qui peut réserver avec
+          // l'adresse d'un autre, et y aurait laissé son propre numéro, que
+          // l'équipe aurait ensuite appelé en croyant joindre le client. Ce
+          // que la personne a saisi est gardé sur la réservation elle-même
+          // (contact*).
           const prenom = demande.client.prenom.trim();
           const nom = demande.client.nom.trim();
           const telephone = demande.client.telephone?.trim() || undefined;
           // `upsert` sans rien à mettre à jour : deux réservations
           // simultanées d'un nouveau client ne se heurtent pas à l'unicité
           // de l'adresse.
-          let customer = await tx.customer.upsert({
+          const customer = await tx.customer.upsert({
             where: { email },
             create: { email, firstName: prenom, lastName: nom, phone: telephone },
             update: {},
           });
-          if (!customer.phone && telephone) {
-            customer = await tx.customer.update({ where: { id: customer.id }, data: { phone: telephone } });
-          }
 
           return tx.booking.create({
             data: {
@@ -1048,13 +1047,47 @@ const depotDirect: Depot = {
    */
   async confirmerPaiement(reference: string, referenceTransaction?: string) {
     try {
-      return await client().$transaction(
+      return await avecRepriseConnexion(() => client().$transaction(
         async (tx) => {
           const existante = await tx.booking.findUnique({
             where: { reference },
-            select: { id: true },
+            select: {
+              id: true,
+              status: true,
+              createdAt: true,
+              items: {
+                select: { bikeId: true, startDate: true, endDate: true, startHour: true, endHour: true },
+              },
+            },
           });
           if (!existante) return null;
+
+          // Un panier expiré ne bloquait plus le vélo : quelqu'un a pu le
+          // reprendre pendant que ce client payait. Le contrôle qui fait foi
+          // est ici, dans la transaction qui confirme, en isolation
+          // sérialisable comme la création : une réservation du même
+          // créneau ne peut pas se glisser entre lui et la confirmation.
+          if (
+            existante.status === "EN_ATTENTE_PAIEMENT" &&
+            panierExpire(existante.createdAt.toISOString())
+          ) {
+            for (const ligne of existante.items) {
+              const conflit = await tx.bookingItem.findFirst({
+                where: {
+                  ...conflitHoraire(
+                    ligne.bikeId,
+                    versISO(ligne.startDate),
+                    versISO(ligne.endDate),
+                    ligne.startHour,
+                    ligne.endHour,
+                  ),
+                  bookingId: { not: existante.id },
+                },
+                select: { id: true },
+              });
+              if (conflit) throw new ConflitDisponibiliteError();
+            }
+          }
 
           const passage = await tx.booking.updateMany({
             where: { id: existante.id, status: "EN_ATTENTE_PAIEMENT" },
@@ -1062,6 +1095,25 @@ const depotDirect: Depot = {
           });
 
           if (passage.count === 1) {
+            // Une transaction déjà notée sur ce paiement, et une autre qui
+            // le confirme : la première serait effacée sans trace. Elle peut
+            // être un premier paiement à rembourser ; le journal la garde.
+            if (referenceTransaction) {
+              const autre = await tx.payment.findFirst({
+                where: {
+                  bookingId: existante.id,
+                  isDeposit: false,
+                  providerReference: { not: null },
+                  NOT: { providerReference: referenceTransaction },
+                },
+                select: { providerReference: true },
+              });
+              if (autre) {
+                console.warn(
+                  `[paiement] ${reference} : la transaction ${referenceTransaction} remplace ${autre.providerReference}, déjà notée sur ce paiement. Vérifiez un double paiement.`,
+                );
+              }
+            }
             await tx.payment.updateMany({
               where: { bookingId: existante.id, isDeposit: false },
               data: {
@@ -1098,10 +1150,18 @@ const depotDirect: Depot = {
             dejaConfirmee: passage.count === 0,
           };
         },
-        // Même raison qu'à la création : la reconnexion au pooler ne doit
-        // pas consommer à elle seule le budget de la transaction.
-        { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
-      );
+        {
+          // Comme à la création : une confirmation et une réservation
+          // concurrentes du même créneau ne peuvent pas réussir toutes les
+          // deux. PostgreSQL en annule une, que `avecRepriseConnexion`
+          // rejoue (P2034) ; rejouée, elle voit l'autre.
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          // Même raison qu'à la création : la reconnexion au pooler ne doit
+          // pas consommer à elle seule le budget de la transaction.
+          maxWait: DELAI_ATTENTE_MS,
+          timeout: DELAI_TRANSACTION_MS,
+        },
+      ));
     } catch (erreur) {
       if (
         erreur instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1525,7 +1585,7 @@ const depotDirect: Depot = {
     return versAvis(
       review,
       booking.reference,
-      booking.customer,
+      auteurDeLaReservation(booking),
       ligne.bike.name,
     );
   },
@@ -1543,7 +1603,7 @@ const depotDirect: Depot = {
     return versAvis(
       booking.review,
       booking.reference,
-      booking.customer,
+      auteurDeLaReservation(booking),
       booking.items[0]?.bike.name ?? "",
     );
   },
@@ -1556,7 +1616,7 @@ const depotDirect: Depot = {
       },
       include: {
         customer: true,
-        booking: { select: { reference: true } },
+        booking: { select: { reference: true, contactFirstName: true, contactLastName: true } },
         bike: { select: { name: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -1565,7 +1625,7 @@ const depotDirect: Depot = {
       versAvis(
         review,
         review.booking.reference,
-        review.customer,
+        auteurDeLaReservation({ ...review.booking, customer: review.customer }),
         review.bike.name,
       ),
     );
@@ -1578,7 +1638,7 @@ const depotDirect: Depot = {
         data: { isPublished: publie },
         include: {
           customer: true,
-          booking: { select: { reference: true } },
+          booking: { select: { reference: true, contactFirstName: true, contactLastName: true } },
           bike: { select: { name: true } },
         },
       })
@@ -1587,7 +1647,7 @@ const depotDirect: Depot = {
     return versAvis(
       review,
       review.booking.reference,
-      review.customer,
+      auteurDeLaReservation({ ...review.booking, customer: review.customer }),
       review.bike.name,
     );
   },
@@ -1661,6 +1721,23 @@ function slugifier(nom: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+/**
+ * Le nom sous lequel un avis paraît : celui saisi pour la réservation
+ * notée, et non celui de la fiche client. La fiche garde le nom de la
+ * toute première réservation faite avec cette adresse, qui pouvait être
+ * celle de quelqu'un d'autre : l'avis aurait paru sous son nom.
+ */
+function auteurDeLaReservation(booking: {
+  contactFirstName: string | null;
+  contactLastName: string | null;
+  customer: { firstName: string; lastName: string };
+}): { firstName: string; lastName: string } {
+  return {
+    firstName: booking.contactFirstName ?? booking.customer.firstName,
+    lastName: booking.contactLastName ?? booking.customer.lastName,
+  };
 }
 
 /**

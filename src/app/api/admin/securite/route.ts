@@ -8,6 +8,7 @@ import { adresseApplication, chiffrer, dechiffrer, nouveauSecret } from "@/lib/d
 import {
   CLE_SECRET_ACTIF,
   CLE_SECRET_EN_ATTENTE,
+  CODES_PAGE_SECURITE,
   etatDoubleAuthentification,
   verifierCode,
 } from "@/lib/securite-admin";
@@ -31,7 +32,11 @@ const schema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("desactiver"), code: z.string().trim().min(6).max(8) }),
 ]);
 
-/** Code refusé : faux, déjà servi, ou trop d'essais (compteur commun à la connexion). */
+/**
+ * Code refusé : faux, déjà servi, ou trop d'essais. Les essais de cette
+ * page ont leur propre compteur (`CODES_PAGE_SECURITE`) : les épuiser ne
+ * bloque pas la connexion.
+ */
 function refusDuCode(verdict: "refuse" | "bloque", activation: boolean) {
   if (verdict === "bloque") {
     return NextResponse.json(
@@ -94,7 +99,7 @@ export async function POST(requete: Request) {
       if (!enAttente || !secret) {
         return NextResponse.json({ erreur: "Recommencez : affichez un nouveau QR code." }, { status: 409 });
       }
-      const verdict = await verifierCode(secret, demande.code);
+      const verdict = await verifierCode(secret, demande.code, CODES_PAGE_SECURITE);
       if (verdict !== "accepte") return refusDuCode(verdict, true);
       await depot.ecrireParametreAdmin(CLE_SECRET_ACTIF, enAttente);
       await depot.effacerParametreAdmin(CLE_SECRET_EN_ATTENTE);
@@ -109,7 +114,7 @@ export async function POST(requete: Request) {
       );
     }
     if (etat.etat !== "active") return NextResponse.json({ active: false });
-    const verdict = await verifierCode(etat.secret, demande.code);
+    const verdict = await verifierCode(etat.secret, demande.code, CODES_PAGE_SECURITE);
     if (verdict !== "accepte") return refusDuCode(verdict, false);
     await depot.effacerParametreAdmin(CLE_SECRET_ACTIF);
     return NextResponse.json({ active: false });

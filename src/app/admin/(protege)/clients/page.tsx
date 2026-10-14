@@ -18,9 +18,15 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
  * aucun compte et ne choisit aucun mot de passe, c'est un parti pris du
  * parcours de réservation, et cet écran en est la conséquence.
  *
- * « Total dépensé » ne compte que ce qui a été réellement payé en ligne :
- * les cautions de location libre, remises en espèces au départ et rendues
- * au retour, n'y figurent pas, ce n'est pas du chiffre d'affaires.
+ * « Total dépensé » ne compte que ce qui a été réellement payé, en ligne
+ * ou au comptoir : les cautions de location libre, remises en espèces au
+ * départ et rendues au retour, n'y figurent pas, ce n'est pas du chiffre
+ * d'affaires.
+ *
+ * Le nom et le téléphone affichés sont ceux de la dernière réservation
+ * payée. La fiche, elle, garde ceux de la toute première réservation, qui
+ * pouvait être celle d'un inconnu ayant réservé avec l'adresse d'un autre
+ * sans jamais payer.
  *
  * Le pavé de bas de page rappelle les durées de conservation : ce sont
  * des obligations, pas une décoration.
@@ -55,12 +61,17 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
         (reservation) => reservation.statut === "ANNULEE",
       ).length;
 
-      return { client, nombre: facturees.length, total, derniere, annulations };
+      // Le contact de la dernière réservation payée, à défaut la fiche.
+      const instant = (reservation: (typeof facturees)[number]) => reservation.confirmeLe ?? reservation.creeLe;
+      const derniereReglee = [...facturees].sort((a, b) => (instant(a) < instant(b) ? 1 : -1))[0];
+      const contact = derniereReglee?.client ?? client;
+
+      return { client, contact, nombre: facturees.length, total, derniere, annulations };
     })
     .filter((fiche) => fiche.nombre > 0)
     .filter((fiche) =>
       recherche
-        ? `${fiche.client.prenom} ${fiche.client.nom} ${fiche.client.email}`
+        ? `${fiche.contact.prenom} ${fiche.contact.nom} ${fiche.client.prenom} ${fiche.client.nom} ${fiche.client.email}`
             .toLowerCase()
             .includes(recherche)
         : true,
@@ -110,7 +121,7 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
           >
             <div className="flex items-start justify-between gap-3">
               <p className="font-semibold">
-                {fiche.client.prenom} {fiche.client.nom}
+                {fiche.contact.prenom} {fiche.contact.nom}
               </p>
               {fiche.nombre > 2 ? (
                 <Pastille ton="succes">Fidèle</Pastille>
@@ -121,12 +132,12 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
               )}
             </div>
             <p className="mt-0.5 break-all text-[0.8rem] text-gris-cadre">{fiche.client.email}</p>
-            {fiche.client.telephone && (
+            {fiche.contact.telephone && (
               <a
-                href={`tel:${fiche.client.telephone.replace(/\s+/g, "")}`}
+                href={`tel:${fiche.contact.telephone.replace(/\s+/g, "")}`}
                 className="cible-elargie mt-0.5 inline-block text-[0.84rem] font-semibold text-orange-sourd"
               >
-                {fiche.client.telephone}
+                {fiche.contact.telephone}
               </a>
             )}
             <dl className="mt-3 grid grid-cols-3 gap-x-3 text-[0.82rem]">
@@ -169,12 +180,12 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
             {fiches.slice(0, 80).map((fiche) => (
               <tr key={fiche.client.id} className="border-b border-noir-piste/8">
                 <td className="py-3 pr-4 font-semibold">
-                  {fiche.client.prenom} {fiche.client.nom}
+                  {fiche.contact.prenom} {fiche.contact.nom}
                 </td>
                 <td className="py-3 pr-4 text-gris-cadre">
                   {fiche.client.email}
-                  {fiche.client.telephone && (
-                    <span className="block text-[0.78rem]">{fiche.client.telephone}</span>
+                  {fiche.contact.telephone && (
+                    <span className="block text-[0.78rem]">{fiche.contact.telephone}</span>
                   )}
                 </td>
                 <td className="py-3 pr-4 text-right tabular-nums">{fiche.nombre}</td>

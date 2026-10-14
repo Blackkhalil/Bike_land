@@ -141,7 +141,7 @@ export function PilotageOuverture({
         <p className="mt-1 text-[0.82rem] leading-relaxed text-gris-cadre">
           Pour un jour déjà rempli autrement, par exemple avec des réservations prises en espèces.
           Les réservations déjà faites ce jour-là restent valables. Fermé au road trip, ce jour
-          s&apos;affiche « Sold out » sur le site.
+          s&apos;affiche « Sold out » sur le site dès qu&apos;il devient le prochain départ.
         </p>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">

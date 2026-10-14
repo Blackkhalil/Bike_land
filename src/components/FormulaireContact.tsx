@@ -15,6 +15,10 @@ export function FormulaireContact() {
   const [champs, setChamps] = useState({ nom: "", email: "", sujet: "", message: "", siteWeb: "" });
   const [erreurs, setErreurs] = useState<Record<string, string>>({});
   const [etat, setEtat] = useState<"repos" | "envoi" | "envoye" | "erreur">("repos");
+  // Ce que le serveur dit de l'échec, quand il le dit (trop d'envois, par
+  // exemple), et si l'accusé de réception est vraiment parti.
+  const [messageErreur, setMessageErreur] = useState<string | null>(null);
+  const [accuse, setAccuse] = useState(false);
 
   const modifier = (cle: keyof typeof champs) => (valeur: string) =>
     setChamps((actuels) => ({ ...actuels, [cle]: valeur }));
@@ -23,6 +27,7 @@ export function FormulaireContact() {
     evenement.preventDefault();
     setEtat("envoi");
     setErreurs({});
+    setMessageErreur(null);
 
     try {
       const reponse = await fetch("/api/contact", {
@@ -30,14 +35,19 @@ export function FormulaireContact() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(champs),
       });
+      const donnees = await reponse.json().catch(() => ({}));
 
       if (!reponse.ok) {
-        const donnees = await reponse.json().catch(() => ({}));
         setErreurs(donnees.champs ?? {});
+        // Les erreurs de champ s'affichent sous chaque champ ; sinon, le
+        // message du serveur, plus juste qu'un « réessayez » qui ne
+        // marcherait pas après trop d'envois.
+        setMessageErreur(!donnees.champs && typeof donnees.erreur === "string" ? donnees.erreur : null);
         setEtat("erreur");
         return;
       }
 
+      setAccuse(donnees.accuse === true);
       setEtat("envoye");
       setChamps({ nom: "", email: "", sujet: "", message: "", siteWeb: "" });
     } catch {
@@ -50,8 +60,9 @@ export function FormulaireContact() {
       <div className="rounded-[var(--radius-bloc)] bg-white p-8">
         <p className="titre-editorial text-[1.5rem] text-vert-lagune">Message envoyé</p>
         <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
-          Nous répondons sous 24 heures ouvrées. Un accusé de réception vient de partir vers
-          votre adresse. Vérifiez vos courriers indésirables si vous ne le voyez pas.
+          Nous répondons sous 24 heures ouvrées.
+          {accuse &&
+            " Un accusé de réception vient de partir vers votre adresse. Vérifiez vos courriers indésirables si vous ne le voyez pas."}
         </p>
         <Bouton variante="contour" className="mt-6 text-noir-piste" onClick={() => setEtat("repos")}>
           Écrire un autre message
@@ -119,7 +130,7 @@ export function FormulaireContact() {
 
       {etat === "erreur" && Object.keys(erreurs).length === 0 && (
         <p role="alert" className="mt-5 text-[0.88rem] text-orange-sourd">
-          Le message n&apos;a pas pu être envoyé. Réessayez, ou appelez-nous directement.
+          {messageErreur ?? "Le message n'a pas pu être envoyé. Réessayez, ou appelez-nous directement."}
         </p>
       )}
 

@@ -10,8 +10,42 @@ import { etatDoubleAuthentification, verifierCode } from "@/lib/securite-admin";
 const MAX_ESSAIS = 8;
 const FENETRE_SECONDES = 15 * 60;
 
+/**
+ * Durée de toute réponse d'échec, mesurée depuis l'arrivée de la requête.
+ * Un délai fixe ajouté après coup laissait voir, au temps de réponse, le
+ * travail fait avant lui : la vérification du code n'a lieu qu'avec le bon
+ * mot de passe.
+ */
+const DUREE_ECHEC_MS = 1000;
+
+/**
+ * Vrai pour une requête partie d'une page d'un autre site.
+ *
+ * Le navigateur de l'exploitant envoie la requête depuis son adresse : une
+ * page piégée pouvait donc faire compter des essais à son nom, et
+ * l'enfermer dehors un quart d'heure. Le formulaire de connexion appelle
+ * depuis la même origine. L'hôte d'Origin est comparé à celui de la
+ * requête, comme Next le fait pour ses actions serveur, et non à une
+ * adresse configurée : une préversion ou un alias du projet doivent
+ * pouvoir se connecter. Un client sans ces en-têtes (curl) passe, et reste
+ * compté.
+ */
+function requeteEtrangere(requete: Request): boolean {
+  const provenance = requete.headers.get("sec-fetch-site");
+  if (provenance === "cross-site" || provenance === "same-site") return true;
+  const origine = requete.headers.get("origin");
+  if (!origine) return false;
+  const hote = requete.headers.get("x-forwarded-host") ?? requete.headers.get("host");
+  try {
+    return new URL(origine).host !== hote;
+  } catch {
+    return true;
+  }
+}
+
 /** Ouverture et fermeture de session de l'espace d'exploitation. */
 export async function POST(requete: Request) {
+  const debut = Date.now();
   // Le site public n'ouvre jamais de session d'administration.
   if (roleDuDeploiement() === "site") {
     return NextResponse.json({ erreur: "Introuvable." }, { status: 404 });
@@ -21,6 +55,11 @@ export async function POST(requete: Request) {
       { erreur: "Aucun mot de passe d'administration n'est configuré." },
       { status: 503 },
     );
+  }
+  // Refusée avant d'être comptée : une page tierce ne doit pas pouvoir
+  // épuiser les essais de l'exploitant.
+  if (requeteEtrangere(requete)) {
+    return NextResponse.json({ erreur: "Accès refusé." }, { status: 403 });
   }
 
   // Un mot de passe unique et partagé se casse par essais successifs : on
@@ -74,26 +113,29 @@ export async function POST(requete: Request) {
       ? await verifierCode(deuxFacteurs.secret, corps.code)
       : "refuse";
   }
+  // Trop de codes faux avec le bon mot de passe : la réponse reste celle
+  // d'un échec ordinaire. Un 429 propre à ce cas, qui ne survient qu'avec
+  // les bons identifiants, aurait confirmé à un tiers qu'ils sont justes.
+  // Le journal, lui, le dit : c'est le signe que le mot de passe est connu.
   if (verdictCode === "bloque") {
-    return NextResponse.json(
-      { erreur: "Trop de codes incorrects. Réessayez dans un quart d'heure." },
-      { status: 429, headers: { "Retry-After": "900" } },
+    console.warn(
+      "[connexion] codes faux à répétition avec le bon mot de passe : le mot de passe est probablement connu d'un tiers.",
     );
   }
 
   // Un seul message d'erreur, quel que soit le champ fautif : préciser
   // « adresse inconnue » ou « code faux » indiquerait ce qui est juste.
   if (!identifiantsBons || verdictCode !== "accepte") {
-    // L'essai est déjà compté, avant l'examen. Délai fixe : évite de
-    // distinguer « mauvais mot de passe » de « traitement rapide » par le
-    // temps de réponse.
-    await new Promise((resoudre) => setTimeout(resoudre, 400));
+    // L'essai est déjà compté, avant l'examen. Toute réponse d'échec prend
+    // la même durée totale : le temps de réponse ne distingue plus un
+    // mauvais mot de passe d'un bon mot de passe avec un mauvais code.
+    await new Promise((resoudre) => setTimeout(resoudre, Math.max(0, DUREE_ECHEC_MS - (Date.now() - debut))));
     return NextResponse.json(
       {
         erreur:
           deuxFacteurs.etat === "active"
-            ? "Adresse, mot de passe ou code incorrect."
-            : "Adresse ou mot de passe incorrect.",
+            ? "Adresse, mot de passe ou code incorrect. Après plusieurs erreurs, l'accès est suspendu un quart d'heure."
+            : "Adresse ou mot de passe incorrect. Après plusieurs erreurs, l'accès est suspendu un quart d'heure.",
       },
       { status: 401 },
     );

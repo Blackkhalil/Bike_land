@@ -642,18 +642,53 @@ export async function envoyerMessageContactAdmin(message: {
   });
 }
 
-export async function envoyerAccuseContact(nom: string, email: string) {
+/**
+ * L'accusé de réception du formulaire de contact.
+ *
+ * Il part vers l'adresse saisie, que rien ne vérifie : il ne reprend donc
+ * rien de ce que le visiteur a écrit, pas même son nom. Sans cela, le
+ * formulaire servait à faire envoyer, depuis la boîte de Bike Land, un
+ * texte choisi par n'importe qui à l'adresse de n'importe qui.
+ */
+export async function envoyerAccuseContact(email: string) {
   return envoyer({
     destinataire: email,
     sujet: `Nous avons bien reçu votre message, ${site.nom}`,
     texte:
-      `Bonjour ${nom},\n\nVotre message est arrivé. Nous répondons sous 24 heures ouvrées.\n` +
+      `Bonjour,\n\nVotre message est arrivé. Nous répondons sous 24 heures ouvrées.\n` +
       `Pour une demande urgente, appelez-nous au ${site.telephone}.\n`,
     html: gabarit({
       titre: "Message bien reçu",
-      intro: `Bonjour ${nom}, nous revenons vers vous sous 24 heures ouvrées.`,
+      intro: "Bonjour, nous revenons vers vous sous 24 heures ouvrées.",
       lignes: [["Urgence", site.telephone]],
       pied: `Route des Pêches, ${site.adresse.ville}`,
+    }),
+  });
+}
+
+/**
+ * Prévient l'équipe, une seule fois par jour, que le formulaire de contact
+ * a atteint son plafond de notifications : les messages suivants restent
+ * lisibles dans l'administration, mais n'arrivent plus par email.
+ */
+export async function envoyerAlertePlafondContact() {
+  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const lien = `${site.urlAdmin}/admin/messages`;
+  return envoyer({
+    destinataire,
+    sujet: "Formulaire de contact : plafond du jour atteint",
+    texte: [
+      "Le formulaire de contact a reçu beaucoup de messages aujourd'hui.",
+      "Les suivants n'envoient plus d'email : ils restent lisibles dans l'administration.",
+      "",
+      lien,
+    ].join("\n"),
+    html: gabarit({
+      titre: "Plafond du formulaire atteint",
+      intro:
+        "Le formulaire de contact a reçu beaucoup de messages aujourd'hui. Les suivants n'envoient plus d'email : ils restent lisibles dans l'administration.",
+      lignes: [],
+      action: { libelle: "Voir les messages", url: lien },
     }),
   });
 }

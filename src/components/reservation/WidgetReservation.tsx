@@ -11,7 +11,7 @@ import type { CodeOffre, Velo } from "@/lib/types";
 import type { DateISO } from "@/lib/dates";
 import { Calendrier, type PeriodeOccupee } from "./Calendrier";
 import type { CreneauProposable } from "./TunnelReservation";
-import { DepartComplet, departsDansLOrdre } from "./DepartComplet";
+import { DepartComplet, departsDansLOrdre, premierDepart } from "./DepartComplet";
 import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
 import { site } from "@/lib/site";
 
@@ -67,7 +67,7 @@ export function WidgetReservation({
         creneaux.find((item) => item.code === creneauDuJour(jourDemande)?.code))?.code
     : undefined;
   const [creneauChoisi, setCreneauChoisi] = useState<string>(
-    codeDemande ?? creneaux[0]?.code ?? "",
+    codeDemande ?? premierDepart(creneaux)?.code ?? "",
   );
 
   // Le produit choisi sur la page Nos produits, ou ici sur une autre fiche,

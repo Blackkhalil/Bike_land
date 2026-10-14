@@ -191,8 +191,12 @@ export const schemaContact = z.object({
   email: z.string().trim().toLowerCase().email("Adresse email invalide."),
   sujet: z.string().trim().min(3, "Sujet trop court.").max(120),
   message: z.string().trim().min(10, "Message trop court.").max(2000),
-  /** Champ piège invisible : rempli, c'est un robot. */
-  siteWeb: z.string().max(0).optional(),
+  /**
+   * Champ piège invisible : rempli, c'est un robot. Accepté ici quel qu'il
+   * soit, et écarté par la route sans rien enregistrer : refusé à la
+   * validation, il aurait appris au robot quel champ laisser vide.
+   */
+  siteWeb: z.string().optional(),
 });
 
 export type EntreeReservation = z.infer<typeof schemaReservation>;

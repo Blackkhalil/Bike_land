@@ -91,9 +91,9 @@ export interface PaiementSasPay {
   urlCheckout: string;
   /**
    * La référence de réservation attachée au paiement quand nous l'avons
-   * poussé (`metadata.reference`), si SasPay la renvoie. Elle lie le
-   * paiement à SA réservation : un paiement ne doit jamais en confirmer
-   * une autre.
+   * poussé (`metadata.reference`, à défaut la description), telle que
+   * SasPay la renvoie. Elle lie le paiement à SA réservation : un paiement
+   * ne doit jamais en confirmer une autre.
    */
   reference?: string;
 }
@@ -311,6 +311,12 @@ export function signatureWebhookValide(parametres: {
  * la charge d'un webhook n'a pas exactement la même forme que celle de
  * `verify`, et se tromper de champ ferait échouer la confirmation
  * automatique sans que personne ne s'en aperçoive.
+ *
+ * Puis dans la description, que nous posons à « Bike Land, réservation
+ * BL-XXXXXX » en poussant le paiement. Relevé le 13 octobre 2026 sur deux
+ * paiements réels : `verify` renvoie `metadata.reference` et cette
+ * description. La description n'est qu'un second filet, si `metadata`
+ * venait à manquer.
  */
 export function referenceDepuisCharge(donnees: unknown): string | null {
   if (!donnees || typeof donnees !== "object") return null;
@@ -325,6 +331,13 @@ export function referenceDepuisCharge(donnees: unknown): string | null {
   const directe = objet.reference;
   if (typeof directe === "string" && directe.trim().toUpperCase().startsWith("BL-")) {
     return directe.trim();
+  }
+
+  // Alphabet des références : lettres et chiffres sans I, O, 0 ni 1.
+  const description = objet.description;
+  if (typeof description === "string") {
+    const trouvee = description.match(/\bBL-[A-HJ-NP-Z2-9]{6}\b/);
+    if (trouvee) return trouvee[0];
   }
   return null;
 }

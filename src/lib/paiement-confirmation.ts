@@ -19,7 +19,7 @@
  */
 
 import { panierExpire } from "@/data/offres";
-import { depot, TransactionDejaUtiliseeError } from "@/lib/db";
+import { ConflitDisponibiliteError, depot, TransactionDejaUtiliseeError } from "@/lib/db";
 import { envoyerConfirmation, envoyerFacture, envoyerNotificationAdmin } from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
 import { controlerPaiement, type PaiementSasPay } from "@/lib/saspay";
@@ -53,8 +53,14 @@ export async function confirmerParSasPay(parametres: {
   // Un paiement ne confirme que la réservation pour laquelle il a été
   // poussé. Sans ce contrôle, le navigateur pouvait présenter le paiement
   // d'une autre de ses réservations, par exemple d'une réservation
-  // annulée, remboursée ensuite, pour en confirmer une nouvelle.
-  if (paiement.reference && paiement.reference.toUpperCase() !== reservation.reference.toUpperCase()) {
+  // annulée, remboursée ensuite, pour en confirmer une nouvelle. SasPay
+  // renvoie bien la référence (relevé le 13 octobre 2026) ; si elle venait
+  // à manquer, le contrôle ne pourrait plus se faire, et on veut le savoir.
+  if (!paiement.reference) {
+    console.warn(
+      `[paiement] ${reference} : le paiement ${paiement.id} ne dit pas à quelle réservation il appartient ; lien non contrôlé.`,
+    );
+  } else if (paiement.reference.toUpperCase() !== reservation.reference.toUpperCase()) {
     console.warn(
       `[paiement] ${reference} : le paiement ${paiement.id} appartient à la réservation ${paiement.reference}.`,
     );
@@ -94,6 +100,8 @@ export async function confirmerParSasPay(parametres: {
   // Un panier abandonné cesse de bloquer le vélo au bout de 30 minutes.
   // Si le client paie après ce délai, le vélo a pu être repris par
   // quelqu'un d'autre : confirmer ici créerait une double réservation.
+  // Ce premier contrôle épargne une transaction ; celui qui fait foi est
+  // refait par `confirmerPaiement`, dans la transaction qui confirme.
   if (panierExpire(reservation.creeLe)) {
     const ligne = reservation.lignes[0];
     const libre =
@@ -124,11 +132,31 @@ export async function confirmerParSasPay(parametres: {
       );
       return { issue: "transaction-deja-utilisee" };
     }
+    // Le vélo d'un panier expiré a été repris entre le contrôle ci-dessus
+    // et la confirmation : la transaction l'a vu, et n'a rien confirmé.
+    if (erreur instanceof ConflitDisponibiliteError) {
+      console.error(
+        `[paiement] ${reference} : paiement ${paiement.id} encaissé hors délai, le vélo vient d'être repris. Remboursement à faire.`,
+      );
+      await depot.marquerTransactionRecue(reference, paiement.id);
+      return { issue: "creneau-perdu", reservation };
+    }
     throw erreur;
   }
 
   if (!resultat) return { issue: "introuvable" };
-  if (resultat.dejaConfirmee) return { issue: "deja-confirmee", reservation: resultat.reservation };
+  if (resultat.dejaConfirmee) {
+    // Annulée entre la première lecture et la confirmation : le paiement
+    // est arrivé sur une réservation annulée, comme plus haut.
+    if (resultat.reservation.statut === "ANNULEE") {
+      console.error(
+        `[paiement] ${reference} : paiement ${paiement.id} reçu au moment même de l'annulation. Remboursement à faire.`,
+      );
+      await depot.marquerTransactionRecue(reference, paiement.id);
+      return { issue: "annulee", reservation: resultat.reservation };
+    }
+    return { issue: "deja-confirmee", reservation: resultat.reservation };
+  }
 
   // Les emails ne doivent jamais faire échouer une réservation déjà payée
   // et enregistrée : on les tente, on journalise les échecs.

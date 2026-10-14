@@ -12,8 +12,10 @@ import type { CreneauProposable } from "./TunnelReservation";
  * (voir `departsComplets`).
  */
 export function DepartComplet({ depart }: { depart: CreneauProposable }) {
+  // Encre noire atténuée, et non le gris du site : sur le fond craie du
+  // formulaire, le gris ne tenait pas le contraste minimal (4,3:1).
   return (
-    <div className="flex items-start justify-between gap-3 rounded-[var(--radius-bouton)] border border-noir-piste/12 bg-craie-ombre/50 px-4 py-3 text-left text-gris-cadre">
+    <div className="flex items-start justify-between gap-3 rounded-[var(--radius-bouton)] border border-noir-piste/12 bg-craie-ombre/50 px-4 py-3 text-left text-noir-piste/70">
       <span className="min-w-0">
         <span className="block font-semibold">
           {depart.libelle} {formatDate(depart.date)}
@@ -23,11 +25,24 @@ export function DepartComplet({ depart }: { depart: CreneauProposable }) {
           {depart.produit && ` · ${depart.produit}`}
         </span>
       </span>
-      <span className="shrink-0 rounded-[var(--radius-bouton)] bg-noir-piste px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-craie">
+      <span
+        lang="en"
+        className="shrink-0 rounded-[var(--radius-bouton)] bg-noir-piste px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-craie"
+      >
         Sold out
       </span>
     </div>
   );
+}
+
+/**
+ * Le départ ouvert le plus proche : celui que l'encart et le formulaire
+ * choisissent d'office. Les départs arrivent dans l'ordre des créneaux
+ * (samedi, puis dimanche) ; affichés dans l'ordre des dates, le premier
+ * montré doit aussi être le premier choisi.
+ */
+export function premierDepart(ouverts: CreneauProposable[]) {
+  return [...ouverts].sort((a, b) => a.date.localeCompare(b.date))[0];
 }
 
 /**

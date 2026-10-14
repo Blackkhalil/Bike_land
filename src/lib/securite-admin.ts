@@ -13,16 +13,26 @@ import { dechiffrer, pasDuCode } from "@/lib/double-authentification";
 export const CLE_SECRET_ACTIF = "totp_secret";
 export const CLE_SECRET_EN_ATTENTE = "totp_en_attente";
 const CLE_DERNIER_PAS = "totp_dernier_pas";
-const COMPTEUR_CODES = "codes-double-authentification";
 
 /**
- * Dix essais de code en quinze minutes, puis plus aucun code n'est
- * accepté pendant le reste de la fenêtre. Le compteur est en base, commun
- * à tous les serveurs, et chaque essai est compté AVANT d'être examiné :
- * en mémoire, chaque nouvelle instance de Vercel repartait de zéro, et
- * des essais simultanés passaient tous avant d'être comptés.
+ * Les essais de code, comptés en base, communs à tous les serveurs, et
+ * chaque essai compté AVANT d'être examiné : en mémoire, chaque nouvelle
+ * instance de Vercel repartait de zéro, et des essais simultanés passaient
+ * tous avant d'être comptés. Une fois le plafond passé, plus aucun code
+ * n'est accepté pendant le reste du quart d'heure.
+ *
+ * Deux compteurs. Celui de la connexion : dix essais. Celui de la page
+ * Sécurité, à part : une session volée qui y épuiserait ses essais ne doit
+ * pas pouvoir bloquer la connexion de l'exploitant. Cinq essais seulement
+ * là, pour que les deux réunis ne laissent pas deviner un code beaucoup
+ * plus vite qu'avant.
  */
-const MAX_ESSAIS = 10;
+export interface CompteurCodes {
+  cle: string;
+  max: number;
+}
+export const CODES_CONNEXION: CompteurCodes = { cle: "codes-double-authentification", max: 10 };
+export const CODES_PAGE_SECURITE: CompteurCodes = { cle: "codes-page-securite", max: 5 };
 const FENETRE_SECONDES = 15 * 60;
 
 /**
@@ -30,14 +40,25 @@ const FENETRE_SECONDES = 15 * 60;
  * épuisés. Un code accepté note son pas de temps, de façon atomique, pour
  * qu'il ne serve pas une seconde fois pendant ses trente secondes.
  */
-export async function verifierCode(secret: string, saisi: string): Promise<"accepte" | "refuse" | "bloque"> {
-  const essais = await depot.compterEssai(COMPTEUR_CODES, FENETRE_SECONDES);
-  if (essais > MAX_ESSAIS) return "bloque";
+export async function verifierCode(
+  secret: string,
+  saisi: string,
+  compteur: CompteurCodes = CODES_CONNEXION,
+): Promise<"accepte" | "refuse" | "bloque"> {
+  const essais = await depot.compterEssai(compteur.cle, FENETRE_SECONDES);
+  if (essais > compteur.max) {
+    // Une seule ligne par quart d'heure : c'est le signe que quelqu'un
+    // essaie des codes, et le seul que l'exploitant verra dans le journal.
+    if (essais === compteur.max + 1) {
+      console.warn(`[securite] ${compteur.cle} : trop de codes faux, plus aucun accepté pendant un quart d'heure.`);
+    }
+    return "bloque";
+  }
 
   const pas = pasDuCode(secret, saisi);
   if (pas === null || !(await depot.avancerParametreAdmin(CLE_DERNIER_PAS, pas))) return "refuse";
 
-  await depot.effacerCompteur(COMPTEUR_CODES);
+  await depot.effacerCompteur(compteur.cle);
   return "accepte";
 }
 
