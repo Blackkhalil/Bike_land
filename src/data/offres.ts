@@ -204,6 +204,8 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  * road trip du dimanche est Gbashi bike, avec une séance de sport devant
  * la plage à l'arrivée (voir src/data/produits.ts). Même réservation et
  * même prix que le road trip ; le nom s'affiche à côté du jour.
+ * `consigne` s'ajoute alors à ce qu'il faut prévoir, dans le formulaire
+ * comme dans les emails.
  */
 export const CRENEAUX_ROAD_TRIP = [
   {
@@ -211,6 +213,7 @@ export const CRENEAUX_ROAD_TRIP = [
     jourSemaine: 6,
     libelle: "Samedi",
     produit: null,
+    consigne: null,
     heureDebut: 8,
     heureFin: 11,
     actifParDefaut: true,
@@ -220,6 +223,7 @@ export const CRENEAUX_ROAD_TRIP = [
     jourSemaine: 0,
     libelle: "Dimanche",
     produit: "Gbashi bike",
+    consigne: "Venir en tenue de sport : à l'arrivée, séance d'exercices et de poids devant la plage.",
     heureDebut: 8,
     heureFin: 11,
     actifParDefaut: false,
@@ -228,10 +232,16 @@ export const CRENEAUX_ROAD_TRIP = [
 
 export type CodeCreneau = (typeof CRENEAUX_ROAD_TRIP)[number]["code"];
 
+/** Le créneau encadré qui part ce jour de la semaine, quelle que soit la date. */
+export function creneauDuJour(date: string) {
+  const jourSemaine = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return CRENEAUX_ROAD_TRIP.find((c) => c.jourSemaine === jourSemaine);
+}
+
 /** Le créneau encadré d'un départ : le jour de la semaine et l'heure suffisent. */
 export function creneauDuDepart(date: string, heureDebut: number) {
-  const jourSemaine = new Date(`${date}T12:00:00Z`).getUTCDay();
-  return CRENEAUX_ROAD_TRIP.find((c) => c.jourSemaine === jourSemaine && c.heureDebut === heureDebut);
+  const creneau = creneauDuJour(date);
+  return creneau?.heureDebut === heureDebut ? creneau : undefined;
 }
 
 /** Durée d'une sortie encadrée, déduite du créneau lui-même. */

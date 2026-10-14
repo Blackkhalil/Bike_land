@@ -7,6 +7,8 @@
  * ce qui permet de vérifier leur contenu en développement.
  */
 
+import { creneauDuDepart } from "@/data/offres";
+
 import { site } from "./site";
 import {
   formatCreneau,
@@ -169,7 +171,10 @@ function aPrevoir(reservation: Reservation): string[] {
       "La signature de l'engagement de restitution, sur place.",
     ];
   }
+  // Gbashi bike, le dimanche : la séance de sport demande une tenue.
+  const consigne = creneauDuDepart(reservation.dateDebut, reservation.heureDebut)?.consigne;
   return [
+    ...(consigne ? [consigne] : []),
     "Rien à apporter : casque, antivol et kit sont fournis au départ.",
     "Aucune caution n'est demandée : un coordinateur encadre la sortie et récupère le vélo à l'arrivée.",
   ];

@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { BoutonLien } from "@/components/Bouton";
 import { EnSaisonOctobreRose } from "@/components/EnSaisonOctobreRose";
+import { LienChoixProduit } from "@/components/LienChoixProduit";
 import { Pastille, Section, TitreSection } from "@/components/ui";
 import { itineraires } from "@/data/contenus";
 import {
@@ -26,8 +27,8 @@ import {
   OCTOBRE_ROSE,
   octobreRoseEnCours,
   rendezVousOctobreRose,
+  tarifOctobreRose,
 } from "@/data/produits";
-import { aujourdhui } from "@/lib/dates";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
 import { lireOuverture } from "@/lib/ouverture";
 import { lienWhatsApp, site } from "@/lib/site";
@@ -40,9 +41,12 @@ export const metadata: Metadata = {
 };
 
 /**
- * Régénérée au plus chaque minute, comme les fiches vélo : la page lit les
- * départs ouverts dans le tableau de bord, et la saison d'Octobre rose au
- * jour du Bénin. Un changement d'ouverture la rafraîchit aussitôt.
+ * Régénérée au plus une fois par minute, à la demande, comme les fiches
+ * vélo : la page lit les départs ouverts dans le tableau de bord, et la
+ * saison d'Octobre rose à l'heure du Bénin. Un changement d'ouverture la
+ * rafraîchit aussitôt. Une copie plus ancienne peut encore être servie
+ * ou préchargée : la saison est donc relue dans le navigateur
+ * (EnSaisonOctobreRose).
  */
 export const revalidate = 60;
 
@@ -111,10 +115,11 @@ function PhotoProduit({
  */
 export default async function PageProduits() {
   const ouverture = await lireOuverture();
-  const departs = creneauxDisponibles(new Date(), ouverture);
+  const maintenant = new Date();
+  const departs = creneauxDisponibles(maintenant, ouverture);
   const dimanche = departs.find((depart) => depart.code === CRENEAU_GBASHI_BIKE);
   const samedi = departs.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
-  const avecOctobreRose = octobreRoseEnCours(aujourdhui());
+  const avecOctobreRose = octobreRoseEnCours(maintenant);
   const rendezVous = rendezVousOctobreRose();
 
   const roadTrip = OFFRES.find((offre) => offre.code === "road-trip");
@@ -129,9 +134,9 @@ export default async function PageProduits() {
   const classeAncre =
     "inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-bouton)] border border-craie/25 px-4 text-[0.85rem] font-semibold text-craie transition-colors hover:border-craie/60";
 
-  // Tout ce qui touche à Octobre rose passe par EnSaisonOctobreRose : la
-  // page, régénérée chaque minute, peut être servie une fois de plus
-  // après minuit le 31 octobre ; le navigateur l'efface alors.
+  // Tout ce qui touche à Octobre rose est envoyé à chaque fois, et passe
+  // par EnSaisonOctobreRose : une copie en cache de la veille de la
+  // bascule est corrigée dans le navigateur, dans un sens comme dans l'autre.
   return (
     <>
       <Section fond="noir" className="pb-14 pt-32 sm:pt-40">
@@ -143,19 +148,17 @@ export default async function PageProduits() {
         <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-craie/70">
           En groupe le samedi, version sport le dimanche, ou en solo à l&apos;heure&nbsp;: tout part de
           la route des Pêches, à Fidjrossè.
-          {avecOctobreRose && (
-            <EnSaisonOctobreRose> Et ce mois-ci, une sortie aux couleurs d&apos;Octobre rose.</EnSaisonOctobreRose>
-          )}
+          <EnSaisonOctobreRose enSaisonAuServeur={avecOctobreRose}>
+            {" Et ce mois-ci, une sortie aux couleurs d'Octobre rose."}
+          </EnSaisonOctobreRose>
         </p>
         <nav aria-label="Nos produits" className="mt-10 flex flex-wrap gap-2">
-          {avecOctobreRose && (
-            <EnSaisonOctobreRose>
-              <a href="#octobre-rose" className={classeAncre}>
-                <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-rose-octobre" />
-                Octobre rose
-              </a>
-            </EnSaisonOctobreRose>
-          )}
+          <EnSaisonOctobreRose enSaisonAuServeur={avecOctobreRose}>
+            <a href="#octobre-rose" className={classeAncre}>
+              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-rose-octobre" />
+              Octobre rose
+            </a>
+          </EnSaisonOctobreRose>
           {sommaire.map((produit) => (
             <a key={produit.id} href={`#${produit.id}`} className={classeAncre}>
               {produit.nom}
@@ -165,57 +168,53 @@ export default async function PageProduits() {
       </Section>
 
       {/* ------------------------------------------------ Octobre rose */}
-      {avecOctobreRose && (
-        <EnSaisonOctobreRose>
-          <Section id="octobre-rose" fond="rose" className="scroll-mt-[72px] py-20 sm:py-24">
-            <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-              <PhotoProduit
-                src="/images/produits/octobre-rose.jpg"
-                alt="Deux cyclistes roulent côte à côte en souriant, sur la route des Pêches"
-                cadrage="object-[50%_30%]"
-                className="lg:order-last"
-              />
-              <div>
-                <Pastille ton="sombre">En octobre seulement</Pastille>
-                <TitreSection className="mt-5">Octobre rose</TitreSection>
-                <p className="mt-3 font-display text-[1.4rem] leading-tight">Roulez en rose avec nous</p>
-                <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed">
-                  Une sortie à vélo aux couleurs d&apos;Octobre rose, le mois de sensibilisation au
-                  cancer du sein. On roule ensemble, en rose, pour rappeler qu&apos;un dépistage
-                  précoce sauve des vies.
+      <EnSaisonOctobreRose enSaisonAuServeur={avecOctobreRose}>
+        <Section id="octobre-rose" fond="rose" className="scroll-mt-[72px] py-20 sm:py-24">
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+            <PhotoProduit
+              src="/images/produits/octobre-rose.jpg"
+              alt="Deux cyclistes roulent côte à côte en souriant, sur la route des Pêches"
+              cadrage="object-[50%_30%]"
+              className="lg:order-last"
+            />
+            <div>
+              <Pastille ton="sombre">En octobre seulement</Pastille>
+              <TitreSection className="mt-5">Octobre rose</TitreSection>
+              <p className="mt-3 font-display text-[1.4rem] leading-tight">Roulez en rose avec nous</p>
+              <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed">
+                Une sortie à vélo aux couleurs d&apos;Octobre rose, le mois de sensibilisation au
+                cancer du sein. On roule ensemble, en rose, pour rappeler qu&apos;un dépistage
+                précoce sauve des vies.
+              </p>
+              <dl className="mt-8 max-w-md">
+                <Repere terme="Quand">
+                  {rendezVous ? majuscule(rendezVous) : "Date annoncée très bientôt"}
+                </Repere>
+                <Repere terme="Tarif">
+                  {tarifOctobreRose() ?? (OCTOBRE_ROSE.date ? "Sur demande" : "Annoncé avec la date")}
+                </Repere>
+                <Repere terme="Inscription">Sur WhatsApp</Repere>
+              </dl>
+              <div className="mt-8">
+                <BoutonLien
+                  href={lienWhatsApp(MESSAGES_WHATSAPP.octobreRose)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  variante="sombre"
+                  taille="lg"
+                >
+                  Je veux participer
+                </BoutonLien>
+                <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed">
+                  {OCTOBRE_ROSE.date
+                    ? "Écrivez-nous sur WhatsApp pour vous inscrire."
+                    : "Écrivez-nous sur WhatsApp\u00a0: nous vous envoyons la date dès qu'elle est fixée."}
                 </p>
-                <dl className="mt-8 max-w-md">
-                  <Repere terme="Quand">
-                    {rendezVous ? majuscule(rendezVous) : "Date annoncée très bientôt"}
-                  </Repere>
-                  <Repere terme="Tarif">
-                    {OCTOBRE_ROSE.prixXof !== null
-                      ? `${formatXof(OCTOBRE_ROSE.prixXof)} par personne`
-                      : "Annoncé avec la date"}
-                  </Repere>
-                  <Repere terme="Inscription">Sur WhatsApp</Repere>
-                </dl>
-                <div className="mt-8">
-                  <BoutonLien
-                    href={lienWhatsApp(MESSAGES_WHATSAPP.octobreRose)}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    variante="sombre"
-                    taille="lg"
-                  >
-                    Je veux participer
-                  </BoutonLien>
-                  <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed">
-                    {OCTOBRE_ROSE.date
-                      ? "Écrivez-nous sur WhatsApp pour vous inscrire."
-                      : "Écrivez-nous sur WhatsApp\u00a0: nous vous envoyons la date dès qu'elle est fixée."}
-                  </p>
-                </div>
               </div>
             </div>
-          </Section>
-        </EnSaisonOctobreRose>
-      )}
+          </div>
+        </Section>
+      </EnSaisonOctobreRose>
 
       {/* ------------------------------------------------- Gbashi bike */}
       <Section id="gbashi-bike" fond="lagune" className="scroll-mt-[72px] py-20 sm:py-24">
@@ -245,18 +244,18 @@ export default async function PageProduits() {
                 <span className="font-display text-[1.2rem]">dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}</span>{" "}
                 par personne
               </Repere>
-              <Repere terme="Compris">Vélo, casque, antivol, eau et coco frais</Repere>
+              <Repere terme="Compris">Vélo, casque, antivol, kit, eau et coco frais</Repere>
               <Repere terme="À prévoir">Une tenue de sport, et quinze minutes d&apos;avance</Repere>
             </dl>
             <div className="mt-8">
               {dimanche ? (
                 <>
-                  <BoutonLien href="/velos" variante="clair" taille="lg">
+                  <LienChoixProduit href="/velos" choix={CRENEAU_GBASHI_BIKE} variante="clair" taille="lg">
                     Réserver mon dimanche
-                  </BoutonLien>
+                  </LienChoixProduit>
                   <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/85">
-                    Choisissez votre vélo, puis le départ du dimanche. Le prix dépend de la gamme du
-                    vélo.
+                    Choisissez votre vélo&nbsp;: le départ du dimanche y sera déjà sélectionné. Le
+                    prix dépend de la gamme du vélo.
                   </p>
                 </>
               ) : (
@@ -325,9 +324,9 @@ export default async function PageProduits() {
             </ul>
             <div className="mt-8 flex flex-wrap gap-3">
               {samedi ? (
-                <BoutonLien href="/velos" variante="primaire" taille="lg">
+                <LienChoixProduit href="/velos" choix={CRENEAU_ROAD_TRIP} variante="primaire" taille="lg">
                   Choisir mon vélo
-                </BoutonLien>
+                </LienChoixProduit>
               ) : (
                 <BoutonLien
                   href={lienWhatsApp(MESSAGES_WHATSAPP.roadTrip)}
@@ -366,7 +365,7 @@ export default async function PageProduits() {
             <TitreSection className="mt-5">Location libre</TitreSection>
             <p className="mt-3 font-display text-[1.4rem] leading-tight">{locationLibre?.accroche}</p>
             <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-gris-cadre">
-              Vous prenez le vélo et vous roulez où vous voulez, à votre rythme, de une à{" "}
+              Vous prenez le vélo et vous roulez où vous voulez, à votre rythme, de 1 à{" "}
               {DUREE_MAX_LOCATION_LIBRE} heures. Le vélo revient à l&apos;atelier avant{" "}
               {formatHeure(FERMETURE_HEURE)}.
             </p>
@@ -382,9 +381,9 @@ export default async function PageProduits() {
               <Repere terme="Caution">{formatXof(CAUTION_LOCATION_LIBRE_XOF)}, rendue au retour</Repere>
             </dl>
             <div className="mt-8">
-              <BoutonLien href="/velos" variante="primaire" taille="lg">
+              <LienChoixProduit href="/velos" choix="location-libre" variante="primaire" taille="lg">
                 Choisir mon vélo
-              </BoutonLien>
+              </LienChoixProduit>
             </div>
           </div>
         </div>
@@ -415,8 +414,8 @@ export default async function PageProduits() {
             </BoutonLien>
           </div>
           <p className="mt-10 text-[0.8rem] leading-relaxed text-craie/60">
-            Tarifs du paiement en ligne. Le paiement par Mobile Money ajoute la commission de
-            l&apos;opérateur, indiquée avant que vous payiez.
+            Tarifs de la réservation en ligne. Le montant exact à régler s&apos;affiche avant le
+            paiement.
           </p>
         </div>
       </Section>

@@ -78,8 +78,16 @@ const formatteurJourMois = new Intl.DateTimeFormat("fr-FR", {
   timeZone: "UTC",
 });
 
+/**
+ * « 1 novembre » devient « 1er novembre », comme l'écrit le français :
+ * Intl ne le fait pas. Les autres jours ne bougent pas.
+ */
+function premierDuMois(texte: string): string {
+  return texte.replace(/(^|\s)1(?=\s)/u, (_, avant: string) => `${avant}1er`);
+}
+
 export function formatDate(valeur: string | Date): string {
-  return formatteurDateLongue.format(versDate(valeur));
+  return premierDuMois(formatteurDateLongue.format(versDate(valeur)));
 }
 
 export function formatDateCourte(valeur: string | Date): string {
@@ -87,7 +95,7 @@ export function formatDateCourte(valeur: string | Date): string {
 }
 
 export function formatDateAvecJour(valeur: string | Date): string {
-  return formatteurJourMois.format(versDate(valeur));
+  return premierDuMois(formatteurJourMois.format(versDate(valeur)));
 }
 
 export function formatPeriode(debut: string | Date, fin: string | Date): string {

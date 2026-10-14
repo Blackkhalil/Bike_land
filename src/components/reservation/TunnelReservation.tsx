@@ -10,6 +10,7 @@ import { VeloIllustration } from "@/components/VeloIllustration";
 import { Pastille } from "@/components/ui";
 import { optionsLocation } from "@/data/catalogue";
 import {
+  creneauDuJour,
   DUREE_ROAD_TRIP_HEURES as dureeRoadTrip,
   EXIGENCES,
   EXPIRATION_PANIER_MINUTES,
@@ -65,6 +66,8 @@ export interface CreneauProposable {
   libelle: string;
   /** Le nom sous lequel ce départ se vend, s'il en a un : Gbashi bike le dimanche. */
   produit?: string | null;
+  /** Ce que ce départ demande en plus de prévoir (la tenue de sport de Gbashi bike). */
+  consigne?: string | null;
   date: DateISO;
   heureDebut: number;
   heureFin: number;
@@ -127,9 +130,18 @@ export function TunnelReservation({
   //
   // Le départ choisi sur la fiche vélo est gardé : sans cela, un client
   // venu pour le dimanche, Gbashi bike, retombait sur le samedi, premier
-  // créneau de la liste, et risquait de payer le mauvais jour.
+  // créneau de la liste, et risquait de payer le mauvais jour. S'il n'est
+  // plus proposé (fermé entre-temps, ou clos la veille à 22 h), c'est le
+  // même créneau la semaine suivante, et le client en est averti.
   const creneauDemande =
-    creneaux.find((creneau) => creneau.date === dateInitiale) ?? creneaux[0];
+    creneaux.find((creneau) => creneau.date === dateInitiale) ??
+    creneaux.find((creneau) => creneau.code === creneauDuJour(dateInitiale)?.code) ??
+    creneaux[0];
+  const departRemplace =
+    offreInitiale === "road-trip" &&
+    creneauDuJour(dateInitiale) !== undefined &&
+    creneauDemande !== undefined &&
+    creneauDemande.date !== dateInitiale;
   const [dateDebut, setDateDebut] = useState<DateISO>(
     offreInitiale === "road-trip"
       ? (creneauDemande?.date ?? dateInitiale)
@@ -687,6 +699,15 @@ export function TunnelReservation({
                   </p>
                   </div>
                 )}
+                {departRemplace && (
+                  <p
+                    role="status"
+                    className="mt-3 rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed"
+                  >
+                    Le départ du {formatDate(dateInitiale)} n&apos;est plus ouvert à la réservation :
+                    nous vous proposons le suivant.
+                  </p>
+                )}
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {creneaux.map((creneau) => {
                     const actif =
@@ -772,7 +793,15 @@ export function TunnelReservation({
 
             {/* --------------------------------- Ce qu'il faut prévoir */}
             <ul className="mt-7 space-y-2 rounded-[var(--radius-carte)] bg-craie p-5 text-[0.86rem] leading-relaxed text-gris-cadre">
-              {EXIGENCES[offre].map((exigence) => (
+              {[
+                // La consigne du départ choisi d'abord : la tenue de sport de Gbashi bike.
+                ...(offre === "road-trip"
+                  ? creneaux
+                      .filter((c) => c.date === dateDebut && c.heureDebut === heureDebut && c.consigne)
+                      .map((c) => c.consigne as string)
+                  : []),
+                ...EXIGENCES[offre],
+              ].map((exigence) => (
                 <li key={exigence} className="flex gap-2.5">
                   <span aria-hidden="true" className="text-orange-signal">
                     •

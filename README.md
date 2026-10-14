@@ -90,18 +90,24 @@ réservation (`src/data/produits.ts`, prix dans `src/data/offres.ts`) :
 - **Gbashi bike** est le road trip du dimanche, avec une séance de sport devant la
   plage à l'arrivée. Même réservation, même prix : c'est le créneau « Dimanche » du
   tableau de bord, qui affiche son nom. Le formulaire, les emails et l'admin le
-  nomment aussi.
+  nomment aussi, et demandent de venir en tenue de sport.
 - **Road trip** est la sortie du samedi, **location libre** le vélo à l'heure.
-- **Octobre rose** n'existe qu'en octobre. Sa carte ouvre la page, et une annonce
-  s'ouvre une fois sur le site public, sauf pendant la réservation et le paiement.
-  Les deux s'effacent d'eux-mêmes le 1er novembre, heure du Bénin, sans
-  redéploiement : le mois est lu dans le navigateur, la page est régénérée chaque
-  minute. Pour publier la sortie, remplir `OCTOBRE_ROSE` (date, heure, prix) : la
-  carte et l'annonce les affichent, et l'annonce s'ouvre une fois de plus chez ceux
-  qui l'avaient fermée. Passé la date, elles s'effacent sans attendre la fin du mois.
+- **Octobre rose** n'existe qu'en octobre de l'année de la campagne
+  (`OCTOBRE_ROSE.annee`). Sa carte ouvre la page, et une annonce s'ouvre une fois
+  sur le site public, jamais sur la réservation et le suivi, les fiches vélo, la page
+  Nos produits elle-même, les CGV, les mentions légales ni la page des données
+  personnelles. La carte et l'annonce s'effacent d'elles-mêmes le 1er novembre,
+  heure du Bénin, sans redéploiement : la saison est relue dans le navigateur, même
+  sur une copie de la page en cache. Pour publier la sortie, remplir `OCTOBRE_ROSE`
+  (date, heure, prix ; 0 pour une sortie gratuite) : la carte et l'annonce les
+  affichent, et l'annonce s'ouvre une fois de plus chez ceux qui l'avaient fermée.
+  Elles s'effacent au départ de la sortie, sans attendre la fin du mois. Pour
+  l'octobre suivant, changer l'année et la date.
 
 Une carte dont le départ est fermé dans le tableau de bord propose WhatsApp au lieu
-de la réservation en ligne.
+de la réservation en ligne. Ses boutons « Réserver » retiennent le produit choisi le
+temps de la visite : la fiche vélo ouvre son encart dessus (le dimanche pour Gbashi
+bike, la location libre pour elle).
 
 ---
 

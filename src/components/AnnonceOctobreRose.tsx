@@ -6,13 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import { Bouton, BoutonLien } from "@/components/Bouton";
 import { Pastille } from "@/components/ui";
 import {
-  OCTOBRE_ROSE,
   octobreRoseEnCours,
   rendezVousOctobreRose,
   signatureOctobreRose,
+  tarifOctobreRose,
 } from "@/data/produits";
 import { aujourdhui } from "@/lib/dates";
-import { formatXof } from "@/lib/format";
 
 /** Ce que le navigateur retient de l'annonce fermée (voir `signatureOctobreRose`). */
 const CLE = "bikeland.octobre-rose";
@@ -79,8 +78,8 @@ export function AnnonceOctobreRose() {
     if (exclue(chemin) || dejaMontree.current) return;
     const minuterie = setTimeout(() => {
       if (typeof HTMLDialogElement !== "function") return;
+      if (!octobreRoseEnCours(new Date())) return;
       const jour = aujourdhui();
-      if (!octobreRoseEnCours(jour)) return;
       try {
         if (window.localStorage.getItem(CLE) === signatureOctobreRose(jour)) return;
       } catch {
@@ -116,7 +115,8 @@ export function AnnonceOctobreRose() {
   const texte = rendezVous
     ? `${rendezVous.charAt(0).toUpperCase()}${rendezVous.slice(1)}\u00a0: une sortie à vélo aux couleurs d'Octobre rose, le mois de sensibilisation au cancer du sein.`
     : "Une sortie à vélo aux couleurs d'Octobre rose, le mois de sensibilisation au cancer du sein, se prépare. Date et programme très bientôt.";
-  const prix = OCTOBRE_ROSE.prixXof !== null ? ` ${formatXof(OCTOBRE_ROSE.prixXof)} par personne.` : "";
+  const tarif = tarifOctobreRose();
+  const prix = tarif ? ` ${tarif}.` : "";
 
   return (
     <dialog
@@ -132,14 +132,13 @@ export function AnnonceOctobreRose() {
         // Un clic sur le voile, hors de la carte, ferme l'annonce.
         if (evenement.target === evenement.currentTarget) fermer();
       }}
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[28rem] overflow-y-auto rounded-[var(--radius-bloc)] bg-noir-piste p-0 text-craie backdrop:bg-noir-piste/75"
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-[28rem] overflow-y-auto rounded-[var(--radius-bloc)] bg-noir-piste p-0 text-craie"
     >
       <div className="relative bg-rose-octobre px-6 pb-7 pt-6">
-        {/* Le contour de focus orange du site disparaît sur le rose : il passe au noir ici. */}
         <button
           type="button"
           onClick={fermer}
-          className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] transition-colors hover:bg-noir-piste/10 focus-visible:outline-noir-piste"
+          className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] transition-colors hover:bg-noir-piste/10"
         >
           <span className="sr-only">Fermer</span>
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">

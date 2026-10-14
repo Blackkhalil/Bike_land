@@ -20,13 +20,22 @@
  * source de prix du site.
  */
 
-import type { CodeCreneau } from "@/data/offres";
+import { heureAuBenin, type CodeCreneau } from "@/data/offres";
 import type { DateISO } from "@/lib/dates";
-import { formatDateAvecJour } from "@/lib/format";
+import { formatDateAvecJour, formatXof } from "@/lib/format";
 
 /** Le créneau qui porte Gbashi bike, et celui du road trip du samedi. */
 export const CRENEAU_GBASHI_BIKE: CodeCreneau = "dimanche-matin";
 export const CRENEAU_ROAD_TRIP: CodeCreneau = "samedi-matin";
+
+/**
+ * Ce que le visiteur a choisi sur la page Nos produits, retenu le temps de
+ * la visite : un créneau (« dimanche-matin » pour Gbashi bike) ou la
+ * location libre. L'encart de réservation de la fiche vélo s'ouvre dessus,
+ * sans quoi il retomberait sur le road trip du samedi.
+ */
+export const CLE_CHOIX_PRODUIT = "bikeland.choix-produit";
+export type ChoixProduit = CodeCreneau | "location-libre";
 
 /**
  * La sortie Octobre rose, telle qu'elle est fixée.
@@ -37,34 +46,46 @@ export const CRENEAU_ROAD_TRIP: CodeCreneau = "samedi-matin";
  * l'annonce les affichent, et l'annonce s'ouvre une fois de plus chez ceux
  * qui l'avaient fermée, puisqu'elle a du nouveau à leur dire.
  *
- * Une fois la date passée, la carte et l'annonce s'effacent sans attendre
- * la fin du mois. Une date d'une année passée les efface aussi : c'est la
- * garantie de ne jamais annoncer une sortie déjà faite, à remettre à jour
- * pour l'octobre suivant.
+ * Une fois la sortie partie (à son heure, ou le soir de sa date si
+ * l'heure manque), la carte et l'annonce s'effacent sans attendre la fin
+ * du mois.
+ *
+ * La campagne vaut pour l'octobre de `annee`, et pour lui seul : le site
+ * n'annoncera pas de lui-même, l'an prochain, une sortie que personne n'a
+ * décidée. Pour l'octobre suivant, changer l'année et la date.
  */
 export const OCTOBRE_ROSE: {
+  /** L'année de la campagne. */
+  annee: number;
   /** Le jour de la sortie, AAAA-MM-JJ. */
   date: DateISO | null;
   /** L'heure du départ, heure du Bénin. */
   heureDepart: number | null;
-  /** Le prix par personne, en FCFA. */
+  /** Le prix par personne, en FCFA ; 0 pour une sortie gratuite. */
   prixXof: number | null;
 } = {
+  annee: 2026,
   date: null,
   heureDepart: null,
   prixXof: null,
 };
 
 /**
- * Octobre rose est-il en cours ce jour-là ?
+ * Octobre rose est-il en cours à cet instant ?
  *
- * Le jour est celui du Bénin (`aujourdhui()`), jamais celui de l'appareil
- * ni du serveur. Appelée dans le navigateur par l'annonce, et par la page
- * à chacune de ses régénérations.
+ * Jugé à l'heure du Bénin (`heureAuBenin`), jamais à celle de l'appareil
+ * ni du serveur : tout octobre de l'année de la campagne, et jusqu'au
+ * départ de la sortie quand il est fixé. Appelée dans le navigateur, par
+ * l'annonce et par la page, et par la page à chacune de ses régénérations.
  */
-export function octobreRoseEnCours(jour: DateISO): boolean {
-  if (jour.slice(5, 7) !== "10") return false;
-  return OCTOBRE_ROSE.date === null || jour <= OCTOBRE_ROSE.date;
+export function octobreRoseEnCours(maintenant: Date): boolean {
+  const ici = heureAuBenin(maintenant);
+  if (ici.date.slice(0, 7) !== `${OCTOBRE_ROSE.annee}-10`) return false;
+  const { date, heureDepart } = OCTOBRE_ROSE;
+  if (date === null || ici.date < date) return true;
+  if (ici.date > date) return false;
+  // Le jour même : jusqu'au départ, ou toute la journée si l'heure manque.
+  return heureDepart === null || ici.heure < heureDepart;
 }
 
 /**
@@ -78,9 +99,18 @@ export function rendezVousOctobreRose(): string | null {
 }
 
 /**
+ * Le tarif en toutes lettres : « Gratuit », « 3 000 FCFA par personne »,
+ * ou `null` tant qu'il n'est pas fixé.
+ */
+export function tarifOctobreRose(): string | null {
+  if (OCTOBRE_ROSE.prixXof === null) return null;
+  return OCTOBRE_ROSE.prixXof === 0 ? "Gratuit" : `${formatXof(OCTOBRE_ROSE.prixXof)} par personne`;
+}
+
+/**
  * Ce qui identifie l'annonce telle qu'on l'a vue : l'année, et la date de
  * la sortie quand elle est fixée. Une annonce fermée ne revient pas, sauf
- * l'octobre suivant, ou quand la date est enfin connue.
+ * quand la date est enfin connue, ou pour une nouvelle campagne.
  */
 export function signatureOctobreRose(jour: DateISO): string {
   return `${jour.slice(0, 4)}|${OCTOBRE_ROSE.date ?? "date-a-venir"}`;

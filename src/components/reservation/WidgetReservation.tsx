@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Bouton } from "@/components/Bouton";
-import { formatHeure, PRIX_ROAD_TRIP_XOF, GRILLE_HORAIRE } from "@/data/offres";
+import { creneauDuJour, formatHeure, PRIX_ROAD_TRIP_XOF, GRILLE_HORAIRE } from "@/data/offres";
+import { CLE_CHOIX_PRODUIT } from "@/data/produits";
 import { formatDate, formatXof } from "@/lib/format";
 import type { CodeOffre, Velo } from "@/lib/types";
 import type { DateISO } from "@/lib/dates";
@@ -53,10 +54,44 @@ export function WidgetReservation({
   const [offre, setOffre] = useState<CodeOffre>("road-trip");
   const [jour, setJour] = useState<DateISO | null>(jourDemande);
   // Un jour demandé qui tombe sur un départ encadré le présélectionne :
-  // `?debut=` d'un dimanche ouvre l'encart sur Gbashi bike.
+  // `?debut=` d'un dimanche ouvre l'encart sur Gbashi bike. S'il n'est
+  // plus proposé (complet, ou clos la veille à 22 h), c'est le même
+  // créneau la semaine suivante, et non le premier de la liste : un
+  // dimanche ne doit pas devenir un samedi, qui n'est pas le même produit.
+  const codeDemande = jourDemande
+    ? (creneaux.find((item) => item.date === jourDemande) ??
+        creneaux.find((item) => item.code === creneauDuJour(jourDemande)?.code))?.code
+    : undefined;
   const [creneauChoisi, setCreneauChoisi] = useState<string>(
-    (creneaux.find((item) => item.date === jourDemande) ?? creneaux[0])?.code ?? "",
+    codeDemande ?? creneaux[0]?.code ?? "",
   );
+
+  // Le produit choisi sur la page Nos produits, ou ici sur une autre fiche,
+  // retenu le temps de la visite. Lu après le premier rendu : le serveur
+  // n'en sait rien. Un jour dans l'adresse garde la main sur le départ.
+  useEffect(() => {
+    const lecture = setTimeout(() => {
+      let choix: string | null = null;
+      try {
+        choix = window.sessionStorage.getItem(CLE_CHOIX_PRODUIT);
+      } catch {
+        return;
+      }
+      if (choix === "location-libre") setOffre("location-libre");
+      else if (!codeDemande && choix && creneaux.some((item) => item.code === choix)) {
+        setCreneauChoisi(choix);
+      }
+    }, 0);
+    return () => clearTimeout(lecture);
+  }, [codeDemande, creneaux]);
+
+  const retenir = (choix: string) => {
+    try {
+      window.sessionStorage.setItem(CLE_CHOIX_PRODUIT, choix);
+    } catch {
+      // Stockage indisponible : le choix vaut pour cette fiche seulement.
+    }
+  };
   const ouvertes = useReservationsOuvertes();
   // Seul le road trip ferme la nuit : la location libre se réserve à
   // toute heure.
@@ -125,7 +160,10 @@ export function WidgetReservation({
                       type="radio"
                       name="formule"
                       checked={actif}
-                      onChange={() => setOffre(item.code)}
+                      onChange={() => {
+                        setOffre(item.code);
+                        retenir(item.code === "location-libre" ? item.code : creneauChoisi);
+                      }}
                       className="sr-only"
                     />
                     <span className="block font-semibold">{item.titre}</span>
@@ -157,7 +195,10 @@ export function WidgetReservation({
                     <button
                       key={item.code}
                       type="button"
-                      onClick={() => setCreneauChoisi(item.code)}
+                      onClick={() => {
+                        setCreneauChoisi(item.code);
+                        retenir(item.code);
+                      }}
                       aria-pressed={actif}
                       className={`w-full rounded-[var(--radius-bouton)] border px-4 py-3 text-left transition-colors ${
                         actif

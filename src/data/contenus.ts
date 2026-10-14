@@ -3,6 +3,7 @@
  * étapes du parcours de location.
  */
 
+import { CAUTION_LOCATION_LIBRE_XOF } from "@/data/offres";
 import type { Itineraire } from "@/lib/types";
 
 export const itineraires: Itineraire[] = [
@@ -150,8 +151,7 @@ export const faq = [
       },
       {
         question: "Une caution est-elle demandée ?",
-        reponse:
-          "Non, aucune. Toutes nos sorties sont encadrées par un coordinateur qui remet les vélos et les kits au départ et les récupère à l'arrivée : le matériel reste sous notre responsabilité du début à la fin, il n'y a donc rien à bloquer sur votre compte.",
+        reponse: `Pas pour le road trip : la sortie est encadrée par un coordinateur qui remet les vélos et les kits au départ et les récupère à l'arrivée, le matériel reste sous notre responsabilité du début à la fin. Pour la location libre, oui : ${CAUTION_LOCATION_LIBRE_XOF.toLocaleString("fr-FR")} FCFA en espèces, rendus au retour du vélo.`,
       },
       {
         question: "Quand reçois-je ma facture ?",

@@ -14,7 +14,7 @@ export default function PageDonneesPersonnelles() {
   return (
     <PageLegale
       titre="Protection des données personnelles"
-      miseAJour="8 septembre 2026"
+      miseAJour="14 octobre 2026"
       sousTitre="Nous collectons le strict nécessaire à la location, et rien de plus. Cette page dit précisément quoi, pourquoi et pour combien de temps."
     >
       <ArticleLegal titre="Responsable du traitement">
@@ -133,9 +133,10 @@ export default function PageDonneesPersonnelles() {
         </p>
         <p>
           Quand vous fermez une annonce de saison, comme celle d&apos;Octobre rose, votre navigateur
-          retient sur votre appareil que vous l&apos;avez vue, pour ne pas vous la remontrer. Cette
-          information ne nous est pas transmise, et vous pouvez l&apos;effacer en vidant les données
-          du site dans votre navigateur.
+          retient sur votre appareil que vous l&apos;avez vue, pour ne pas vous la remontrer. Le
+          temps de votre visite, il retient aussi le produit que vous avez choisi, pour ouvrir la
+          réservation dessus. Ces informations ne nous sont pas transmises, et vous pouvez les
+          effacer en vidant les données du site dans votre navigateur.
         </p>
       </ArticleLegal>
     </PageLegale>

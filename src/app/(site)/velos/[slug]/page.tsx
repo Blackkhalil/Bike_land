@@ -228,8 +228,8 @@ export default async function PageVelo({ params }: { params: Params }) {
             <div className="mt-12 rounded-[var(--radius-carte)] bg-white p-6">
               <p className="text-[0.85rem] font-semibold">Bon à savoir</p>
               <p className="mt-3 text-[0.92rem] leading-relaxed text-gris-cadre">
-                Le prix ne dépend pas du vélo mais de la formule : forfait par personne pour le
-                road trip encadré, grille horaire pour la location libre. Choisissez votre
+                Le prix dépend de la gamme du vélo et de la formule : forfait par personne pour
+                le road trip encadré, grille horaire pour la location libre. Choisissez votre
                 formule dans l&apos;encart de réservation.
               </p>
             </div>

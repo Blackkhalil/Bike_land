@@ -100,6 +100,13 @@ html:has(dialog[data-annonce][open]) {
   overflow: hidden;
 }
 
+/* Le voile derrière l'annonce, d'une couleur écrite en dur : avant 2024
+   (iOS 16, Chrome 121), ::backdrop ne lit pas les variables du thème, et
+   une classe `backdrop:bg-*` y devenait transparente. */
+dialog[data-annonce]::backdrop {
+  background-color: rgb(14 14 14 / 0.75);
+}
+
 /* ------------------------------------------------------------------
    Primitives typographiques
    ------------------------------------------------------------------ */
@@ -212,6 +219,14 @@ html:has(dialog[data-annonce][open]) {
 :focus-visible {
   outline: 2px solid var(--color-orange-signal);
   outline-offset: 2px;
+}
+
+/* Sur l'aplat rose d'Octobre rose, l'orange ne se voit plus (1,1:1) : le
+   contour de focus y passe au noir. Écrit ici, hors des couches de
+   Tailwind, comme la règle qu'il corrige : une classe `focus-visible:`
+   perdrait contre elle. */
+.bg-rose-octobre :focus-visible {
+  outline-color: var(--color-noir-piste);
 }
 
 /* Masque les flèches des input[type=number] dans les formulaires d'options. */
