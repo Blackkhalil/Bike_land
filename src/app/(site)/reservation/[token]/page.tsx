@@ -10,6 +10,8 @@ import { fournisseurActif } from "@/lib/paiement";
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Etiquette, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue, optionsLocation } from "@/data/catalogue";
+import { itineraireOctobreRose } from "@/data/contenus";
+import { formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import { depot } from "@/lib/db";
 import { ajouterJours, aujourdhui } from "@/lib/dates";
 import { motifDepuisCode } from "@/lib/echecs-paiement";
@@ -66,6 +68,14 @@ export default async function PageSuiviReservation({
 
   const ligne = reservation.lignes[0];
   const velo = catalogue.find((v) => v.id === ligne?.veloId);
+  // Octobre rose : la sortie remplace le vélo, remis au rassemblement, et
+  // s'annonce à la minute près. Seulement pour la sortie de la campagne
+  // décrite : une inscription d'une campagne passée garde ses heures.
+  const sortie =
+    reservation.offre === "octobre-rose" && OCTOBRE_ROSE.sortie?.date === reservation.dateDebut
+      ? OCTOBRE_ROSE.sortie
+      : null;
+  const circuit = sortie ? itineraireOctobreRose() : null;
   const points = await depot.listerPointsDeRetrait();
   const point = points.find((p) => p.id === reservation.pointDeRetraitId);
 
@@ -123,6 +133,7 @@ export default async function PageSuiviReservation({
           }
           telephoneInitial={reservation.client.telephone}
           diagnostic={diagnostic}
+          places={reservation.offre === "octobre-rose"}
         />
       )}
 
@@ -131,7 +142,9 @@ export default async function PageSuiviReservation({
           <p className="font-display text-[1.1rem] font-bold uppercase">Délai de paiement dépassé</p>
           <p className="mt-2 text-[0.92rem] leading-relaxed">
             Cette réservation n&apos;a pas été réglée dans les {EXPIRATION_PANIER_MINUTES} minutes :
-            le vélo est reparti à la réservation. Reprenez une réservation depuis le catalogue, ou
+            {reservation.offre === "octobre-rose"
+              ? " les places sont reparties à l'inscription. Inscrivez-vous de nouveau sur la page Octobre rose, ou "
+              : " le vélo est reparti à la réservation. Reprenez une réservation depuis le catalogue, ou "}
             appelez-nous au {site.telephone}.
           </p>
         </div>
@@ -148,7 +161,34 @@ export default async function PageSuiviReservation({
 
       <div className="mt-12 grid gap-10 lg:grid-cols-12">
         <div className="lg:col-span-7">
-          {/* Le vélo réservé */}
+          {sortie ? (
+            /* La sortie Octobre rose */
+            <div className="rounded-[var(--radius-bloc)] bg-rose-octobre p-6 text-noir-piste">
+              <p className="etiquette">Octobre rose</p>
+              <p className="mt-2 font-display text-[1.35rem] font-extrabold uppercase leading-none">
+                {resumeOffre(reservation)}
+              </p>
+              <dl className="mt-4 space-y-1.5 text-[0.92rem]">
+                <div className="flex flex-wrap gap-x-2">
+                  <dt className="font-semibold">Dress code&nbsp;:</dt>
+                  <dd>{sortie.tenue}</dd>
+                </div>
+                <div className="flex flex-wrap gap-x-2">
+                  <dt className="font-semibold">Vélo et casque&nbsp;:</dt>
+                  <dd>remis à chacun au rassemblement</dd>
+                </div>
+              </dl>
+              {circuit && (
+                <Link
+                  href={`/itineraires/${circuit.slug}`}
+                  className="lien-souligne mt-3 inline-block text-[0.88rem] font-semibold"
+                >
+                  L&apos;itinéraire&nbsp;: {circuit.titre.charAt(0).toLowerCase() + circuit.titre.slice(1)}
+                </Link>
+              )}
+            </div>
+          ) : (
+          /* Le vélo réservé */
           <div className="flex flex-wrap items-center gap-6 rounded-[var(--radius-bloc)] bg-white p-6">
             {velo && (
               <div
@@ -175,30 +215,39 @@ export default async function PageSuiviReservation({
               )}
             </div>
           </div>
+          )}
 
           {/* Le créneau. Une sortie tient dans la journée : ce qui
               change d'une réservation à l'autre, c'est l'heure. */}
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <div className="rounded-[var(--radius-carte)] bg-white p-6">
-              <p className="etiquette opacity-75">Départ</p>
+              <p className="etiquette opacity-75">{sortie ? "Rassemblement" : "Départ"}</p>
               <p className="mt-2 font-display text-[1.1rem] font-bold capitalize leading-tight">
                 {formatDateAvecJour(reservation.dateDebut)}
               </p>
               <p className="mt-2 font-display text-[1.35rem] font-extrabold tabular-nums text-orange-sourd">
-                {formatHeure(reservation.heureDebut)}
+                {sortie ? formatHoraire(sortie.rassemblement) : formatHeure(reservation.heureDebut)}
               </p>
-              {point && <p className="mt-2 text-[0.85rem] text-gris-cadre">{point.horaires}</p>}
+              {sortie ? (
+                <p className="mt-2 text-[0.85rem] text-gris-cadre">
+                  Le groupe part à {formatHoraire(sortie.depart)}, à l&apos;heure.
+                </p>
+              ) : (
+                point && <p className="mt-2 text-[0.85rem] text-gris-cadre">{point.horaires}</p>
+              )}
             </div>
             <div className="rounded-[var(--radius-carte)] bg-white p-6">
-              <p className="etiquette opacity-75">Retour du vélo</p>
+              <p className="etiquette opacity-75">{sortie ? "Retour" : "Retour du vélo"}</p>
               <p className="mt-2 font-display text-[1.1rem] font-bold capitalize leading-tight">
                 {formatDateAvecJour(reservation.dateFin)}
               </p>
               <p className="mt-2 font-display text-[1.35rem] font-extrabold tabular-nums text-orange-sourd">
-                {formatHeure(reservation.heureFin)}
+                {sortie ? `vers ${formatHoraire(sortie.retour)}` : formatHeure(reservation.heureFin)}
               </p>
               <p className="mt-2 text-[0.85rem] text-gris-cadre">
-                Merci d&apos;être à l&apos;heure : le vélo peut être attendu juste après.
+                {sortie
+                  ? "Au point de départ, où les vélos sont rendus."
+                  : "Merci d'être à l'heure : le vélo peut être attendu juste après."}
               </p>
             </div>
           </div>
@@ -245,7 +294,8 @@ export default async function PageSuiviReservation({
 
           {/* La sortie est faite : on peut la noter. Le formulaire
               n'apparaît pas avant, on ne note pas ce qu'on n'a pas vécu. */}
-          {reservation.statut === "TERMINEE" && (
+          {/* Pas d'avis sur Octobre rose : le vélo, attribué, n'a pas été choisi. */}
+          {reservation.statut === "TERMINEE" && reservation.offre !== "octobre-rose" && (
             <FormulaireAvis
               token={decodeURIComponent(token)}
               noteExistante={avis?.note}

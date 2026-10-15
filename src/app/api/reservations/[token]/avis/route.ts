@@ -24,6 +24,16 @@ export async function POST(requete: Request, { params }: { params: Params }) {
     return NextResponse.json({ erreur: "Réservation introuvable." }, { status: 404 });
   }
 
+  // Un avis note un vélo, et paraît sur sa fiche. Le vélo d'Octobre rose
+  // n'a pas été choisi, mais attribué : l'avis noterait une machine au
+  // hasard. La sortie ne se note donc pas ici.
+  if (reservation.offre === "octobre-rose") {
+    return NextResponse.json(
+      { erreur: "La sortie Octobre rose ne se note pas ici : écrivez-nous, votre retour nous fera plaisir." },
+      { status: 409 },
+    );
+  }
+
   if (reservation.statut !== "TERMINEE") {
     return NextResponse.json(
       { erreur: "Vous pourrez noter cette sortie une fois le vélo rendu." },

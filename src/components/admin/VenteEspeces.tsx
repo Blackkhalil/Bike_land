@@ -4,14 +4,15 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
+import { creneauOctobreRose, formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import {
   CRENEAUX_ROAD_TRIP,
   DUREE_ROAD_TRIP_HEURES,
-  FERMETURE_HEURE,
+  FERMETURE_COMPTOIR_HEURE,
   GAMMES,
   GRILLE_HORAIRE,
   heureAuBenin,
-  OUVERTURE_HEURE,
+  OUVERTURE_COMPTOIR_HEURE,
   roadTripsDuJour,
   type GammeVelo,
 } from "@/data/offres";
@@ -45,6 +46,8 @@ interface Apercu {
  */
 interface VenteEnregistree {
   reference: string;
+  /** La formule enregistrée : Octobre rose s'affiche par son rendez-vous. */
+  offre: CodeOffre;
   facture: string;
   totalXof: number;
   cautionXof: number;
@@ -81,9 +84,22 @@ const jourLisible = (date: string) => {
   return texte.charAt(0).toUpperCase() + texte.slice(1);
 };
 
-/** Le départ proposé : l'heure qui court, ramenée dans les heures d'ouverture. */
+/**
+ * Le départ proposé : l'heure qui court, ramenée dans les heures du
+ * comptoir (de 6 h, retour à 22 h au plus tard).
+ */
 function heureParDefaut(heure: number, duree: number): number {
-  return Math.min(Math.max(heure, OUVERTURE_HEURE), FERMETURE_HEURE - duree);
+  return Math.min(Math.max(heure, OUVERTURE_COMPTOIR_HEURE), FERMETURE_COMPTOIR_HEURE - duree);
+}
+
+/**
+ * La sortie Octobre rose, si elle se vend encore au comptoir : fixée, et
+ * pas encore passée. Le jour même, elle se vend jusqu'au soir, après coup
+ * compris, comme le road trip.
+ */
+function octobreRoseEnVente(jour: string) {
+  const creneau = creneauOctobreRose();
+  return creneau && OCTOBRE_ROSE.sortie && creneau.date >= jour ? creneau : null;
 }
 
 /** Les prochains jours de road trip, aujourd'hui compris s'il en part un. */
@@ -299,36 +315,56 @@ export function VenteEspeces({
     return () => clearTimeout(depart);
   }, []);
 
+  // Octobre rose, tant qu'il se vend : sans vélo à choisir, les vélos sont
+  // attribués d'office à l'enregistrement, un par personne.
+  const sortieRose = octobreRoseEnVente(ici.date);
+  const octobreRose = offre === "octobre-rose" && sortieRose !== null;
   const roadTrip = offre === "road-trip";
-  const date = roadTrip ? dateRoadTrip : dateLocation;
-  const heure = roadTrip ? HEURE_ROAD_TRIP : heureDebut;
-  const heureFin = roadTrip ? heure + DUREE_ROAD_TRIP_HEURES : heure + dureeHeures;
-  const velo = velos.find((v) => v.id === veloId);
-  // Une personne, un vélo : pas plus de personnes que de vélos en état dans la gamme.
-  const personnesMax = velo
-    ? Math.max(1, velos.filter((v) => v.gamme === velo.gamme && enEtat(v)).length)
-    : 1;
-  const personnes = roadTrip ? Math.min(nombrePersonnes, personnesMax) : 1;
+  // Les deux sorties encadrées se vendent à la personne, sans durée.
+  const encadree = roadTrip || octobreRose;
+  const date = octobreRose ? sortieRose.date : roadTrip ? dateRoadTrip : dateLocation;
+  const heure = octobreRose ? sortieRose.heureDebut : roadTrip ? HEURE_ROAD_TRIP : heureDebut;
+  const heureFin = octobreRose
+    ? sortieRose.heureFin
+    : roadTrip
+      ? heure + DUREE_ROAD_TRIP_HEURES
+      : heure + dureeHeures;
+  const velo = octobreRose ? undefined : velos.find((v) => v.id === veloId);
 
   const occupeSurCreneau = (id: string) =>
     (occupes[id] ?? []).some((pris) =>
       creneauxSeChevauchent({ debut: date, fin: date, heureDebut: heure, heureFin }, pris),
     );
 
+  // Octobre rose : autant de places que de vélos en état et libres sur la
+  // sortie. Le serveur refait le compte à l'enregistrement.
+  const placesRose = octobreRose ? velos.filter((v) => enEtat(v) && !occupeSurCreneau(v.id)).length : 0;
+  // Une personne, un vélo : pas plus de personnes que de vélos en état dans
+  // la gamme pour un road trip, que de places libres pour Octobre rose.
+  const personnesMax = octobreRose
+    ? Math.max(1, placesRose)
+    : velo
+      ? Math.max(1, velos.filter((v) => v.gamme === velo.gamme && enEtat(v)).length)
+      : 1;
+  const personnes = encadree ? Math.min(nombrePersonnes, personnesMax) : 1;
+
   // Le devis : calculé ici pour s'afficher tout de suite, avec la même
   // fonction que le serveur, au prix de la plaquette (sans les frais du
-  // paiement en ligne). Avec un code, seul le serveur fait foi.
-  const codeNormalise = code.trim().toUpperCase().replace(/\s+/g, "");
-  const signature = JSON.stringify([offre, veloId, date, heure, roadTrip ? 0 : dureeHeures, personnes, codeNormalise]);
-  const devisLocal = velo
-    ? calculerDevis({
-        offre,
-        gamme: velo.gamme,
-        nombrePersonnes: personnes,
-        dureeHeures: roadTrip ? undefined : dureeHeures,
-        especes: true,
-      })
-    : null;
+  // paiement en ligne). Avec un code, seul le serveur fait foi. Pas de code
+  // sur Octobre rose : son prix est déjà réduit.
+  const codeNormalise = octobreRose ? "" : code.trim().toUpperCase().replace(/\s+/g, "");
+  const signature = JSON.stringify([offre, veloId, date, heure, encadree ? 0 : dureeHeures, personnes, codeNormalise]);
+  const devisLocal = octobreRose
+    ? calculerDevis({ offre: "octobre-rose", nombrePersonnes: personnes, especes: true })
+    : velo
+      ? calculerDevis({
+          offre,
+          gamme: velo.gamme,
+          nombrePersonnes: personnes,
+          dureeHeures: roadTrip ? undefined : dureeHeures,
+          especes: true,
+        })
+      : null;
   const apercuValable = apercu && apercu.signature === signature ? apercu : null;
   const montant = apercuValable
     ? apercuValable.totalXof
@@ -338,34 +374,54 @@ export function VenteEspeces({
 
   // Ce qui empêche encore d'encaisser, dit en clair.
   const roadTripCeJour = roadTripsDuJour(date).length > 0;
-  const dejaPasse = date === ici.date && !roadTrip && heure < ici.heure;
-  // Plus aucun départ de cette durée ne rentre avant la fermeture.
-  const tropTard = date === ici.date && !roadTrip && ici.heure > FERMETURE_HEURE - dureeHeures;
+  const dejaPasse = date === ici.date && !encadree && heure < ici.heure;
+  // Plus aucun départ de cette durée ne rentre avant 22 h.
+  const tropTard = date === ici.date && !encadree && ici.heure > FERMETURE_COMPTOIR_HEURE - dureeHeures;
   const roadTripParti = roadTrip && date === ici.date && ici.heure >= HEURE_ROAD_TRIP;
   const pendantRoadTrip =
-    !roadTrip &&
+    !encadree &&
     roadTripsDuJour(date).some((c) => heure < c.heureFin && heureFin > c.heureDebut);
-  const obstacle = !velo
-    ? "Choisissez le vélo."
-    : !enEtat(velo)
-      ? "Ce vélo est en entretien."
-      : occupeSurCreneau(velo.id)
-        ? "Ce vélo est déjà pris sur ce créneau."
-        : roadTrip && !roadTripCeJour
-          ? "Le road trip part le samedi et le dimanche."
-          : !roadTrip && heureFin > FERMETURE_HEURE
-            ? `Le vélo rentrerait après ${FERMETURE_HEURE} h.`
-            : date < ici.date
-              ? "Cette date est passée."
-              : montant === null
-                ? "Appliquez le code de parrainage pour connaître le montant exact."
-                : !client.prenom.trim() || !client.nom.trim() || !client.email.trim()
-                  ? "Renseignez le prénom, le nom et l'email du client."
-                  : encaissePar.trim().length < 2
-                    ? "Indiquez qui reçoit l'argent."
-                    : !cgv
-                      ? "Le client doit accepter les conditions générales."
-                      : null;
+  // Une location libre saisie au comptoir pendant la sortie Octobre rose :
+  // le site ne la propose pas, le comptoir la laisse passer en prévenant.
+  const pendantOctobreRose =
+    !encadree &&
+    sortieRose !== null &&
+    sortieRose.date === date &&
+    heure < sortieRose.heureFin &&
+    heureFin > sortieRose.heureDebut;
+  const obstacleCreneau =
+    offre === "octobre-rose" && !sortieRose
+      ? "La sortie Octobre rose est passée : choisissez une autre formule."
+      : octobreRose
+        ? placesRose < personnes
+          ? placesRose === 0
+            ? "Plus aucun vélo libre pour la sortie Octobre rose."
+            : `Il ne reste que ${placesRose} vélo${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""} pour la sortie.`
+          : null
+        : !velo
+          ? "Choisissez le vélo."
+          : !enEtat(velo)
+            ? "Ce vélo est en entretien."
+            : occupeSurCreneau(velo.id)
+              ? "Ce vélo est déjà pris sur ce créneau."
+              : roadTrip && !roadTripCeJour
+                ? "Le road trip part le samedi et le dimanche."
+                : !roadTrip && heureFin > FERMETURE_COMPTOIR_HEURE
+                  ? `Le vélo rentrerait après ${FERMETURE_COMPTOIR_HEURE} h.`
+                  : null;
+  const obstacle =
+    obstacleCreneau ??
+    (date < ici.date
+      ? "Cette date est passée."
+      : montant === null
+        ? "Appliquez le code de parrainage pour connaître le montant exact."
+        : !client.prenom.trim() || !client.nom.trim() || !client.email.trim()
+          ? "Renseignez le prénom, le nom et l'email du client."
+          : encaissePar.trim().length < 2
+            ? "Indiquez qui reçoit l'argent."
+            : !cgv
+              ? "Le client doit accepter les conditions générales."
+              : null);
 
   const choisirOffre = (nouvelle: CodeOffre) => {
     setOffre(nouvelle);
@@ -381,8 +437,10 @@ export function VenteEspeces({
 
   const choisirDuree = (duree: number) => {
     setDureeHeures(duree);
-    // Un départ qui ferait rentrer le vélo après la fermeture recule d'autant.
-    setHeureChoisie((choisie) => (choisie === null ? null : Math.min(choisie, FERMETURE_HEURE - duree)));
+    // Un départ qui ferait rentrer le vélo après 22 h recule d'autant.
+    setHeureChoisie((choisie) =>
+      choisie === null ? null : Math.min(choisie, FERMETURE_COMPTOIR_HEURE - duree),
+    );
   };
 
   const appliquerCode = async () => {
@@ -453,7 +511,7 @@ export function VenteEspeces({
   };
 
   const enregistrer = async () => {
-    if (obstacle || montant === null || !velo) return;
+    if (obstacle || montant === null || (!velo && !octobreRose)) return;
     setEnvoi(true);
     setErreur(null);
     setErreurs({});
@@ -465,10 +523,11 @@ export function VenteEspeces({
         body: JSON.stringify({
           action: "enregistrer",
           cleVente: cleVente.current,
-          veloId,
+          // Octobre rose : les vélos sont attribués par le serveur.
+          veloId: octobreRose ? undefined : veloId,
           offre,
           nombrePersonnes: personnes,
-          dureeHeures: roadTrip ? undefined : dureeHeures,
+          dureeHeures: encadree ? undefined : dureeHeures,
           date,
           heureDebut: heure,
           // Un code que le serveur vient de refuser n'est pas transmis : le
@@ -502,6 +561,12 @@ export function VenteEspeces({
           veloPrisEntreTemps(donnees.erreur);
           return;
         }
+        if (donnees.code === "PLACES") {
+          // Octobre rose : des vélos viennent d'être pris. On relit le parc.
+          setErreur(donnees.erreur);
+          demarrerTransition(() => routeur.refresh());
+          return;
+        }
         if (donnees.code === "MONTANT" && donnees.devis) {
           setApercu({ signature, ...donnees.devis });
         }
@@ -518,6 +583,7 @@ export function VenteEspeces({
       cleVente.current = null;
       setVente({
         reference: donnees.reference,
+        offre: (["road-trip", "location-libre", "octobre-rose"] as const).find((o) => o === donnees.offre) ?? offre,
         facture: donnees.facture,
         totalXof: donnees.totalXof,
         cautionXof: donnees.cautionXof,
@@ -550,8 +616,24 @@ export function VenteEspeces({
   }
 
   const datesRoadTrip = joursDeRoadTrip(ici.date);
+  // Au comptoir, l'heure que l'on veut : de 6 h, retour à 22 h au plus tard.
   const heuresProposees: number[] = [];
-  for (let h = OUVERTURE_HEURE; h + dureeHeures <= FERMETURE_HEURE; h += 1) heuresProposees.push(h);
+  for (let h = OUVERTURE_COMPTOIR_HEURE; h + dureeHeures <= FERMETURE_COMPTOIR_HEURE; h += 1) {
+    heuresProposees.push(h);
+  }
+  const formules: (readonly [CodeOffre, string, string])[] = [
+    ["location-libre", "Location libre", "À l'heure, avec caution"],
+    ["road-trip", "Road trip", "Samedi et dimanche, 8 h"],
+    ...(sortieRose && OCTOBRE_ROSE.sortie
+      ? ([
+          [
+            "octobre-rose",
+            "Octobre rose",
+            `${jourLisible(sortieRose.date)}, ${formatHoraire(OCTOBRE_ROSE.sortie.rassemblement)}`,
+          ],
+        ] as const)
+      : []),
+  ];
 
   return (
     <section
@@ -569,26 +651,34 @@ export function VenteEspeces({
       {/* 1. La formule */}
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">1. La formule</legend>
-        <div className="mt-2 grid *:min-w-0 grid-cols-2 gap-2">
-          {(
-            [
-              ["location-libre", "Location libre", "À l'heure, avec caution"],
-              ["road-trip", "Road trip", "Samedi et dimanche, 8 h"],
-            ] as const
-          ).map(([valeur, libelle, detail]) => (
+        <div className={`mt-2 grid *:min-w-0 grid-cols-2 gap-2 ${formules.length > 2 ? "sm:grid-cols-3" : ""}`}>
+          {formules.map(([valeur, libelle, detail]) => (
             <button
               key={valeur}
               type="button"
               onClick={() => choisirOffre(valeur)}
               aria-pressed={offre === valeur}
               className={`min-h-[56px] rounded-[var(--radius-bouton)] border px-3 py-2 text-left transition-colors ${
+                valeur === "octobre-rose" ? "col-span-2 sm:col-span-1" : ""
+              } ${
                 offre === valeur
-                  ? "border-orange-signal bg-orange-signal/10"
+                  ? valeur === "octobre-rose"
+                    ? "border-rose-octobre bg-rose-octobre/15"
+                    : "border-orange-signal bg-orange-signal/10"
                   : "border-noir-piste/20 bg-craie hover:border-noir-piste/40"
               }`}
             >
-              <span className="block text-[0.92rem] font-semibold">{libelle}</span>
-              <span className="block text-[0.76rem] text-gris-cadre">{detail}</span>
+              <span className="flex items-center gap-2 text-[0.92rem] font-semibold">
+                {valeur === "octobre-rose" && (
+                  <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-octobre" />
+                )}
+                {libelle}
+              </span>
+              <span
+                className={`block text-[0.76rem] ${offre === valeur && valeur === "octobre-rose" ? "text-noir-piste/80" : "text-gris-cadre"}`}
+              >
+                {detail}
+              </span>
             </button>
           ))}
         </div>
@@ -597,7 +687,45 @@ export function VenteEspeces({
       {/* 2. Le créneau */}
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">2. Le créneau</legend>
-        {roadTrip ? (
+        {octobreRose ? (
+          <div className="mt-2 grid *:min-w-0 gap-4 sm:grid-cols-2">
+            <div className="rounded-[var(--radius-bouton)] bg-rose-octobre/15 px-4 py-3">
+              <p className="text-[0.92rem] font-semibold">{jourLisible(sortieRose.date)}</p>
+              {OCTOBRE_ROSE.sortie && (
+                <p className="mt-0.5 text-[0.8rem] text-noir-piste/80">
+                  Rassemblement {formatHoraire(OCTOBRE_ROSE.sortie.rassemblement)}, départ{" "}
+                  {formatHoraire(OCTOBRE_ROSE.sortie.depart)}, retour vers{" "}
+                  {formatHoraire(OCTOBRE_ROSE.sortie.retour)}
+                </p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="vente-personnes-rose" className="text-[0.8rem] text-gris-cadre">
+                Nombre de personnes
+              </label>
+              <select
+                id="vente-personnes-rose"
+                value={personnes}
+                onChange={(evenement) => setNombrePersonnes(Number(evenement.target.value))}
+                className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem]"
+              >
+                {Array.from({ length: personnesMax }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n} personne{n > 1 ? "s" : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-[0.76rem] text-gris-cadre">
+                {placesRose === 0
+                  ? "Plus aucun vélo libre pour la sortie."
+                  : `${placesRose} vélo${placesRose > 1 ? "s" : ""} encore libre${placesRose > 1 ? "s" : ""} pour la sortie.`}
+              </p>
+              {erreurs.nombrePersonnes && (
+                <p className="mt-1.5 text-[0.78rem] text-orange-sourd">{erreurs.nombrePersonnes}</p>
+              )}
+            </div>
+          </div>
+        ) : roadTrip ? (
           <div className="mt-2 grid *:min-w-0 gap-4 sm:grid-cols-2">
             <div>
               <p className="text-[0.8rem] text-gris-cadre">Jour du road trip (départ {HEURE_ROAD_TRIP} h)</p>
@@ -707,8 +835,8 @@ export function VenteEspeces({
         {tropTard ? (
           <p className="mt-2 rounded-[var(--radius-bouton)] border-l-4 border-orange-signal bg-orange-signal/10 px-3 py-2 text-[0.8rem] leading-relaxed">
             Il est {ici.heure} h : une location de {dureeHeures} h ne rentre plus avant{" "}
-            {FERMETURE_HEURE} h aujourd&apos;hui. Réduisez la durée, ou choisissez un autre jour ;
-            sinon la vente sera enregistrée après coup, à l&apos;heure choisie.
+            {FERMETURE_COMPTOIR_HEURE} h aujourd&apos;hui. Réduisez la durée, ou choisissez un autre
+            jour ; sinon la vente sera enregistrée après coup, à l&apos;heure choisie.
           </p>
         ) : (
           dejaPasse && (
@@ -733,9 +861,25 @@ export function VenteEspeces({
             heures. Vérifiez qu&apos;un vélo reste bien au point de départ.
           </p>
         )}
+        {pendantOctobreRose && sortieRose && (
+          <p className="mt-2 rounded-[var(--radius-bouton)] border-l-4 border-rose-octobre bg-rose-octobre/10 px-3 py-2 text-[0.8rem] leading-relaxed">
+            La sortie Octobre rose occupe les vélos de {sortieRose.heureDebut} h à {sortieRose.heureFin} h
+            ce jour-là : le site ne propose pas ces heures. Ce vélo ne pourra pas servir à la sortie.
+          </p>
+        )}
       </fieldset>
 
       {/* 3. Le vélo */}
+      {octobreRose ? (
+        <div className="mt-6">
+          <p className="etiquette opacity-75">3. Les vélos</p>
+          <p className="mt-2 rounded-[var(--radius-bouton)] bg-craie px-4 py-3 text-[0.84rem] leading-relaxed">
+            Rien à choisir : un vélo libre est attribué à chaque personne à l&apos;enregistrement,
+            le Classique d&apos;abord. Les vélos attribués s&apos;affichent ensuite, à remettre au
+            rassemblement.
+          </p>
+        </div>
+      ) : (
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">3. Le vélo</legend>
         <div className="mt-2 grid *:min-w-0 gap-2 sm:grid-cols-2">
@@ -745,7 +889,7 @@ export function VenteEspeces({
             const choisi = v.id === veloId;
             // Le prix au comptoir de ce vélo : par personne en road trip.
             const prix = calculerDevis({
-              offre,
+              offre: roadTrip ? "road-trip" : "location-libre",
               gamme: v.gamme,
               nombrePersonnes: 1,
               dureeHeures: roadTrip ? undefined : dureeHeures,
@@ -795,6 +939,7 @@ export function VenteEspeces({
         </div>
         {erreurs.veloId && <p className="mt-2 text-[0.78rem] text-orange-sourd">{erreurs.veloId}</p>}
       </fieldset>
+      )}
 
       {/* 4. Le client */}
       <fieldset className="mt-6">
@@ -842,6 +987,12 @@ export function VenteEspeces({
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">5. L&apos;encaissement</legend>
         <div className="mt-2 grid *:min-w-0 gap-4 sm:grid-cols-2">
+          {/* Pas de code sur Octobre rose : son prix est déjà réduit. */}
+          {octobreRose ? (
+            <p className="self-center text-[0.8rem] leading-relaxed text-gris-cadre">
+              Octobre rose est déjà à prix réduit : pas de code de parrainage.
+            </p>
+          ) : (
           <div>
             <label htmlFor="vente-code" className="text-[0.8rem] text-gris-cadre">
               Code de parrainage (facultatif)
@@ -874,6 +1025,7 @@ export function VenteEspeces({
               </p>
             )}
           </div>
+          )}
           <Champ
             id="vente-encaisse-par"
             libelle="Argent reçu par"
@@ -907,6 +1059,12 @@ export function VenteEspeces({
         <p className="mt-1 font-display text-[2rem] font-bold leading-none tabular-nums">
           {montant !== null ? formatXof(montant) : "à calculer"}
         </p>
+        {octobreRose && devisLocal && (
+          <p className="mt-2 text-[0.82rem] text-craie/75">
+            Octobre rose, {personnes} personne{personnes > 1 ? "s" : ""} ·{" "}
+            {formatXof(devisLocal.sousTotalXof / personnes)} par personne en espèces
+          </p>
+        )}
         {velo && devisLocal && (
           <p className="mt-2 text-[0.82rem] text-craie/75">
             {roadTrip
@@ -915,7 +1073,7 @@ export function VenteEspeces({
             · {velo.nom}
           </p>
         )}
-        {!roadTrip && devisLocal && devisLocal.cautionXof > 0 && (
+        {!encadree && devisLocal && devisLocal.cautionXof > 0 && (
           <p className="mt-2 text-[0.82rem] leading-relaxed text-craie/75">
             Plus la caution de {formatXof(devisLocal.cautionXof)} en espèces et la pièce
             d&apos;identité, rendues au retour du vélo. La caution n&apos;est pas sur la facture.
@@ -1026,7 +1184,9 @@ function VenteTerminee({ vente, onNouvelle }: { vente: VenteEnregistree; onNouve
       <p className="mt-1 text-[0.88rem]">
         {vente.client} · {vente.formule} · {vente.veloNom}
         <span className="block text-gris-cadre">
-          {jourLisible(vente.dateDebut)}, de {vente.heureDebut} h à {vente.heureFin} h
+          {vente.offre === "octobre-rose" && OCTOBRE_ROSE.sortie
+            ? `${jourLisible(vente.dateDebut)}, rassemblement à ${formatHoraire(OCTOBRE_ROSE.sortie.rassemblement)} : vélos à remettre au rassemblement`
+            : `${jourLisible(vente.dateDebut)}, de ${vente.heureDebut} h à ${vente.heureFin} h`}
         </span>
       </p>
 
@@ -1108,7 +1268,10 @@ function VenteTerminee({ vente, onNouvelle }: { vente: VenteEnregistree; onNouve
       )}
 
       <div className="mt-5 grid gap-2 sm:grid-cols-2">
-        {vente.departDuJour && depart !== "fait" && !annulee && (
+        {/* Octobre rose : les vélos se remettent au rassemblement, depuis la
+            sortie du jour. Noter le départ ici, à la vente, sortirait
+            l'inscription de la liste du rassemblement. */}
+        {vente.departDuJour && vente.offre !== "octobre-rose" && depart !== "fait" && !annulee && (
           <button
             type="button"
             onClick={remettre}

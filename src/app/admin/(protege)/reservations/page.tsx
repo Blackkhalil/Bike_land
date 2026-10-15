@@ -14,7 +14,7 @@ import {
 import { exigerSessionAdmin } from "@/lib/admin";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
-import { formatDate, formatPlageHoraire, formatXof, resumeOffre } from "@/lib/format";
+import { formatDate, formatPlageReservation, formatXof, resumeOffre } from "@/lib/format";
 import type { Reservation, StatutReservation } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Réservations" };
@@ -263,7 +263,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                   <dd>
                     {formatDate(reservation.dateDebut)}
                     <span className="block text-[0.76rem] text-gris-cadre tabular-nums">
-                      {formatPlageHoraire(reservation.heureDebut, reservation.heureFin)}
+                      {formatPlageReservation(reservation)}
                     </span>
                   </dd>
                 </div>
@@ -340,7 +340,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                     {/* L'horaire compte autant que le jour depuis qu'un
                         même vélo sort plusieurs fois dans la journée. */}
                     <span className="block text-[0.76rem] text-gris-cadre tabular-nums">
-                      {formatPlageHoraire(reservation.heureDebut, reservation.heureFin)}
+                      {formatPlageReservation(reservation)}
                     </span>
                   </td>
                   <td className="py-3 pr-4 text-right tabular-nums">

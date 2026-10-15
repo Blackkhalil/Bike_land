@@ -8,14 +8,17 @@
  *
  * Le prix ne dépend plus du vélo mais de l'offre choisie :
  *
- *  - **road trip** : forfait par personne, quel que soit le vélo ;
- *  - **location libre** : grille horaire, quel que soit le vélo.
+ *  - **road trip** : forfait par personne, selon la gamme du vélo ;
+ *  - **location libre** : grille horaire, selon la gamme du vélo ;
+ *  - **Octobre rose** : un prix par personne, le même pour tous les vélos
+ *    (src/data/octobre-rose.ts).
  *
  * La tarification journalière (majoration de haute saison, remises de
  * durée) a été retirée : elle ne correspondait plus à l'activité.
  */
 
 import { optionsLocation } from "@/data/catalogue";
+import { OCTOBRE_ROSE } from "@/data/octobre-rose";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   COCOS_ROAD_TRIP,
@@ -43,12 +46,13 @@ export interface ParametresDevis {
   /**
    * Gamme du velo choisi : c'est elle qui commande le prix.
    *
-   * Obligatoire depuis que la plaquette distingue Classique, Premium et
-   * Prestige. Sans elle, il n'y a pas de tarif a appliquer, et en
-   * inventer un serait pire que d'echouer.
+   * Obligatoire pour le road trip et la location libre depuis que la
+   * plaquette distingue Classique, Premium et Prestige. Sans elle, il n'y
+   * a pas de tarif a appliquer, et en inventer un serait pire que
+   * d'echouer. Octobre rose s'en passe : son prix ne depend pas du velo.
    */
-  gamme: GammeVelo;
-  /** Road trip : nombre de participants. Un par défaut. */
+  gamme?: GammeVelo;
+  /** Road trip et Octobre rose : nombre de participants. Un par défaut. */
   nombrePersonnes?: number;
   /** Location libre : durée en heures, telle que publiée dans la grille. */
   dureeHeures?: number;
@@ -73,7 +77,8 @@ export interface ParametresDevis {
 
 export interface Devis {
   offre: CodeOffre;
-  gamme: GammeVelo;
+  /** `null` pour Octobre rose, dont le prix ne dépend pas du vélo. */
+  gamme: GammeVelo | null;
   nombrePersonnes: number;
   dureeHeures: number | null;
   sousTotalXof: number;
@@ -101,8 +106,17 @@ export class DureeNonTarifeeError extends Error {
   }
 }
 
+/** Erreur métier : rien ne fixe le prix demandé (gamme absente, sortie non fixée). */
+export class TarifIntrouvableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TarifIntrouvableError";
+  }
+}
+
 export function calculerDevis(parametres: ParametresDevis): Devis {
-  const { offre, gamme } = parametres;
+  const { offre } = parametres;
+  const gamme = parametres.gamme ?? null;
   const nombrePersonnes = Math.max(1, Math.min(parametres.nombrePersonnes ?? 1, 12));
 
   const lignes: LigneDevis[] = [];
@@ -113,7 +127,23 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
   // paiement en ligne que portent les tarifs du site.
   const fraisRetires = parametres.especes ? FRAIS_PAIEMENT_EN_LIGNE_XOF : 0;
 
-  if (offre === "road-trip") {
+  if (offre === "octobre-rose") {
+    const sortie = OCTOBRE_ROSE.sortie;
+    if (!sortie) throw new TarifIntrouvableError("La sortie Octobre rose n'est pas encore fixée.");
+    // Un prix par personne, quel que soit le vélo attribué. Une sortie
+    // gratuite ne coûte rien, même au comptoir.
+    const prixUnitaire = Math.max(0, sortie.prixXof - (sortie.prixXof > 0 ? fraisRetires : 0));
+    sousTotalXof = prixUnitaire * nombrePersonnes;
+    cautionXof = 0;
+    lignes.push({
+      libelle:
+        nombrePersonnes > 1 ? `Octobre rose, ${nombrePersonnes} personnes` : "Octobre rose, 1 personne",
+      detail: `${prixUnitaire.toLocaleString("fr-FR")} FCFA par personne, vélo et casque compris`,
+      montantXof: sousTotalXof,
+    });
+  } else if (!gamme) {
+    throw new TarifIntrouvableError("La gamme du vélo est nécessaire pour fixer ce prix.");
+  } else if (offre === "road-trip") {
     const prixUnitaire = PRIX_ROAD_TRIP_XOF[gamme] - fraisRetires;
     const cocos = COCOS_ROAD_TRIP[gamme];
     sousTotalXof = prixUnitaire * nombrePersonnes;

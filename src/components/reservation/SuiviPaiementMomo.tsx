@@ -48,6 +48,7 @@ export function SuiviPaiementMomo({
   urlCheckout,
   onConfirme,
   onEchec,
+  expiration = "La demande de paiement a expiré et le vélo n'est plus retenu. Rechargez cette page pour en relancer une.",
 }: {
   token: string;
   paiementId: string;
@@ -60,6 +61,8 @@ export function SuiviPaiementMomo({
   onConfirme: () => void;
   /** Appelé quand SasPay a tranché négativement. */
   onEchec: (message: string) => void;
+  /** Ce que dit l'encart quand la demande a expiré. */
+  expiration?: string;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [expire, setExpire] = useState(false);
@@ -161,10 +164,7 @@ export function SuiviPaiementMomo({
           </p>
 
           {expire ? (
-            <p className="mt-2 text-[0.9rem] leading-relaxed">
-              La demande de paiement a expiré et le vélo n&apos;est plus retenu. Rechargez cette
-              page pour en relancer une.
-            </p>
+            <p className="mt-2 text-[0.9rem] leading-relaxed">{expiration}</p>
           ) : (
             <>
               <p className="mt-2 text-[0.9rem] leading-relaxed">

@@ -20,7 +20,7 @@ export default function PageCGV() {
   return (
     <PageLegale
       titre="Conditions générales de vente"
-      miseAJour="8 septembre 2026"
+      miseAJour="15 octobre 2026"
       sousTitre="Ce que nous nous engageons à faire, et ce que nous vous demandons en retour. Elles s'appliquent à toute réservation effectuée sur ce site."
     >
       <ArticleLegal titre="Article 1. Objet">
@@ -54,6 +54,12 @@ export default function PageCGV() {
           {DUREE_MAX_LOCATION_LIBRE} heures.
         </p>
         <p>
+          {site.nom} organise aussi des <strong>sorties de saison</strong>, comme Octobre rose :
+          une sortie en groupe encadrée, à date et heure fixes, au prix unique par personne
+          annoncé sur sa page, quel que soit le vélo. Le vélo de chaque participant est attribué
+          par {site.nom} parmi les vélos disponibles ; il n&apos;est pas choisi.
+        </p>
+        <p>
           Les prix sont indiqués en francs CFA (XOF), toutes taxes comprises.
           L&apos;opérateur de paiement ajoute sa commission au montant de la location.{" "}
           <strong>
@@ -71,7 +77,7 @@ export default function PageCGV() {
 
       <ArticleLegal titre="Article 4. Caution et garanties">
         <p>
-          <strong>Road trip.</strong> Aucune caution n&apos;est demandée et aucun montant
+          <strong>Road trip et sorties de saison.</strong> Aucune caution n&apos;est demandée et aucun montant
           n&apos;est pré-autorisé. La sortie est encadrée par un coordinateur de {site.nom}, qui
           remet les vélos et les kits au départ et les récupère à l&apos;arrivée : le matériel
           demeure sous la garde de {site.nom} pendant toute la durée de la sortie.

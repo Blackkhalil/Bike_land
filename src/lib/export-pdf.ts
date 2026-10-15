@@ -75,7 +75,11 @@ const DETAIL: ColonneDetail[] = [
     titre: "Formule",
     largeur: 86,
     valeur: (r) =>
-      r.offre === "road-trip" ? `Road trip, ${r.nombrePersonnes} pers.` : `Libre, ${r.dureeHeures ?? "?"} h`,
+      r.offre === "road-trip"
+        ? `Road trip, ${r.nombrePersonnes} pers.`
+        : r.offre === "octobre-rose"
+          ? `Octobre rose, ${r.nombrePersonnes} pers.`
+          : `Libre, ${r.dureeHeures ?? "?"} h`,
   },
   {
     titre: "Paiement",

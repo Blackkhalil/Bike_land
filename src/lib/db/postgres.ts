@@ -17,12 +17,14 @@ import type {
   Bike as BikePrisma,
   Booking as BookingPrisma,
   BookingItem,
+  BookingOffer,
   BookingOption,
   Customer,
   Payment,
 } from "@prisma/client";
 
 import { nombreDeJours, versISO, type DateISO } from "../dates";
+import { creneauOctobreRose } from "@/data/octobre-rose";
 import {
   DUREE_ROAD_TRIP_HEURES,
   EXPIRATION_PANIER_MINUTES,
@@ -47,6 +49,7 @@ import {
 import type {
   AvisClient,
   Client,
+  CodeOffre,
   MessageContact,
   Partenaire,
   PointDeRetrait,
@@ -57,6 +60,8 @@ import type {
 } from "../types";
 import {
   ConflitDisponibiliteError,
+  messagePlacesManquantes,
+  ordreAttribution,
   resteUneHeureLibre,
   TransactionDejaUtiliseeError,
   type CreneauOccupe,
@@ -65,6 +70,18 @@ import {
   type FiltreCatalogue,
   type ResultatReservation,
 } from "./contrat";
+
+/** L'offre telle que la base la range, et telle que le domaine la nomme. */
+const OFFRE_EN_BASE: Record<CodeOffre, BookingOffer> = {
+  "road-trip": "ROAD_TRIP",
+  "location-libre": "LOCATION_LIBRE",
+  "octobre-rose": "OCTOBRE_ROSE",
+};
+const OFFRE_DU_DOMAINE: Record<BookingOffer, CodeOffre> = {
+  ROAD_TRIP: "road-trip",
+  LOCATION_LIBRE: "location-libre",
+  OCTOBRE_ROSE: "octobre-rose",
+};
 
 /**
  * Marges des transactions interactives.
@@ -248,7 +265,7 @@ function versReservation(booking: BookingComplet): Reservation {
     id: booking.id,
     reference: booking.reference,
     statut: booking.status,
-    offre: booking.offer === "ROAD_TRIP" ? "road-trip" : "location-libre",
+    offre: OFFRE_DU_DOMAINE[booking.offer],
     nombrePersonnes: booking.peopleCount,
     dureeHeures: booking.durationHours ?? undefined,
     clientId: booking.customerId,
@@ -555,13 +572,48 @@ const depotDirect: Depot = {
     return conflit === null;
   },
 
+  async velosLibres(date: DateISO, heureDebut: number, heureFin: number) {
+    const jour = new Date(`${date}T00:00:00Z`);
+    const [bikes, pris] = await avecRepriseConnexion(() =>
+      Promise.all([
+        client().bike.findMany({
+          where: { status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+          include: { reviews: { where: { isPublished: true }, select: { rating: true } } },
+        }),
+        client().bookingItem.findMany({
+          where: {
+            booking: bookingBloquant(),
+            startDate: { lte: jour },
+            endDate: { gte: jour },
+            startHour: { lt: heureFin },
+            endHour: { gt: heureDebut },
+          },
+          select: { bikeId: true },
+        }),
+      ]),
+    );
+    const occupes = new Set(pris.map((ligne) => ligne.bikeId));
+    return ordreAttribution(bikes.filter((bike) => !occupes.has(bike.id)).map(versVelo));
+  },
+
   async creerReservation(
     demande: DemandeReservation,
   ): Promise<ResultatReservation> {
-    const bike = await client().bike.findUnique({
-      where: { id: demande.veloId },
-    });
-    if (!bike) throw new Error("Vélo introuvable.");
+    // Octobre rose ne se réserve pas sur un vélo choisi : les vélos sont
+    // attribués plus bas, dans la transaction, un par participant.
+    const octobreRose = demande.offre === "octobre-rose";
+    const creneauSortie = octobreRose ? creneauOctobreRose() : null;
+    if (octobreRose) {
+      if (!creneauSortie) throw new Error("La sortie Octobre rose n'est pas fixée.");
+      if (demande.dateDebut !== creneauSortie.date || demande.heureDebut !== creneauSortie.heureDebut) {
+        throw new Error("Une inscription à Octobre rose porte sur le jour et l'heure de la sortie.");
+      }
+    }
+    const bike =
+      octobreRose || !demande.veloId
+        ? null
+        : await client().bike.findUnique({ where: { id: demande.veloId } });
+    if (!octobreRose && !bike) throw new Error("Vélo introuvable.");
 
     // Une vente au comptoir ne se règle qu'en espèces : sans ce contrôle,
     // une réservation pourrait naître payée par un Mobile Money qui n'a
@@ -577,8 +629,9 @@ const depotDirect: Depot = {
       offre: demande.offre,
       // La gamme vient du vélo lu en base, jamais de l'appelant : c'est
       // elle qui fixe le prix, et la laisser passer par le navigateur
-      // reviendrait à laisser choisir son tarif.
-      gamme: bike.tier,
+      // reviendrait à laisser choisir son tarif. Octobre rose n'en a pas
+      // besoin, son prix ne dépend pas du vélo.
+      gamme: bike?.tier,
       nombrePersonnes: demande.nombrePersonnes,
       dureeHeures: demande.dureeHeures,
       options: demande.options,
@@ -587,9 +640,11 @@ const depotDirect: Depot = {
       especes: Boolean(encaissement),
     });
 
-    const codeSaisi = demande.codeParrainage
-      ? normaliserCode(demande.codeParrainage)
-      : null;
+    // Pas de code de parrainage sur Octobre rose : son prix est déjà réduit.
+    const codeSaisi =
+      demande.codeParrainage && !octobreRose
+        ? normaliserCode(demande.codeParrainage)
+        : null;
 
     const reference = genererReference();
     const token = genererToken(reference);
@@ -597,9 +652,11 @@ const depotDirect: Depot = {
     const fin = new Date(`${demande.dateFin}T00:00:00Z`);
 
     // L'heure de fin se déduit de la formule : le road trip dure le temps
-    // de son créneau, la location libre le nombre d'heures choisi.
-    const heureFin =
-      demande.offre === "road-trip"
+    // de son créneau, Octobre rose jusqu'au retour des vélos, la location
+    // libre le nombre d'heures choisi.
+    const heureFin = creneauSortie
+      ? creneauSortie.heureFin
+      : demande.offre === "road-trip"
         ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
         : demande.heureDebut + (devisBrut.dureeHeures ?? 1);
     const email = demande.client.email.trim().toLowerCase();
@@ -609,17 +666,54 @@ const depotDirect: Depot = {
         async (tx) => {
           // Relecture du conflit *à l'intérieur* de la transaction : c'est
           // elle que le niveau Serializable protège d'une écriture concurrente.
-          const conflit = await tx.bookingItem.findFirst({
-            where: conflitHoraire(
-              bike.id,
-              demande.dateDebut,
-              demande.dateFin,
-              demande.heureDebut,
-              heureFin,
-            ),
-            select: { id: true },
-          });
-          if (conflit) throw new ConflitDisponibiliteError();
+          //
+          // Pour Octobre rose, c'est ici que les vélos sont attribués : les
+          // vélos en état, moins ceux déjà pris sur le créneau, dans l'ordre
+          // d'attribution. Deux inscriptions simultanées lisent les mêmes
+          // lignes : PostgreSQL en annule une (P2034), qui, rejouée, voit
+          // les vélos pris par l'autre.
+          let velosAttribues: { id: string; pickupPointId: string | null }[];
+          if (octobreRose) {
+            const enEtat = await tx.bike.findMany({
+              where: { status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+              select: { id: true, name: true, tier: true, pickupPointId: true },
+            });
+            const pris = await tx.bookingItem.findMany({
+              where: {
+                booking: bookingBloquant(),
+                startDate: { lte: fin },
+                endDate: { gte: debut },
+                startHour: { lt: heureFin },
+                endHour: { gt: demande.heureDebut },
+              },
+              select: { bikeId: true },
+            });
+            const occupes = new Set(pris.map((ligne) => ligne.bikeId));
+            const libres = ordreAttribution(
+              enEtat
+                .filter((velo) => !occupes.has(velo.id))
+                .map((velo) => ({ ...velo, gamme: velo.tier, nom: velo.name })),
+            );
+            if (libres.length < devisBrut.nombrePersonnes) {
+              throw new ConflitDisponibiliteError(
+                messagePlacesManquantes(devisBrut.nombrePersonnes, libres.length, Boolean(encaissement)),
+              );
+            }
+            velosAttribues = libres.slice(0, devisBrut.nombrePersonnes);
+          } else {
+            const conflit = await tx.bookingItem.findFirst({
+              where: conflitHoraire(
+                bike!.id,
+                demande.dateDebut,
+                demande.dateFin,
+                demande.heureDebut,
+                heureFin,
+              ),
+              select: { id: true },
+            });
+            if (conflit) throw new ConflitDisponibiliteError();
+            velosAttribues = [bike!];
+          }
 
           // Le code de parrainage est revérifié et consommé **ici**, dans la même
           // transaction que l'écriture. Le vérifier avant reviendrait à
@@ -662,7 +756,7 @@ const depotDirect: Depot = {
           const devis = remise
             ? calculerDevis({
                 offre: demande.offre,
-                gamme: bike.tier,
+                gamme: bike?.tier,
                 nombrePersonnes: demande.nombrePersonnes,
                 dureeHeures: demande.dureeHeures,
                 options: demande.options,
@@ -698,15 +792,14 @@ const depotDirect: Depot = {
               // l'argent est deja encaisse, elle nait confirmee.
               status: encaissement ? "CONFIRMEE" : "EN_ATTENTE_PAIEMENT",
               confirmedAt: encaissement ? new Date() : undefined,
-              offer:
-                demande.offre === "road-trip" ? "ROAD_TRIP" : "LOCATION_LIBRE",
+              offer: OFFRE_EN_BASE[demande.offre],
               peopleCount: devis.nombrePersonnes,
               durationHours: devis.dureeHeures,
               customerId: customer.id,
               contactFirstName: prenom,
               contactLastName: nom,
               contactPhone: telephone,
-              pickupPointId: bike.pickupPointId,
+              pickupPointId: velosAttribues[0].pickupPointId,
               startDate: debut,
               endDate: fin,
               startHour: demande.heureDebut,
@@ -719,18 +812,24 @@ const depotDirect: Depot = {
               totalXof: devis.totalXof,
               accessTokenHash: hacherToken(token),
               notes: demande.message,
+              // Une ligne par vélo. Pour Octobre rose, un vélo par
+              // participant, chacun au prix d'une place ; ailleurs, le vélo
+              // choisi porte toute la location.
               items: {
-                create: [
-                  {
-                    bikeId: bike.id,
+                create: velosAttribues.map((velo) => {
+                  const prixLigne = octobreRose
+                    ? Math.round(devis.sousTotalXof / velosAttribues.length)
+                    : devis.sousTotalXof;
+                  return {
+                    bikeId: velo.id,
                     startDate: debut,
                     endDate: fin,
                     startHour: demande.heureDebut,
                     endHour: heureFin,
-                    unitPriceXof: devis.sousTotalXof,
-                    lineTotalXof: devis.sousTotalXof,
-                  },
-                ],
+                    unitPriceXof: prixLigne,
+                    lineTotalXof: prixLigne,
+                  };
+                }),
               },
               options: {
                 create: devis.optionsDetaillees.map((ligne) => ({

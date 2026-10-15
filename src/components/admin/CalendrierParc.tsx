@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import { ajouterJours, aujourdhui, listerJours, versISO } from "@/lib/dates";
 import { seulementPayees } from "@/lib/reservations";
-import { formatDateCourte, formatPlageHoraire } from "@/lib/format";
-import { FERMETURE_HEURE, OUVERTURE_HEURE } from "@/data/offres";
+import { formatDateCourte, formatPlageReservation } from "@/lib/format";
+import { FERMETURE_COMPTOIR_HEURE, OUVERTURE_COMPTOIR_HEURE } from "@/data/offres";
 import type { Reservation, Velo } from "@/lib/types";
 
 /**
@@ -149,7 +149,7 @@ export function CalendrierParc({
                     <a
                       key={creneau.reservation.id}
                       href={`/admin/reservations?reference=${creneau.reservation.reference}`}
-                      title={`${creneau.reservation.reference} : ${creneau.reservation.client.prenom} ${creneau.reservation.client.nom} · ${formatPlageHoraire(creneau.reservation.heureDebut, creneau.reservation.heureFin)}`}
+                      title={`${creneau.reservation.reference} : ${creneau.reservation.client.prenom} ${creneau.reservation.client.nom} · ${formatPlageReservation(creneau.reservation)}`}
                       className={`absolute inset-y-2 flex items-center overflow-hidden rounded-[var(--radius-bouton)] px-2 text-[0.7rem] font-semibold text-craie transition-opacity hover:opacity-85 ${
                         creneau.reservation.statut === "EN_COURS" ? "bg-orange-signal" : "bg-noir-releve"
                       }`}
@@ -191,15 +191,18 @@ export const premierJourVisible = () => versISO(new Date());
  * donc la fraction du jour correspondant à ses heures, ce qui fait
  * apparaître côte à côte deux sorties du même vélo le même jour. Sans
  * cela, elles se superposeraient et la seconde serait invisible.
+ *
+ * La journée va de 6 h à 22 h, les heures du comptoir : une location du
+ * soir saisie en espèces s'y voit comme les autres.
  */
 function positionBarre(creneau: {
   indexDebut: number;
   indexFin: number;
   reservation: { heureDebut: number; heureFin: number };
 }): { left: number; width: number } {
-  const amplitude = FERMETURE_HEURE - OUVERTURE_HEURE;
-  const debutRelatif = Math.max(0, creneau.reservation.heureDebut - OUVERTURE_HEURE) / amplitude;
-  const finRelative = Math.min(amplitude, creneau.reservation.heureFin - OUVERTURE_HEURE) / amplitude;
+  const amplitude = FERMETURE_COMPTOIR_HEURE - OUVERTURE_COMPTOIR_HEURE;
+  const debutRelatif = Math.max(0, creneau.reservation.heureDebut - OUVERTURE_COMPTOIR_HEURE) / amplitude;
+  const finRelative = Math.min(amplitude, creneau.reservation.heureFin - OUVERTURE_COMPTOIR_HEURE) / amplitude;
 
   const gauche = (creneau.indexDebut + debutRelatif) * LARGEUR_JOUR;
   const droite = (creneau.indexFin + finRelative) * LARGEUR_JOUR;

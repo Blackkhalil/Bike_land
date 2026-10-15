@@ -19,7 +19,7 @@ import {
   formatDateAvecJour,
   formatDateCourte,
   formatNombre,
-  formatPlageHoraire,
+  formatPlageReservation,
   formatXof,
   resumeOffre,
 } from "@/lib/format";
@@ -336,7 +336,7 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
                       <dd>
                         {formatDate(reservation.dateDebut)}
                         <span className="block text-[0.76rem] text-gris-cadre tabular-nums">
-                          {formatPlageHoraire(reservation.heureDebut, reservation.heureFin)}
+                          {formatPlageReservation(reservation)}
                         </span>
                       </dd>
                     </div>
@@ -396,7 +396,7 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
                       <td className="px-3 py-3 whitespace-nowrap">
                         {formatDate(reservation.dateDebut)}
                         <span className="block text-[0.76rem] text-gris-cadre tabular-nums">
-                          {formatPlageHoraire(reservation.heureDebut, reservation.heureFin)}
+                          {formatPlageReservation(reservation)}
                         </span>
                       </td>
                       <td

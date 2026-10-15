@@ -76,13 +76,26 @@ export default async function PageParcAdmin() {
       .filter((reservation) => reservation.statut === "CONFIRMEE" && reservation.dateDebut >= jour)
       .sort((a, b) => (a.dateDebut < b.dateDebut ? -1 : 1))[0];
 
-    const revenus = sorties.reduce((total, reservation) => total + reservation.totalXof, 0);
+    // Une inscription à Octobre rose porte un vélo par participant : chacun
+    // compte sa place, et non le total de l'inscription.
+    const revenus = sorties.reduce(
+      (total, reservation) =>
+        total +
+        (reservation.offre === "octobre-rose"
+          ? (reservation.lignes.find((ligne) => ligne.veloId === velo.id)?.totalLigneXof ?? 0)
+          : reservation.totalXof),
+      0,
+    );
     // Le volume ne se compte pas de la même façon selon la formule : des
     // participants d'un côté, des heures de l'autre. Le nombre de jours
     // ne veut plus rien dire, toute sortie tenant dans la journée.
     const participants = sorties
-      .filter((reservation) => reservation.offre === "road-trip")
-      .reduce((total, reservation) => total + reservation.nombrePersonnes, 0);
+      .filter((reservation) => reservation.offre !== "location-libre")
+      .reduce(
+        (total, reservation) =>
+          total + (reservation.offre === "octobre-rose" ? 1 : reservation.nombrePersonnes),
+        0,
+      );
     const heures = sorties
       .filter((reservation) => reservation.offre === "location-libre")
       .reduce((total, reservation) => total + (reservation.dureeHeures ?? 0), 0);

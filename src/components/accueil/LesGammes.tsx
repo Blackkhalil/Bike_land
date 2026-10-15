@@ -3,10 +3,10 @@ import Link from "next/link";
 import { Section, TitreSection } from "@/components/ui";
 import {
   COCOS_ROAD_TRIP,
+  GAMME_LA_PLUS_PRISE,
   GAMMES,
   GRILLE_HORAIRE,
   PRIX_ROAD_TRIP_XOF,
-  type GammeVelo,
 } from "@/data/offres";
 import { formatXof } from "@/lib/format";
 import type { Velo } from "@/lib/types";
@@ -28,30 +28,16 @@ import type { Velo } from "@/lib/types";
  */
 
 /**
- * Ce qui distingue chaque gamme.
- *
+ * Ce qui distingue chaque gamme vient de `GAMMES` (src/data/offres.ts).
  * `machine` décrit ce qu'on trouve dans la gamme, et non une règle
  * technique uniforme : la Classique va du VTT dame à sept vitesses au
  * tout-suspendu à freins à disque. Prétendre le contraire ferait mentir
- * la fiche de la moitié des vélos.
+ * la fiche de la moitié des vélos. Le nombre de vélos se compte sur le parc.
  */
-const DISTINCTIONS: Record<GammeVelo, { machine: string; choix: string; pourQui: string }> = {
-  CLASSIQUE: {
-    machine: "Du VTT dame au tout-suspendu",
-    choix: "Six vélos, toutes tailles",
-    pourQui: "Une première sortie, une balade, un budget tenu.",
-  },
-  PREMIUM: {
-    machine: "Marques reconnues, meilleures finitions",
-    choix: "Quatre vélos",
-    pourQui: "Rouler plus longtemps, plus confortablement.",
-  },
-  PRESTIGE: {
-    machine: "Acier haute résistance, double disque, jantes bâton",
-    choix: "Un seul exemplaire",
-    pourQui: "La plus belle machine du parc, quand elle est libre.",
-  },
-};
+function auChoix(nombre: number): string {
+  if (nombre === 0) return "Aucun pour le moment";
+  return nombre === 1 ? "Un seul exemplaire" : `${nombre} vélos`;
+}
 
 export function LesGammes({ velos }: { velos: Velo[] }) {
   const durees = GRILLE_HORAIRE.CLASSIQUE.map((palier) => palier.heures);
@@ -66,11 +52,11 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
 
       <div className="mt-12 grid gap-5 lg:grid-cols-3">
         {GAMMES.map((gamme) => {
-          const distinction = DISTINCTIONS[gamme.code];
           const disponibles = velos.filter(
             (velo) => velo.gamme === gamme.code && velo.statut !== "RETIRE",
           );
-          const misEnAvant = gamme.code === "CLASSIQUE";
+          // La gamme que les clients prennent le plus : le Premium.
+          const misEnAvant = gamme.code === GAMME_LA_PLUS_PRISE;
 
           return (
             <article
@@ -91,7 +77,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
               </div>
 
               <p className="mt-3 text-[0.9rem] leading-relaxed text-gris-cadre">
-                {distinction.pourQui}
+                {gamme.pourQui}
               </p>
 
               {/* Le prix d'entrée, en gros : c'est le premier chiffre que
@@ -104,11 +90,11 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
               <dl className="mt-6 space-y-2.5 border-t border-noir-piste/12 pt-5 text-[0.86rem]">
                 <div className="flex justify-between gap-3">
                   <dt className="text-gris-cadre">La machine</dt>
-                  <dd className="text-right font-medium">{distinction.machine}</dd>
+                  <dd className="text-right font-medium">{gamme.machine}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-gris-cadre">Au choix</dt>
-                  <dd className="text-right font-medium">{distinction.choix}</dd>
+                  <dd className="text-right font-medium">{auChoix(disponibles.length)}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-gris-cadre">Road trip</dt>
@@ -136,7 +122,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
               </p>
 
               <Link
-                href="/velos"
+                href={`/velos#gamme-${gamme.code.toLowerCase()}`}
                 className={`mt-6 inline-flex justify-center rounded-[var(--radius-bouton)] px-5 py-3 text-[0.88rem] font-semibold transition-opacity hover:opacity-85 ${
                   misEnAvant
                     ? "bg-orange-signal text-noir-piste"

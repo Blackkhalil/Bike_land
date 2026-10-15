@@ -11,6 +11,7 @@
 
 import { optionsLocation, pointsDeRetrait, velos } from "@/data/catalogue";
 import { aujourdhui, nombreDeJours, type DateISO } from "../dates";
+import { creneauOctobreRose } from "@/data/octobre-rose";
 import {
   DUREE_ROAD_TRIP_HEURES,
   EXPIRATION_PANIER_MINUTES,
@@ -40,6 +41,8 @@ import type {
 import {
   ConflitDisponibiliteError,
   creneauxSeChevauchent,
+  messagePlacesManquantes,
+  ordreAttribution,
   resteUneHeureLibre,
   TransactionDejaUtiliseeError,
   type Depot,
@@ -244,9 +247,23 @@ export const depotDemo: Depot = {
     return veloLibre(veloId, debut, fin, heureDebut, heureFin);
   },
 
+  async velosLibres(date: DateISO, heureDebut: number, heureFin: number) {
+    return copie(ordreAttribution(velos.filter((velo) => veloLibre(velo.id, date, date, heureDebut, heureFin))));
+  },
+
   async creerReservation(demande: DemandeReservation): Promise<ResultatReservation> {
-    const velo = velos.find((v) => v.id === demande.veloId);
-    if (!velo) throw new Error("Vélo introuvable.");
+    // Même règle qu'en base : Octobre rose ne se réserve pas sur un vélo
+    // choisi, les vélos sont attribués plus bas, un par participant.
+    const octobreRose = demande.offre === "octobre-rose";
+    const creneauSortie = octobreRose ? creneauOctobreRose() : null;
+    if (octobreRose) {
+      if (!creneauSortie) throw new Error("La sortie Octobre rose n'est pas fixée.");
+      if (demande.dateDebut !== creneauSortie.date || demande.heureDebut !== creneauSortie.heureDebut) {
+        throw new Error("Une inscription à Octobre rose porte sur le jour et l'heure de la sortie.");
+      }
+    }
+    const velo = octobreRose ? undefined : velos.find((v) => v.id === demande.veloId);
+    if (!octobreRose && !velo) throw new Error("Vélo introuvable.");
 
     // Même règle qu'en base : une vente au comptoir se règle en espèces.
     const encaissement = demande.encaissement;
@@ -259,8 +276,8 @@ export const depotDemo: Depot = {
     const devisBrut = calculerDevis({
       offre: demande.offre,
       // La gamme vient du vélo, jamais de l'appelant : c'est elle qui
-      // fixe le prix.
-      gamme: velo.gamme,
+      // fixe le prix. Octobre rose s'en passe.
+      gamme: velo?.gamme,
       nombrePersonnes: demande.nombrePersonnes,
       dureeHeures: demande.dureeHeures,
       options: demande.options,
@@ -269,9 +286,11 @@ export const depotDemo: Depot = {
     });
 
     // L'heure de fin découle de la formule : le road trip dure le temps
-    // de son créneau, la location libre le nombre d'heures choisi.
-    const heureFin =
-      demande.offre === "road-trip"
+    // de son créneau, Octobre rose jusqu'au retour des vélos, la location
+    // libre le nombre d'heures choisi.
+    const heureFin = creneauSortie
+      ? creneauSortie.heureFin
+      : demande.offre === "road-trip"
         ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
         : demande.heureDebut + (devisBrut.dureeHeures ?? 1);
 
@@ -286,14 +305,29 @@ export const depotDemo: Depot = {
     ) {
       throw new TransactionDejaUtiliseeError("Cette vente est déjà enregistrée.");
     }
-    if (!veloLibre(velo.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin)) {
-      throw new ConflitDisponibiliteError();
+    let velosAttribues: Velo[];
+    if (octobreRose) {
+      const libres = ordreAttribution(
+        velos.filter((v) => veloLibre(v.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin)),
+      );
+      if (libres.length < devisBrut.nombrePersonnes) {
+        throw new ConflitDisponibiliteError(
+          messagePlacesManquantes(devisBrut.nombrePersonnes, libres.length, Boolean(encaissement)),
+        );
+      }
+      velosAttribues = libres.slice(0, devisBrut.nombrePersonnes);
+    } else {
+      if (!veloLibre(velo!.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin)) {
+        throw new ConflitDisponibiliteError();
+      }
+      velosAttribues = [velo!];
     }
 
     // Le code est vérifié et consommé dans la foulée, avec la même règle
     // qu'en production, sans quoi les deux modes ne répondraient pas pareil.
+    // Pas de code sur Octobre rose : son prix est déjà réduit.
     let remise: { code: string; montantXof: number } | undefined;
-    if (demande.codeParrainage) {
+    if (demande.codeParrainage && !octobreRose) {
       const controle = controleCode(demande.codeParrainage, devisBrut.totalXof);
       if (controle.valide && controle.remiseXof > 0) {
         const ligne = etat().codesPromo.find((c) => c.code === controle.code.code);
@@ -307,7 +341,7 @@ export const depotDemo: Depot = {
     const devis = remise
       ? calculerDevis({
           offre: demande.offre,
-          gamme: velo.gamme,
+          gamme: velo?.gamme,
           nombrePersonnes: demande.nombrePersonnes,
           dureeHeures: demande.dureeHeures,
           options: demande.options,
@@ -358,21 +392,26 @@ export const depotDemo: Depot = {
       dureeHeures: devis.dureeHeures ?? undefined,
       clientId: client.id,
       client: contact,
-      pointDeRetraitId: velo.pointDeRetraitId,
+      pointDeRetraitId: velosAttribues[0].pointDeRetraitId,
       dateDebut: demande.dateDebut,
       dateFin: demande.dateFin,
       heureDebut: demande.heureDebut,
       heureFin,
       jours: nombreDeJours(demande.dateDebut, demande.dateFin),
-      lignes: [
-        {
-          veloId: velo.id,
-          veloNom: velo.nom,
-          veloSlug: velo.slug,
-          prixUnitaireXof: devis.sousTotalXof,
-          totalLigneXof: devis.sousTotalXof,
-        },
-      ],
+      // Comme en base : un vélo par participant pour Octobre rose, chacun
+      // au prix d'une place ; ailleurs, le vélo choisi porte la location.
+      lignes: velosAttribues.map((attribue) => {
+        const prixLigne = octobreRose
+          ? Math.round(devis.sousTotalXof / velosAttribues.length)
+          : devis.sousTotalXof;
+        return {
+          veloId: attribue.id,
+          veloNom: attribue.nom,
+          veloSlug: attribue.slug,
+          prixUnitaireXof: prixLigne,
+          totalLigneXof: prixLigne,
+        };
+      }),
       options: devis.optionsDetaillees.map((ligne) => ({
         code: ligne.option.code,
         libelle: ligne.option.libelle,

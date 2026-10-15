@@ -12,16 +12,24 @@
  *  - **Road trip** : la sortie encadrée du samedi, créneau « samedi-matin ».
  *  - **Location libre** : le vélo pour soi, à l'heure.
  *  - **Octobre rose** : une sortie aux couleurs d'Octobre rose, le mois de
- *    sensibilisation au cancer du sein. Elle n'existe qu'en octobre : la
- *    carte de la page et l'annonce du site s'effacent d'elles-mêmes le
- *    1er novembre, heure du Bénin, sans redéploiement.
+ *    sensibilisation au cancer du sein, fixée dans src/data/octobre-rose.ts.
+ *    Elle se réserve et se paie en ligne sur sa propre page, /octobre-rose,
+ *    sans choix de vélo. Elle n'existe qu'en octobre : la carte de la page,
+ *    l'annonce du site et l'inscription s'effacent d'elles-mêmes au départ
+ *    du groupe, heure du Bénin, sans redéploiement.
  *
- * Les prix ne sont pas ici : ils viennent de src/data/offres.ts, la seule
- * source de prix du site.
+ * Les prix ne sont pas ici : ils viennent de src/data/offres.ts, et celui
+ * d'Octobre rose de src/data/octobre-rose.ts.
  */
 
-import { heureAuBenin, type CodeCreneau } from "@/data/offres";
-import type { DateISO } from "@/lib/dates";
+import {
+  clotureInscriptionsOctobreRose,
+  departOctobreRose,
+  formatHoraire,
+  OCTOBRE_ROSE,
+} from "@/data/octobre-rose";
+import type { CodeCreneau } from "@/data/offres";
+import { DECALAGE_BENIN_MS, type DateISO } from "@/lib/dates";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
 
 /** Le créneau qui porte Gbashi bike, et celui du road trip du samedi. */
@@ -38,73 +46,67 @@ export const CLE_CHOIX_PRODUIT = "bikeland.choix-produit";
 export type ChoixProduit = CodeCreneau | "location-libre";
 
 /**
- * La sortie Octobre rose, telle qu'elle est fixée.
- *
- * Tant qu'une valeur vaut `null`, la page et l'annonce disent qu'elle sera
- * donnée très bientôt, plutôt que d'inventer une date ou un prix. Pour
- * publier la sortie, il suffit de remplir ces champs : la carte et
- * l'annonce les affichent, et l'annonce s'ouvre une fois de plus chez ceux
- * qui l'avaient fermée, puisqu'elle a du nouveau à leur dire.
- *
- * Une fois la sortie partie (à son heure, ou le soir de sa date si
- * l'heure manque), la carte et l'annonce s'effacent sans attendre la fin
- * du mois.
- *
- * La campagne vaut pour l'octobre de `annee`, et pour lui seul : le site
- * n'annoncera pas de lui-même, l'an prochain, une sortie que personne n'a
- * décidée. Pour l'octobre suivant, changer l'année et la date.
- */
-export const OCTOBRE_ROSE: {
-  /** L'année de la campagne. */
-  annee: number;
-  /** Le jour de la sortie, AAAA-MM-JJ. */
-  date: DateISO | null;
-  /** L'heure du départ, heure du Bénin. */
-  heureDepart: number | null;
-  /** Le prix par personne, en FCFA ; 0 pour une sortie gratuite. */
-  prixXof: number | null;
-} = {
-  annee: 2026,
-  date: null,
-  heureDepart: null,
-  prixXof: null,
-};
-
-/**
  * Octobre rose est-il en cours à cet instant ?
  *
- * Jugé à l'heure du Bénin (`heureAuBenin`), jamais à celle de l'appareil
- * ni du serveur : tout octobre de l'année de la campagne, et jusqu'au
- * départ de la sortie quand il est fixé. Appelée dans le navigateur, par
- * l'annonce et par la page, et par la page à chacune de ses régénérations.
+ * Jugé à l'heure du Bénin, jamais à celle de l'appareil ni du serveur :
+ * tout octobre de l'année de la campagne, et jusqu'au départ du groupe
+ * quand la sortie est fixée. Une fois le groupe parti, la carte et
+ * l'annonce s'effacent sans attendre la fin du mois. Appelée dans le
+ * navigateur, par l'annonce et par les pages, et par les pages à chacune
+ * de leurs régénérations.
  */
 export function octobreRoseEnCours(maintenant: Date): boolean {
-  const ici = heureAuBenin(maintenant);
-  if (ici.date.slice(0, 7) !== `${OCTOBRE_ROSE.annee}-10`) return false;
-  const { date, heureDepart } = OCTOBRE_ROSE;
-  if (date === null || ici.date < date) return true;
-  if (ici.date > date) return false;
-  // Le jour même : jusqu'au départ, ou toute la journée si l'heure manque.
-  return heureDepart === null || ici.heure < heureDepart;
+  const mois = new Date(maintenant.getTime() + DECALAGE_BENIN_MS).toISOString().slice(0, 7);
+  if (mois !== `${OCTOBRE_ROSE.annee}-10`) return false;
+  const depart = departOctobreRose();
+  return depart === null || maintenant.getTime() < depart;
 }
 
 /**
- * Le rendez-vous en toutes lettres : « samedi 17 octobre, départ 8 h »,
- * ou `null` tant que la date n'est pas fixée.
+ * L'inscription en ligne est-elle ouverte à cet instant ? Il faut une
+ * sortie fixée, avec un prix à payer, et l'heure de fin des inscriptions
+ * pas encore passée. Le tableau de bord peut en plus la fermer (« Sold
+ * out ») : c'est `lireOuverture` qui le dit, pas cette fonction.
+ */
+export function inscriptionsOctobreRoseOuvertes(maintenant: Date): boolean {
+  const cloture = clotureInscriptionsOctobreRose();
+  return (
+    cloture !== null &&
+    (OCTOBRE_ROSE.sortie?.prixXof ?? 0) > 0 &&
+    octobreRoseEnCours(maintenant) &&
+    maintenant.getTime() < cloture
+  );
+}
+
+/** « Samedi 24 octobre » : le jour de la sortie, avec sa majuscule. */
+export function jourOctobreRose(): string | null {
+  const sortie = OCTOBRE_ROSE.sortie;
+  if (!sortie) return null;
+  const jour = formatDateAvecJour(sortie.date);
+  return jour.charAt(0).toUpperCase() + jour.slice(1);
+}
+
+/**
+ * Le rendez-vous en toutes lettres : « samedi 24 octobre, rassemblement à
+ * 16 h, départ 16 h 30 », ou `null` tant que la sortie n'est pas fixée.
  */
 export function rendezVousOctobreRose(): string | null {
-  if (!OCTOBRE_ROSE.date) return null;
-  const jour = formatDateAvecJour(OCTOBRE_ROSE.date);
-  return OCTOBRE_ROSE.heureDepart === null ? jour : `${jour}, départ ${OCTOBRE_ROSE.heureDepart} h`;
+  const sortie = OCTOBRE_ROSE.sortie;
+  if (!sortie) return null;
+  return (
+    `${formatDateAvecJour(sortie.date)}, rassemblement à ${formatHoraire(sortie.rassemblement)}, ` +
+    `départ ${formatHoraire(sortie.depart)}`
+  );
 }
 
 /**
- * Le tarif en toutes lettres : « Gratuit », « 3 000 FCFA par personne »,
+ * Le tarif en toutes lettres : « 1 625 FCFA par personne », « Gratuit »,
  * ou `null` tant qu'il n'est pas fixé.
  */
 export function tarifOctobreRose(): string | null {
-  if (OCTOBRE_ROSE.prixXof === null) return null;
-  return OCTOBRE_ROSE.prixXof === 0 ? "Gratuit" : `${formatXof(OCTOBRE_ROSE.prixXof)} par personne`;
+  const sortie = OCTOBRE_ROSE.sortie;
+  if (!sortie) return null;
+  return sortie.prixXof === 0 ? "Gratuit" : `${formatXof(sortie.prixXof)} par personne`;
 }
 
 /**
@@ -113,7 +115,13 @@ export function tarifOctobreRose(): string | null {
  * quand la date est enfin connue, ou pour une nouvelle campagne.
  */
 export function signatureOctobreRose(jour: DateISO): string {
-  return `${jour.slice(0, 4)}|${OCTOBRE_ROSE.date ?? "date-a-venir"}`;
+  return `${jour.slice(0, 4)}|${OCTOBRE_ROSE.sortie?.date ?? "date-a-venir"}`;
+}
+
+/** « Plus qu'une place. », « Plus que 3 places. », « 9 places disponibles. » */
+export function placesRestantes(places: number): string {
+  if (places === 1) return "Plus qu'une place.";
+  return places <= 5 ? `Plus que ${places} places.` : `${places} places disponibles.`;
 }
 
 /** Les messages WhatsApp déjà écrits des boutons de la page. */

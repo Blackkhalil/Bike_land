@@ -244,21 +244,32 @@ export function calculerStatistiques(
   //     façon des deux côtés : le road trip se facture au participant,
   //     la location libre à l'heure. Les additionner n'aurait aucun sens,
   //     on les garde donc côte à côte avec leur unité.
-  const participantsDe = (liste: Reservation[]) =>
-    somme(liste.filter((r) => r.offre === "road-trip").map((r) => r.nombrePersonnes));
+  // Au participant : le road trip par défaut, partout où l'écran dit
+  // « road trip » ; Octobre rose pour sa propre ligne.
+  const participantsDe = (liste: Reservation[], offre: "road-trip" | "octobre-rose" = "road-trip") =>
+    somme(liste.filter((r) => r.offre === offre).map((r) => r.nombrePersonnes));
   const heuresDe = (liste: Reservation[]) =>
     somme(liste.filter((r) => r.offre === "location-libre").map((r) => r.dureeHeures ?? 0));
 
-  const parOffre = OFFRES.map((offre) => {
+  // Octobre rose ne s'ajoute que sur une période où il a été vendu : le
+  // reste de l'année, la ligne serait vide.
+  const avecOctobreRose = facturees.some((r) => r.offre === "octobre-rose");
+  const parOffre = [
+    ...OFFRES,
+    ...(avecOctobreRose ? [{ code: "octobre-rose" as const, nom: "Octobre rose" }] : []),
+  ].map((offre) => {
     const lignes = facturees.filter((r) => r.offre === offre.code);
-    const roadTrip = offre.code === "road-trip";
+    const auParticipant = offre.code !== "location-libre";
     return {
       code: offre.code,
       nom: offre.nom,
       reservations: lignes.length,
       chiffreAffaires: somme(lignes.map((r) => r.totalXof)),
-      volume: roadTrip ? participantsDe(lignes) : heuresDe(lignes),
-      uniteVolume: roadTrip ? "participants" : "heures",
+      volume:
+        offre.code === "location-libre"
+          ? heuresDe(lignes)
+          : participantsDe(lignes, offre.code === "octobre-rose" ? "octobre-rose" : "road-trip"),
+      uniteVolume: auParticipant ? "participants" : "heures",
     };
   });
 
@@ -507,7 +518,7 @@ export function exporterCsv(reservations: Reservation[]): string {
       reservation.reference,
       reservation.statut,
       reservation.offre,
-      reservation.offre === "road-trip" ? reservation.nombrePersonnes : "",
+      reservation.offre !== "location-libre" ? reservation.nombrePersonnes : "",
       reservation.offre === "location-libre" ? (reservation.dureeHeures ?? "") : "",
       `${reservation.client.prenom} ${reservation.client.nom}`,
       reservation.client.email,

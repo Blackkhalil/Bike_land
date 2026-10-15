@@ -103,16 +103,20 @@ export async function confirmerParSasPay(parametres: {
   // Ce premier contrôle épargne une transaction ; celui qui fait foi est
   // refait par `confirmerPaiement`, dans la transaction qui confirme.
   if (panierExpire(reservation.creeLe)) {
-    const ligne = reservation.lignes[0];
-    const libre =
-      ligne &&
-      (await depot.estDisponible(
-        ligne.veloId,
-        reservation.dateDebut,
-        reservation.dateFin,
-        reservation.heureDebut,
-        reservation.heureFin,
-      ));
+    // Tous les vélos de la réservation : une inscription à Octobre rose en
+    // retient un par participant.
+    const disponibles = await Promise.all(
+      reservation.lignes.map((ligne) =>
+        depot.estDisponible(
+          ligne.veloId,
+          reservation.dateDebut,
+          reservation.dateFin,
+          reservation.heureDebut,
+          reservation.heureFin,
+        ),
+      ),
+    );
+    const libre = disponibles.length > 0 && disponibles.every(Boolean);
     if (!libre) {
       console.error(
         `[paiement] ${reference} : paiement ${paiement.id} encaissé hors délai, le vélo n'est plus disponible. Remboursement à faire.`,

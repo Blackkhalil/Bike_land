@@ -164,6 +164,7 @@ model Customer {
 enum BookingOffer {
   ROAD_TRIP       // sortie encadree, forfait par personne, sans caution
   LOCATION_LIBRE  // velo sans accompagnement, grille horaire, caution
+  OCTOBRE_ROSE    // sortie de saison, prix unique, un velo attribue par participant
 }
 
 enum BookingStatus {

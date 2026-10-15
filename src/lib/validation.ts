@@ -9,11 +9,14 @@
 import { z } from "zod";
 
 import { optionsLocation } from "@/data/catalogue";
+import { creneauOctobreRose, PLACES_MAX_PAR_INSCRIPTION } from "@/data/octobre-rose";
 import {
   CRENEAUX_ROAD_TRIP,
+  FERMETURE_COMPTOIR_HEURE,
   FERMETURE_HEURE,
   GRILLE_HORAIRE,
   heuresDepartPossibles,
+  OUVERTURE_COMPTOIR_HEURE,
   OUVERTURE_HEURE,
 } from "@/data/offres";
 import { ajouterJours, aujourdhui, estDateISOValide } from "./dates";
@@ -56,6 +59,45 @@ export const schemaDisponibilite = z
     path: ["heureFin"],
   });
 
+/** Le client d'une réservation en ligne : le téléphone y reçoit la demande de paiement. */
+const clientEnLigne = z.object({
+  prenom: z.string().trim().min(2, "Prénom trop court.").max(60),
+  nom: z.string().trim().min(2, "Nom trop court.").max(60),
+  email: z.string().trim().toLowerCase().email("Adresse email invalide."),
+  // Obligatoire depuis SasPay : la demande de paiement est poussée
+  // sur ce numéro. Sans lui, il n'y a personne à joindre.
+  telephone: z
+    .string()
+    .trim()
+    .regex(/^[+0-9 ().-]{8,20}$/, "Numéro de téléphone invalide.")
+    .min(8, "Numéro Mobile Money nécessaire pour payer."),
+});
+
+/** Mobile Money uniquement : la carte bancaire n'est plus proposée. */
+const moyenEnLigne = z.enum(["MTN_MONEY", "MOOV_MONEY", "CELTIIS_CASH"]);
+
+const cgvEnLigne = z.literal(true, {
+  errorMap: () => ({ message: "Les conditions générales doivent être acceptées." }),
+});
+
+/**
+ * L'inscription en ligne à Octobre rose : combien de personnes, et qui
+ * paie. Ni vélo, ni date, ni heure : le serveur prend ceux de la sortie
+ * fixée (src/data/octobre-rose.ts), et attribue les vélos lui-même.
+ */
+export const schemaInscriptionOctobreRose = z.object({
+  offre: z.literal("octobre-rose"),
+  nombrePersonnes: z
+    .number()
+    .int()
+    .min(1)
+    .max(PLACES_MAX_PAR_INSCRIPTION, `${PLACES_MAX_PAR_INSCRIPTION} personnes au plus par inscription.`),
+  client: clientEnLigne,
+  moyenPaiement: moyenEnLigne,
+  message: z.string().trim().max(1000).optional(),
+  cgvAcceptees: cgvEnLigne,
+});
+
 export const schemaReservation = z
   .object({
     veloId: z.string().min(1, "Vélo manquant."),
@@ -86,24 +128,10 @@ export const schemaReservation = z
      * de frappe.
      */
     codeParrainage: z.string().trim().max(32).optional().or(z.literal("")),
-    client: z.object({
-      prenom: z.string().trim().min(2, "Prénom trop court.").max(60),
-      nom: z.string().trim().min(2, "Nom trop court.").max(60),
-      email: z.string().trim().toLowerCase().email("Adresse email invalide."),
-      // Obligatoire depuis SasPay : la demande de paiement est poussée
-      // sur ce numéro. Sans lui, il n'y a personne à joindre.
-      telephone: z
-        .string()
-        .trim()
-        .regex(/^[+0-9 ().-]{8,20}$/, "Numéro de téléphone invalide.")
-        .min(8, "Numéro Mobile Money nécessaire pour payer."),
-    }),
-    // Mobile Money uniquement : la carte bancaire n'est plus proposée.
-    moyenPaiement: z.enum(["MTN_MONEY", "MOOV_MONEY", "CELTIIS_CASH"]),
+    client: clientEnLigne,
+    moyenPaiement: moyenEnLigne,
     message: z.string().trim().max(1000).optional(),
-    cgvAcceptees: z.literal(true, {
-      errorMap: () => ({ message: "Les conditions générales doivent être acceptées." }),
-    }),
+    cgvAcceptees: cgvEnLigne,
   })
   .refine(
     (valeurs) =>
@@ -146,6 +174,14 @@ export const schemaReservation = z
   )
   .refine((valeurs) => valeurs.dateDebut <= valeurs.dateFin, {
     message: "La date de retour doit suivre la date de départ.",
+    path: ["dateFin"],
+  })
+  // Toute sortie tient dans la journée : le tunnel envoie toujours le même
+  // jour. Une fin le lendemain, envoyée à la main, aurait payé une location
+  // d'un jour en retenant le vélo deux, et échappé aux règles horaires du
+  // second (road trip du week-end, sortie Octobre rose).
+  .refine((valeurs) => valeurs.dateFin === valeurs.dateDebut, {
+    message: "Une sortie se fait dans la journée.",
     path: ["dateFin"],
   })
   .refine(
@@ -208,19 +244,24 @@ export type EntreeContact = z.infer<typeof schemaContact>;
  * Une vente au comptoir : la formule, le vélo et le créneau.
  *
  * Mêmes garde-fous que la réservation en ligne sur tout ce qui fait le
- * prix (durée de la grille, créneau du road trip, retour avant la
- * fermeture) : c'est `calculerDevis` qui décide du montant, partout.
+ * prix (durée de la grille, créneau du road trip, jour de la sortie
+ * Octobre rose) : c'est `calculerDevis` qui décide du montant, partout.
  *
  * Ce qui ne règle que la réservation en ligne ne s'applique pas : le
  * client est devant le commercial, l'argent à la main. Le road trip se
  * vend donc encore après sa clôture de la veille à 22 h, ou un dimanche
  * fermé en ligne parce que presque complet, et une location libre peut
  * partir dans l'heure qui a commencé, ou être saisie après coup dans la
- * journée.
+ * journée. Elle part à l'heure que veut le commercial, de 6 h à 21 h, et
+ * rentre à 22 h au plus tard (OUVERTURE_COMPTOIR_HEURE,
+ * FERMETURE_COMPTOIR_HEURE).
+ *
+ * Octobre rose se vend sans vélo choisi : les vélos sont attribués d'office,
+ * un par participant, comme en ligne.
  */
 const champsComptoir = z.object({
-  veloId: z.string().min(1, "Choisissez un vélo."),
-  offre: z.enum(["road-trip", "location-libre"]),
+  veloId: z.string().optional(),
+  offre: z.enum(["road-trip", "location-libre", "octobre-rose"]),
   nombrePersonnes: z.number().int().min(1).max(12).default(1),
   dureeHeures: z
     .number()
@@ -228,7 +269,11 @@ const champsComptoir = z.object({
     .refine((h) => DUREES_TARIFEES.includes(h), { message: "Durée non proposée." })
     .optional(),
   date: dateISO,
-  heureDebut: heureOuvrable,
+  heureDebut: z
+    .number()
+    .int()
+    .min(OUVERTURE_COMPTOIR_HEURE, `Départ à partir de ${OUVERTURE_COMPTOIR_HEURE} h.`)
+    .max(FERMETURE_COMPTOIR_HEURE - 1, `Départ avant ${FERMETURE_COMPTOIR_HEURE} h.`),
   codeParrainage: z.string().trim().max(32).optional().or(z.literal("")),
 });
 
@@ -236,8 +281,12 @@ function reglesComptoir(valeurs: z.infer<typeof champsComptoir>, contexte: z.Ref
   const signaler = (chemin: string, message: string) =>
     contexte.addIssue({ code: z.ZodIssueCode.custom, message, path: [chemin] });
 
-  if (valeurs.offre === "road-trip" ? valeurs.dureeHeures !== undefined : valeurs.dureeHeures === undefined) {
-    signaler("dureeHeures", "La location libre exige une durée ; le road trip n'en prend pas.");
+  const locationLibre = valeurs.offre === "location-libre";
+  if (locationLibre ? valeurs.dureeHeures === undefined : valeurs.dureeHeures !== undefined) {
+    signaler("dureeHeures", "La location libre exige une durée ; les sorties encadrées n'en prennent pas.");
+  }
+  if (valeurs.offre !== "octobre-rose" && !valeurs.veloId) {
+    signaler("veloId", "Choisissez un vélo.");
   }
   if (valeurs.offre === "road-trip") {
     const jourSemaine = new Date(`${valeurs.date}T12:00:00Z`).getUTCDay();
@@ -245,10 +294,19 @@ function reglesComptoir(valeurs: z.infer<typeof champsComptoir>, contexte: z.Ref
       (c) => c.jourSemaine === jourSemaine && c.heureDebut === valeurs.heureDebut,
     );
     if (!creneau) signaler("date", "Le road trip part le samedi et le dimanche, à 8 h.");
-  } else if (valeurs.dureeHeures !== undefined && valeurs.heureDebut + valeurs.dureeHeures > FERMETURE_HEURE) {
+  } else if (valeurs.offre === "octobre-rose") {
+    const sortie = creneauOctobreRose();
+    if (!sortie) signaler("offre", "La sortie Octobre rose n'est pas fixée.");
+    else if (valeurs.date !== sortie.date || valeurs.heureDebut !== sortie.heureDebut) {
+      signaler("date", "Octobre rose se vend pour le jour et l'heure de la sortie.");
+    }
+  } else if (
+    valeurs.dureeHeures !== undefined &&
+    valeurs.heureDebut + valeurs.dureeHeures > FERMETURE_COMPTOIR_HEURE
+  ) {
     signaler(
       "heureDebut",
-      `Le vélo rentrerait après ${FERMETURE_HEURE} h : partez plus tôt, ou louez moins longtemps.`,
+      `Le vélo rentrerait après ${FERMETURE_COMPTOIR_HEURE} h : partez plus tôt, ou louez moins longtemps.`,
     );
   }
 

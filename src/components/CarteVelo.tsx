@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { VeloIllustration } from "./VeloIllustration";
 import { Pastille } from "./ui";
+import { GAMME_LA_PLUS_PRISE } from "@/data/offres";
 import type { Velo } from "@/lib/types";
 
 /**
@@ -15,7 +16,9 @@ import type { Velo } from "@/lib/types";
  * tenir compte.
  *
  * Restent le nom, le visuel et l'accroche, ce qui aide vraiment à
- * choisir, plus le seul état qui compte : le vélo est-il disponible.
+ * choisir, plus le seul état qui compte : le vélo est-il disponible. Les
+ * vélos de la gamme la plus prise (le Premium) le disent : c'est le
+ * repère que cherche un client qui hésite.
  *
  * Le visuel est la photo, jamais la vidéo du vélo : seule la vidéo de
  * l'accueil est gardée sur le site. Onze vidéos de deux ou trois
@@ -32,6 +35,7 @@ export function CarteVelo({
   className?: string;
 }) {
   const indisponible = velo.statut === "MAINTENANCE" || velo.statut === "RETIRE";
+  const lePlusPris = velo.gamme === GAMME_LA_PLUS_PRISE;
   const href = `/velos/${velo.slug}${parametresReservation ? `?${parametresReservation}` : ""}`;
 
   return (
@@ -55,9 +59,10 @@ export function CarteVelo({
               className="w-[110%] max-w-none px-5"
             />
           )}
-          {indisponible && (
-            <div className="absolute left-3 top-3">
-              <Pastille ton="alerte">En entretien</Pastille>
+          {(indisponible || lePlusPris) && (
+            <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+              {lePlusPris && <Pastille ton="sombre">Le plus pris</Pastille>}
+              {indisponible && <Pastille ton="alerte">En entretien</Pastille>}
             </div>
           )}
         </div>

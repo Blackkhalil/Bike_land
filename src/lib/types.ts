@@ -10,10 +10,14 @@ import type { DateISO } from "./dates";
 import type { GammeVelo } from "@/data/offres";
 
 /**
- * Les deux offres. Definie ici et non dans data/offres.ts pour que la
- * couche de donnees n'ait pas a dependre du contenu editorial.
+ * Les offres. Definie ici et non dans data/offres.ts pour que la couche de
+ * donnees n'ait pas a dependre du contenu editorial.
+ *
+ * `octobre-rose` est la sortie de saison (src/data/octobre-rose.ts) : un
+ * prix par personne quel que soit le velo, et des velos attribues
+ * d'office, un par participant.
  */
-export type CodeOffre = "road-trip" | "location-libre";
+export type CodeOffre = "road-trip" | "location-libre" | "octobre-rose";
 
 export type { GammeVelo };
 
@@ -151,7 +155,10 @@ export interface Reservation {
   statut: StatutReservation;
   /** Offre choisie : elle commande le prix, la caution et les exigences. */
   offre: CodeOffre;
-  /** Nombre de participants. Toujours 1 en location libre. */
+  /**
+   * Nombre de participants. Toujours 1 en location libre. Pour Octobre
+   * rose, autant que de vélos attribués (`lignes`).
+   */
   nombrePersonnes: number;
   /** Duree en heures : renseignee en location libre uniquement. */
   dureeHeures?: number;

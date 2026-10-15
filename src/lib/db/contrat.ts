@@ -101,7 +101,12 @@ export function resteUneHeureLibre(
 }
 
 export interface DemandeReservation {
-  veloId: string;
+  /**
+   * Le vélo choisi par le client. Absent pour Octobre rose : le dépôt
+   * attribue alors d'office un vélo libre par participant, dans la
+   * transaction qui écrit (voir `ordreAttribution`).
+   */
+  veloId?: string;
   offre: CodeOffre;
   nombrePersonnes?: number;
   dureeHeures?: number;
@@ -171,6 +176,37 @@ export interface ResultatReservation {
   token: string;
 }
 
+const RANG_GAMME: Record<GammeVelo, number> = { CLASSIQUE: 0, PREMIUM: 1, PRESTIGE: 2 };
+
+/**
+ * L'ordre dans lequel les vélos sont attribués d'office, pour Octobre
+ * rose : le Classique d'abord, le Prestige en dernier, puis par nom. Le
+ * prix ne dépend pas du vélo ; on garde ainsi les plus belles machines
+ * pour les derniers inscrits plutôt que de les user les premières, et
+ * l'attribution est la même, en démonstration comme en base.
+ */
+export function ordreAttribution<T extends { gamme: GammeVelo; nom: string }>(velos: T[]): T[] {
+  return [...velos].sort(
+    (a, b) => RANG_GAMME[a.gamme] - RANG_GAMME[b.gamme] || a.nom.localeCompare(b.nom, "fr"),
+  );
+}
+
+/**
+ * Le message d'une sortie qui n'a plus assez de vélos libres pour cette
+ * inscription : au client en ligne, ou au commercial au comptoir.
+ */
+export function messagePlacesManquantes(demandees: number, libres: number, auComptoir = false): string {
+  if (libres === 0) return "Plus aucune place : tous les vélos de la sortie sont pris.";
+  if (auComptoir) {
+    return libres === 1
+      ? "Il ne reste qu'un vélo libre pour la sortie : une seule personne."
+      : `Il ne reste que ${libres} vélos libres pour la sortie : ${libres} personnes au plus.`;
+  }
+  return libres === 1
+    ? `Il ne reste qu'une place : inscrivez une seule personne, ou écrivez-nous pour les autres.`
+    : `Il ne reste que ${libres} places : inscrivez ${libres} personnes au plus, ou écrivez-nous pour les autres.`;
+}
+
 export interface Depot {
   listerVelos(filtre?: FiltreCatalogue): Promise<Velo[]>;
   trouverVeloParSlug(slug: string): Promise<Velo | null>;
@@ -201,6 +237,14 @@ export interface Depot {
     heureDebut: number,
     heureFin: number,
   ): Promise<boolean>;
+
+  /**
+   * Les vélos en état et libres sur tout ce créneau, dans l'ordre où ils
+   * seraient attribués (`ordreAttribution`). Leur nombre est celui des
+   * places restantes d'une sortie comme Octobre rose. Indicatif : c'est la
+   * transaction qui écrit qui attribue, et revérifie.
+   */
+  velosLibres(date: DateISO, heureDebut: number, heureFin: number): Promise<Velo[]>;
 
   creerReservation(demande: DemandeReservation): Promise<ResultatReservation>;
   trouverReservationParToken(token: string): Promise<Reservation | null>;

@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 
+import { creneauOctobreRose } from "@/data/octobre-rose";
 import { DUREE_ROAD_TRIP_HEURES, heureAuBenin } from "@/data/offres";
 import { dateAuBenin } from "@/lib/dates";
 import { sessionAdminValide } from "@/lib/admin";
 import { ConflitDisponibiliteError, depot, TransactionDejaUtiliseeError } from "@/lib/db";
+import { messagePlacesManquantes } from "@/lib/db/contrat";
 import {
   envoyerAnnulationAdmin,
   envoyerAnnulationComptoir,
@@ -101,7 +103,16 @@ function configurationIncomplete(): NextResponse | null {
 
 type Preparation =
   | { refus: NextResponse }
-  | { velo: Velo; devis: Devis; heureFin: number; libre: boolean; refusCode?: string };
+  | {
+      /** Le vélo choisi ; `null` pour Octobre rose, dont les vélos sont attribués d'office. */
+      velo: Velo | null;
+      devis: Devis;
+      heureFin: number;
+      libre: boolean;
+      refusCode?: string;
+      /** Octobre rose : les places encore libres sur la sortie. */
+      places?: number;
+    };
 
 /**
  * Ce que coûtera cette vente, et si elle peut avoir lieu.
@@ -110,7 +121,9 @@ type Preparation =
  * l'enregistrement, dans la transaction qui crée la réservation.
  */
 async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
-  const velo = await depot.trouverVeloParId(donnees.veloId);
+  if (donnees.offre === "octobre-rose") return preparerOctobreRose(donnees);
+
+  const velo = donnees.veloId ? await depot.trouverVeloParId(donnees.veloId) : null;
   if (!velo) {
     return { refus: NextResponse.json({ erreur: "Ce vélo n'existe pas." }, { status: 404 }) };
   }
@@ -175,8 +188,39 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   return { velo, devis: devisFinal, heureFin, libre, refusCode };
 }
 
+/**
+ * Une vente Octobre rose au comptoir : au prix d'une place, frais du
+ * paiement en ligne retirés comme pour toute vente en espèces, sans code de
+ * parrainage (le prix est déjà réduit). Les vélos sont attribués d'office à
+ * l'enregistrement ; « libre » dit qu'il en reste assez pour ces personnes.
+ * Le comptoir vend jusqu'au départ, et même après coup, comme le road trip :
+ * ni l'heure limite des inscriptions en ligne ni le « Sold out » du tableau
+ * de bord ne s'y appliquent.
+ */
+async function preparerOctobreRose(donnees: EntreeDevisComptoir): Promise<Preparation> {
+  const creneau = creneauOctobreRose();
+  if (!creneau) {
+    return {
+      refus: NextResponse.json({ erreur: "La sortie Octobre rose n'est pas fixée." }, { status: 409 }),
+    };
+  }
+  const devisFinal = calculerDevis({
+    offre: "octobre-rose",
+    nombrePersonnes: donnees.nombrePersonnes,
+    especes: true,
+  });
+  const places = (await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin)).length;
+  return {
+    velo: null,
+    devis: devisFinal,
+    heureFin: creneau.heureFin,
+    libre: places >= devisFinal.nombrePersonnes,
+    places,
+  };
+}
+
 /** Le devis tel que l'écran l'affiche. */
-function resume(preparation: Extract<Preparation, { velo: Velo }>) {
+function resume(preparation: Extract<Preparation, { devis: Devis }>) {
   return {
     totalXof: preparation.devis.totalXof,
     sousTotalXof: preparation.devis.sousTotalXof,
@@ -184,6 +228,7 @@ function resume(preparation: Extract<Preparation, { velo: Velo }>) {
     cautionXof: preparation.devis.cautionXof,
     libre: preparation.libre,
     refusCode: preparation.refusCode,
+    places: preparation.places,
   };
 }
 
@@ -227,14 +272,15 @@ async function enregistrer(corps: Record<string, unknown>) {
     if (!enregistree) return null;
     // Le formulaire a pu changer entre les deux envois : on le signale, la
     // vente enregistrée restant celle du premier envoi.
+    // Octobre rose n'a pas de vélo choisi : ses vélos sont attribués.
     const memeSaisie =
-      enregistree.lignes[0]?.veloId === donnees.veloId &&
+      (donnees.offre === "octobre-rose" || enregistree.lignes[0]?.veloId === donnees.veloId) &&
       enregistree.offre === donnees.offre &&
       enregistree.dateDebut === donnees.date &&
       enregistree.heureDebut === donnees.heureDebut &&
-      (donnees.offre === "road-trip"
-        ? enregistree.nombrePersonnes === donnees.nombrePersonnes
-        : enregistree.dureeHeures === donnees.dureeHeures) &&
+      (donnees.offre === "location-libre"
+        ? enregistree.dureeHeures === donnees.dureeHeures
+        : enregistree.nombrePersonnes === donnees.nombrePersonnes) &&
       enregistree.client.email === donnees.client.email;
     return reponseVente(enregistree, donnees.montantAttenduXof, null, !memeSaisie);
   };
@@ -249,8 +295,11 @@ async function enregistrer(corps: Record<string, unknown>) {
     if (entreTemps) return entreTemps;
     return NextResponse.json(
       {
-        erreur: `Le ${preparation.velo.nom} est déjà pris sur ce créneau. Choisissez un autre vélo ou une autre heure.`,
-        code: "INDISPONIBLE",
+        erreur: preparation.velo
+          ? `Le ${preparation.velo.nom} est déjà pris sur ce créneau. Choisissez un autre vélo ou une autre heure.`
+          : messagePlacesManquantes(preparation.devis.nombrePersonnes, preparation.places ?? 0, true),
+        code: preparation.velo ? "INDISPONIBLE" : "PLACES",
+        places: preparation.places,
       },
       { status: 409 },
     );
@@ -277,9 +326,10 @@ async function enregistrer(corps: Record<string, unknown>) {
   let token: string;
   try {
     const resultat = await depot.creerReservation({
-      veloId: preparation.velo.id,
+      // Octobre rose : pas de vélo choisi, le dépôt les attribue.
+      veloId: preparation.velo?.id,
       offre: donnees.offre,
-      nombrePersonnes: donnees.offre === "road-trip" ? donnees.nombrePersonnes : 1,
+      nombrePersonnes: donnees.offre === "location-libre" ? 1 : donnees.nombrePersonnes,
       dureeHeures: donnees.offre === "location-libre" ? donnees.dureeHeures : undefined,
       dateDebut: donnees.date,
       dateFin: donnees.date,
@@ -310,8 +360,11 @@ async function enregistrer(corps: Record<string, unknown>) {
       if (entreTemps) return entreTemps;
     }
     if (erreur instanceof ConflitDisponibiliteError) {
+      // Octobre rose : le dépôt dit combien de places il reste.
       return NextResponse.json(
-        { erreur: "Ce vélo vient d'être pris sur ce créneau. Choisissez-en un autre.", code: "INDISPONIBLE" },
+        preparation.velo
+          ? { erreur: "Ce vélo vient d'être pris sur ce créneau. Choisissez-en un autre.", code: "INDISPONIBLE" }
+          : { erreur: erreur.message, code: "PLACES" },
         { status: 409 },
       );
     }
@@ -371,6 +424,7 @@ function reponseVente(
     {
       saisieDifferente,
       reference: reservation.reference,
+      offre: reservation.offre,
       facture: numeroDeFacture(reservation),
       totalXof: reservation.totalXof,
       remiseXof: reservation.remiseXof,

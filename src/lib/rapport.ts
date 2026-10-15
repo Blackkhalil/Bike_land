@@ -40,6 +40,7 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
   const departs = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retours = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
   const aPayer = reservations.filter(estEnAttente);
+  // Les cocos et les eaux du road trip : Octobre rose n'en sert pas.
   const participants = departs
     .filter((r) => r.offre === "road-trip")
     .reduce((total, r) => total + r.nombrePersonnes, 0);
@@ -249,7 +250,7 @@ export function construireRapport(entrees: {
   const departsParMois = new Map(stats.saisonnalite.map((s) => [s.clef, s.valeur]));
   const tableaux: TableauRapport[] = [
     {
-      titre: "Les deux formules",
+      titre: stats.parOffre.length > 2 ? "Les formules" : "Les deux formules",
       sousTitre: "Laquelle fait tourner l'activité sur la période.",
       colonnes: ["Formule", "Réservations", "Volume", "Chiffre d'affaires"],
       aDroite: [1, 2, 3],

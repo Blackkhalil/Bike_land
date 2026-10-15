@@ -7,11 +7,15 @@
  * ce qui permet de vérifier leur contenu en développement.
  */
 
-import { creneauDuDepart } from "@/data/offres";
+import { itineraireOctobreRose } from "@/data/contenus";
+import { formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
+import { creneauDuDepart, EXIGENCES } from "@/data/offres";
 
 import { site } from "./site";
+import { numeroDeFacture } from "./facture";
 import {
   formatCreneau,
+  formatDateAvecJour,
   formatXof,
   libelleReglement,
   libelleRemise,
@@ -20,6 +24,46 @@ import {
 } from "./format";
 import { paiementPrincipal } from "./reservations";
 import type { Reservation } from "./types";
+
+/** Le rose d'Octobre rose, celui du site (--color-rose-octobre). */
+const ROSE = "#e8458b";
+
+/** Une réservation de la sortie Octobre rose : ses emails passent au rose. */
+function enRose(reservation: Reservation): boolean {
+  return reservation.offre === "octobre-rose";
+}
+
+/** « 3 personnes », « 1 personne ». */
+function personnes(n: number): string {
+  return `${n} personne${n > 1 ? "s" : ""}`;
+}
+
+/**
+ * Ce que la sortie Octobre rose a de propre, pour les emails : le rendez-
+ * vous à la minute près, la tenue, et le circuit, avec le lien vers sa
+ * page. `null` si la sortie décrite n'est pas celle de cette réservation
+ * (une facture de l'an dernier renvoyée cette année) : l'email s'en tient
+ * alors aux heures enregistrées.
+ */
+function detailsSortie(reservation: Reservation) {
+  const sortie = OCTOBRE_ROSE.sortie;
+  if (!sortie || sortie.date !== reservation.dateDebut) return null;
+  const circuit = itineraireOctobreRose();
+  return {
+    jour: formatDateAvecJour(sortie.date),
+    rassemblement: formatHoraire(sortie.rassemblement),
+    depart: formatHoraire(sortie.depart),
+    retour: formatHoraire(sortie.retour),
+    tenue: sortie.tenue,
+    itineraire: circuit
+      ? {
+          titre: circuit.titre,
+          detail: `${circuit.distanceKm} km aller-retour, ${circuit.duree.toLowerCase()}, niveau ${circuit.niveau.toLowerCase()}. ${circuit.resume}`,
+          url: `${site.url}/itineraires/${circuit.slug}`,
+        }
+      : undefined,
+  };
+}
 
 interface Message {
   destinataire: string;
@@ -146,13 +190,16 @@ function detailsOffre(reservation: Reservation): [string, string][] {
       ["Durée", `${reservation.dureeHeures} h`],
     ];
   }
+  if (reservation.offre === "octobre-rose") {
+    return [
+      ["Sortie", "Octobre rose"],
+      ["Participants", personnes(reservation.nombrePersonnes)],
+    ];
+  }
   const nom = nomDuRoadTrip(reservation);
   return [
     ["Formule", nom === "Road trip" ? "Road trip encadré" : `${nom}, road trip encadré`],
-    [
-      "Participants",
-      `${reservation.nombrePersonnes} personne${reservation.nombrePersonnes > 1 ? "s" : ""}`,
-    ],
+    ["Participants", personnes(reservation.nombrePersonnes)],
   ];
 }
 
@@ -171,6 +218,7 @@ function aPrevoir(reservation: Reservation): string[] {
       "La signature de l'engagement de restitution, sur place.",
     ];
   }
+  if (reservation.offre === "octobre-rose") return EXIGENCES["octobre-rose"];
   // Gbashi bike, le dimanche : la séance de sport demande une tenue.
   const consigne = creneauDuDepart(reservation.dateDebut, reservation.heureDebut)?.consigne;
   return [
@@ -189,13 +237,16 @@ function aPrevoir(reservation: Reservation): string[] {
  * seule ne permet donc pas de forger un lien vers une reservation.
  */
 export async function envoyerReceptionDemande(reservation: Reservation, lienSuivi: string) {
+  const rose = enRose(reservation);
   return envoyer({
     destinataire: reservation.client.email,
-    sujet: `Votre demande ${reservation.reference} est enregistrée`,
+    sujet: rose
+      ? `Octobre rose : votre inscription ${reservation.reference} est enregistrée`
+      : `Votre demande ${reservation.reference} est enregistrée`,
     texte: [
       `Bonjour ${reservation.client.prenom},`,
       "",
-      `Votre demande est enregistrée sous la référence ${reservation.reference}.`,
+      `Votre ${rose ? "inscription à Octobre rose" : "demande"} est enregistrée sous la référence ${reservation.reference}.`,
       "Elle sera confirmée dès réception de votre paiement.",
       "",
       `Conservez ce lien, il est le seul moyen de retrouver votre réservation :`,
@@ -204,7 +255,7 @@ export async function envoyerReceptionDemande(reservation: Reservation, lienSuiv
       `L'équipe ${site.nom}, ${site.telephone}`,
     ].join("\n"),
     html: gabarit({
-      titre: "Demande enregistrée",
+      titre: rose ? "Inscription enregistrée" : "Demande enregistrée",
       intro: `Bonjour ${reservation.client.prenom}, nous confirmons dès réception du paiement.`,
       lignes: [
         ["Référence", reservation.reference],
@@ -214,6 +265,7 @@ export async function envoyerReceptionDemande(reservation: Reservation, lienSuiv
       ],
       action: { libelle: "Suivre ma demande", url: lienSuivi },
       pied: "Conservez ce lien : il vous est personnel et donne accès à votre réservation sans mot de passe.",
+      theme: rose ? "rose" : undefined,
     }),
   });
 }
@@ -247,7 +299,108 @@ function rendezVousDe(reservation: Reservation): RendezVous {
   };
 }
 
+/**
+ * La confirmation d'une inscription à Octobre rose, aux couleurs de la
+ * campagne.
+ *
+ * Elle dit tout ce qui sert le jour venu, sans rien à chercher ailleurs : le
+ * rendez-vous et le départ à la minute près, la tenue, le point de départ
+ * et sa carte, le circuit jusqu'à l'Amazone, et la facture elle-même, avec
+ * son numéro et son règlement. Pas de nom de vélo : le vélo de chacun est
+ * remis au rassemblement.
+ */
+async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuivi: string) {
+  const sortie = detailsSortie(reservation);
+  const prevoir = aPrevoir(reservation);
+  const rendezVous = rendezVousDe(reservation);
+  const n = reservation.nombrePersonnes;
+  const places = n > 1 ? `vos ${n} places sont réservées` : "votre place est réservée";
+  const facture = numeroDeFacture(reservation);
+  const paiement = paiementPrincipal(reservation);
+  const reglement = paiement ? libelleReglement(paiement.moyen) : null;
+  const prixUnitaire = Math.round(reservation.sousTotalXof / Math.max(n, 1));
+
+  const lignesSortie: [string, string][] = sortie
+    ? [
+        ["Date", sortie.jour.charAt(0).toUpperCase() + sortie.jour.slice(1)],
+        ["Rassemblement", `${sortie.rassemblement}, au point de départ`],
+        ["Départ du groupe", sortie.depart],
+        ["Retour", `vers ${sortie.retour}`],
+        ["Dress code", sortie.tenue],
+      ]
+    : [["Date", formatCreneau(reservation)]];
+
+  const texte = [
+    `Bonjour ${reservation.client.prenom},`,
+    "",
+    `Merci de rouler avec nous pour Octobre rose : votre paiement est reçu, ${places}.`,
+    `Bike Land soutient la lutte contre le cancer du sein : d'où ce prix réduit, le même pour tous nos vélos.`,
+    "",
+    `Référence : ${reservation.reference}`,
+    `Participants : ${personnes(n)}`,
+    ...lignesSortie.map(([libelle, valeur]) => `${libelle} : ${valeur}`),
+    "",
+    ...(sortie?.itineraire
+      ? [`L'itinéraire : ${sortie.itineraire.titre}.`, sortie.itineraire.detail, sortie.itineraire.url, ""]
+      : []),
+    "À prévoir :",
+    ...prevoir.map((ligne) => `  - ${ligne}`),
+    "",
+    `Où nous trouver : ${rendezVous.lieu}.`,
+    rendezVous.indication,
+    `Carte : ${rendezVous.carte}`,
+    "",
+    `Votre facture ${facture} :`,
+    `  Octobre rose, ${personnes(n)} × ${formatXof(prixUnitaire)} : ${formatXof(reservation.sousTotalXof)}`,
+    `  Total réglé : ${formatXof(reservation.totalXof)}${reglement ? `, ${reglement}` : ""}`,
+    `  À télécharger depuis votre lien : ${lienSuivi}#facture`,
+    "",
+    "Une question, un retard ? Écrivez-nous sur WhatsApp :",
+    ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
+    "",
+    `Votre réservation et sa facture, à tout moment :`,
+    lienSuivi,
+    `Ce lien vous est personnel, gardez-le.`,
+    "",
+    `À ${sortie ? sortie.jour.split(" ")[0] : "bientôt"}, tout en rose,`,
+    `L'équipe ${site.nom}, ${site.telephone}`,
+  ].join("\n");
+
+  return envoyer({
+    destinataire: reservation.client.email,
+    sujet: `Octobre rose : ${places} (${reservation.reference})`,
+    texte,
+    html: gabarit({
+      titre: n > 1 ? "Vos places sont réservées" : "Votre place est réservée",
+      intro:
+        `Bonjour ${reservation.client.prenom}, merci de rouler avec nous pour Octobre rose ! ` +
+        `Votre paiement est reçu. Rendez-vous ${sortie ? `${sortie.jour}, ` : ""}tout en rose.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ...detailsOffre(reservation),
+        ...lignesSortie,
+        ["Montant réglé", formatXof(reservation.totalXof)],
+      ],
+      action: { libelle: "Voir ma réservation", url: lienSuivi },
+      itineraire: sortie?.itineraire,
+      rendezVous,
+      facture: {
+        numero: facture,
+        lignes: [
+          [`Octobre rose, ${personnes(n)} × ${formatXof(prixUnitaire)}`, formatXof(reservation.sousTotalXof)],
+          ["Total réglé", formatXof(reservation.totalXof)],
+          ...(reglement ? ([["Règlement", reglement]] as [string, string][]) : []),
+        ],
+        url: `${lienSuivi}#facture`,
+      },
+      pied: `À prévoir : ${prevoir.join(" ")}`,
+      theme: "rose",
+    }),
+  });
+}
+
 export async function envoyerConfirmation(reservation: Reservation, lienSuivi: string) {
+  if (enRose(reservation)) return envoyerConfirmationOctobreRose(reservation, lienSuivi);
   const velo = reservation.lignes[0];
   const prevoir = aPrevoir(reservation);
   const rendezVous = rendezVousDe(reservation);
@@ -320,7 +473,69 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
  * trip part en groupe à heure fixe, d'où l'heure de rendez-vous, un quart
  * d'heure avant le départ.
  */
+/** Le rappel de la veille d'Octobre rose : le rendez-vous, la tenue, le lieu. */
+async function envoyerRappelOctobreRose(reservation: Reservation, lienSuivi: string) {
+  const sortie = detailsSortie(reservation);
+  const prevoir = aPrevoir(reservation);
+  const rendezVous = rendezVousDe(reservation);
+  const lignesSortie: [string, string][] = sortie
+    ? [
+        ["Rassemblement", `${sortie.rassemblement}, au point de départ`],
+        ["Départ du groupe", sortie.depart],
+        ["Retour", `vers ${sortie.retour}`],
+        ["Dress code", sortie.tenue],
+      ]
+    : [["Date", formatCreneau(reservation)]];
+
+  return envoyer({
+    destinataire: reservation.client.email,
+    sujet: sortie
+      ? `C'est demain : Octobre rose, rassemblement à ${sortie.rassemblement}`
+      : `C'est demain : Octobre rose`,
+    texte: [
+      `Bonjour ${reservation.client.prenom},`,
+      "",
+      `Octobre rose, c'est demain ! On roule ensemble, tout en rose.`,
+      `Référence : ${reservation.reference}`,
+      `Participants : ${personnes(reservation.nombrePersonnes)}`,
+      ...lignesSortie.map(([libelle, valeur]) => `${libelle} : ${valeur}`),
+      "",
+      "À prévoir :",
+      ...prevoir.map((ligne) => `  - ${ligne}`),
+      "",
+      `Où nous trouver : ${rendezVous.lieu}.`,
+      rendezVous.indication,
+      `Carte : ${rendezVous.carte}`,
+      ...(sortie?.itineraire ? ["", `L'itinéraire : ${sortie.itineraire.titre}, ${sortie.itineraire.url}`] : []),
+      "",
+      "Un empêchement, un retard ? Écrivez-nous sur WhatsApp :",
+      ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
+      "",
+      "Votre réservation :",
+      lienSuivi,
+      "",
+      `À demain, tout en rose,`,
+      `L'équipe ${site.nom}, ${site.telephone}`,
+    ].join("\n"),
+    html: gabarit({
+      titre: "C'est demain",
+      intro: `Bonjour ${reservation.client.prenom}, Octobre rose, c'est demain ! Voici l'essentiel pour être au rendez-vous, tout en rose.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ...detailsOffre(reservation),
+        ...lignesSortie,
+      ],
+      action: { libelle: "Voir ma réservation", url: lienSuivi },
+      itineraire: sortie?.itineraire,
+      rendezVous,
+      pied: `À prévoir : ${prevoir.join(" ")}`,
+      theme: "rose",
+    }),
+  });
+}
+
 export async function envoyerRappel(reservation: Reservation, lienSuivi: string) {
+  if (enRose(reservation)) return envoyerRappelOctobreRose(reservation, lienSuivi);
   const velo = reservation.lignes[0];
   const prevoir = aPrevoir(reservation);
   const rendezVous = rendezVousDe(reservation);
@@ -408,6 +623,7 @@ export async function envoyerFacture(reservation: Reservation, numeroFacture: st
       ],
       action: { libelle: "Télécharger la facture", url: `${lienSuivi}#facture` },
       pied: "Montants exprimés en francs CFA (XOF).",
+      theme: enRose(reservation) ? "rose" : undefined,
     }),
   });
 }
@@ -436,12 +652,23 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
   // ainsi au moment où elle est saisie, sans qu'il ait à ouvrir l'admin.
   const especes = paiement?.moyen === "ESPECES";
   const encaissePar = paiement?.encaissePar ?? "non renseigné";
+  // Octobre rose : ce que l'équipe retient, c'est le nombre de places.
+  const objet = enRose(reservation)
+    ? `Octobre rose, ${reservation.nombrePersonnes} place${reservation.nombrePersonnes > 1 ? "s" : ""}`
+    : velos;
+  const n = reservation.nombrePersonnes;
+  const aPreparer =
+    reservation.cautionXof > 0
+      ? `À réclamer au départ : pièce d'identité, engagement signé et caution de ${formatXof(reservation.cautionXof)} en espèces.`
+      : enRose(reservation)
+        ? `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}) et ${n} casque${n > 1 ? "s" : ""} pour la sortie Octobre rose.`
+        : `À prévoir : ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
 
   return envoyer({
     destinataire,
     sujet: especes
       ? `Vente en espèces ${reservation.reference} : ${formatXof(reservation.totalXof)}, ${encaissePar}`
-      : `Réservation payée ${reservation.reference} : ${velos}`,
+      : `Réservation payée ${reservation.reference} : ${objet}`,
     texte: [
       especes
         ? `Vente au comptoir : ${formatXof(reservation.totalXof)} reçus en espèces par ${encaissePar}.`
@@ -460,9 +687,7 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
         ? `Code de parrainage : ${reservation.codeParrainage}`
         : "",
       `Formule : ${resumeOffre(reservation)}`,
-      reservation.cautionXof > 0
-        ? `À réclamer au départ : pièce d'identité, engagement signé et caution de ${formatXof(reservation.cautionXof)} en espèces.`
-        : `À prévoir : ${reservation.nombrePersonnes} coco${reservation.nombrePersonnes > 1 ? "s" : ""} et ${reservation.nombrePersonnes} eau${reservation.nombrePersonnes > 1 ? "x" : ""}.`,
+      aPreparer,
       `Montant : ${formatXof(reservation.totalXof)}`,
       reservation.message ? `Message du client : ${reservation.message}` : "",
       "",
@@ -480,7 +705,7 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
         ["Client", `${reservation.client.prenom} ${reservation.client.nom}`],
         ["Email", reservation.client.email],
         ["Téléphone", reservation.client.telephone ?? "non renseigné"],
-        ["Vélo", velos],
+        [enRose(reservation) ? "Vélos attribués" : "Vélo", velos],
         ["Départ", formatCreneau(reservation)],
         ["Montant payé", formatXof(reservation.totalXof)],
         especes ? ["Encaissé par", encaissePar] : ["Référence paiement", referencePaiement],
@@ -711,27 +936,72 @@ function echapper(texte: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** Gabarit HTML commun : tableau simple, compatible avec tous les clients mail. */
+/**
+ * Gabarit HTML commun : tableau simple, compatible avec tous les clients mail.
+ *
+ * `theme: "rose"` habille l'email aux couleurs d'Octobre rose : bandeau
+ * rose en tête, nom et bouton en rose. `itineraire` et `facture` ajoutent
+ * leur encadré, pour l'email qui doit tout dire d'un coup.
+ */
 function gabarit(contenu: {
   titre: string;
   intro: string;
   lignes: [string, string][];
   action?: { libelle: string; url: string };
   rendezVous?: RendezVous;
+  itineraire?: { titre: string; detail: string; url: string };
+  facture?: { numero: string; lignes: [string, string][]; url: string };
   pied?: string;
+  theme?: "rose";
 }): string {
-  const lignes = contenu.lignes
-    .map(
-      ([libelle, valeur]) =>
-        `<tr>
-           <td style="padding:10px 0;color:#6b6b6b;font-size:14px;border-bottom:1px solid #e0dcd3">${echapper(libelle)}</td>
+  const rose = contenu.theme === "rose";
+  // Sur le rose, le texte du bouton est noir : le blanc n'y serait pas
+  // assez lisible (contraste insuffisant), le noir l'est largement.
+  const accent = rose ? ROSE : "#f25c05";
+  const texteBouton = rose ? "#0e0e0e" : "#f2efe9";
+
+  const tableau = (lignesTableau: [string, string][]) =>
+    lignesTableau
+      .map(
+        ([libelle, valeur]) =>
+          `<tr>
+           <td style="padding:10px 12px 10px 0;color:#6b6b6b;font-size:14px;border-bottom:1px solid #e0dcd3">${echapper(libelle)}</td>
            <td style="padding:10px 0;text-align:right;font-size:14px;font-weight:600;color:#0e0e0e;border-bottom:1px solid #e0dcd3">${echapper(valeur)}</td>
          </tr>`,
-    )
-    .join("");
+      )
+      .join("");
+  const lignes = tableau(contenu.lignes);
 
   const action = contenu.action
-    ? `<a href="${echapper(contenu.action.url)}" style="display:inline-block;margin-top:28px;background:#f25c05;color:#f2efe9;text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:600;font-size:15px">${echapper(contenu.action.libelle)}</a>`
+    ? `<a href="${echapper(contenu.action.url)}" style="display:inline-block;margin-top:28px;background:${accent};color:${texteBouton};text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:600;font-size:15px">${echapper(contenu.action.libelle)}</a>`
+    : "";
+
+  const bandeau = rose
+    ? `<tr><td style="background:${ROSE};border-radius:20px 20px 0 0;padding:22px 36px">
+          <p style="margin:0;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:700;color:#0e0e0e">&#127872; Octobre rose</p>
+          <p style="margin:6px 0 0;font-size:14px;line-height:1.5;color:#0e0e0e">${echapper(site.nom)} roule pour la lutte contre le cancer du sein.</p>
+        </td></tr>`
+    : "";
+
+  const itineraire = contenu.itineraire
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;border:2px solid ${accent};border-radius:14px">
+        <tr><td style="padding:22px 24px">
+          <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">L'itinéraire</p>
+          <p style="margin:10px 0 0;font-size:16px;line-height:1.4;font-weight:700;color:#0e0e0e">${echapper(contenu.itineraire.titre)}</p>
+          <p style="margin:6px 0 0;font-size:14px;line-height:1.6;color:#6b6b6b">${echapper(contenu.itineraire.detail)}</p>
+          <a href="${echapper(contenu.itineraire.url)}" style="display:inline-block;margin-top:16px;border:1px solid #0e0e0e;color:#0e0e0e;text-decoration:none;padding:10px 20px;border-radius:999px;font-weight:600;font-size:14px">Voir l'itinéraire</a>
+        </td></tr>
+      </table>`
+    : "";
+
+  const facture = contenu.facture
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;background:#f2efe9;border-radius:14px">
+        <tr><td style="padding:22px 24px">
+          <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">Votre facture ${echapper(contenu.facture.numero)}</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:8px">${tableau(contenu.facture.lignes)}</table>
+          <a href="${echapper(contenu.facture.url)}" style="display:inline-block;margin-top:16px;color:#0e0e0e;font-weight:600;font-size:14px">Télécharger la facture</a>
+        </td></tr>
+      </table>`
     : "";
 
   // Les boutons sont en ligne : côte à côte sur un écran large, ils
@@ -755,18 +1025,25 @@ function gabarit(contenu: {
       </table>`
     : "";
 
+  // Le nom de la marque : orange d'ordinaire ; sur l'email rose, en noir
+  // sous le bandeau, le rose sur blanc étant trop pâle pour un texte si fin.
+  const couleurMarque = rose ? "#0e0e0e" : "#f25c05";
+
   return `<!doctype html>
-<html lang="fr"><body style="margin:0;background:#f2efe9;font-family:Helvetica,Arial,sans-serif;color:#0e0e0e">
+<html lang="fr"><body style="margin:0;background:${rose ? "#fbe3ee" : "#f2efe9"};font-family:Helvetica,Arial,sans-serif;color:#0e0e0e">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
     <tr><td align="center">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:20px;padding:36px">
-        <tr><td>
-          <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#f25c05;font-weight:700">${site.nom}</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:20px">
+        ${bandeau}
+        <tr><td style="padding:36px">
+          <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:${couleurMarque};font-weight:700">${site.nom}</p>
           <h1 style="margin:14px 0 0;font-size:26px;line-height:1.15;text-transform:uppercase;letter-spacing:-0.5px">${echapper(contenu.titre)}</h1>
           <p style="margin:14px 0 26px;font-size:15px;line-height:1.6;color:#6b6b6b">${echapper(contenu.intro)}</p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${lignes}</table>
           ${action}
+          ${itineraire}
           ${rendezVous}
+          ${facture}
           ${contenu.pied ? `<p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#6b6b6b">${echapper(contenu.pied)}</p>` : ""}
         </td></tr>
       </table>

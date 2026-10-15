@@ -39,8 +39,9 @@ En ligne : <https://bike-land.vercel.app>
 | Page | Route | Contenu |
 |---|---|---|
 | Accueil | `/` | Vélo en vedette en 3D, les trois gammes, le parc, carrousel de photos, avis |
-| Nos produits | `/produits` | Gbashi bike (le road trip du dimanche, sport devant la plage), road trip du samedi, location libre ; Octobre rose en octobre |
-| Catalogue | `/velos` | Les onze vélos groupés par gamme, chacun présenté par une vidéo |
+| Nos produits | `/produits` | Gbashi bike (le road trip du dimanche, sport devant la plage), road trip du samedi, location libre, avec leurs affiches ; Octobre rose en octobre |
+| Octobre rose | `/octobre-rose` | La sortie de saison, réservée et payée en ligne sans choix de vélo |
+| Catalogue | `/velos` | Les trois gammes en cadres (le Premium « le plus pris »), puis les vélos de chacune |
 | Fiche vélo | `/velos/[slug]` | Gamme et tarif, caractéristiques, disponibilité à l'heure, avis |
 | Itinéraires | `/itineraires`, `/itineraires/[slug]` | Deux parcours de la route des Pêches, étape par étape |
 | Comment ça marche | `/comment-ca-marche` | Le déroulé d'une sortie, les moyens de paiement, ce qui est compris |
@@ -67,7 +68,10 @@ entretien, le retirer, changer sa gamme.
 
 `/admin/especes`, pour le client qui paie au comptoir. Le commercial choisit la
 formule, le créneau et le vélo, saisit le client et son nom à lui, et encaisse le
-montant affiché. Ce montant vient de `calculerDevis`, comme en ligne, au prix de la
+montant affiché. La location libre y part à l'heure voulue, de 6 h à 21 h, et rentre
+à 22 h au plus tard (`OUVERTURE_COMPTOIR_HEURE`, `FERMETURE_COMPTOIR_HEURE`) ; en
+ligne, elle garde les horaires de l'atelier. Octobre rose s'y vend aussi, à la
+personne, sans vélo à choisir. Ce montant vient de `calculerDevis`, comme en ligne, au prix de la
 plaquette (sans les 125 F de frais du paiement en ligne, voir
 [Tarification](#tarification)) : il n'est jamais saisi, et le serveur refuse d'en
 enregistrer un autre. La réservation naît
@@ -92,17 +96,32 @@ réservation (`src/data/produits.ts`, prix dans `src/data/offres.ts`) :
   tableau de bord, qui affiche son nom. Le formulaire, les emails et l'admin le
   nomment aussi, et demandent de venir en tenue de sport.
 - **Road trip** est la sortie du samedi, **location libre** le vélo à l'heure.
-- **Octobre rose** n'existe qu'en octobre de l'année de la campagne
-  (`OCTOBRE_ROSE.annee`). Sa carte ouvre la page, et une annonce s'ouvre une fois
-  sur le site public, jamais sur la réservation et le suivi, les fiches vélo, la page
-  Nos produits elle-même, les CGV, les mentions légales ni la page des données
-  personnelles. La carte et l'annonce s'effacent d'elles-mêmes le 1er novembre,
-  heure du Bénin, sans redéploiement : la saison est relue dans le navigateur, même
-  sur une copie de la page en cache. Pour publier la sortie, remplir `OCTOBRE_ROSE`
-  (date, heure, prix ; 0 pour une sortie gratuite) : la carte et l'annonce les
-  affichent, et l'annonce s'ouvre une fois de plus chez ceux qui l'avaient fermée.
-  Elles s'effacent au départ de la sortie, sans attendre la fin du mois. Pour
-  l'octobre suivant, changer l'année et la date.
+- **Octobre rose** n'existe qu'en octobre de l'année de la campagne. Tout se règle
+  dans `src/data/octobre-rose.ts` : la date, le rassemblement, le départ et le
+  retour à la minute près, le prix en ligne (le même pour tous les vélos ; au
+  comptoir, 125 F de moins), la tenue, l'itinéraire et l'heure limite des
+  inscriptions en ligne. `sortie: null` tant que rien n'est fixé : la carte et
+  l'annonce disent « date annoncée très bientôt » et renvoient vers WhatsApp.
+- **L'inscription** se fait sur `/octobre-rose` : combien de personnes (cinq au
+  plus par paiement), les coordonnées, l'opérateur Mobile Money, et l'on paie. Pas
+  de vélo à choisir : le dépôt attribue un vélo libre par participant, dans la
+  transaction qui écrit (le Classique d'abord, le Prestige en dernier). Les places
+  sont les vélos en état et libres du rassemblement au retour (16 h - 19 h) ; la
+  location libre ne peut pas empiéter sur ces heures ce jour-là. Plus de place,
+  l'heure limite passée, ou l'inscription fermée depuis le tableau de bord (ligne
+  « Octobre rose » des départs) : la page et la carte affichent « Sold out » et
+  renvoient vers WhatsApp. Le paiement suit le chemin de toute réservation, et
+  l'email de confirmation, aux couleurs d'Octobre rose, donne le rendez-vous, la
+  tenue, le point de départ, l'itinéraire et la facture.
+- Sa carte ouvre la page Nos produits, et une annonce s'ouvre une fois sur le site
+  public, jamais sur la réservation et le suivi, les fiches vélo, la page Nos
+  produits, la page Octobre rose, les CGV, les mentions légales ni la page des
+  données personnelles. Tant que l'inscription est ouverte, son bouton y mène.
+  La carte et l'annonce s'effacent d'elles-mêmes au départ du groupe, heure du
+  Bénin, sans redéploiement : la saison est relue dans le navigateur, même sur une
+  copie de la page en cache. Pour l'octobre suivant, changer l'année et la sortie.
+  L'offre `OCTOBRE_ROSE` s'ajoute à l'énumération des offres par
+  `prisma/octobre-rose.sql`.
 
 Une carte dont le départ est fermé dans le tableau de bord propose WhatsApp au lieu
 de la réservation en ligne. Ses boutons « Réserver » retiennent le produit choisi le

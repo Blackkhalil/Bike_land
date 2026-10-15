@@ -12,6 +12,7 @@
  * restée ouverte la propose encore.
  */
 
+import { codeOctobreRose, creneauOctobreRose, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import {
   clotureRoadTrip,
   CRENEAUX_ROAD_TRIP,
@@ -20,24 +21,63 @@ import {
   FERMETURE_HEURE,
   motifHoraireLocation,
   OUVERTURE_HEURE,
+  roadTripsDuJour,
   type OuvertureCreneaux,
 } from "@/data/offres";
+import { inscriptionsOctobreRoseOuvertes } from "@/data/produits";
 import { depot } from "@/lib/db";
 import { listerJours, type DateISO } from "@/lib/dates";
 import { formatDate } from "@/lib/format";
-import type { JourFerme, Velo } from "@/lib/types";
+import type { CodeOffre, JourFerme, Velo } from "@/lib/types";
 
 export interface Ouverture extends OuvertureCreneaux {
   joursFermes: JourFerme[];
 }
 
-/** Les réglages, valeurs par défaut comprises. */
+/**
+ * Les réglages, valeurs par défaut comprises.
+ *
+ * L'inscription en ligne à Octobre rose s'ouvre et se ferme comme un
+ * créneau, sous son propre code (`codeOctobreRose`, daté) : ouverte tant
+ * que l'exploitant n'y a pas touché, elle figure alors parmi les
+ * `creneauxActifs`.
+ */
 export async function lireOuverture(): Promise<Ouverture> {
   const brut = await depot.lireOuverture();
-  const actifs = CRENEAUX_ROAD_TRIP.filter((c) => brut.creneaux[c.code] ?? c.actifParDefaut).map(
+  const actifs: string[] = CRENEAUX_ROAD_TRIP.filter((c) => brut.creneaux[c.code] ?? c.actifParDefaut).map(
     (c) => c.code,
   );
+  const codeRose = codeOctobreRose();
+  if (brut.creneaux[codeRose] ?? true) actifs.push(codeRose);
   return { creneauxActifs: new Set(actifs), joursFermes: brut.joursFermes };
+}
+
+/**
+ * L'inscription en ligne à Octobre rose est-elle ouverte depuis le tableau
+ * de bord ? Fermée sous son code, ou le jour de la sortie fermé pour
+ * toutes les formules (pluie, imprévu) : « Sold out ».
+ */
+export function octobreRoseOuvertEnLigne(ouverture: OuvertureCreneaux): boolean {
+  const date = OCTOBRE_ROSE.sortie?.date;
+  const jourFerme = ouverture.joursFermes.some((j) => j.date === date && j.formule === "toutes");
+  return ouverture.creneauxActifs.has(codeOctobreRose()) && !jourFerme;
+}
+
+/**
+ * La sortie Octobre rose chevauche-t-elle un road trip ce jour-là ? Les
+ * vélos d'un road trip de plusieurs personnes ne sont pas tous inscrits
+ * dans la base (une ligne par réservation) : la sortie compterait comme
+ * libres des vélos partis avec le groupe. Une telle configuration est
+ * refusée des deux côtés plutôt que de surréserver.
+ */
+function octobreRoseChevaucheRoadTrip(date: DateISO, heureDebut: number, heureFin: number): boolean {
+  const creneau = creneauOctobreRose();
+  return (
+    creneau !== null &&
+    creneau.date === date &&
+    heureDebut < creneau.heureFin &&
+    heureFin > creneau.heureDebut
+  );
 }
 
 /** Les départs de road trip à proposer en ce moment. */
@@ -70,13 +110,31 @@ const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "s
 export function motifDeRefus(
   ouverture: Ouverture,
   demande: {
-    offre: "road-trip" | "location-libre";
+    offre: CodeOffre;
     dateDebut: DateISO;
     dateFin: DateISO;
     heureDebut: number;
     dureeHeures?: number;
   },
 ): string | null {
+  if (demande.offre === "octobre-rose") {
+    const creneau = creneauOctobreRose();
+    const conflitRoadTrip =
+      creneau !== null &&
+      roadTripsDuJour(creneau.date).some((c) => octobreRoseChevaucheRoadTrip(creneau.date, c.heureDebut, c.heureFin));
+    if (conflitRoadTrip) {
+      console.error("[ouverture] la sortie Octobre rose chevauche un road trip : inscriptions refusées. Corrigez src/data/octobre-rose.ts.");
+      return "Les inscriptions en ligne ne sont pas ouvertes pour le moment. Écrivez-nous sur WhatsApp.";
+    }
+    if (!inscriptionsOctobreRoseOuvertes(new Date())) {
+      return "Les inscriptions en ligne à Octobre rose sont closes. Écrivez-nous sur WhatsApp pour une dernière place.";
+    }
+    if (!octobreRoseOuvertEnLigne(ouverture)) {
+      return "La sortie Octobre rose est complète en ligne. Écrivez-nous sur WhatsApp : nous vous dirons s'il reste de la place.";
+    }
+    return null;
+  }
+
   if (demande.offre === "road-trip") {
     const jourSemaine = new Date(`${demande.dateDebut}T12:00:00Z`).getUTCDay();
     const creneau = CRENEAUX_ROAD_TRIP.find(
@@ -87,6 +145,9 @@ export function motifDeRefus(
     }
     if (estJourFerme(ouverture.joursFermes, demande.dateDebut, "road-trip")) {
       return "Le road trip de ce jour est complet. Choisissez une autre date.";
+    }
+    if (octobreRoseChevaucheRoadTrip(demande.dateDebut, creneau.heureDebut, creneau.heureFin)) {
+      return "Ce jour-là, les vélos sont à la sortie Octobre rose. Choisissez une autre date.";
     }
     if (Date.now() >= clotureRoadTrip(demande.dateDebut)) {
       return (

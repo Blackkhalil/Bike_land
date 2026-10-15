@@ -5,9 +5,13 @@ import type { ReactNode } from "react";
 
 import { BoutonLien } from "@/components/Bouton";
 import { EnSaisonOctobreRose } from "@/components/EnSaisonOctobreRose";
+import { GalerieAffiches } from "@/components/GalerieAffiches";
+import { SelonInscriptionsOctobreRose } from "@/components/SelonInscriptionsOctobreRose";
 import { LienChoixProduit } from "@/components/LienChoixProduit";
 import { Pastille, Section, TitreSection } from "@/components/ui";
-import { itineraires } from "@/data/contenus";
+import { AFFICHES_GBASHI, AFFICHES_ROAD_TRIP } from "@/data/affiches";
+import { itineraireOctobreRose, itineraires } from "@/data/contenus";
+import { creneauOctobreRose, formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   CRENEAUX_ROAD_TRIP,
@@ -24,14 +28,16 @@ import {
 import {
   CRENEAU_GBASHI_BIKE,
   CRENEAU_ROAD_TRIP,
+  inscriptionsOctobreRoseOuvertes,
+  jourOctobreRose,
   MESSAGES_WHATSAPP,
-  OCTOBRE_ROSE,
   octobreRoseEnCours,
-  rendezVousOctobreRose,
+  placesRestantes,
   tarifOctobreRose,
 } from "@/data/produits";
+import { depot } from "@/lib/db";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
-import { lireOuverture } from "@/lib/ouverture";
+import { lireOuverture, octobreRoseOuvertEnLigne } from "@/lib/ouverture";
 import { lienWhatsApp, site } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -165,7 +171,23 @@ export default async function PageProduits() {
   const dimancheComplet = complets.find((depart) => depart.code === CRENEAU_GBASHI_BIKE);
   const samediComplet = complets.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
   const avecOctobreRose = octobreRoseEnCours(maintenant);
-  const rendezVous = rendezVousOctobreRose();
+  // Octobre rose se réserve sur sa propre page. Ici, on dit seulement s'il
+  // reste des places : complet, ou fermé depuis le tableau de bord, la
+  // carte affiche « Sold out » et renvoie vers WhatsApp.
+  const sortie = OCTOBRE_ROSE.sortie;
+  const creneauRose = creneauOctobreRose();
+  const placesRose =
+    creneauRose && avecOctobreRose
+      ? (await depot.velosLibres(creneauRose.date, creneauRose.heureDebut, creneauRose.heureFin)).length
+      : 0;
+  // Une sortie fixée, payante, s'inscrit en ligne. Complète si elle est
+  // fermée depuis le tableau de bord ou s'il ne reste aucun vélo libre.
+  // L'heure limite, elle, se relit dans le navigateur
+  // (SelonInscriptionsOctobreRose) : la page peut dater d'avant.
+  const roseEnLigne = sortie !== null && sortie.prixXof > 0;
+  const roseComplete = !octobreRoseOuvertEnLigne(ouverture) || placesRose === 0;
+  const roseOuverteAuServeur = inscriptionsOctobreRoseOuvertes(maintenant);
+  const circuitRose = itineraireOctobreRose();
 
   const roadTrip = OFFRES.find((offre) => offre.code === "road-trip");
   const locationLibre = OFFRES.find((offre) => offre.code === "location-libre");
@@ -223,38 +245,111 @@ export default async function PageProduits() {
               className="lg:order-last"
             />
             <div>
-              <Pastille ton="sombre">En octobre seulement</Pastille>
+              <div className="flex flex-wrap gap-2">
+                <Pastille ton="sombre">En octobre seulement</Pastille>
+                {roseEnLigne && (
+                  <SelonInscriptionsOctobreRose
+                    ouvertesAuServeur={roseOuverteAuServeur}
+                    ouvertes={roseComplete ? <Pastille ton="neutre">Sold out</Pastille> : null}
+                    closes={<Pastille ton="neutre">Inscriptions closes</Pastille>}
+                  />
+                )}
+              </div>
               <TitreSection className="mt-5">Octobre rose</TitreSection>
               <p className="mt-3 font-display text-[1.4rem] leading-tight">Roulez en rose avec nous</p>
               <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed">
                 Une sortie à vélo aux couleurs d&apos;Octobre rose, le mois de sensibilisation au
-                cancer du sein. On roule ensemble, en rose, pour rappeler qu&apos;un dépistage
-                précoce sauve des vies.
+                cancer du sein. Bike Land soutient la cause&nbsp;: un prix réduit, le même pour tous
+                nos vélos. On roule ensemble, tous en rose.
               </p>
               <dl className="mt-8 max-w-md">
-                <Repere terme="Quand">
-                  {rendezVous ? majuscule(rendezVous) : "Date annoncée très bientôt"}
-                </Repere>
-                <Repere terme="Tarif">
-                  {tarifOctobreRose() ?? (OCTOBRE_ROSE.date ? "Sur demande" : "Annoncé avec la date")}
-                </Repere>
-                <Repere terme="Inscription">Sur WhatsApp</Repere>
+                {sortie ? (
+                  <>
+                    <Repere terme="Quand">{jourOctobreRose()}</Repere>
+                    <Repere terme="Rassemblement">
+                      {formatHoraire(sortie.rassemblement)}, départ {formatHoraire(sortie.depart)}
+                    </Repere>
+                    <Repere terme="Retour">Vers {formatHoraire(sortie.retour)}</Repere>
+                    <Repere terme="Dress code">{sortie.tenue}</Repere>
+                    {circuitRose && (
+                      <Repere terme="Itinéraire">
+                        {circuitRose.region}, {circuitRose.distanceKm} km
+                      </Repere>
+                    )}
+                    <Repere terme="Tarif">{tarifOctobreRose()}, tous vélos</Repere>
+                  </>
+                ) : (
+                  <>
+                    <Repere terme="Quand">Date annoncée très bientôt</Repere>
+                    <Repere terme="Inscription">Sur WhatsApp</Repere>
+                  </>
+                )}
               </dl>
               <div className="mt-8">
-                <BoutonLien
-                  href={lienWhatsApp(MESSAGES_WHATSAPP.octobreRose)}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  variante="sombre"
-                  taille="lg"
-                >
-                  Je veux participer
-                </BoutonLien>
-                <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed">
-                  {OCTOBRE_ROSE.date
-                    ? "Écrivez-nous sur WhatsApp pour vous inscrire."
-                    : "Écrivez-nous sur WhatsApp\u00a0: nous vous envoyons la date dès qu'elle est fixée."}
-                </p>
+                {roseEnLigne ? (
+                  <SelonInscriptionsOctobreRose
+                    ouvertesAuServeur={roseOuverteAuServeur}
+                    ouvertes={
+                      roseComplete ? (
+                        <>
+                        <BoutonLien
+                          href={lienWhatsApp(MESSAGES_WHATSAPP.octobreRose)}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          variante="sombre"
+                          taille="lg"
+                        >
+                          Écrire sur WhatsApp
+                        </BoutonLien>
+                        <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed">
+                          Les places en ligne sont parties&nbsp;: écrivez-nous, si une place se libère, nous vous la gardons.
+                        </p>
+                      </>
+                      ) : (
+                        <>
+                          <BoutonLien href="/octobre-rose#inscription" variante="sombre" taille="lg">
+                            Je réserve ma place
+                          </BoutonLien>
+                          <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed">
+                            Pas de vélo à choisir&nbsp;: dites combien vous êtes et payez par Mobile
+                            Money. {placesRestantes(placesRose)}
+                          </p>
+                        </>
+                      )
+                    }
+                    closes={
+                      <>
+                        <BoutonLien
+                          href={lienWhatsApp(MESSAGES_WHATSAPP.octobreRose)}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          variante="sombre"
+                          taille="lg"
+                        >
+                          Écrire sur WhatsApp
+                        </BoutonLien>
+                        <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed">
+                          Les inscriptions en ligne sont closes&nbsp;: il reste peut-être un vélo, écrivez-nous avant le rassemblement.
+                        </p>
+                      </>
+                    }
+                  />
+                ) : (
+                  <>
+                        <BoutonLien
+                          href={lienWhatsApp(MESSAGES_WHATSAPP.octobreRose)}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          variante="sombre"
+                          taille="lg"
+                        >
+                          Je veux participer
+                        </BoutonLien>
+                        <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed">
+                          Écrivez-nous sur WhatsApp&nbsp;: nous vous envoyons la date dès qu&apos;elle est fixée.
+                        </p>
+                      </>
+                )}
               </div>
             </div>
           </div>
@@ -264,11 +359,7 @@ export default async function PageProduits() {
       {/* ------------------------------------------------- Gbashi bike */}
       <Section id="gbashi-bike" fond="lagune" className="scroll-mt-[72px] py-20 sm:py-24">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-          <PhotoProduit
-            src="/images/produits/gbashi-bike.jpg"
-            alt="Un cycliste et son vélo au pied d'un cocotier, sur le sable, face à la mer"
-            cadrage="object-[50%_62%]"
-          />
+          <GalerieAffiches affiches={AFFICHES_GBASHI} titre="Les affiches de Gbashi bike" />
           <div>
             <div className="flex flex-wrap gap-2">
               <Pastille ton="sombre">Le dimanche</Pastille>
@@ -330,12 +421,9 @@ export default async function PageProduits() {
       {/* ---------------------------------------------------- Road trip */}
       <Section id="road-trip" fond="noir" className="scroll-mt-[72px] py-20 sm:py-24">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
-          <PhotoProduit
-            src="/images/produits/road-trip.jpg"
-            alt="Un groupe de cyclistes Bike Land pose avec ses vélos sur la route des Pêches"
-            format="aspect-[3/2]"
-            className="lg:order-last"
-          />
+          <div className="min-w-0 lg:order-last">
+            <GalerieAffiches affiches={AFFICHES_ROAD_TRIP} titre="Les affiches du road trip" />
+          </div>
           <div>
             <div className="flex flex-wrap gap-2">
               <Pastille ton="succes">Le samedi</Pastille>

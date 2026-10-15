@@ -16,6 +16,7 @@
  * facture à l'heure, le road trip au forfait.
  */
 
+import { creneauOctobreRose, formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import { DECALAGE_BENIN_MS } from "@/lib/dates";
 import type { CodeOffre } from "@/lib/types";
 
@@ -31,26 +32,47 @@ export type { CodeOffre };
  */
 export type GammeVelo = "CLASSIQUE" | "PREMIUM" | "PRESTIGE";
 
-export const GAMMES: { code: GammeVelo; nom: string; description: string }[] = [
+export const GAMMES: {
+  code: GammeVelo;
+  nom: string;
+  description: string;
+  /** Ce qu'on trouve dans la gamme, en quelques mots. */
+  machine: string;
+  /** À qui elle s'adresse. */
+  pourQui: string;
+}[] = [
   {
     code: "CLASSIQUE",
     nom: "Classique",
     description:
       "Le parc de tous les jours : du VTT dame au tout-suspendu, de quoi rouler la route des Pêches sans se poser de question.",
+    machine: "Du VTT dame au tout-suspendu",
+    pourQui: "Une première sortie, une balade, un budget tenu.",
   },
   {
     code: "PREMIUM",
     nom: "Premium",
     description:
       "Des machines de marque (Northpoint, Mongoose, Muddyfox, Raleigh), mieux finies et plus confortables sur la distance.",
+    machine: "Marques reconnues, meilleures finitions",
+    pourQui: "Rouler plus longtemps, plus confortablement.",
   },
   {
     code: "PRESTIGE",
     nom: "Prestige",
     description:
       "Une seule machine, la plus aboutie du parc : cadre acier haute résistance, double frein à disque, jantes bâton magnésium.",
+    machine: "Acier haute résistance, double disque, jantes bâton",
+    pourQui: "La plus belle machine du parc, quand elle est libre.",
   },
 ];
+
+/**
+ * La gamme que les clients prennent le plus : le Premium, d'après
+ * l'exploitant. Le site la signale « Le plus pris » partout où les gammes
+ * se comparent, et sur chacun de ses vélos au catalogue.
+ */
+export const GAMME_LA_PLUS_PRISE: GammeVelo = "PREMIUM";
 
 /**
  * Tarif du road trip, par personne et par gamme, eau comprise.
@@ -142,6 +164,11 @@ export const EXIGENCES: Record<CodeOffre, string[]> = {
     "Présenter une pièce d'identité (CIP) au départ. Elle vous est rendue au retour du vélo.",
     "Signer l'engagement de restitution, en ligne puis sur place au départ.",
     `Laisser une caution de ${CAUTION_LOCATION_LIBRE_XOF.toLocaleString("fr-FR")} FCFA, rendue à la restitution du vélo.`,
+  ],
+  "octobre-rose": [
+    `Dress code : ${(OCTOBRE_ROSE.sortie?.tenue ?? "tout le monde en rose").toLowerCase()}.`,
+    "Être au point de départ à l'heure du rassemblement : le groupe part à l'heure.",
+    "Rien d'autre à apporter : vélo et casque sont fournis, sans caution.",
   ],
 };
 
@@ -253,6 +280,17 @@ export const OUVERTURE_HEURE = 8;
 export const FERMETURE_HEURE = 19;
 
 /**
+ * Les heures de la location libre vendue au comptoir, en espèces.
+ *
+ * Plus larges qu'en ligne : au comptoir, l'exploitant saisit l'heure qu'il
+ * veut, et la location libre s'y prend jusqu'à 22 h, le vélo rentré à
+ * 22 h au plus tard. La réservation en ligne garde les horaires de
+ * l'atelier (OUVERTURE_HEURE, FERMETURE_HEURE).
+ */
+export const OUVERTURE_COMPTOIR_HEURE = 6;
+export const FERMETURE_COMPTOIR_HEURE = 22;
+
+/**
  * Heures de départ proposées pour une durée donnée, et pour un jour
  * quand on le connaît.
  *
@@ -261,8 +299,8 @@ export const FERMETURE_HEURE = 19;
  * ferme à 19 h, le client ne pourrait pas rendre le vélo.
  *
  * Le jour connu, les règles de `motifHoraireLocation` s'ajoutent : pas de
- * location libre pendant le road trip du week-end, ni sur une heure déjà
- * passée le jour même.
+ * location libre pendant le road trip du week-end ni pendant la sortie
+ * Octobre rose, ni sur une heure déjà passée le jour même.
  */
 export function heuresDepartPossibles(
   dureeHeures: number,
@@ -298,6 +336,8 @@ export function roadTripsDuJour(date: string) {
  *  - Le week-end, de 8 h à 11 h, les vélos sont sur la route avec le
  *    groupe du road trip : aucune location libre ne peut empiéter sur
  *    ces heures. Elle commence donc à 11 h le samedi et le dimanche.
+ *  - Le jour d'Octobre rose, de même pendant la sortie, du rassemblement
+ *    au retour des vélos (voir `creneauOctobreRose`).
  *  - Le jour même, seules les heures à venir restent : à 15 h, un départ
  *    à 9 h n'a plus de sens, et le client l'aurait payé pour rien.
  */
@@ -315,6 +355,19 @@ export function motifHoraireLocation(
       `Le ${roadTrip.libelle.toLowerCase()}, de ${formatHeure(roadTrip.heureDebut)} à ` +
       `${formatHeure(roadTrip.heureFin)}, les vélos sont en road trip : la location libre ` +
       `ne peut pas empiéter sur ces heures.`
+    );
+  }
+  const octobreRose = creneauOctobreRose();
+  if (
+    octobreRose &&
+    octobreRose.date === date &&
+    heureDebut < octobreRose.heureFin &&
+    heureDebut + dureeHeures > octobreRose.heureDebut
+  ) {
+    return (
+      `Ce jour-là, de ${formatHeure(octobreRose.heureDebut)} à ${formatHeure(octobreRose.heureFin)}, ` +
+      `les vélos sont à la sortie Octobre rose (départ ${formatHoraire(OCTOBRE_ROSE.sortie!.depart)}) : ` +
+      `la location libre ne peut pas empiéter sur ces heures.`
     );
   }
   const ici = heureAuBenin(new Date(maintenant));

@@ -43,3 +43,9 @@ sauvegardes/
 
 # Images de référence, jamais publiées : elles ne sont pas à nous.
 public/images sibe web inspiration/
+
+# Affiches et photos d'origine fournies par l'exploitant : lourdes, non publiées.
+# Le site en sert des copies recompressées (public/images/produits/).
+/public/images/Gbashi bike/
+/public/images/Roadtrip/
+/public/images/affiches/

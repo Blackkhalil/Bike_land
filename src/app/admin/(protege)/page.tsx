@@ -19,8 +19,16 @@ import {
   type Granularite,
 } from "@/lib/statistiques";
 import { PilotageOuverture } from "@/components/admin/PilotageOuverture";
+import {
+  clotureInscriptionsOctobreRose,
+  codeOctobreRose,
+  creneauOctobreRose,
+  formatHoraire,
+  OCTOBRE_ROSE,
+} from "@/data/octobre-rose";
 import { CRENEAUX_ROAD_TRIP, creneauxDisponibles, heureAuBenin } from "@/data/offres";
-import { lireOuverture } from "@/lib/ouverture";
+import { inscriptionsOctobreRoseOuvertes } from "@/data/produits";
+import { lireOuverture, octobreRoseOuvertEnLigne } from "@/lib/ouverture";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
 
@@ -110,6 +118,17 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   const ouverture = await lireOuverture();
   const departsProposes = creneauxDisponibles(new Date(), ouverture);
   const aujourdhuiBenin = heureAuBenin().date;
+  // L'inscription en ligne à Octobre rose se pilote comme un créneau, tant
+  // que la sortie est à venir.
+  const sortieRose = OCTOBRE_ROSE.sortie && OCTOBRE_ROSE.sortie.date >= aujourdhuiBenin ? OCTOBRE_ROSE.sortie : null;
+  const roseEnLigne = octobreRoseOuvertEnLigne(ouverture);
+  const instantRose = new Date();
+  const roseOuverte = inscriptionsOctobreRoseOuvertes(instantRose);
+  const roseCloturee = instantRose.getTime() >= (clotureInscriptionsOctobreRose() ?? 0);
+  const creneauRose = sortieRose ? creneauOctobreRose() : null;
+  const placesRose = creneauRose
+    ? (await depot.velosLibres(creneauRose.date, creneauRose.heureDebut, creneauRose.heureFin)).length
+    : 0;
 
   const totalClients = stats.nouveauxClients + stats.clientsRecurrents;
   const joursCompares = nombreDeJours(stats.fenetreCourante.debut, stats.fenetreCourante.fin);
@@ -237,14 +256,38 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           question="Fermer un départ ou un jour complet, et le rouvrir quand il y a de la place."
         />
         <PilotageOuverture
-          creneaux={CRENEAUX_ROAD_TRIP.map((c) => ({
-            code: c.code,
-            // Le dimanche est Gbashi bike : l'ouvrir ici ouvre Gbashi bike.
-            libelle: c.produit ? `${c.libelle} · ${c.produit}` : c.libelle,
-            horaire: `${c.heureDebut} h - ${c.heureFin} h`,
-            actif: ouverture.creneauxActifs.has(c.code),
-            prochainDepart: departsProposes.find((d) => d.code === c.code)?.date,
-          }))}
+          creneaux={[
+            ...CRENEAUX_ROAD_TRIP.map((c) => ({
+              code: c.code,
+              // Le dimanche est Gbashi bike : l'ouvrir ici ouvre Gbashi bike.
+              libelle: c.produit ? `${c.libelle} · ${c.produit}` : c.libelle,
+              horaire: `${c.heureDebut} h - ${c.heureFin} h`,
+              actif: ouverture.creneauxActifs.has(c.code),
+              prochainDepart: departsProposes.find((d) => d.code === c.code)?.date,
+            })),
+            ...(sortieRose
+              ? [
+                  {
+                    code: codeOctobreRose(sortieRose),
+                    libelle: "Octobre rose",
+                    horaire: `${formatHoraire(sortieRose.rassemblement)} - ${formatHoraire(sortieRose.retour)}`,
+                    actif: roseEnLigne,
+                    // Proposée tant que l'heure limite des inscriptions n'est pas passée.
+                    prochainDepart: roseEnLigne && roseOuverte ? sortieRose.date : undefined,
+                    remarque:
+                      roseEnLigne && !roseOuverte
+                        ? roseCloturee
+                          ? `Inscriptions en ligne closes depuis ${formatHoraire(sortieRose.finInscriptions)} le jour de la sortie : le comptoir vend encore.`
+                          : "L'inscription en ligne s'ouvre en octobre."
+                        : roseEnLigne && placesRose === 0
+                          ? "Ouvert, mais complet : plus aucun vélo libre pour la sortie (le site affiche « Sold out »)."
+                          : roseEnLigne
+                            ? `Ouvert : ${placesRose} place${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""}, sortie du ${formatDate(sortieRose.date)}.`
+                            : undefined,
+                  },
+                ]
+              : []),
+          ]}
           joursFermes={ouverture.joursFermes.filter((j) => j.date >= aujourdhuiBenin)}
           aujourdhui={aujourdhuiBenin}
         />
@@ -254,10 +297,10 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
       <section className="mt-12" aria-labelledby="titre-formules">
         <TitreBloc
           id="titre-formules"
-          titre="Les deux formules"
+          titre={stats.parOffre.length > 2 ? "Les formules" : "Les deux formules"}
           question="Ce que chaque formule a vendu sur la période."
         />
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div className={`mt-5 grid gap-4 sm:grid-cols-2 ${stats.parOffre.length > 2 ? "lg:grid-cols-3" : ""}`}>
           {stats.parOffre.map((offre) => (
             <div
               key={offre.code}
@@ -276,7 +319,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
                 </div>
                 <div>
                   <dt className="text-gris-cadre">
-                    {offre.code === "road-trip" ? "Participants" : "Heures vendues"}
+                    {offre.uniteVolume === "participants" ? "Participants" : "Heures vendues"}
                   </dt>
                   <dd className="mt-0.5 font-semibold tabular-nums">
                     {formatNombre(offre.volume)}

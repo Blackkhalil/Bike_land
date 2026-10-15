@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { Bouton, BoutonLien } from "@/components/Bouton";
 import { Pastille } from "@/components/ui";
+import { OCTOBRE_ROSE } from "@/data/octobre-rose";
 import {
+  inscriptionsOctobreRoseOuvertes,
   octobreRoseEnCours,
   rendezVousOctobreRose,
   signatureOctobreRose,
@@ -25,10 +27,18 @@ const DELAI_MS = 1500;
  * La réservation et le paiement d'abord : une fenêtre par-dessus
  * bloquerait la validation Mobile Money. Les conditions de vente et la
  * protection des données s'ouvrent d'ailleurs depuis l'étape de paiement.
- * Les fiches vélo portent l'encart de réservation, et la page Nos produits
- * montre déjà Octobre rose en tête.
+ * Les fiches vélo portent l'encart de réservation, la page Nos produits
+ * montre déjà Octobre rose en tête, et la page Octobre rose est celle où
+ * l'annonce mène.
  */
-const EXCLUES = ["/reservation", "/cgv", "/donnees-personnelles", "/mentions-legales", "/produits"];
+const EXCLUES = [
+  "/reservation",
+  "/cgv",
+  "/donnees-personnelles",
+  "/mentions-legales",
+  "/produits",
+  "/octobre-rose",
+];
 
 function exclue(chemin: string): boolean {
   if (EXCLUES.some((page) => chemin === page || chemin.startsWith(`${page}/`))) return true;
@@ -70,6 +80,9 @@ function Ruban({ className = "" }: { className?: string }) {
 export function AnnonceOctobreRose() {
   const chemin = usePathname() ?? "/";
   const [ouverte, setOuverte] = useState(false);
+  // L'inscription en ligne était-elle ouverte quand l'annonce s'est ouverte ?
+  // Lue à ce moment-là, dans le navigateur, et non pendant le rendu.
+  const [inscription, setInscription] = useState(false);
   const dialogue = useRef<HTMLDialogElement>(null);
   const dejaMontree = useRef(false);
 
@@ -86,6 +99,7 @@ export function AnnonceOctobreRose() {
         // Stockage indisponible (navigation privée) : une fois par visite.
       }
       dejaMontree.current = true;
+      setInscription(inscriptionsOctobreRoseOuvertes(new Date()));
       setOuverte(true);
     }, DELAI_MS);
     return () => clearTimeout(minuterie);
@@ -112,11 +126,13 @@ export function AnnonceOctobreRose() {
   if (!visible) return null;
 
   const rendezVous = rendezVousOctobreRose();
+  const tenue = OCTOBRE_ROSE.sortie?.tenue;
+  const dressCode = tenue ? ` Dress code\u00a0: ${tenue.charAt(0).toLowerCase()}${tenue.slice(1)}.` : "";
   const texte = rendezVous
-    ? `${rendezVous.charAt(0).toUpperCase()}${rendezVous.slice(1)}\u00a0: une sortie à vélo aux couleurs d'Octobre rose, le mois de sensibilisation au cancer du sein.`
+    ? `${rendezVous.charAt(0).toUpperCase()}${rendezVous.slice(1)}\u00a0: une sortie à vélo aux couleurs d'Octobre rose, le mois de sensibilisation au cancer du sein.${dressCode}`
     : "Une sortie à vélo aux couleurs d'Octobre rose, le mois de sensibilisation au cancer du sein, se prépare. Date et programme très bientôt.";
   const tarif = tarifOctobreRose();
-  const prix = tarif ? ` ${tarif}.` : "";
+  const prix = tarif ? ` ${tarif}, le même pour tous nos vélos.` : "";
 
   return (
     <dialog
@@ -161,8 +177,11 @@ export function AnnonceOctobreRose() {
           {prix}
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <BoutonLien href="/produits#octobre-rose" onClick={fermer}>
-            Découvrir la sortie
+          {/* Tant que l'inscription en ligne est ouverte, le bouton y mène
+              droit. Ensuite, la carte de la page Nos produits dit où en
+              est la sortie. */}
+          <BoutonLien href={inscription ? "/octobre-rose#inscription" : "/produits#octobre-rose"} onClick={fermer}>
+            {inscription ? "Je réserve ma place" : "Découvrir la sortie"}
           </BoutonLien>
           <Bouton type="button" variante="contour" onClick={fermer} className="text-craie">
             Plus tard

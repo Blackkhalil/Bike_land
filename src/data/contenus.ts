@@ -3,6 +3,7 @@
  * étapes du parcours de location.
  */
 
+import { OCTOBRE_ROSE } from "@/data/octobre-rose";
 import { CAUTION_LOCATION_LIBRE_XOF } from "@/data/offres";
 import type { Itineraire } from "@/lib/types";
 
@@ -74,6 +75,12 @@ export const itineraires: Itineraire[] = [
     ],
   },
 ];
+
+/** Le circuit de la sortie Octobre rose (voir src/data/octobre-rose.ts), `null` sans sortie fixée. */
+export function itineraireOctobreRose(): Itineraire | null {
+  const slug = OCTOBRE_ROSE.sortie?.itineraire;
+  return slug ? (itineraires.find((itineraire) => itineraire.slug === slug) ?? null) : null;
+}
 
 // ATTENTION, contenu de démonstration, à remplacer avant l'ouverture.
 // Ces avis sont fictifs. Publier des témoignages inventés attribués à des

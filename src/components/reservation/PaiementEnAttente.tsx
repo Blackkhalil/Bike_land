@@ -8,7 +8,7 @@ import type { DiagnosticEchec } from "@/lib/echecs-paiement";
 import { diagnostiquer, motifDepuisCode } from "@/lib/echecs-paiement";
 import { formatXof } from "@/lib/format";
 import { site } from "@/lib/site";
-import { moyensDisponibles } from "@/lib/paiement";
+import { moyensDisponibles } from "@/lib/tarifs-paiement";
 import type { MoyenPaiement } from "@/lib/types";
 import { SuiviPaiementMomo } from "./SuiviPaiementMomo";
 
@@ -32,6 +32,7 @@ export function PaiementEnAttente({
   moyenInitial,
   telephoneInitial,
   diagnostic,
+  places = false,
 }: {
   token: string;
   montantXof: number;
@@ -44,6 +45,8 @@ export function PaiementEnAttente({
    * insuffisant ne se corrige pas en changeant de numéro.
    */
   diagnostic?: DiagnosticEchec | null;
+  /** Une inscription à Octobre rose : ce sont des places qui sont retenues, pas un vélo. */
+  places?: boolean;
 }) {
   const routeur = useRouter();
   const champTelephone = useRef<HTMLInputElement>(null);
@@ -139,13 +142,15 @@ export function PaiementEnAttente({
           <p className="mt-2 text-[0.92rem] leading-relaxed">{echec.explication}</p>
           <p className="mt-2 text-[0.92rem] font-semibold leading-relaxed">{echec.remede}</p>
           <p className="mt-2 text-[0.85rem] leading-relaxed text-gris-cadre">
-            Votre vélo reste retenu, et {formatXof(montantXof)} n&apos;ont pas été prélevés.
+            {places ? "Vos places restent retenues" : "Votre vélo reste retenu"}, et{" "}
+            {formatXof(montantXof)} n&apos;ont pas été prélevés.
           </p>
         </>
       ) : (
         <p className="mt-2 text-[0.92rem] leading-relaxed">
-          Votre vélo est retenu, mais le règlement de {formatXof(montantXof)} n&apos;est pas
-          encore passé. Relancez la demande ici : elle repartira sur le numéro indiqué.
+          {places ? "Vos places sont retenues" : "Votre vélo est retenu"}, mais le règlement de{" "}
+          {formatXof(montantXof)} n&apos;est pas encore passé. Relancez la demande ici : elle
+          repartira sur le numéro indiqué.
         </p>
       )}
 

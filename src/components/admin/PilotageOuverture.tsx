@@ -13,12 +13,14 @@ export interface CreneauPilote {
   actif: boolean;
   /** Le prochain départ proposé aux clients, quand le créneau est ouvert. */
   prochainDepart?: string;
+  /** Ce que dit la ligne quand l'état ordinaire ne suffit pas (heure limite passée). */
+  remarque?: string;
 }
 
 const LIBELLES_FORMULE: Record<FormuleFermee, string> = {
   "road-trip": "Road trip",
   "location-libre": "Location libre",
-  toutes: "Les deux formules",
+  toutes: "Toutes les formules",
 };
 
 /**
@@ -26,8 +28,9 @@ const LIBELLES_FORMULE: Record<FormuleFermee, string> = {
  *
  * Deux usages. Un créneau de road trip se ferme pour toutes les semaines :
  * le dimanche quand il est complet parce que des places ont été vendues
- * en espèces, et il se rouvre d'un clic. Un jour précis se ferme quand il
- * est complet, pour le road trip, la location libre ou les deux.
+ * en espèces, et il se rouvre d'un clic. L'inscription en ligne à Octobre
+ * rose se ferme de même, le temps de la campagne. Un jour précis se ferme
+ * quand il est complet, pour le road trip, la location libre ou les deux.
  *
  * Fermer n'annule rien : les réservations déjà prises restent valables,
  * seules les nouvelles sont refusées. Le panneau le dit, pour que
@@ -89,7 +92,7 @@ export function PilotageOuverture({
     <div className="mt-5 grid gap-4 lg:grid-cols-2">
       {/* ------------------------------------------- Créneaux du road trip */}
       <div className="rounded-[var(--radius-carte)] border border-noir-piste/8 bg-white p-6">
-        <h3 className="text-[0.95rem] font-semibold">Départs du road trip</h3>
+        <h3 className="text-[0.95rem] font-semibold">Départs proposés en ligne</h3>
         <p className="mt-1 text-[0.82rem] leading-relaxed text-gris-cadre">
           Un départ fermé ne se réserve plus en ligne, toutes les semaines, jusqu&apos;à ce que
           vous le rouvriez. Le site l&apos;affiche « Sold out » au lieu de le retirer.
@@ -102,7 +105,9 @@ export function PilotageOuverture({
                   {c.libelle}, {c.horaire}
                 </p>
                 <p className="text-[0.8rem] text-gris-cadre">
-                  {c.actif
+                  {c.remarque
+                    ? c.remarque
+                    : c.actif
                     ? c.prochainDepart
                       ? `Ouvert. Prochain départ proposé : ${formatDate(c.prochainDepart)}.`
                       : "Ouvert, mais toutes les dates proches sont fermées."

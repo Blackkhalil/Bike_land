@@ -5,9 +5,10 @@
  * CFA n'a pas de subdivision utilisée, donc aucun arrondi flottant à gérer.
  */
 
+import { formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import { creneauDuDepart } from "@/data/offres";
 
-import type { MoyenPaiement } from "./types";
+import type { CodeOffre, MoyenPaiement } from "./types";
 
 const libellesMoyens: Record<MoyenPaiement, string> = {
   MTN_MONEY: "MTN MoMo",
@@ -114,18 +115,58 @@ export function formatPeriode(debut: string | Date, fin: string | Date): string 
  * le suivi client et la fiche du jour doivent annoncer exactement le même
  * horaire, sinon le coordinateur et le client ne s'attendent pas au même
  * moment au point de départ.
+ *
+ * La sortie Octobre rose s'annonce par son rendez-vous et son départ, à la
+ * minute près, plutôt que par les heures pleines qu'elle retient sur les
+ * vélos (voir `sortieDe`).
  */
 export function formatCreneau(reservation: {
   dateDebut: string | Date;
   heureDebut: number;
   heureFin: number;
+  offre?: CodeOffre;
 }): string {
+  const sortie = sortieDe(reservation);
+  if (sortie) {
+    return (
+      `${formatDate(reservation.dateDebut)}, rassemblement à ${formatHoraire(sortie.rassemblement)}, ` +
+      `départ ${formatHoraire(sortie.depart)}`
+    );
+  }
   return `${formatDate(reservation.dateDebut)}, de ${reservation.heureDebut} h à ${reservation.heureFin} h`;
 }
 
 /** Le seul horaire, sans le jour : « 8 h - 11 h ». */
 export function formatPlageHoraire(heureDebut: number, heureFin: number): string {
   return `${heureDebut} h - ${heureFin} h`;
+}
+
+/**
+ * La sortie Octobre rose d'une réservation, quand c'en est une et qu'elle
+ * est celle de la campagne décrite (src/data/octobre-rose.ts) : ses
+ * horaires à la minute près ne valent que pour elle. Une inscription d'une
+ * campagne passée garde ses heures enregistrées.
+ */
+function sortieDe(reservation: { offre?: CodeOffre; dateDebut: string | Date }) {
+  const sortie = OCTOBRE_ROSE.sortie;
+  const jour = typeof reservation.dateDebut === "string" ? reservation.dateDebut.slice(0, 10) : versDate(reservation.dateDebut).toISOString().slice(0, 10);
+  return reservation.offre === "octobre-rose" && sortie && sortie.date === jour ? sortie : null;
+}
+
+/**
+ * L'horaire d'une réservation, sans le jour : « 8 h - 11 h », et pour
+ * Octobre rose, du rassemblement au retour, « 16 h - 18 h 30 ».
+ */
+export function formatPlageReservation(reservation: {
+  offre?: CodeOffre;
+  dateDebut: string | Date;
+  heureDebut: number;
+  heureFin: number;
+}): string {
+  const sortie = sortieDe(reservation);
+  return sortie
+    ? `${formatHoraire(sortie.rassemblement)} - ${formatHoraire(sortie.retour)}`
+    : formatPlageHoraire(reservation.heureDebut, reservation.heureFin);
 }
 
 export function formatNombre(valeur: number, decimales = 0): string {
@@ -152,15 +193,18 @@ function versDate(valeur: string | Date): Date {
  * c'est désormais la formule, et le nombre de participants ou la durée.
  */
 export function resumeOffre(reservation: {
-  offre: "road-trip" | "location-libre";
+  offre: CodeOffre;
   nombrePersonnes: number;
   dureeHeures?: number;
   dateDebut?: string;
   heureDebut?: number;
 }): string {
+  const n = reservation.nombrePersonnes;
   if (reservation.offre === "road-trip") {
-    const n = reservation.nombrePersonnes;
     return `${nomDuRoadTrip(reservation)} · ${n} personne${n > 1 ? "s" : ""}`;
+  }
+  if (reservation.offre === "octobre-rose") {
+    return `Octobre rose · ${n} personne${n > 1 ? "s" : ""}`;
   }
   return `Location libre · ${reservation.dureeHeures ?? "?"} h`;
 }

@@ -26,7 +26,7 @@ import {
 import type { DateISO } from "@/lib/dates";
 import { diagnostiquer } from "@/lib/echecs-paiement";
 import { formatDate, formatXof } from "@/lib/format";
-import { fraisEncaissement, moyensDisponibles, TAUX_ENCAISSEMENT } from "@/lib/paiement";
+import { fraisEncaissement, moyensDisponibles, TAUX_ENCAISSEMENT } from "@/lib/tarifs-paiement";
 import { SuiviPaiementMomo } from "./SuiviPaiementMomo";
 import { calculerDevis } from "@/lib/tarification";
 import type {
@@ -985,7 +985,7 @@ export function TunnelReservation({
                 paiementId={attentePaiement.paiementId}
                 moyen={attentePaiement.moyen}
                 telephone={attentePaiement.telephone}
-                montantXof={devis.totalXof}
+                montantXof={montantDebite}
                 urlCheckout={attentePaiement.urlCheckout}
                 onConfirme={() => routeur.push(`/reservation/${attentePaiement.token}?nouvelle=1`)}
                 onEchec={(texte) => setMessagePaiement(texte)}

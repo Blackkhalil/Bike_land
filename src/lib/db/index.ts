@@ -36,6 +36,8 @@ export const depot: Depot = {
   periodesIndisponibles: async (veloId) => (await obtenirDepot()).periodesIndisponibles(veloId),
   estDisponible: async (veloId, debut, fin, heureDebut, heureFin) =>
     (await obtenirDepot()).estDisponible(veloId, debut, fin, heureDebut, heureFin),
+  velosLibres: async (date, heureDebut, heureFin) =>
+    (await obtenirDepot()).velosLibres(date, heureDebut, heureFin),
   creerReservation: async (demande) => (await obtenirDepot()).creerReservation(demande),
   trouverReservationParToken: async (token) => (await obtenirDepot()).trouverReservationParToken(token),
   trouverReservationParReference: async (reference) =>
