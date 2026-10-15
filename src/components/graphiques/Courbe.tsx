@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatXof, formatXofCourt } from "@/lib/format";
 import { categoriel, encreSecondaire, grille, surface } from "./palette";
@@ -10,6 +10,7 @@ import {
   LignesGrille,
   TableauDeSecours,
   graduations,
+  intervalleEtiquettes,
   type Point,
 } from "./primitives";
 
@@ -23,6 +24,9 @@ import {
 
 const HAUTEUR = 220;
 const MARGE_GAUCHE = 52;
+// La dernière étiquette est centrée sur le dernier point : il lui faut la
+// moitié de sa largeur à droite, sinon « oct 26 » s'affiche « oct 2 ».
+const MARGE_DROITE = 24;
 const MARGE_HAUTE = 12;
 const MARGE_BASSE = 26;
 
@@ -43,8 +47,23 @@ export function Courbe({
   const conteneur = useRef<HTMLDivElement>(null);
   const [survol, setSurvol] = useState<number | null>(null);
   const [largeur, setLargeur] = useState(720);
+  const vide = points.length === 0;
 
-  if (points.length === 0) {
+  // Le dessin suit la largeur réelle du cadre, mesurée dès l'affichage puis
+  // à chaque redimensionnement : un viewBox fixe de 720, réduit à la largeur
+  // d'un téléphone, ramenait les étiquettes de 11 px à 4 px.
+  useEffect(() => {
+    const element = conteneur.current;
+    if (!element) return;
+    const observateur = new ResizeObserver(([entree]) => {
+      const mesure = Math.round(entree.contentRect.width);
+      if (mesure > 0) setLargeur(mesure);
+    });
+    observateur.observe(element);
+    return () => observateur.disconnect();
+  }, [vide]);
+
+  if (vide) {
     return (
       <CadreGraphique titre={titre} sousTitre={sousTitre} actions={actions}>
         <p className="py-12 text-center text-[0.9rem] text-gris-cadre">Aucune donnée sur la période.</p>
@@ -56,7 +75,7 @@ export function Courbe({
   const echelle = graduations(maximum);
   const plafond = Math.max(...echelle, maximum);
 
-  const zoneLargeur = largeur - MARGE_GAUCHE - 12;
+  const zoneLargeur = largeur - MARGE_GAUCHE - MARGE_DROITE;
   const zoneHauteur = HAUTEUR - MARGE_HAUTE - MARGE_BASSE;
 
   const abscisse = (index: number) =>
@@ -82,11 +101,11 @@ export function Courbe({
 
   const dernier = points.length - 1;
   const actif = survol ?? dernier;
+  const intervalle = intervalleEtiquettes(zoneLargeur / Math.max(dernier, 1));
 
   const auMouvement = (evenement: React.MouseEvent<HTMLDivElement>) => {
     const cadre = conteneur.current?.getBoundingClientRect();
     if (!cadre) return;
-    setLargeur(cadre.width);
     const position = evenement.clientX - cadre.left;
     const ratio = (position - MARGE_GAUCHE) / Math.max(zoneLargeur, 1);
     const index = Math.round(ratio * (points.length - 1));
@@ -110,7 +129,7 @@ export function Courbe({
           <LignesGrille
             valeurs={echelle}
             hauteur={MARGE_HAUTE + zoneHauteur}
-            largeur={largeur - 12}
+            largeur={largeur - MARGE_DROITE}
             maximum={plafond}
             margeGauche={MARGE_GAUCHE}
             formater={(valeur) => formatXofCourt(valeur)}
@@ -158,10 +177,10 @@ export function Courbe({
             strokeWidth="2"
           />
 
-          {/* Étiquettes d'abscisse, une sur deux si l'espace manque */}
+          {/* Étiquettes d'abscisse, espacées selon la place et comptées
+              depuis la dernière, toujours affichée */}
           {points.map((point, index) => {
-            const intervalle = points.length > 8 ? 2 : 1;
-            if (index % intervalle !== 0 && index !== dernier) return null;
+            if ((dernier - index) % intervalle !== 0) return null;
             return (
               <text
                 key={point.clef}

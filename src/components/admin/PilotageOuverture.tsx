@@ -95,7 +95,7 @@ export function PilotageOuverture({
         <h3 className="text-[0.95rem] font-semibold">Départs proposés en ligne</h3>
         <p className="mt-1 text-[0.82rem] leading-relaxed text-gris-cadre">
           Un départ fermé ne se réserve plus en ligne, toutes les semaines, jusqu&apos;à ce que
-          vous le rouvriez. Le site l&apos;affiche « Sold out » au lieu de le retirer.
+          vous le rouvriez. Le site l&apos;affiche «&nbsp;Sold out&nbsp;» au lieu de le retirer.
         </p>
         <ul className="mt-4 divide-y divide-noir-piste/10">
           {creneaux.map((c) => (
@@ -109,14 +109,14 @@ export function PilotageOuverture({
                     ? c.remarque
                     : c.actif
                     ? c.prochainDepart
-                      ? `Ouvert. Prochain départ proposé : ${formatDate(c.prochainDepart)}.`
+                      ? `Ouvert. Prochain départ proposé : ${formatDate(c.prochainDepart)}.`
                       : "Ouvert, mais toutes les dates proches sont fermées."
-                    : "Fermé : affiché « Sold out » sur le site."}
+                    : "Fermé : affiché « Sold out » sur le site."}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 <span
-                  className={`rounded-full px-2.5 py-1 text-[0.72rem] font-semibold ${
+                  className={`rounded-full px-2.5 py-1 text-[0.75rem] font-semibold ${
                     c.actif ? "bg-vert-lagune/15 text-vert-lagune" : "bg-craie-ombre text-noir-piste"
                   }`}
                 >
@@ -126,7 +126,7 @@ export function PilotageOuverture({
                   type="button"
                   onClick={() => envoyer(c.code, { action: "creneau", code: c.code, actif: !c.actif })}
                   disabled={occupe(c.code)}
-                  className={`rounded-[var(--radius-bouton)] px-4 py-2 text-[0.82rem] font-semibold transition-opacity disabled:opacity-40 ${
+                  className={`min-h-11 rounded-[var(--radius-bouton)] px-4 py-2 text-[0.82rem] font-semibold transition-opacity disabled:opacity-40 ${
                     c.actif
                       ? "border border-noir-piste/25 hover:bg-noir-piste/5"
                       : "bg-orange-signal text-noir-piste hover:opacity-85"
@@ -146,7 +146,7 @@ export function PilotageOuverture({
         <p className="mt-1 text-[0.82rem] leading-relaxed text-gris-cadre">
           Pour un jour déjà rempli autrement, par exemple avec des réservations prises en espèces.
           Les réservations déjà faites ce jour-là restent valables. Fermé au road trip, ce jour
-          s&apos;affiche « Sold out » sur le site dès qu&apos;il devient le prochain départ.
+          s&apos;affiche «&nbsp;Sold out&nbsp;» sur le site dès qu&apos;il devient le prochain départ.
         </p>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">

@@ -66,9 +66,9 @@ export default function PageDonneesPersonnelles() {
 
       <ArticleLegal titre="Durée de conservation">
         <ul className="ml-5 list-disc space-y-2">
-          <li>Données de réservation : 3 ans après la fin de la location.</li>
-          <li>Factures et pièces comptables : 10 ans, conformément aux obligations fiscales.</li>
-          <li>Messages du formulaire de contact : 12 mois après la dernière réponse.</li>
+          <li>Données de réservation&nbsp;: 3&nbsp;ans après la fin de la location.</li>
+          <li>Factures et pièces comptables&nbsp;: 10&nbsp;ans, conformément aux obligations fiscales.</li>
+          <li>Messages du formulaire de contact&nbsp;: 12&nbsp;mois après la dernière réponse.</li>
         </ul>
       </ArticleLegal>
 
@@ -98,7 +98,7 @@ export default function PageDonneesPersonnelles() {
         <p>
           C&apos;est aussi pour cette raison que ce site ne vous impose aucune bannière de
           consentement : il n&apos;y a rien à consentir. Si vous souhaitez malgré tout ne pas
-          être compté, activez l&apos;option « Ne pas me pister » de votre navigateur, elle est
+          être compté, activez l&apos;option «&nbsp;Ne pas me pister&nbsp;» de votre navigateur, elle est
           respectée.
         </p>
       </ArticleLegal>

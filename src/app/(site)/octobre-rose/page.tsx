@@ -102,7 +102,7 @@ export default async function PageOctobreRose() {
                 )}
                 <Repere terme="Tarif">
                   <span className="font-display text-[1.25rem]">{formatXof(sortie.prixXof)}</span> par
-                  personne, tous vélos
+                  personne, tous&nbsp;vélos
                 </Repere>
                 <Repere terme="Compris">Vélo, casque, eau et coco frais</Repere>
               </dl>
@@ -179,7 +179,7 @@ export default async function PageOctobreRose() {
                 </ol>
                 <Link
                   href={`/itineraires/${circuit.slug}`}
-                  className="lien-souligne mt-4 inline-block text-[0.85rem] font-semibold"
+                  className="lien-souligne cible-elargie mt-4 inline-block text-[0.85rem] font-semibold"
                 >
                   Voir l&apos;itinéraire en détail
                 </Link>

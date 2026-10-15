@@ -14,10 +14,10 @@ export function Assistance() {
         <TitreSection taille="lg">
           Une question avant
           <br />
-          de vous lancer ?
+          de vous lancer&nbsp;?
         </TitreSection>
         <p className="mx-auto mt-6 max-w-xl text-[1rem] leading-relaxed text-craie/70">
-          Choix du vélo, faisabilité d&apos;une sortie, groupe de dix personnes : appelez-nous,
+          Choix du vélo, faisabilité d&apos;une sortie, groupe de dix personnes&nbsp;: appelez-nous,
           quelqu&apos;un décroche.
         </p>
 

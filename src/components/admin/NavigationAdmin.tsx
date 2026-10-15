@@ -49,13 +49,13 @@ export function NavigationAdmin({
     <>
       {/* Barre mobile */}
       <div className="flex items-center justify-between border-b border-craie/15 bg-noir-piste px-5 py-3 text-craie lg:hidden">
-        <Link href="/admin">
+        <Link href="/admin" className="cible-elargie">
           <Marque taille={26} />
         </Link>
         <button
           type="button"
           onClick={() => setOuvert((etat) => !etat)}
-          className="rounded-full border border-craie/30 px-4 py-1.5 text-[0.8rem] font-semibold"
+          className="min-h-11 rounded-full border border-craie/30 px-5 py-2 text-[0.85rem] font-semibold"
           aria-expanded={ouvert}
         >
           {ouvert ? "Fermer" : "Menu"}
@@ -66,13 +66,13 @@ export function NavigationAdmin({
         aria-label="Navigation de l'administration"
         className={`${
           ouvert ? "block" : "hidden"
-        } border-b border-craie/15 bg-noir-piste px-5 py-5 text-craie lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-64 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-craie/15 lg:px-6 lg:py-7`}
+        } border-b border-craie/15 bg-noir-piste px-5 py-5 text-craie lg:fixed lg:inset-y-0 lg:left-0 lg:block lg:w-64 lg:overflow-y-auto lg:border-b-0 lg:border-r lg:border-craie/15 lg:px-6 lg:py-5`}
       >
         <Link href="/admin" className="hidden lg:block">
           <Marque taille={28} />
         </Link>
 
-        <p className="mt-8 hidden text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-craie/40 lg:block">Exploitation</p>
+        <p className="mt-5 hidden text-[0.75rem] font-semibold uppercase tracking-[0.14em] text-craie/40 lg:block">Exploitation</p>
         <ul className="mt-3 space-y-1">
           {liens.map((lien) => {
             const actif = lien.exact ? chemin === lien.href : chemin.startsWith(lien.href);
@@ -82,7 +82,7 @@ export function NavigationAdmin({
                   href={lien.href}
                   onClick={() => setOuvert(false)}
                   aria-current={actif ? "page" : undefined}
-                  className={`block rounded-[var(--radius-bouton)] px-3.5 py-2.5 text-[0.9rem] font-medium transition-colors ${
+                  className={`block rounded-[var(--radius-bouton)] px-3.5 py-2.5 text-[0.9rem] font-medium transition-colors lg:py-2 ${
                     actif ? "bg-orange-signal text-noir-piste" : "text-craie/75 hover:bg-craie/10 hover:text-craie"
                   }`}
                 >
@@ -93,7 +93,9 @@ export function NavigationAdmin({
           })}
         </ul>
 
-        <div className="mt-8 space-y-3 border-t border-craie/15 pt-5">
+        {/* Resserré sur grand écran : sur 800 px de haut, la barre fixe
+            cachait « Sécurité du compte » et « Se déconnecter ». */}
+        <div className="mt-8 space-y-3 border-t border-craie/15 pt-5 lg:mt-5 lg:space-y-1 lg:pt-4">
           <p
             className={`rounded-[var(--radius-bouton)] px-3.5 py-2.5 text-[0.76rem] leading-relaxed ${
               modeDonnees === "demo"

@@ -193,6 +193,8 @@ export function Pastille({
 }) {
   // Angles droits, à-plats francs. L'orange n'apparaît pas ici : une
   // pastille n'est pas cliquable, et l'orange est réservé au signal.
+  // 12 px au moins, lisible en plein soleil ; elle ne rétrécit pas dans
+  // une rangée, où elle se cassait en deux lignes face à un nom long.
   const tons = {
     neutre: "bg-craie-ombre text-noir-piste",
     succes: "bg-vert-lagune text-craie",
@@ -203,7 +205,7 @@ export function Pastille({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.08em] ${tons[ton]} ${className}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${tons[ton]} ${className}`}
     >
       {children}
     </span>

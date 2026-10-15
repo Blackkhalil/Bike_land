@@ -20,7 +20,7 @@ export function CatalogueApercu({ velos }: { velos: Velo[] }) {
           choisis un par un
         </TitreSection>
         <p className="max-w-sm text-[0.92rem] leading-relaxed text-craie/65">
-          Un parc volontairement restreint : c&apos;est la condition pour connaître chaque
+          Un parc volontairement restreint&nbsp;: c&apos;est la condition pour connaître chaque
           machine et la rendre irréprochable avant chaque départ.
         </p>
       </div>

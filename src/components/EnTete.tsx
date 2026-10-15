@@ -48,7 +48,12 @@ export function EnTete() {
         opaque ? "bg-noir-piste" : "bg-transparent"
       }`}
     >
-      <div className="mx-auto grid h-[72px] max-w-[1280px] grid-cols-[auto_1fr_auto] items-center gap-6 px-5 sm:px-8">
+      {/* Sous 1024 px, la navigation centrale disparaît : en grille, les
+          actions tombaient alors dans la colonne du milieu, collées à
+          gauche, et le bouton menu sortait de l'écran à 320 px. Elles
+          vont donc à droite (flex), avec des marges plus serrées sous
+          360 px ; la grille à trois colonnes revient avec la navigation. */}
+      <div className="mx-auto flex h-[72px] max-w-[1280px] items-center justify-between gap-2 px-4 min-[360px]:gap-3 min-[360px]:px-5 sm:px-8 lg:grid lg:grid-cols-[auto_1fr_auto] lg:gap-6">
         <Link href="/" aria-label="Bike Land, retour à l'accueil" className="shrink-0">
           <Marque />
         </Link>
@@ -71,7 +76,7 @@ export function EnTete() {
           })}
         </nav>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 min-[360px]:gap-3">
           <Link
             href="/reservation/suivi"
             className="hidden text-[0.9rem] font-medium text-craie/70 transition-colors hover:text-craie md:block"
@@ -83,7 +88,7 @@ export function EnTete() {
               orange passe derrière ce bouton : un bouton orange y
               deviendrait invisible. Il passe donc en craie tant que
               l'en-tête n'est pas opaque. */}
-          <BoutonLien href="/velos" variante={opaque ? "primaire" : "clair"} taille="sm">
+          <BoutonLien href="/velos" variante={opaque ? "primaire" : "clair"} taille="sm" className="max-[359px]:px-3">
             Réserver
           </BoutonLien>
 
@@ -119,10 +124,12 @@ export function EnTete() {
       {menuOuvert && (
         // Le panneau défile en lui-même : la page derrière est bloquée, et
         // sur un téléphone tenu à l'horizontale ses derniers liens
-        // tomberaient sous l'écran, hors d'atteinte.
+        // tomberaient sous l'écran, hors d'atteinte. Il couvre tout l'écran
+        // sous l'en-tête : à la hauteur de ses seuls liens, il laissait voir
+        // la page dessous, immobile mais encore cliquable.
         <div
           id="menu-mobile"
-          className="max-h-[calc(100dvh-72px)] overflow-y-auto overscroll-contain border-t border-craie/15 bg-noir-piste px-5 pb-10 pt-6 lg:hidden"
+          className="h-[calc(100dvh-72px)] overflow-y-auto overscroll-contain border-t border-craie/15 bg-noir-piste px-5 pb-10 pt-6 lg:hidden"
         >
           <nav aria-label="Navigation mobile" className="flex flex-col">
             {[...navigationPrincipale, ...navigationSecondaire].map((lien) => (

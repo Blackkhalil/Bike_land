@@ -40,7 +40,7 @@ export function TuileStat({
           }`}
         >
           <span aria-hidden="true">{positif ? "▲" : "▼"}</span>
-          {formatNombre(Math.abs(variation), 1)} %
+          <span className="whitespace-nowrap">{formatNombre(Math.abs(variation), 1)}&nbsp;%</span>
           <span className="font-normal text-gris-cadre">par rapport à la période précédente</span>
         </p>
       ) : (

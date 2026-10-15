@@ -104,7 +104,7 @@ export default async function PageVelo({ params }: { params: Params }) {
           du vélo serait sinon blanc sur blanc. */}
       <section
         className="pt-28 text-noir-piste sm:pt-36"
-        style={{ background: `linear-gradient(170deg, ${velo.teintes[1]} 0%, #f2efe9 78%)` }}
+        style={{ background: `linear-gradient(170deg, ${fondDuBandeau(velo.teintes[1])} 0%, #f2efe9 78%)` }}
       >
         <div className="mx-auto max-w-[1280px] px-5 sm:px-8">
           <nav aria-label="Fil d'ariane" className="etiquette flex items-center gap-2 opacity-75">
@@ -134,20 +134,32 @@ export default async function PageVelo({ params }: { params: Params }) {
               </TitreSection>
               <p className="mt-4 max-w-xl text-[1.05rem] text-noir-releve">{velo.accroche}</p>
 
-              <p className="mt-5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.95rem] text-gris-cadre">
+              {/* Sur téléphone, le prix du road trip passe en bloc à la
+                  ligne : coupée après « road trip », la ligne faisait lire
+                  le prix à l'heure comme celui du road trip. */}
+              <p className="mt-5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[0.95rem] text-noir-releve/75">
                 <strong className="font-display text-[1.5rem] font-extrabold tabular-nums text-noir-piste">
                   {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)}
                 </strong>
                 l&apos;heure
-                <span aria-hidden="true" className="px-1 opacity-40">
+                <span aria-hidden="true" className="hidden px-1 opacity-40 sm:inline">
                   •
                 </span>
-                road trip{" "}
-                <strong className="font-semibold tabular-nums text-noir-piste">
-                  {formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])}
-                </strong>{" "}
-                par personne
+                <span className="whitespace-nowrap">
+                  road trip{" "}
+                  <strong className="font-semibold tabular-nums text-noir-piste">
+                    {formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])}
+                  </strong>{" "}
+                  par personne
+                </span>
               </p>
+
+              {/* L'encart de réservation passe sous la description sous
+                  1024 px, à plus de trois écrans du haut : ce bouton y
+                  mène d'un geste. */}
+              <BoutonLien href="#reserver" className="mt-6 w-full sm:w-auto lg:hidden">
+                Réserver ce vélo
+              </BoutonLien>
             </div>
             {/* Plus d'étoiles par vélo : les avis portent sur l'expérience
                 Bike Land dans son ensemble, pas sur la machine. Coller
@@ -236,7 +248,7 @@ export default async function PageVelo({ params }: { params: Params }) {
             </div>
           </div>
 
-          <div className="lg:col-span-5">
+          <div id="reserver" className="scroll-mt-24 lg:col-span-5">
             <div className="lg:sticky lg:top-24">
               {/* Le widget lit les paramètres de l'URL, ce qui n'est
                   possible dans une page prérendue qu'à l'intérieur d'une
@@ -270,14 +282,30 @@ export default async function PageVelo({ params }: { params: Params }) {
             Tout le catalogue
           </BoutonLien>
         </div>
+        {/* Trois vélos sur deux colonnes finissaient par une carte seule :
+            sur tablette, le troisième attend la grille à trois colonnes. */}
         <div className="mt-10 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-          {similaires.map((autre) => (
-            <CarteVelo key={autre.id} velo={autre} />
+          {similaires.map((autre, index) => (
+            <CarteVelo key={autre.id} velo={autre} className={index === 2 ? "sm:max-lg:hidden" : ""} />
           ))}
         </div>
       </Section>
     </>
   );
+}
+
+/**
+ * Le départ du dégradé du bandeau : la teinte du vélo quand elle est
+ * claire, le sable des autres fiches sinon. L'encre du bandeau est sombre ;
+ * partie d'une teinte presque noire (#1c1b19 : le Prestige et trois
+ * Premium), elle laissait le fil d'Ariane et la ligne de prix gris sur gris.
+ */
+function fondDuBandeau(teinte: string | undefined): string {
+  if (!teinte || !/^#[0-9a-f]{6}$/i.test(teinte)) return "#e0dcd3";
+  const rvb = parseInt(teinte.slice(1), 16);
+  // Luminance perçue (ITU-R BT.601), de 0 à 255.
+  const luminance = 0.299 * ((rvb >> 16) & 255) + 0.587 * ((rvb >> 8) & 255) + 0.114 * (rvb & 255);
+  return luminance > 160 ? teinte : "#e0dcd3";
 }
 
 /** Emplacement réservé pendant que l'encart de réservation s'installe. */

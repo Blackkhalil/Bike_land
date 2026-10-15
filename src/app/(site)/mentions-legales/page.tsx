@@ -41,7 +41,7 @@ export default function PageMentionsLegales() {
           </p>
         ) : null}
         <p>
-          Téléphone : {site.telephone}. Courriel : {site.email}
+          Téléphone&nbsp;: <span className="whitespace-nowrap">{site.telephone}</span>. Courriel&nbsp;: {site.email}
         </p>
       </ArticleLegal>
 

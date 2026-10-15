@@ -18,7 +18,7 @@ export function DepartComplet({ depart }: { depart: CreneauProposable }) {
     <div className="flex items-start justify-between gap-3 rounded-[var(--radius-bouton)] border border-noir-piste/12 bg-craie-ombre/50 px-4 py-3 text-left text-noir-piste/70">
       <span className="min-w-0">
         <span className="block font-semibold">
-          {depart.libelle} {formatDate(depart.date)}
+          {depart.libelle} <span className="whitespace-nowrap">{formatDate(depart.date)}</span>
         </span>
         <span className="mt-0.5 block text-[0.78rem]">
           {formatHeure(depart.heureDebut)} - {formatHeure(depart.heureFin)}
@@ -27,7 +27,7 @@ export function DepartComplet({ depart }: { depart: CreneauProposable }) {
       </span>
       <span
         lang="en"
-        className="shrink-0 rounded-[var(--radius-bouton)] bg-noir-piste px-2 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-craie"
+        className="shrink-0 rounded-[var(--radius-bouton)] bg-noir-piste px-2 py-1 text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-craie"
       >
         Sold out
       </span>

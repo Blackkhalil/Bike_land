@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 
 import { CalendrierParc } from "@/components/admin/CalendrierParc";
 import { Pastille } from "@/components/ui";
@@ -152,7 +153,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                       {reservation.client.prenom} {reservation.client.nom}
                     </strong>
                     <span className="block text-[0.78rem] text-gris-cadre">
-                      {reservation.lignes.map((ligne) => ligne.veloNom).join(", ")} ·{" "}
+                      <NomsVelos reservation={reservation} /> ·{" "}
                       {resumeOffre(reservation)}
                       {reservation.offre === "location-libre" &&
                         ` · CIP + caution ${formatXof(reservation.cautionXof)} à réclamer`}
@@ -182,7 +183,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                       {reservation.client.prenom} {reservation.client.nom}
                     </strong>
                     <span className="block text-[0.78rem] text-gris-cadre">
-                      {reservation.lignes.map((ligne) => ligne.veloNom).join(", ")}
+                      <NomsVelos reservation={reservation} />
                       {reservation.cautionXof > 0 &&
                         ` · caution ${formatXof(reservation.cautionXof)} et CIP à rendre`}
                     </span>
@@ -208,20 +209,20 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
             Toutes les réservations
           </h2>
 
-          <form method="get" className="flex flex-wrap items-center gap-2">
+          <form method="get" className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             <input
               type="search"
               name="reference"
               defaultValue={recherche}
               placeholder="Référence, nom, email ou vélo"
               aria-label="Rechercher une réservation"
-              className="h-9 w-56 rounded-full border border-noir-piste/20 px-4 text-[0.85rem]"
+              className="h-11 w-full rounded-full border border-noir-piste/20 px-4 text-[0.85rem] sm:h-9 sm:w-64"
             />
             <select
               name="statut"
               defaultValue={filtreStatut}
               aria-label="Filtrer par statut"
-              className="h-9 rounded-full border border-noir-piste/20 px-4 text-[0.85rem]"
+              className="h-11 rounded-full border border-noir-piste/20 px-4 text-[0.85rem] sm:h-9"
             >
               <option value="">Tous les statuts</option>
               {Object.entries(libelles).map(([valeur, libelle]) => (
@@ -232,17 +233,19 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
             </select>
             <button
               type="submit"
-              className="h-9 rounded-full bg-noir-piste px-5 text-[0.82rem] font-semibold text-craie"
+              className="h-11 rounded-full bg-noir-piste px-5 text-[0.82rem] font-semibold text-craie sm:h-9"
             >
               Filtrer
             </button>
           </form>
         </div>
 
-        {/* Sur téléphone, une fiche par réservation : le tableau fait
-            860 px de large, et le statut comme le montant tombaient hors
-            de l'écran, au bout d'une ligne qu'il fallait faire glisser. */}
-        <ul className="mt-6 grid gap-3 md:hidden">
+        {/* Une fiche par réservation, deux par ligne sur tablette : le
+            tableau fait 860 px de large, et le statut comme le montant
+            tombaient hors de l'écran, au bout d'une ligne qu'il fallait
+            faire glisser. Avec la barre latérale, ouverte dès lg, il ne
+            tient qu'à partir de xl. */}
+        <ul className="mt-6 grid gap-3 md:grid-cols-2 xl:hidden">
           {filtrees.map((reservation) => (
             <li
               key={reservation.id}
@@ -259,7 +262,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[0.84rem]">
                 <div>
-                  <dt className="text-[0.74rem] text-gris-cadre">Date</dt>
+                  <dt className="text-[0.75rem] text-gris-cadre">Date</dt>
                   <dd>
                     {formatDate(reservation.dateDebut)}
                     <span className="block text-[0.76rem] text-gris-cadre tabular-nums">
@@ -268,18 +271,20 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[0.74rem] text-gris-cadre">Total</dt>
+                  <dt className="text-[0.75rem] text-gris-cadre">Total</dt>
                   <dd className="font-semibold tabular-nums">
                     {formatXof(reservation.totalXof)}
                     <ReglementEspeces reservation={reservation} />
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-[0.74rem] text-gris-cadre">Vélo</dt>
-                  <dd>{reservation.lignes.map((ligne) => ligne.veloNom).join(", ")}</dd>
+                  <dt className="text-[0.75rem] text-gris-cadre">Vélo</dt>
+                  <dd>
+                    <NomsVelos reservation={reservation} />
+                  </dd>
                 </div>
                 <div>
-                  <dt className="text-[0.74rem] text-gris-cadre">Formule</dt>
+                  <dt className="text-[0.75rem] text-gris-cadre">Formule</dt>
                   <dd>
                     {resumeOffre(reservation)}
                     {reservation.cautionXof > 0 && (
@@ -294,13 +299,13 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
             </li>
           ))}
           {filtrees.length === 0 && (
-            <li className="py-8 text-center text-[0.9rem] text-gris-cadre">
+            <li className="py-8 text-center text-[0.9rem] text-gris-cadre md:col-span-2">
               Aucune réservation ne correspond à cette recherche.
             </li>
           )}
         </ul>
 
-        <div className="mt-6 hidden overflow-x-auto md:block">
+        <div className="mt-6 hidden overflow-x-auto xl:block">
           <table className="w-full min-w-[54rem] border-collapse text-left text-[0.85rem]">
             <caption className="sr-only">Liste des réservations</caption>
             <thead>
@@ -325,7 +330,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                     </span>
                   </td>
                   <td className="py-3 pr-4">
-                    {reservation.lignes.map((ligne) => ligne.veloNom).join(", ")}
+                    <NomsVelos reservation={reservation} />
                   </td>
                   <td className="py-3 pr-4">
                     {resumeOffre(reservation)}
@@ -383,6 +388,23 @@ function etiquette(reservation: Reservation): { texte: string; ton: (typeof tons
   return paiementARembourser(reservation)
     ? { texte: "À rembourser", ton: "alerte" }
     : { texte: libelles[reservation.statut], ton: tons[reservation.statut] };
+}
+
+/**
+ * Les vélos de la réservation, chaque nom d'un seul tenant : « Prestige
+ * N° 1 » ne se coupe plus entre « N° » et « 1 ».
+ */
+function NomsVelos({ reservation }: { reservation: Reservation }) {
+  return (
+    <>
+      {reservation.lignes.map((ligne, index) => (
+        <Fragment key={ligne.veloId}>
+          {index > 0 && ", "}
+          <span className="whitespace-nowrap">{ligne.veloNom}</span>
+        </Fragment>
+      ))}
+    </>
+  );
 }
 
 /** « Espèces, reçu par Koffi » sous le montant d'une vente au comptoir. */

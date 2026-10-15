@@ -14,7 +14,7 @@ export const itineraires: Itineraire[] = [
     titre: "La route des Pêches jusqu'à Togbin",
     region: "Fidjrossè → Togbin",
     distanceKm: 30,
-    duree: "Environ 3 h",
+    duree: "Environ 3 h",
     niveau: "Facile",
     denivele: 25,
     resume:
@@ -48,7 +48,7 @@ export const itineraires: Itineraire[] = [
     titre: "La route des Pêches jusqu'à l'Amazone",
     region: "Fidjrossè → l'Amazone",
     distanceKm: 18,
-    duree: "Environ 2 h",
+    duree: "Environ 2 h",
     niveau: "Facile",
     denivele: 15,
     resume:

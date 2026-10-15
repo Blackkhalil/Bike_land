@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatNombre } from "@/lib/format";
 import { encreSecondaire, teinteUnique } from "./palette";
@@ -10,6 +10,7 @@ import {
   LignesGrille,
   TableauDeSecours,
   graduations,
+  intervalleEtiquettes,
   type Point,
 } from "./primitives";
 
@@ -41,8 +42,23 @@ export function Colonnes({
   const conteneur = useRef<HTMLDivElement>(null);
   const [survol, setSurvol] = useState<number | null>(null);
   const [largeur, setLargeur] = useState(720);
+  const vide = points.length === 0;
 
-  if (points.length === 0) {
+  // Le dessin suit la largeur réelle du cadre, mesurée dès l'affichage puis
+  // à chaque redimensionnement : un viewBox fixe de 720, réduit à la largeur
+  // d'un téléphone, ramenait les étiquettes de 11 px à 4 px.
+  useEffect(() => {
+    const element = conteneur.current;
+    if (!element) return;
+    const observateur = new ResizeObserver(([entree]) => {
+      const mesure = Math.round(entree.contentRect.width);
+      if (mesure > 0) setLargeur(mesure);
+    });
+    observateur.observe(element);
+    return () => observateur.disconnect();
+  }, [vide]);
+
+  if (vide) {
     return (
       <CadreGraphique titre={titre} sousTitre={sousTitre} actions={actions}>
         <p className="py-12 text-center text-[0.9rem] text-gris-cadre">Aucune donnée sur la période.</p>
@@ -58,19 +74,11 @@ export function Colonnes({
   const zoneHauteur = HAUTEUR - MARGE_HAUTE - MARGE_BASSE;
   const pas = zoneLargeur / points.length;
   const epaisseur = Math.min(pas - 8, EPAISSEUR_MAX);
+  const intervalle = intervalleEtiquettes(pas);
 
   return (
     <CadreGraphique titre={titre} sousTitre={sousTitre} actions={actions}>
-      <div
-        ref={conteneur}
-        className="relative"
-        onMouseMove={(evenement) => {
-          const cadre = conteneur.current?.getBoundingClientRect();
-          if (cadre) setLargeur(cadre.width);
-          void evenement;
-        }}
-        onMouseLeave={() => setSurvol(null)}
-      >
+      <div ref={conteneur} className="relative" onMouseLeave={() => setSurvol(null)}>
         <svg
           viewBox={`0 0 ${largeur} ${HAUTEUR}`}
           className="w-full"
@@ -121,8 +129,7 @@ export function Colonnes({
           })}
 
           {points.map((point, index) => {
-            const intervalle = points.length > 8 ? 2 : 1;
-            if (index % intervalle !== 0 && index !== points.length - 1) return null;
+            if ((points.length - 1 - index) % intervalle !== 0) return null;
             return (
               <text
                 key={point.clef}

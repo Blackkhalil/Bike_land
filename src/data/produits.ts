@@ -118,10 +118,14 @@ export function signatureOctobreRose(jour: DateISO): string {
   return `${jour.slice(0, 4)}|${OCTOBRE_ROSE.sortie?.date ?? "date-a-venir"}`;
 }
 
-/** « Plus qu'une place. », « Plus que 3 places. », « 9 places disponibles. » */
+/**
+ * « Plus qu'une place. », « Plus que 3 places. », « 9 places disponibles. »
+ * Une espace insécable lie le nombre au mot « places » : le « 9 » ne reste
+ * plus seul en bout de ligne.
+ */
 export function placesRestantes(places: number): string {
   if (places === 1) return "Plus qu'une place.";
-  return places <= 5 ? `Plus que ${places} places.` : `${places} places disponibles.`;
+  return places <= 5 ? `Plus que ${places} places.` : `${places} places disponibles.`;
 }
 
 /** Les messages WhatsApp déjà écrits des boutons de la page. */

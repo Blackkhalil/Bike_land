@@ -452,14 +452,14 @@ export function TunnelReservation({
       <div className="lg:col-span-7">
         <NoteHoraires offre={offre} className="mb-6" />
         {/* Fil des étapes */}
-        <ol className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <ol className="flex flex-wrap items-center gap-x-3 gap-y-0 sm:gap-y-2">
           {etapes.map((item, index) => (
             <li key={item.numero} className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => item.numero < etape && setEtape(item.numero)}
                 disabled={item.numero >= etape}
-                className={`flex items-center gap-2 text-[0.8rem] font-semibold uppercase tracking-[0.08em] transition-opacity ${
+                className={`flex min-h-11 items-center gap-2 text-[0.8rem] font-semibold uppercase tracking-[0.08em] transition-opacity ${
                   item.numero === etape
                     ? "text-noir-piste"
                     : item.numero < etape
@@ -468,7 +468,7 @@ export function TunnelReservation({
                 }`}
               >
                 <span
-                  className={`grid h-6 w-6 place-items-center rounded-full text-[0.72rem] ${
+                  className={`grid h-6 w-6 place-items-center rounded-full text-[0.75rem] ${
                     item.numero === etape
                       ? "bg-noir-piste text-craie"
                       : item.numero < etape
@@ -480,10 +480,12 @@ export function TunnelReservation({
                 </span>
                 {item.titre}
               </button>
+              {/* Pas de trait sur téléphone : le fil y passe à la ligne, et
+                  le trait restait suspendu en bout de ligne. */}
               {index < etapes.length - 1 && (
                 <span
                   aria-hidden="true"
-                  className="h-px w-6 bg-noir-piste/20 sm:w-10"
+                  className="hidden h-px w-6 bg-noir-piste/20 sm:block sm:w-10"
                 />
               )}
             </li>
@@ -543,7 +545,7 @@ export function TunnelReservation({
               {offre === "location-libre" && (
                 <a
                   href={`/velos/${velo.slug}?debut=${dateDebut}&fin=${dateFin}`}
-                  className="lien-souligne text-[0.82rem] font-semibold text-orange-signal"
+                  className="lien-souligne cible-elargie text-[0.82rem] font-semibold text-orange-signal"
                 >
                   Changer le jour
                 </a>
@@ -597,7 +599,7 @@ export function TunnelReservation({
                 <legend className="text-[0.9rem] font-semibold">
                   Combien de temps ?
                 </legend>
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {GRILLE_HORAIRE[velo.gamme].map((palier) => {
                     const actif = dureeHeures === palier.heures;
                     return (
@@ -606,16 +608,16 @@ export function TunnelReservation({
                         type="button"
                         onClick={() => choisirDuree(palier.heures)}
                         aria-pressed={actif}
-                        className={`min-h-[44px] flex-1 rounded-[var(--radius-bouton)] border px-3 transition-colors ${
+                        className={`min-h-[44px] rounded-[var(--radius-bouton)] border px-3 transition-colors ${
                           actif
                             ? "border-orange-signal bg-orange-signal text-noir-piste"
                             : "border-noir-piste/20 bg-white hover:border-noir-piste/50"
                         }`}
                       >
                         <span className="block font-semibold">
-                          {palier.heures} h
+                          {palier.heures}&nbsp;h
                         </span>
-                        <span className="block text-[0.72rem] opacity-75">
+                        <span className="block whitespace-nowrap text-[0.8rem] opacity-75">
                           {formatXof(palier.prixXof)}
                         </span>
                       </button>
@@ -700,7 +702,8 @@ export function TunnelReservation({
                     {complets.length > 0
                       ? "Les prochains départs de road trip sont sold out. "
                       : "Aucun départ de road trip n'est ouvert à la réservation en ce moment : les prochaines sorties sont complètes. "}
-                    La location libre reste possible, ou appelez-nous au {site.telephone}.
+                    La location libre reste possible, ou appelez-nous au{" "}
+                    <span className="whitespace-nowrap">{site.telephone}</span>.
                   </p>
                   </div>
                 )}
@@ -828,47 +831,49 @@ export function TunnelReservation({
               </p>
             )}
 
-            <fieldset className="mt-10">
-              <legend className="etiquette opacity-75">Options</legend>
-              <div className="mt-4 space-y-3">
-                {optionsLocation.map((option) => {
-                  const actif = optionsChoisies.includes(option.code);
-                  return (
-                    <label
-                      key={option.code}
-                      className={`flex cursor-pointer items-start gap-4 rounded-[var(--radius-bouton)] border p-4 transition-colors ${
-                        actif
-                          ? "border-orange-signal bg-orange-signal/10"
-                          : "border-noir-piste/15 bg-craie"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={actif}
-                        onChange={() => basculerOption(option.code)}
-                        className="mt-1 h-4 w-4 shrink-0 accent-[#f25c05]"
-                      />
-                      <span className="flex-1">
-                        <span className="flex flex-wrap items-baseline justify-between gap-2">
-                          <span className="font-semibold">
-                            {option.libelle}
-                          </span>
-                          <span className="text-[0.85rem] font-semibold text-orange-sourd">
-                            {formatXof(option.prixXof)}
-                            <span className="font-normal text-gris-cadre">
-                              {option.unite === "jour" ? " / jour" : " forfait"}
+            {optionsLocation.length > 0 && (
+              <fieldset className="mt-10">
+                <legend className="etiquette opacity-75">Options</legend>
+                <div className="mt-4 space-y-3">
+                  {optionsLocation.map((option) => {
+                    const actif = optionsChoisies.includes(option.code);
+                    return (
+                      <label
+                        key={option.code}
+                        className={`flex cursor-pointer items-start gap-4 rounded-[var(--radius-bouton)] border p-4 transition-colors ${
+                          actif
+                            ? "border-orange-signal bg-orange-signal/10"
+                            : "border-noir-piste/15 bg-craie"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={actif}
+                          onChange={() => basculerOption(option.code)}
+                          className="mt-1 h-4 w-4 shrink-0 accent-[#f25c05]"
+                        />
+                        <span className="flex-1">
+                          <span className="flex flex-wrap items-baseline justify-between gap-2">
+                            <span className="font-semibold">
+                              {option.libelle}
+                            </span>
+                            <span className="text-[0.85rem] font-semibold text-orange-sourd">
+                              {formatXof(option.prixXof)}
+                              <span className="font-normal text-gris-cadre">
+                                {option.unite === "jour" ? " / jour" : " forfait"}
+                              </span>
                             </span>
                           </span>
+                          <span className="mt-1 block text-[0.85rem] leading-relaxed text-gris-cadre">
+                            {option.description}
+                          </span>
                         </span>
-                        <span className="mt-1 block text-[0.85rem] leading-relaxed text-gris-cadre">
-                          {option.description}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            )}
 
             <Bouton
               onClick={() => setEtape(2)}
@@ -1082,8 +1087,8 @@ export function TunnelReservation({
                           void verifierPromo();
                         }
                       }}
-                      placeholder="Celui que vous a donné notre partenaire"
-                      className="min-w-[12rem] flex-1 rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-3 text-[0.95rem] uppercase outline-none transition-colors focus:border-orange-signal"
+                      placeholder="Code partenaire"
+                      className="min-w-[12rem] flex-1 rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-3 text-[0.95rem] uppercase outline-none transition-colors placeholder:normal-case focus:border-orange-signal"
                     />
                     <button
                       type="button"
@@ -1113,7 +1118,7 @@ export function TunnelReservation({
             <dl className="mt-6 rounded-[var(--radius-carte)] bg-craie p-5 text-[0.88rem]">
               <div className="flex justify-between gap-4">
                 <dt className="text-gris-cadre">Votre location</dt>
-                <dd className="tabular-nums">{formatXof(devis.totalXof)}</dd>
+                <dd className="shrink-0 whitespace-nowrap tabular-nums">{formatXof(devis.totalXof)}</dd>
               </div>
               <div className="mt-2 flex justify-between gap-4">
                 <dt className="text-gris-cadre">
@@ -1123,11 +1128,11 @@ export function TunnelReservation({
                     l&apos;opérateur de paiement
                   </span>
                 </dt>
-                <dd className="tabular-nums">+ {formatXof(fraisEncaissement(devis.totalXof))}</dd>
+                <dd className="shrink-0 whitespace-nowrap tabular-nums">+ {formatXof(fraisEncaissement(devis.totalXof))}</dd>
               </div>
               <div className="mt-3 flex items-baseline justify-between gap-4 border-t border-noir-piste/12 pt-3">
                 <dt className="font-semibold">Débité de votre compte</dt>
-                <dd className="font-display text-[1.2rem] font-extrabold tabular-nums text-orange-sourd">
+                <dd className="shrink-0 whitespace-nowrap font-display text-[1.2rem] font-extrabold tabular-nums text-orange-sourd">
                   {formatXof(montantDebite)}
                 </dd>
               </div>
@@ -1208,9 +1213,9 @@ export function TunnelReservation({
       <aside className="lg:col-span-5">
         <div className="lg:sticky lg:top-24">
           <div className="border border-noir-piste/15 bg-craie p-6">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
               <p className="etiquette opacity-75">Récapitulatif</p>
-              <Pastille ton="neutre">
+              <Pastille ton="neutre" className="whitespace-nowrap">
                 {offre === "road-trip"
                   ? `Road trip · ${devis.nombrePersonnes} pers.`
                   : `Location libre · ${devis.dureeHeures} h`}

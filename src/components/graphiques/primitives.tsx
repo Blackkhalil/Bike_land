@@ -187,6 +187,15 @@ export function graduations(maximum: number, nombre = 4): number[] {
   return graduations;
 }
 
+/**
+ * Tous les combien de points écrire une étiquette d'abscisse, `pas` étant
+ * leur écart en pixels. Un mois en 11 px fait jusqu'à 42 px (« mars 26 ») :
+ * 52 px d'un centre à l'autre les gardent séparés, à toutes les largeurs.
+ */
+export function intervalleEtiquettes(pas: number): number {
+  return Math.max(1, Math.ceil(52 / pas));
+}
+
 export function LignesGrille({
   valeurs,
   hauteur,

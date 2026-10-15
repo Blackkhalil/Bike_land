@@ -44,17 +44,25 @@ const formatteurMontant = new Intl.NumberFormat("fr-FR", {
   maximumFractionDigits: 0,
 });
 
+/**
+ * L'espace insécable entre un nombre et son unité : « 1 625 FCFA »,
+ * « 8 h », « 20 % » ne se coupent jamais en fin de ligne, où l'unité
+ * seule au début de la suivante se lisait mal sur téléphone. Les
+ * milliers, eux, sont déjà séparés par l'espace fine insécable d'Intl.
+ */
+const INSECABLE = String.fromCharCode(0xa0);
+
 export function formatXof(montant: number): string {
-  return `${formatteurMontant.format(Math.round(montant))} FCFA`;
+  return `${formatteurMontant.format(Math.round(montant))}${INSECABLE}FCFA`;
 }
 
 export function formatXofCourt(montant: number): string {
   if (montant >= 1_000_000) {
     const millions = montant / 1_000_000;
-    return `${formatteurMontant.format(Number(millions.toFixed(millions < 10 ? 1 : 0)))} M`;
+    return `${formatteurMontant.format(Number(millions.toFixed(millions < 10 ? 1 : 0)))}${INSECABLE}M`;
   }
   if (montant >= 1_000) {
-    return `${formatteurMontant.format(Math.round(montant / 1000))} k`;
+    return `${formatteurMontant.format(Math.round(montant / 1000))}${INSECABLE}k`;
   }
   return formatteurMontant.format(montant);
 }
@@ -133,12 +141,12 @@ export function formatCreneau(reservation: {
       `départ ${formatHoraire(sortie.depart)}`
     );
   }
-  return `${formatDate(reservation.dateDebut)}, de ${reservation.heureDebut} h à ${reservation.heureFin} h`;
+  return `${formatDate(reservation.dateDebut)}, de ${reservation.heureDebut}${INSECABLE}h à ${reservation.heureFin}${INSECABLE}h`;
 }
 
 /** Le seul horaire, sans le jour : « 8 h - 11 h ». */
 export function formatPlageHoraire(heureDebut: number, heureFin: number): string {
-  return `${heureDebut} h - ${heureFin} h`;
+  return `${heureDebut}${INSECABLE}h - ${heureFin}${INSECABLE}h`;
 }
 
 /**
@@ -177,7 +185,7 @@ export function formatNombre(valeur: number, decimales = 0): string {
 }
 
 export function formatPourcentage(valeur: number, decimales = 0): string {
-  return `${formatNombre(valeur, decimales)} %`;
+  return `${formatNombre(valeur, decimales)}${INSECABLE}%`;
 }
 
 function versDate(valeur: string | Date): Date {
@@ -201,12 +209,12 @@ export function resumeOffre(reservation: {
 }): string {
   const n = reservation.nombrePersonnes;
   if (reservation.offre === "road-trip") {
-    return `${nomDuRoadTrip(reservation)} · ${n} personne${n > 1 ? "s" : ""}`;
+    return `${nomDuRoadTrip(reservation)} · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;
   }
   if (reservation.offre === "octobre-rose") {
-    return `Octobre rose · ${n} personne${n > 1 ? "s" : ""}`;
+    return `Octobre rose · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;
   }
-  return `Location libre · ${reservation.dureeHeures ?? "?"} h`;
+  return `Location libre · ${reservation.dureeHeures ?? "?"}${INSECABLE}h`;
 }
 
 /**

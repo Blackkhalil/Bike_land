@@ -65,13 +65,13 @@ export default async function PageMessagesAdmin({ searchParams }: { searchParams
             type="search"
             name="q"
             defaultValue={recherche}
-            placeholder="Nom, email ou mot du message"
+            placeholder="Nom, email, mot-clé"
             aria-label="Rechercher un message"
-            className="h-9 min-w-0 flex-1 rounded-full border border-noir-piste/20 px-4 text-[0.85rem] sm:w-64 sm:flex-none"
+            className="h-11 min-w-0 flex-1 rounded-full border border-noir-piste/20 px-4 text-[0.85rem] sm:h-9 sm:w-64 sm:flex-none"
           />
           <button
             type="submit"
-            className="h-9 rounded-full bg-noir-piste px-5 text-[0.82rem] font-semibold text-craie"
+            className="h-11 rounded-full bg-noir-piste px-5 text-[0.82rem] font-semibold text-craie sm:h-9"
           >
             Chercher
           </button>

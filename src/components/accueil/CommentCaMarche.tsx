@@ -13,7 +13,7 @@ export function CommentCaMarche() {
     <Section fond="craie" className="py-20 sm:py-28">
       <TitreSection className="max-w-2xl">Comment ça marche</TitreSection>
 
-      <ol className="mt-12 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-4">
+      <ol className="mt-12 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:grid-cols-5 lg:gap-x-6">
         {etapesLocation.map((etape) => (
           <li key={etape.numero} className="border-t-2 border-noir-piste pt-5">
             <p className="font-display text-[1.6rem] leading-none text-orange-sourd">

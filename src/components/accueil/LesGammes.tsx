@@ -8,7 +8,7 @@ import {
   GRILLE_HORAIRE,
   PRIX_ROAD_TRIP_XOF,
 } from "@/data/offres";
-import { formatXof } from "@/lib/format";
+import { formatNombre, formatXof } from "@/lib/format";
 import type { Velo } from "@/lib/types";
 
 /**
@@ -70,7 +70,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
               <div className="flex items-baseline justify-between gap-3">
                 <h3 className="titre-editorial text-[1.5rem]">{gamme.nom}</h3>
                 {misEnAvant && (
-                  <span className="rounded-full bg-orange-signal px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.06em] text-noir-piste">
+                  <span className="shrink-0 rounded-full bg-orange-signal px-3 py-1 text-xs font-semibold uppercase tracking-[0.06em] text-noir-piste">
                     Le plus pris
                   </span>
                 )}
@@ -89,21 +89,21 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
 
               <dl className="mt-6 space-y-2.5 border-t border-noir-piste/12 pt-5 text-[0.86rem]">
                 <div className="flex justify-between gap-3">
-                  <dt className="text-gris-cadre">La machine</dt>
+                  <dt className="shrink-0 text-gris-cadre">La machine</dt>
                   <dd className="text-right font-medium">{gamme.machine}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-gris-cadre">Au choix</dt>
+                  <dt className="shrink-0 text-gris-cadre">Au choix</dt>
                   <dd className="text-right font-medium">{auChoix(disponibles.length)}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-gris-cadre">Road trip</dt>
+                  <dt className="shrink-0 text-gris-cadre">Road trip</dt>
                   <dd className="text-right font-medium tabular-nums">
                     {formatXof(PRIX_ROAD_TRIP_XOF[gamme.code])} / pers.
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-gris-cadre">Offert au retour</dt>
+                  <dt className="shrink-0 text-gris-cadre">Offert au retour</dt>
                   <dd className="text-right font-medium">
                     Eau +{" "}
                     {COCOS_ROAD_TRIP[gamme.code] > 1
@@ -129,7 +129,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
                     : "border border-noir-piste/25 text-noir-piste"
                 }`}
               >
-                Voir les {gamme.nom.toLowerCase()}
+                Voir les vélos {gamme.nom}
               </Link>
             </article>
           );
@@ -142,15 +142,15 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
       <div className="mt-10 overflow-x-auto">
         <table className="w-full border-collapse text-left text-[0.84rem] sm:min-w-[34rem] sm:text-[0.9rem]">
           <caption className="pb-3 text-left text-[0.86rem] text-gris-cadre">
-            Location libre : ce que coûte chaque durée, par gamme, en FCFA. Tous les tarifs
-            sont frais compris : le montant affiché est celui que vous payez.
+            Location libre&nbsp;: ce que coûte chaque durée, par gamme, en FCFA. Tous les tarifs
+            sont frais compris&nbsp;: le montant affiché est celui que vous payez.
           </caption>
           <thead>
-            <tr className="border-b border-noir-piste/20 text-[0.74rem] uppercase tracking-[0.06em] text-gris-cadre">
+            <tr className="border-b border-noir-piste/20 text-xs uppercase tracking-[0.06em] text-gris-cadre">
               <th className="py-2.5 pr-2 font-semibold sm:pr-4">Gamme</th>
               {durees.map((heures) => (
                 <th key={heures} className="py-2.5 pr-2 text-right font-semibold sm:pr-4">
-                  {heures} h
+                  {heures}&nbsp;h
                 </th>
               ))}
             </tr>
@@ -164,7 +164,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
                     {/* L'unité est dite une fois dans la légende sur
                         téléphone : répétée dans chaque case, elle faisait
                         déborder le tableau et cachait les 3 h et 4 h. */}
-                    <span className="sm:hidden">{formatXof(palier.prixXof).replace(" FCFA", "")}</span>
+                    <span className="sm:hidden">{formatNombre(palier.prixXof)}</span>
                     <span className="hidden sm:inline">{formatXof(palier.prixXof)}</span>
                   </td>
                 ))}

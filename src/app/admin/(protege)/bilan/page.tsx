@@ -87,8 +87,10 @@ export default async function PageBilan() {
         />
       </dl>
 
-      {/* Téléphone : une carte par semaine. */}
-      <div className="mt-8 space-y-3 md:hidden">
+      {/* Une carte par semaine, deux par ligne sur tablette. Le tableau
+          fait près de 1 000 px : avec la barre latérale, ouverte dès lg, il
+          ne tient qu'à partir de xl. */}
+      <div className="mt-8 grid gap-3 md:grid-cols-2 xl:hidden">
         {semaines.map(({ debut, fin, stats, commissions }) => (
           <article key={debut} className="rounded-[var(--radius-carte)] bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -111,26 +113,27 @@ export default async function PageBilan() {
         ))}
       </div>
 
-      {/* Ordinateur : un tableau. */}
-      <div className="mt-8 hidden overflow-x-auto rounded-[var(--radius-carte)] bg-white md:block">
+      {/* Grand écran : un tableau. Les en-têtes passent sur deux lignes
+          pour qu'il tienne en entier à 1 280 px. */}
+      <div className="mt-8 hidden overflow-x-auto rounded-[var(--radius-carte)] bg-white xl:block">
         <table className="w-full whitespace-nowrap text-left text-[0.85rem]">
-          <thead className="border-b border-noir-piste/10 text-[0.76rem] text-gris-cadre">
+          <thead className="whitespace-normal align-bottom border-b border-noir-piste/10 text-[0.76rem] text-gris-cadre">
             <tr>
-              <th className="px-3 py-3 font-semibold">Semaine</th>
-              <th className="px-3 py-3 text-right font-semibold">Encaissé (évolution)</th>
-              <th className="px-3 py-3 text-right font-semibold">Net après frais</th>
-              <th className="px-3 py-3 text-right font-semibold">Réservations</th>
-              <th className="px-3 py-3 text-right font-semibold">Road trip</th>
-              <th className="px-3 py-3 text-right font-semibold">Location libre</th>
-              <th className="px-3 py-3 text-right font-semibold">Commissions</th>
-              <th className="px-3 py-3 font-semibold">Vélo en tête</th>
-              <th className="px-3 py-3 font-semibold">Exporter</th>
+              <th className="px-2.5 py-3 font-semibold">Semaine</th>
+              <th className="px-2.5 py-3 text-right font-semibold">Encaissé (évolution)</th>
+              <th className="px-2.5 py-3 text-right font-semibold">Net après frais</th>
+              <th className="px-2.5 py-3 text-right font-semibold">Réservations</th>
+              <th className="px-2.5 py-3 text-right font-semibold">Road trip</th>
+              <th className="px-2.5 py-3 text-right font-semibold">Location libre</th>
+              <th className="px-2.5 py-3 text-right font-semibold">Commissions</th>
+              <th className="px-2.5 py-3 font-semibold">Vélo en tête</th>
+              <th className="px-2.5 py-3 font-semibold">Exporter</th>
             </tr>
           </thead>
           <tbody>
             {semaines.map(({ debut, fin, stats, commissions }) => (
               <tr key={debut} className="border-b border-noir-piste/5 last:border-0">
-                <td className="px-3 py-3" title={intitule(debut, fin)}>
+                <td className="px-2.5 py-3" title={intitule(debut, fin)}>
                   <span className="font-semibold">{intituleCourt(debut, fin)}</span>
                   {stats.periodeEnCours && (
                     <span className="mt-1 block">
@@ -138,7 +141,7 @@ export default async function PageBilan() {
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                <td className="px-2.5 py-3 text-right font-semibold tabular-nums">
                   {formatXof(stats.chiffreAffaires.valeur)}
                   {!stats.periodeEnCours && (
                     <span className="block">
@@ -146,13 +149,13 @@ export default async function PageBilan() {
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatXof(stats.encaisseNet)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatNombre(stats.nombreReservations.valeur)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatNombre(stats.participants.valeur)} pers.</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatNombre(stats.heuresVendues.valeur)} h</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatXof(commissions)}</td>
-                <td className="px-3 py-3">{veloEnTete(stats.velosLesPlusLoues)}</td>
-                <td className="px-3 py-3">
+                <td className="px-2.5 py-3 text-right tabular-nums">{formatXof(stats.encaisseNet)}</td>
+                <td className="px-2.5 py-3 text-right tabular-nums">{formatNombre(stats.nombreReservations.valeur)}</td>
+                <td className="px-2.5 py-3 text-right tabular-nums">{formatNombre(stats.participants.valeur)} pers.</td>
+                <td className="px-2.5 py-3 text-right tabular-nums">{formatNombre(stats.heuresVendues.valeur)} h</td>
+                <td className="px-2.5 py-3 text-right tabular-nums">{formatXof(commissions)}</td>
+                <td className="px-2.5 py-3">{veloEnTete(stats.velosLesPlusLoues)}</td>
+                <td className="px-2.5 py-3">
                   <Exports debut={debut} />
                 </td>
               </tr>
@@ -160,13 +163,13 @@ export default async function PageBilan() {
           </tbody>
           <tfoot className="border-t border-noir-piste/15 font-semibold">
             <tr>
-              <td className="px-3 py-3">Depuis le début</td>
-              <td className="px-3 py-3 text-right tabular-nums">{formatXof(total.encaisse)}</td>
-              <td className="px-3 py-3 text-right tabular-nums">{formatXof(total.net)}</td>
-              <td className="px-3 py-3 text-right tabular-nums">{formatNombre(total.reservations)}</td>
-              <td className="px-3 py-3" colSpan={2} />
-              <td className="px-3 py-3 text-right tabular-nums">{formatXof(total.commissions)}</td>
-              <td className="px-3 py-3" colSpan={2} />
+              <td className="px-2.5 py-3">Depuis le début</td>
+              <td className="px-2.5 py-3 text-right tabular-nums">{formatXof(total.encaisse)}</td>
+              <td className="px-2.5 py-3 text-right tabular-nums">{formatXof(total.net)}</td>
+              <td className="px-2.5 py-3 text-right tabular-nums">{formatNombre(total.reservations)}</td>
+              <td className="px-2.5 py-3" colSpan={2} />
+              <td className="px-2.5 py-3 text-right tabular-nums">{formatXof(total.commissions)}</td>
+              <td className="px-2.5 py-3" colSpan={2} />
             </tr>
           </tfoot>
         </table>
@@ -242,7 +245,7 @@ function Ligne({ titre, valeur }: { titre: string; valeur: string }) {
 function Exports({ debut }: { debut: DateISO }) {
   const base = `/api/admin/export?semaine=${debut}`;
   return (
-    <p className="mt-3 flex gap-4 text-[0.82rem] font-semibold text-orange-sourd md:mt-0">
+    <p className="mt-3 flex gap-4 text-[0.82rem] font-semibold text-orange-sourd xl:mt-0">
       <a href={`${base}&format=pdf`} className="lien-souligne cible-elargie">
         PDF
       </a>

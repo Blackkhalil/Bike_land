@@ -24,13 +24,19 @@ import { economieDeDonnees } from "@/lib/connexion";
  * La vidéo est décorative, elle ne porte aucune information que le
  * texte ne donne déjà. Elle est donc masquée aux lecteurs d'écran, et
  * la commande de son reste le seul élément annoncé.
+ *
+ * `debut` saute les premières secondes du fichier, à la première lecture
+ * comme à chaque tour de boucle : la boucle native repartirait de zéro.
  */
 export function VideoFond({
   source,
   affiche,
+  debut,
 }: {
   source: string;
   affiche: string;
+  /** Seconde où la lecture commence, et reprend à chaque tour. */
+  debut?: number;
 }) {
   const reference = useRef<HTMLVideoElement>(null);
   const [muet, setMuet] = useState(true);
@@ -61,11 +67,16 @@ export function VideoFond({
     <>
       <video
         ref={reference}
-        src={active ? source : undefined}
+        src={active ? (debut ? `${source}#t=${debut}` : source) : undefined}
         poster={afficheOptimisee(affiche, 600)}
         autoPlay
         muted
-        loop
+        loop={!debut}
+        onEnded={(evenement) => {
+          if (!debut) return;
+          evenement.currentTarget.currentTime = debut;
+          void evenement.currentTarget.play().catch(() => undefined);
+        }}
         playsInline
         preload="metadata"
         aria-hidden="true"

@@ -56,13 +56,18 @@ export default async function PageAPropos() {
       </Section>
 
       <Section fond="craie" className="pb-20">
-        <div className="relative aspect-16/9 overflow-hidden">
+        {/* La photo d'origine est en portrait : son recadrage carré montre le
+            vélo entier sur téléphone ; en 16:9, le cadrage descend sur ses roues. */}
+        <div className="relative aspect-square overflow-hidden sm:aspect-16/9">
           <Image
-            src="/images/streetsh-vZAk_n9Plfc-unsplash.jpg"
+            src="/images/streetsh-vZAk_n9Plfc-unsplash-carre.jpg"
             alt="Un vélo prêt à partir devant l'atelier"
             fill
+            // Visible dès le premier écran. Next 16 déprécie `priority`.
+            loading="eager"
+            fetchPriority="high"
             sizes="(min-width: 1280px) 1200px, 100vw"
-            className="object-cover"
+            className="object-cover object-[50%_90%]"
           />
         </div>
 
@@ -140,7 +145,7 @@ export default async function PageAPropos() {
           </BoutonLien>
           <a
             href={`tel:${site.telephoneLien}`}
-            className="lien-souligne font-display text-[1.2rem] font-bold text-orange-sourd"
+            className="lien-souligne cible-elargie font-display text-[1.2rem] font-bold text-orange-sourd"
           >
             {site.telephone}
           </a>

@@ -46,7 +46,7 @@ const sansAnimation = () => window.matchMedia("(prefers-reduced-motion: reduce)"
  * Le client voit d'abord les trois gammes, en cadres, et rien d'autre : un
  * cadre touché, ce sont les vélos de cette gamme, et d'elle seule, qui
  * s'affichent dessous. La gamme choisie s'écrit dans l'adresse : le bouton
- * Précédent revient au choix, un lien de l'accueil (« Voir les premium »)
+ * Précédent revient au choix, un lien de l'accueil (« Voir les vélos Premium »)
  * ouvre la page sur sa gamme, et le retour depuis une fiche vélo retrouve
  * la gamme qu'on regardait.
  *
@@ -87,7 +87,10 @@ export function ChoixDeGamme({ gammes }: { gammes: GammeAuChoix[] }) {
   return (
     <>
       <nav id="gammes" aria-label="Nos gammes de vélos" className="mt-12 scroll-mt-[88px]">
-        <ul className="grid gap-4 md:grid-cols-3">
+        {/* Trois cadres de front seulement dès 1024 px : à 768 px, chacun
+            n'avait plus que 172 px utiles, la pastille débordait du cadre
+            et les prix se cassaient. Dessous, ils s'empilent. */}
+        <ul className="grid gap-4 lg:grid-cols-3">
           {gammes.map((gamme) => {
             const active = choisie?.code === gamme.code;
             return (
@@ -108,7 +111,7 @@ export function ChoixDeGamme({ gammes }: { gammes: GammeAuChoix[] }) {
                   <span className="flex min-h-9 items-center justify-between gap-3">
                     <span className="titre-editorial text-[1.7rem] text-craie">{gamme.nom}</span>
                     {gamme.lePlusPris && (
-                      <span className="shrink-0 rounded-full bg-orange-signal px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-noir-piste">
+                      <span className="shrink-0 rounded-full bg-orange-signal px-3 py-1 text-xs font-semibold uppercase tracking-[0.06em] text-noir-piste">
                         Le plus pris
                       </span>
                     )}
@@ -119,14 +122,14 @@ export function ChoixDeGamme({ gammes }: { gammes: GammeAuChoix[] }) {
                       {gamme.prixHeure}
                     </span>
                     <span className="mt-1 block text-[0.8rem] text-craie/60">
-                      l&apos;heure · road trip {gamme.prixRoadTrip} / pers.
+                      l&apos;heure · <span className="whitespace-nowrap">road trip {gamme.prixRoadTrip} / pers.</span>
                     </span>
                   </span>
-                  <span className="mt-auto flex items-center justify-between gap-3 border-t border-craie/15 pt-4 text-[0.85rem]">
+                  <span className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-craie/15 pt-4 text-[0.85rem]">
                     <span className="text-craie/70">
                       {gamme.nombre === 1 ? "1 vélo, exemplaire unique" : `${gamme.nombre} vélos`}
                     </span>
-                    <span className="inline-flex items-center gap-1.5 font-semibold text-craie underline-offset-4 group-hover:underline">
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold text-craie underline-offset-4 group-hover:underline">
                       {active ? "Vélos affichés" : gamme.nombre === 1 ? "Voir le vélo" : "Voir les vélos"}
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                         <path d="M6 1.5v9M2 6.5l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
@@ -175,12 +178,12 @@ export function ChoixDeGamme({ gammes }: { gammes: GammeAuChoix[] }) {
                 <p className="shrink-0 text-[0.9rem] text-craie/70">
                   dès{" "}
                   <strong className="font-display text-[1.2rem] font-bold text-orange-signal">{gamme.prixHeure}</strong>{" "}
-                  l&apos;heure · road trip {gamme.prixRoadTrip}
+                  l&apos;heure · <span className="whitespace-nowrap">road trip {gamme.prixRoadTrip}</span>
                 </p>
               </div>
               <div className="mt-8">{gamme.velos}</div>
               <p className="mt-8 text-center">
-                <a href="#gammes" className="lien-souligne text-[0.88rem] font-semibold text-craie">
+                <a href="#gammes" className="lien-souligne cible-elargie text-[0.88rem] font-semibold text-craie">
                   Voir une autre gamme
                 </a>
               </p>

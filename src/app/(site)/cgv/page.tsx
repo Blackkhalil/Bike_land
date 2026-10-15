@@ -84,7 +84,8 @@ export default function PageCGV() {
         </p>
         <p>
           <strong>Location libre.</strong> Le vélo quittant la garde de {site.nom}, le locataire
-          remet au départ une caution de {formatXof(CAUTION_LOCATION_LIBRE_XOF)}, restituée
+          remet au départ une caution de{" "}
+          <span className="whitespace-nowrap">{formatXof(CAUTION_LOCATION_LIBRE_XOF)}</span>, restituée
           intégralement lors de la restitution du vélo en bon état. Le locataire présente en
           outre une pièce d&apos;identité en cours de validité, qui lui est rendue au retour du
           vélo et dont aucune copie n&apos;est conservée, et signe un engagement de restitution.
@@ -160,7 +161,8 @@ export default function PageCGV() {
 
       <ArticleLegal titre="Article 11. Réclamations et droit applicable">
         <p>
-          Toute réclamation peut être adressée à {site.email} ou au {site.telephone}. À défaut
+          Toute réclamation peut être adressée à {site.email} ou au{" "}
+          <span className="whitespace-nowrap">{site.telephone}</span>. À défaut
           d&apos;accord amiable, les présentes conditions sont soumises au droit béninois et les
           tribunaux de Cotonou sont compétents.
         </p>

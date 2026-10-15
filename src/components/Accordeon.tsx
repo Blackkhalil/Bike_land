@@ -15,6 +15,14 @@ export interface VoletAccordeon {
   contenu: string;
 }
 
+/**
+ * Espaces insécables avant « ? ! : ; » et dans les guillemets : un signe
+ * ne part plus seul à la ligne.
+ */
+function insecables(texte: string) {
+  return texte.replace(/ ([?!:;»])/g, " $1").replace(/« /g, "« ");
+}
+
 export function Accordeon({
   volets,
   ouvertParDefaut = 0,
@@ -47,7 +55,7 @@ export function Accordeon({
                 className="flex w-full items-center justify-between gap-6 py-5 text-left"
               >
                 <span className="text-[0.95rem] font-semibold uppercase tracking-[0.06em]">
-                  {volet.titre}
+                  {insecables(volet.titre)}
                 </span>
                 <span
                   aria-hidden="true"
@@ -69,7 +77,7 @@ export function Accordeon({
               hidden={!estOuvert}
               className="pb-6 pr-10"
             >
-              <p className="max-w-2xl text-[0.95rem] leading-relaxed opacity-70">{volet.contenu}</p>
+              <p className="max-w-2xl text-[0.95rem] leading-relaxed opacity-70">{insecables(volet.contenu)}</p>
             </div>
           </div>
         );

@@ -17,9 +17,13 @@ import { VideoFond } from "@/components/accueil/VideoFond";
 export function Hero() {
   return (
     <section className="relative isolate overflow-hidden bg-noir-piste text-craie">
+      {/* Les 4,4 premières secondes du fichier portent le titre du modèle
+          de montage (« MOMENTS », « BY YOURNAME ») : la lecture part
+          après, et y revient à chaque boucle. */}
       <VideoFond
         source="/Video/bikeland-hero.mp4"
         affiche="/Video/bikeland-hero-affiche.jpg"
+        debut={4.4}
       />
 
       <div className="mx-auto grid min-h-[max(620px,88svh)] max-w-[1280px] grid-cols-1 items-center px-5 pb-24 pt-[104px] sm:px-8 lg:pb-28 lg:pt-[120px]">

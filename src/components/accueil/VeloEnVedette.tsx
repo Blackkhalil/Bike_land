@@ -68,8 +68,8 @@ export function VeloEnVedette() {
           hauteur={4200}
           surFondSombre
           rotationEntree={-18}
+          fusionEcran
           className="-mx-5 lg:order-2 lg:mx-0 lg:-ml-24 lg:w-[calc(100%+10rem)]"
-          classeImage="mix-blend-screen"
         />
 
         <div className="relative z-10 max-w-xl lg:order-1">
@@ -94,7 +94,7 @@ export function VeloEnVedette() {
           </p>
 
           <p className="mt-5 max-w-md text-[1.02rem] leading-relaxed text-craie/85">
-            Chaque vélo est révisé entre deux sorties : freins, pression, transmission. Vous le
+            Chaque vélo est révisé entre deux sorties&nbsp;: freins, pression, transmission. Vous le
             recevez réglé à votre taille, avec casque, antivol et kit de réparation.
           </p>
 

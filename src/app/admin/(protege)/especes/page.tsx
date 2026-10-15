@@ -167,14 +167,14 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
           <nav aria-label="Changer de jour" className="flex flex-wrap items-center gap-2 text-[0.84rem]">
             <Link
               href={`/admin/especes?jour=${ajouterJours(jour, -1)}`}
-              className="rounded-full border border-noir-piste/20 bg-white px-4 py-2 font-semibold"
+              className="inline-flex min-h-11 items-center rounded-full border border-noir-piste/20 bg-white px-4 font-semibold"
             >
               ← Veille
             </Link>
             {jour < ajd && (
               <Link
                 href={`/admin/especes?jour=${ajouterJours(jour, 1)}`}
-                className="rounded-full border border-noir-piste/20 bg-white px-4 py-2 font-semibold"
+                className="inline-flex min-h-11 items-center rounded-full border border-noir-piste/20 bg-white px-4 font-semibold"
               >
                 Lendemain →
               </Link>
@@ -186,9 +186,9 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
                 defaultValue={jour}
                 max={ajd}
                 aria-label="Choisir un jour"
-                className="h-9 rounded-full border border-noir-piste/20 bg-white px-3"
+                className="h-11 rounded-full border border-noir-piste/20 bg-white px-3"
               />
-              <button type="submit" className="h-9 rounded-full bg-noir-piste px-4 font-semibold text-craie">
+              <button type="submit" className="h-11 rounded-full bg-noir-piste px-4 font-semibold text-craie">
                 Voir
               </button>
             </form>
@@ -265,31 +265,53 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
           </div>
         )}
 
-        {/* Par vendeur : qui a reçu quoi, ce jour-là et sur la semaine. */}
+        {/* Par vendeur : qui a reçu quoi, ce jour-là et sur la semaine. Sur
+            téléphone, une fiche par vendeur : le tableau fait 480 px, et la
+            colonne de la semaine, qui sert au rapprochement, tombait hors
+            de l'écran. */}
         {vendeurs.length > 0 && (
-          <div className="mt-6 overflow-x-auto rounded-[var(--radius-carte)] bg-white">
-            <table className="w-full min-w-[30rem] text-left text-[0.86rem]">
-              <caption className="sr-only">Encaissements par vendeur</caption>
-              <thead className="border-b border-noir-piste/10 text-[0.76rem] text-gris-cadre">
-                <tr>
-                  <th scope="col" className="px-4 py-3 font-semibold">Reçu par</th>
-                  <th scope="col" className="px-4 py-3 text-right font-semibold">Ce jour</th>
-                  <th scope="col" className="px-4 py-3 text-right font-semibold">Ventes du jour</th>
-                  <th scope="col" className="px-4 py-3 text-right font-semibold">Semaine</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vendeurs.map((vendeur) => (
-                  <tr key={vendeur.cle} className="border-b border-noir-piste/5 last:border-0">
-                    <td className="px-4 py-3 font-semibold">{vendeur.nom}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatXof(vendeur.jour?.montant ?? 0)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatNombre(vendeur.jour?.nombre ?? 0)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatXof(vendeur.montant)}</td>
+          <>
+            <ul className="mt-6 grid gap-3 sm:hidden">
+              {vendeurs.map((vendeur) => (
+                <li key={vendeur.cle} className="rounded-[var(--radius-carte)] bg-white p-4 text-[0.86rem]">
+                  <p className="font-semibold">{vendeur.nom}</p>
+                  <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 tabular-nums">
+                    <dt className="text-gris-cadre">Ce jour</dt>
+                    <dd className="text-right">
+                      {formatXof(vendeur.jour?.montant ?? 0)} · {formatNombre(vendeur.jour?.nombre ?? 0)}&nbsp;vente
+                      {(vendeur.jour?.nombre ?? 0) > 1 ? "s" : ""}
+                    </dd>
+                    <dt className="text-gris-cadre">Semaine</dt>
+                    <dd className="text-right">{formatXof(vendeur.montant)}</dd>
+                  </dl>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-6 hidden overflow-x-auto rounded-[var(--radius-carte)] bg-white sm:block">
+              <table className="w-full min-w-[30rem] text-left text-[0.86rem]">
+                <caption className="sr-only">Encaissements par vendeur</caption>
+                <thead className="border-b border-noir-piste/10 text-[0.76rem] text-gris-cadre">
+                  <tr>
+                    <th scope="col" className="px-4 py-3 font-semibold">Reçu par</th>
+                    <th scope="col" className="px-4 py-3 text-right font-semibold">Ce jour</th>
+                    <th scope="col" className="px-4 py-3 text-right font-semibold">Ventes du jour</th>
+                    <th scope="col" className="px-4 py-3 text-right font-semibold">Semaine</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {vendeurs.map((vendeur) => (
+                    <tr key={vendeur.cle} className="border-b border-noir-piste/5 last:border-0">
+                      <td className="px-4 py-3 font-semibold">{vendeur.nom}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatXof(vendeur.jour?.montant ?? 0)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatNombre(vendeur.jour?.nombre ?? 0)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{formatXof(vendeur.montant)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {/* Les ventes du jour, une par une. */}

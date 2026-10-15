@@ -77,14 +77,14 @@ export function PiedDePage() {
               </li>
               <li className="text-craie/60">{site.horaires}</li>
             </ul>
-            <div className="mt-6 flex flex-wrap gap-2">
+            <div className="mt-6 flex flex-wrap gap-3">
               {site.reseaux.map((reseau) => (
                 <a
                   key={reseau.nom}
                   href={reseau.url}
                   rel="noreferrer noopener"
                   target="_blank"
-                  className="rounded-full border border-craie/25 px-4 py-2 text-[0.8rem] transition-colors hover:border-orange-signal hover:text-orange-signal"
+                  className="inline-flex min-h-11 items-center rounded-full border border-craie/25 px-4 text-[0.8rem] transition-colors hover:border-orange-signal hover:text-orange-signal"
                 >
                   {reseau.nom}
                 </a>
@@ -97,7 +97,7 @@ export function PiedDePage() {
           <p>
             © {annee} {site.nom}. Tous droits réservés.
           </p>
-          <ul className="flex flex-wrap gap-x-6 gap-y-2">
+          <ul className="flex flex-wrap gap-x-6 gap-y-5">
             {navigationLegale.map((lien) => (
               <li key={lien.href}>
                 <Link href={lien.href} className="lien-souligne cible-elargie">

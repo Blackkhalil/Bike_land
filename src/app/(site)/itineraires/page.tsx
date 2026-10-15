@@ -28,7 +28,7 @@ export default function PageItineraires() {
         </p>
       </Section>
 
-      <Section fond="craie" className="pb-24">
+      <Section fond="craie" className="pb-24 pt-12 sm:pt-16">
         <div className="grid gap-x-8 gap-y-16 md:grid-cols-2">
           {itineraires.map((itineraire) => (
             <CarteItineraire key={itineraire.slug} itineraire={itineraire} className="reveal" />

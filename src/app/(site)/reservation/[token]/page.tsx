@@ -145,7 +145,7 @@ export default async function PageSuiviReservation({
             {reservation.offre === "octobre-rose"
               ? " les places sont reparties à l'inscription. Inscrivez-vous de nouveau sur la page Octobre rose, ou "
               : " le vélo est reparti à la réservation. Reprenez une réservation depuis le catalogue, ou "}
-            appelez-nous au {site.telephone}.
+            appelez-nous au <span className="whitespace-nowrap">{site.telephone}</span>.
           </p>
         </div>
       )}
@@ -169,13 +169,13 @@ export default async function PageSuiviReservation({
                 {resumeOffre(reservation)}
               </p>
               <dl className="mt-4 space-y-1.5 text-[0.92rem]">
-                <div className="flex flex-wrap gap-x-2">
-                  <dt className="font-semibold">Dress code&nbsp;:</dt>
-                  <dd>{sortie.tenue}</dd>
+                <div>
+                  <dt className="inline font-semibold">Dress code&nbsp;:</dt>{" "}
+                  <dd className="inline">{sortie.tenue}</dd>
                 </div>
-                <div className="flex flex-wrap gap-x-2">
-                  <dt className="font-semibold">Compris&nbsp;:</dt>
-                  <dd>vélo et casque remis au rassemblement, eau et coco frais offerts</dd>
+                <div>
+                  <dt className="inline font-semibold">Compris&nbsp;:</dt>{" "}
+                  <dd className="inline">vélo et casque remis au rassemblement, eau et coco frais offerts</dd>
                 </div>
               </dl>
               {circuit && (
@@ -198,7 +198,7 @@ export default async function PageSuiviReservation({
                 <VeloIllustration categorie={velo.categorie} teintes={velo.teintes} className="w-full" />
               </div>
             )}
-            <div className="flex-1">
+            <div className="min-w-[10rem] flex-1">
               <p className="font-display text-[1.35rem] font-extrabold uppercase leading-none">
                 {ligne?.veloNom}
               </p>
@@ -208,7 +208,7 @@ export default async function PageSuiviReservation({
               {ligne && (
                 <Link
                   href={`/velos/${ligne.veloSlug}`}
-                  className="lien-souligne mt-2 inline-block text-[0.82rem] font-semibold text-orange-sourd"
+                  className="lien-souligne cible-elargie mt-2 inline-block text-[0.82rem] font-semibold text-orange-sourd"
                 >
                   Revoir la fiche du vélo
                 </Link>
@@ -260,8 +260,8 @@ export default async function PageSuiviReservation({
                 {point.adresse}, {point.ville}
               </p>
               <p className="mt-3 text-[0.85rem] text-gris-cadre">
-                Une question sur place ? Appelez le{" "}
-                <a href={`tel:${site.telephoneLien}`} className="lien-souligne font-semibold text-orange-sourd">
+                Une question sur place&nbsp;? Appelez le{" "}
+                <a href={`tel:${site.telephoneLien}`} className="lien-souligne whitespace-nowrap font-semibold text-orange-sourd">
                   {site.telephone}
                 </a>
                 .
@@ -328,23 +328,23 @@ export default async function PageSuiviReservation({
             <dl className="mt-5 space-y-2.5 text-[0.88rem]">
               <div className="flex justify-between gap-4">
                 <dt className="text-gris-cadre">{resumeOffre(reservation)}</dt>
-                <dd className="tabular-nums">{formatXof(reservation.sousTotalXof)}</dd>
+                <dd className="shrink-0 whitespace-nowrap tabular-nums">{formatXof(reservation.sousTotalXof)}</dd>
               </div>
               {reservation.remiseXof > 0 && (
                 <div className="flex justify-between gap-4">
                   <dt className="text-gris-cadre">{libelleRemise(reservation)}</dt>
-                  <dd className="tabular-nums text-vert-lagune">− {formatXof(reservation.remiseXof)}</dd>
+                  <dd className="shrink-0 whitespace-nowrap tabular-nums text-vert-lagune">− {formatXof(reservation.remiseXof)}</dd>
                 </div>
               )}
               {reservation.optionsXof > 0 && (
                 <div className="flex justify-between gap-4">
                   <dt className="text-gris-cadre">Options</dt>
-                  <dd className="tabular-nums">{formatXof(reservation.optionsXof)}</dd>
+                  <dd className="shrink-0 whitespace-nowrap tabular-nums">{formatXof(reservation.optionsXof)}</dd>
                 </div>
               )}
               <div className="flex justify-between gap-4 border-t border-noir-piste/12 pt-3 font-display text-[1.05rem] font-bold">
                 <dt>Total réglé</dt>
-                <dd className="tabular-nums">{formatXof(reservation.totalXof)}</dd>
+                <dd className="shrink-0 whitespace-nowrap tabular-nums">{formatXof(reservation.totalXof)}</dd>
               </div>
             </dl>
 

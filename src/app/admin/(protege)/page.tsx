@@ -159,7 +159,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
             {stats.periodeEnCours && (
               <>
                 {" "}
-                La période n&apos;est pas terminée : elle est comparée aux {joursCompares} mêmes
+                La période n&apos;est pas terminée&nbsp;: elle est comparée aux {joursCompares} mêmes
                 jours de la période précédente, et non à une période entière, sinon la
                 comparaison montrerait une chute qui n&apos;existe pas.
               </>
@@ -261,7 +261,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
               code: c.code,
               // Le dimanche est Gbashi bike : l'ouvrir ici ouvre Gbashi bike.
               libelle: c.produit ? `${c.libelle} · ${c.produit}` : c.libelle,
-              horaire: `${c.heureDebut} h - ${c.heureFin} h`,
+              horaire: `${c.heureDebut} h - ${c.heureFin} h`,
               actif: ouverture.creneauxActifs.has(c.code),
               prochainDepart: departsProposes.find((d) => d.code === c.code)?.date,
             })),
@@ -277,12 +277,12 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
                     remarque:
                       roseEnLigne && !roseOuverte
                         ? roseCloturee
-                          ? `Inscriptions en ligne closes depuis ${formatHoraire(sortieRose.finInscriptions)} le jour de la sortie : le comptoir vend encore.`
+                          ? `Inscriptions en ligne closes depuis ${formatHoraire(sortieRose.finInscriptions)} le jour de la sortie : le comptoir vend encore.`
                           : "L'inscription en ligne s'ouvre en octobre."
                         : roseEnLigne && placesRose === 0
-                          ? "Ouvert, mais complet : plus aucun vélo libre pour la sortie (le site affiche « Sold out »)."
+                          ? "Ouvert, mais complet : plus aucun vélo libre pour la sortie (le site affiche « Sold out »)."
                           : roseEnLigne
-                            ? `Ouvert : ${placesRose} place${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""}, sortie du ${formatDate(sortieRose.date)}.`
+                            ? `Ouvert : ${placesRose} place${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""}, sortie du ${formatDate(sortieRose.date)}.`
                             : undefined,
                   },
                 ]
@@ -361,11 +361,11 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           <TuileStat
             libelle="Encaissé net"
             valeur={formatXof(stats.encaisseNet)}
-            aide={`Après ${formatXof(stats.fraisRetenus)} de frais d'encaissement SasPay (3,25 %) sur les paiements en ligne.${
+            aide={`Après ${formatXof(stats.fraisRetenus)} de frais d'encaissement SasPay (3,25 %) sur les paiements en ligne.${
               stats.encaisseEspeces > 0
                 ? ` Dont ${formatXof(stats.encaisseEspeces)} en espèces, dans la caisse et non sur SasPay.`
                 : ""
-            } Le retrait vers la banque coûte 1,5 % + 100 F par versement.`}
+            } Le retrait vers la banque coûte 1,5 % + 100 F par versement.`}
           />
           <TuileStat
             libelle="Panier moyen"
@@ -399,14 +399,14 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
         <TitreBloc
           id="titre-exploitation"
           titre="Comment tournent les vélos"
-          question="Les sorties de la période : si le parc travaille assez, et si les clients vont au bout."
+          question="Les sorties de la période : si le parc travaille assez, et si les clients vont au bout."
           action={{ href: "/admin/velos", libelle: "Gérer le parc" }}
         />
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Jauge
             libelle="Taux d'occupation"
             pourcentage={stats.tauxOccupation}
-            detail={`Part des journées-vélo utilisées sur la période, pour un parc de ${velos.length} vélos. 100 % signifierait que chaque vélo sort chaque jour.`}
+            detail={`Part des journées-vélo utilisées sur la période, pour un parc de ${velos.length} vélos. 100 % signifierait que chaque vélo sort chaque jour.`}
           />
           <TuileStat
             libelle="Participants emmenés"

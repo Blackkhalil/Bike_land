@@ -151,7 +151,7 @@ export function InscriptionOctobreRose({
     return (
       <div className="rounded-[var(--radius-bloc)] bg-white p-6 sm:p-8">
         <p
-          className="inline-block rounded-[var(--radius-bouton)] bg-noir-piste px-2.5 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-craie"
+          className="inline-block rounded-[var(--radius-bouton)] bg-noir-piste px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-craie"
           lang={empechement.pastille === "Sold out" ? "en" : undefined}
         >
           {empechement.pastille}
@@ -370,7 +370,7 @@ export function InscriptionOctobreRose({
           <dl className="mt-6 rounded-[var(--radius-carte)] bg-craie p-5 text-[0.88rem]">
             <div className="flex justify-between gap-4">
               <dt className="text-gris-cadre">
-                Octobre rose, {personnes} personne{personnes > 1 ? "s" : ""}
+                Octobre rose, {personnes}&nbsp;personne{personnes > 1 ? "s" : ""}
               </dt>
               <dd className="shrink-0 whitespace-nowrap tabular-nums">{formatXof(total)}</dd>
             </div>

@@ -47,6 +47,16 @@ export function VeloTilt({
    * photo se déforme visiblement pendant la rotation.
    */
   rotationEntree = -14,
+  /**
+   * Photo sur fond noir pur, que la fusion `screen` rend transparent.
+   *
+   * La fusion se pose à deux niveaux : sur le cadre transformé, pour que
+   * l'image se fonde dans la lueur, et sur la racine, pour que l'ensemble
+   * se fonde dans la section. Posée sur l'image seule, elle restait
+   * enfermée dans le cadre transformé, qui forme son propre groupe : le
+   * noir de la photo masquait la lueur et dessinait un rectangle.
+   */
+  fusionEcran = false,
 }: {
   source: string;
   alt: string;
@@ -56,6 +66,7 @@ export function VeloTilt({
   hauteur?: number;
   surFondSombre?: boolean;
   rotationEntree?: number;
+  fusionEcran?: boolean;
 }) {
   const cadre = useRef<HTMLDivElement>(null);
   const [inclinaison, setInclinaison] = useState({ x: 0, y: 0 });
@@ -111,7 +122,7 @@ export function VeloTilt({
       ref={cadre}
       onMouseMove={suivreSouris}
       onMouseLeave={relacher}
-      className={`relative ${className}`}
+      className={`relative ${fusionEcran ? "mix-blend-screen" : ""} ${className}`}
     >
       {/* La lueur, dessinée à part : elle glisse en sens inverse du vélo,
           ce qui est exactement ce que fait une ombre réelle. */}
@@ -128,7 +139,7 @@ export function VeloTilt({
       />
 
       <div
-        className="will-change-transform"
+        className={`will-change-transform ${fusionEcran ? "mix-blend-screen" : ""}`}
         style={{
           transform: transforme,
           opacity: entre ? 1 : 0,

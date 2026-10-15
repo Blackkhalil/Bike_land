@@ -20,7 +20,7 @@ export default function PageCommentCaMarche() {
         <TitreSection as="h1" taille="lg" className=" max-w-4xl">
           De l&apos;envie
           <br />
-          au départ, en cinq étapes
+          au départ, <span className="whitespace-nowrap">en cinq étapes</span>
         </TitreSection>
         <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-craie/70">
           Nous avons retiré tout ce qui pouvait l&apos;être : pas de compte à créer, pas de

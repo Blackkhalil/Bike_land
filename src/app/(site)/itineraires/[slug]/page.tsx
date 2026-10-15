@@ -50,7 +50,7 @@ export default async function PageItineraire({ params }: { params: Params }) {
     <>
       <Section fond="noir" className="pb-12 pt-32 sm:pt-40">
         <nav aria-label="Fil d'ariane" className="etiquette flex items-center gap-2 opacity-75">
-          <Link href="/itineraires" className="lien-souligne">
+          <Link href="/itineraires" className="lien-souligne cible-elargie">
             Itinéraires
           </Link>
           <span aria-hidden="true">/</span>
@@ -58,11 +58,13 @@ export default async function PageItineraire({ params }: { params: Params }) {
         </nav>
 
         <div className="mt-8 flex flex-wrap gap-2">
-          <Pastille ton="sombre">{itineraire.region}</Pastille>
+          <Pastille ton="sombre" className="border border-craie/30">
+            {itineraire.region}
+          </Pastille>
           <Pastille ton="neutre">{itineraire.niveau}</Pastille>
         </div>
 
-        <TitreSection as="h1" taille="lg" className=" max-w-4xl">
+        <TitreSection as="h1" taille="lg" className="mt-5 max-w-4xl">
           {itineraire.titre}
         </TitreSection>
         <p className="mt-6 max-w-2xl text-[1.05rem] leading-relaxed text-craie/70">
@@ -132,8 +134,9 @@ export default async function PageItineraire({ params }: { params: Params }) {
         </div>
 
         <div className="mt-12 grid gap-x-6 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
-          {velos.slice(0, 3).map((velo) => (
-            <CarteVelo key={velo.id} velo={velo} />
+          {/* Deux colonnes entre 640 et 1023 px : la troisième carte y resterait seule. */}
+          {velos.slice(0, 3).map((velo, index) => (
+            <CarteVelo key={velo.id} velo={velo} className={index === 2 ? "sm:max-lg:hidden" : ""} />
           ))}
         </div>
       </Section>

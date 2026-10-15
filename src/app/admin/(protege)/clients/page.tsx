@@ -100,20 +100,21 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
             defaultValue={recherche}
             placeholder="Nom ou email"
             aria-label="Rechercher un client"
-            className="h-9 min-w-0 flex-1 rounded-full border border-noir-piste/20 px-4 text-[0.85rem] sm:w-56 sm:flex-none"
+            className="h-11 min-w-0 flex-1 rounded-full border border-noir-piste/20 px-4 text-[0.85rem] sm:h-9 sm:w-56 sm:flex-none"
           />
           <button
             type="submit"
-            className="h-9 rounded-full bg-noir-piste px-5 text-[0.82rem] font-semibold text-craie"
+            className="h-11 rounded-full bg-noir-piste px-5 text-[0.82rem] font-semibold text-craie sm:h-9"
           >
             Chercher
           </button>
         </form>
       </header>
 
-      {/* Sur téléphone, une fiche par client plutôt qu'un tableau de
-          770 px qu'il faudrait faire glisser. */}
-      <ul className="mt-8 grid gap-3 md:hidden">
+      {/* Une fiche par client, deux par ligne sur tablette, plutôt qu'un
+          tableau de 770 px qu'il faudrait faire glisser. Avec la barre
+          latérale, ouverte dès lg, il ne tient qu'à partir de xl. */}
+      <ul className="mt-8 grid gap-3 md:grid-cols-2 xl:hidden">
         {fiches.slice(0, 80).map((fiche) => (
           <li
             key={fiche.client.id}
@@ -142,28 +143,28 @@ export default async function PageClientsAdmin({ searchParams }: { searchParams:
             )}
             <dl className="mt-3 grid grid-cols-3 gap-x-3 text-[0.82rem]">
               <div>
-                <dt className="text-[0.72rem] text-gris-cadre">Locations</dt>
+                <dt className="text-[0.75rem] text-gris-cadre">Locations</dt>
                 <dd className="font-semibold tabular-nums">{fiche.nombre}</dd>
               </div>
               <div>
-                <dt className="text-[0.72rem] text-gris-cadre">Dépensé</dt>
+                <dt className="text-[0.75rem] text-gris-cadre">Dépensé</dt>
                 <dd className="font-semibold tabular-nums">{formatXof(fiche.total)}</dd>
               </div>
               <div>
-                <dt className="text-[0.72rem] text-gris-cadre">Dernière</dt>
+                <dt className="text-[0.75rem] text-gris-cadre">Dernière</dt>
                 <dd>{fiche.derniere ? formatDate(fiche.derniere) : "jamais"}</dd>
               </div>
             </dl>
           </li>
         ))}
         {fiches.length === 0 && (
-          <li className="py-8 text-center text-[0.9rem] text-gris-cadre">
+          <li className="py-8 text-center text-[0.9rem] text-gris-cadre md:col-span-2">
             Aucun client ne correspond à cette recherche.
           </li>
         )}
       </ul>
 
-      <div className="mt-8 hidden overflow-x-auto rounded-[var(--radius-carte)] bg-white p-6 md:block">
+      <div className="mt-8 hidden overflow-x-auto rounded-[var(--radius-carte)] bg-white p-6 xl:block">
         <table className="w-full min-w-[48rem] border-collapse text-left text-[0.85rem]">
           <caption className="sr-only">Base clients constituée à partir des réservations</caption>
           <thead>

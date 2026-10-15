@@ -32,7 +32,7 @@ export default function PageSuivi() {
           <p className="etiquette opacity-75">Vous ne retrouvez pas l&apos;email ?</p>
           <p className="mt-3 text-[0.95rem] leading-relaxed text-craie/70">
             Vérifiez vos courriers indésirables, puis appelez-nous au{" "}
-            <a href={`tel:${site.telephoneLien}`} className="lien-souligne font-semibold text-orange-sourd">
+            <a href={`tel:${site.telephoneLien}`} className="lien-souligne whitespace-nowrap font-semibold text-orange-sourd">
               {site.telephone}
             </a>{" "}
             ou écrivez à{" "}

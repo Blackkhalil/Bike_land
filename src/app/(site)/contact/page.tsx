@@ -48,15 +48,15 @@ export default function PageContact() {
         </TitreSection>
       </Section>
 
-      <Section fond="craie" className="pb-20">
+      <Section fond="craie" className="pt-10 sm:pt-14">
         <div className="grid gap-12 lg:grid-cols-12 lg:gap-10">
           <div className="lg:col-span-5">
-            <div className="space-y-8">
+            <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-1">
               <div>
                 <p className="etiquette opacity-75">Par téléphone</p>
                 <a
                   href={`tel:${site.telephoneLien}`}
-                  className="lien-souligne mt-2 block font-display text-[1.5rem] font-extrabold text-orange-sourd"
+                  className="lien-souligne cible-elargie mt-2 block font-display text-[1.5rem] font-extrabold text-orange-sourd"
                 >
                   {site.telephone}
                 </a>
@@ -67,7 +67,7 @@ export default function PageContact() {
                 <p className="etiquette opacity-75">Par email</p>
                 <a
                   href={`mailto:${site.email}`}
-                  className="lien-souligne mt-2 block font-display text-[1.15rem] font-bold"
+                  className="lien-souligne cible-elargie mt-2 block font-display text-[1.15rem] font-bold"
                 >
                   {site.email}
                 </a>
@@ -85,14 +85,14 @@ export default function PageContact() {
 
               <div>
                 <p className="etiquette opacity-75">Sur les réseaux</p>
-                <ul className="mt-3 flex flex-wrap gap-2">
+                <ul className="mt-3 flex flex-wrap gap-3">
                   {site.reseaux.map((reseau) => (
                     <li key={reseau.nom}>
                       <a
                         href={reseau.url}
                         target="_blank"
                         rel="noreferrer noopener"
-                        className="inline-flex rounded-full border border-noir-piste/20 px-4 py-2 text-[0.85rem] transition-colors hover:border-noir-piste/50"
+                        className="inline-flex min-h-11 items-center rounded-full border border-noir-piste/20 px-4 text-[0.85rem] transition-colors hover:border-noir-piste/50"
                       >
                         {reseau.nom}
                       </a>

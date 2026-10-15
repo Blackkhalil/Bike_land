@@ -56,7 +56,7 @@ export function BarresHorizontales({
                 onMouseLeave={() => setSurvol(null)}
               >
                 <div className="flex items-baseline justify-between gap-4 text-[0.85rem]">
-                  <span className="truncate">{point.etiquette}</span>
+                  <span className="min-w-0 break-words">{point.etiquette}</span>
                   <span className="shrink-0 font-semibold tabular-nums">{formater(point.valeur)}</span>
                 </div>
                 <div className="mt-1.5 h-2.5 w-full rounded-full bg-craie-ombre">

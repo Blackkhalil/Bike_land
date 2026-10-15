@@ -49,8 +49,11 @@ export function annotationsPour(velo: Velo): Annotation[] {
       ligne: 470,
     },
     {
+      // Rien sur le type de frein : le parc mêle freins à disque et
+      // V-Brake sur jante (voir la fiche de chaque vélo), et « disques
+      // hydrauliques » s'affichait sous tous les vélos.
       titre: "Freinage",
-      valeur: "Disques hydrauliques, tout temps",
+      valeur: "Vérifié avant chaque départ",
       cible: [502, 202],
       cote: "droite",
       ligne: 270,

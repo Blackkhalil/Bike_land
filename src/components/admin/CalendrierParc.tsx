@@ -55,37 +55,41 @@ export function CalendrierParc({
             {formatDateCourte(jours[0])} - {formatDateCourte(jours[jours.length - 1])}
           </p>
         </div>
+        {/* Sur téléphone, les flèches seules : les trois libellés complets
+            ne tiennent pas dans la carte. */}
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setDecalage((valeur) => valeur - nombreDeJours)}
-            className="rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie"
+            aria-label="Précédent"
+            className="min-h-11 min-w-11 whitespace-nowrap rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie sm:min-h-0 sm:min-w-0"
           >
-            ‹ Précédent
+            ‹<span className="hidden sm:inline"> Précédent</span>
           </button>
           <button
             type="button"
             onClick={() => setDecalage(0)}
             disabled={decalage === 0}
-            className="rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie disabled:opacity-35"
+            className="min-h-11 whitespace-nowrap rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie disabled:opacity-35 sm:min-h-0"
           >
             Aujourd&apos;hui
           </button>
           <button
             type="button"
             onClick={() => setDecalage((valeur) => valeur + nombreDeJours)}
-            className="rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie"
+            aria-label="Suivant"
+            className="min-h-11 min-w-11 whitespace-nowrap rounded-full border border-noir-piste/20 px-3.5 py-1.5 text-[0.8rem] font-semibold transition-colors hover:bg-craie sm:min-h-0 sm:min-w-0"
           >
-            Suivant ›
+            <span className="hidden sm:inline">Suivant </span>›
           </button>
         </div>
       </div>
 
       <div className="mt-6 overflow-x-auto">
-        <div style={{ minWidth: 180 + jours.length * LARGEUR_JOUR }}>
+        <div className="w-max min-w-full">
           {/* En-tête des jours */}
           <div className="flex border-b border-noir-piste/12 pb-2">
-            <div className="w-[180px] shrink-0" />
+            <div className="sticky left-0 z-10 w-28 shrink-0 bg-white sm:w-[180px]" />
             {jours.map((jour) => {
               const jourSemaine = new Date(`${jour}T00:00:00Z`).getUTCDay();
               const weekend = jourSemaine === 0 || jourSemaine === 6;
@@ -93,7 +97,7 @@ export function CalendrierParc({
                 <div
                   key={jour}
                   style={{ width: LARGEUR_JOUR }}
-                  className={`shrink-0 text-center text-[0.68rem] leading-tight ${
+                  className={`shrink-0 text-center text-[0.75rem] leading-tight ${
                     weekend ? "text-orange-signal" : "text-gris-cadre"
                   }`}
                 >
@@ -127,9 +131,12 @@ export function CalendrierParc({
 
             return (
               <div key={velo.id} className="flex items-center border-b border-noir-piste/8">
-                <div className="w-[180px] shrink-0 py-2.5 pr-4">
+                {/* Le nom reste en place quand on fait glisser la grille,
+                    les barres passent dessous : sans lui, on ne sait plus à
+                    quel vélo appartient une barre. */}
+                <div className="sticky left-0 z-10 w-28 shrink-0 bg-white py-2.5 pr-2 sm:w-[180px] sm:pr-4">
                   <p className="truncate text-[0.85rem] font-semibold">{velo.nom}</p>
-                  <p className="text-[0.72rem] text-gris-cadre">
+                  <p className="text-[0.75rem] text-gris-cadre">
                     {velo.statut === "MAINTENANCE" ? "en entretien" : "en service"}
                   </p>
                 </div>
@@ -152,12 +159,15 @@ export function CalendrierParc({
                     </div>
                   )}
 
+                  {/* Une sortie d'une heure ne fait que 16 px : le
+                      pseudo-élément élargit la zone tactile de 4 px de chaque
+                      côté. Pas d'overflow-hidden sur le lien, il la rognerait. */}
                   {creneaux.map((creneau) => (
                     <a
                       key={creneau.reservation.id}
                       href={`/admin/reservations?reference=${creneau.reservation.reference}`}
                       title={`${creneau.reservation.reference} : ${creneau.reservation.client.prenom} ${creneau.reservation.client.nom} · ${formatPlageReservation(creneau.reservation)}`}
-                      className={`absolute inset-y-2 flex items-center overflow-hidden rounded-[var(--radius-bouton)] px-2 text-[0.7rem] font-semibold text-craie transition-opacity hover:opacity-85 ${
+                      className={`absolute inset-y-2 flex items-center rounded-[var(--radius-bouton)] px-2 text-[0.7rem] font-semibold text-craie transition-opacity after:absolute after:inset-y-0 after:-inset-x-1 after:content-[''] hover:opacity-85 ${
                         creneau.reservation.statut === "EN_COURS" ? "bg-orange-signal" : "bg-noir-releve"
                       }`}
                       style={positionBarre(creneau)}

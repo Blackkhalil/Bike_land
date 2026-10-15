@@ -959,7 +959,7 @@ export function VenteEspeces({
                   </span>
                 </span>
                 <span
-                  className={`shrink-0 text-[0.72rem] font-semibold ${
+                  className={`shrink-0 text-[0.75rem] font-semibold ${
                     horsService || pris ? "text-orange-sourd" : "text-vert-lagune"
                   }`}
                 >

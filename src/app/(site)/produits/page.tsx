@@ -69,7 +69,7 @@ function heureDuCreneau(code: string): string {
 function SoldOut({ className = "" }: { className?: string }) {
   return (
     <span
-      className={`inline-block rounded-[var(--radius-bouton)] bg-craie px-1.5 py-0.5 align-middle text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-noir-piste ${className}`}
+      className={`inline-block rounded-[var(--radius-bouton)] bg-craie px-2 py-0.5 align-middle text-[0.75rem] font-semibold uppercase tracking-[0.08em] text-noir-piste ${className}`}
     >
       Sold out
     </span>
@@ -276,7 +276,7 @@ export default async function PageProduits() {
                         {circuitRose.region}, {circuitRose.distanceKm} km
                       </Repere>
                     )}
-                    <Repere terme="Tarif">{tarifOctobreRose()}, tous vélos</Repere>
+                    <Repere terme="Tarif">{tarifOctobreRose()}, tous&nbsp;vélos</Repere>
                     <Repere terme="Compris">Vélo, casque, eau et coco frais</Repere>
                   </>
                 ) : (
@@ -456,7 +456,7 @@ export default async function PageProduits() {
                   >
                     {itineraire.titre}
                   </Link>
-                  {` · ${itineraire.distanceKm} km · ${itineraire.duree.toLowerCase()}`}
+                  {` · ${itineraire.distanceKm} km · ${itineraire.duree.toLowerCase()}`}
                 </li>
               ))}
             </ul>

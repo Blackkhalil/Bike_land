@@ -47,6 +47,18 @@ export const revalidate = 60;
  * vélo coûte plus qu'un autre. Les vélos de la gamme choisie s'affichent
  * alors, et eux seuls (ChoixDeGamme) ; il en choisit un, puis une date.
  */
+/**
+ * Les colonnes de la grille des vélos d'une gamme, selon leur nombre : une
+ * carte seule sur la dernière rangée laissait les deux tiers du cadre vides.
+ * Quatre ou huit vélos se rangent par deux, puis par quatre sur grand écran ;
+ * sept finissent en 4 + 3 ; les autres nombres gardent trois colonnes.
+ */
+function colonnesDeLaGrille(nombre: number): string {
+  if (nombre % 4 === 0) return "sm:grid-cols-2 xl:grid-cols-4";
+  if (nombre % 4 === 3 && nombre > 3) return "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
+  return "sm:grid-cols-2 lg:grid-cols-3";
+}
+
 export default async function PageCatalogue() {
   const velos = await depot.listerVelos();
   const gammes = GAMMES.map((gamme) => {
@@ -61,7 +73,7 @@ export default async function PageCatalogue() {
       nombre: duGroupe.length,
       lePlusPris: gamme.code === GAMME_LA_PLUS_PRISE,
       velos: (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className={`grid gap-6 ${colonnesDeLaGrille(duGroupe.length)}`}>
           {duGroupe.map((velo) => (
             <CarteVelo key={velo.id} velo={velo} />
           ))}

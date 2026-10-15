@@ -53,13 +53,14 @@ export function AnnulerReservation({
       <p className="mt-3 text-[0.9rem] leading-relaxed text-gris-cadre">
         {gratuite ? (
           <>
-            L&apos;annulation de la réservation {reference} est gratuite jusqu&apos;au{" "}
-            <strong className="text-noir-piste">{dateLimite}</strong> inclus. Au-delà, 50 % du
-            montant reste dû.
+            L&apos;annulation de la réservation{" "}
+            <span className="whitespace-nowrap">{reference}</span> est gratuite jusqu&apos;au{" "}
+            <strong className="text-noir-piste">{dateLimite}</strong> inclus.{" "}
+            <span className="whitespace-nowrap">Au-delà,</span> 50&nbsp;% du montant reste dû.
           </>
         ) : (
           <>
-            Le délai d&apos;annulation gratuite est dépassé depuis le {dateLimite} : 50 % du
+            Le délai d&apos;annulation gratuite est dépassé depuis le {dateLimite}&nbsp;: 50&nbsp;% du
             montant sera retenu. Appelez-nous si votre situation est particulière.
           </>
         )}

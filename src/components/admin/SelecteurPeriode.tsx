@@ -38,7 +38,7 @@ export function SelecteurPeriode({ actuelle }: { actuelle: Granularite }) {
           type="button"
           onClick={() => changer(option.valeur)}
           aria-pressed={actuelle === option.valeur}
-          className={`rounded-full px-4 py-2 text-[0.82rem] font-semibold transition-colors ${
+          className={`rounded-full px-3 py-2.5 text-[0.82rem] font-semibold transition-colors min-[360px]:px-4 ${
             actuelle === option.valeur
               ? "bg-noir-piste text-craie"
               : "text-gris-cadre hover:text-noir-piste"

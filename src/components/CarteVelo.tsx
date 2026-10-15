@@ -23,7 +23,17 @@ import type { Velo } from "@/lib/types";
  * Le visuel est la photo, jamais la vidéo du vélo : seule la vidéo de
  * l'accueil est gardée sur le site. Onze vidéos de deux ou trois
  * mégaoctets ralentissaient le catalogue, sur un réseau mobile surtout.
+ *
+ * Les photos du parc sont des fiches produit en 16:9 : le vélo à gauche,
+ * ses caractéristiques à droite. Centrées dans le cadre de la carte, elles
+ * perdaient la roue arrière et le texte coupé net ; la carte n'en garde
+ * donc que le vélo, cadré à gauche, le nom et l'accroche venant dessous.
+ * Une photo ordinaire, envoyée depuis l'administration, reste centrée.
  */
+function estFicheProduit(photo: string): boolean {
+  return photo.startsWith("/images/affiches/");
+}
+
 export function CarteVelo({
   velo,
   parametresReservation,
@@ -43,14 +53,20 @@ export function CarteVelo({
       className={`group flex flex-col overflow-hidden rounded-[var(--radius-carte)] bg-noir-releve ${className}`}
     >
       <Link href={href} className="flex flex-1 flex-col">
-        <div className="relative grid aspect-4/3 place-items-center overflow-hidden bg-craie">
+        <div className="relative grid aspect-8/7 place-items-center overflow-hidden bg-craie">
           {velo.photo ? (
             <Image
               src={velo.photo}
               alt={velo.nom}
               fill
-              sizes="(min-width: 1024px) 320px, (min-width: 640px) 50vw, 100vw"
-              className="object-cover"
+              // La fiche cadrée à gauche s'affiche plus large que la carte
+              // (16:9 dans un cadre 8:7, soit environ une fois et demie).
+              sizes={
+                estFicheProduit(velo.photo)
+                  ? "(min-width: 1024px) 600px, (min-width: 640px) 78vw, 156vw"
+                  : "(min-width: 1024px) 400px, (min-width: 640px) 50vw, 100vw"
+              }
+              className={`object-cover ${estFicheProduit(velo.photo) ? "object-left" : ""}`}
             />
           ) : (
             <VeloIllustration
@@ -59,8 +75,10 @@ export function CarteVelo({
               className="w-[110%] max-w-none px-5"
             />
           )}
+          {/* En haut à droite : à gauche, la pastille masquait le nom de
+              la gamme imprimé en tête de la fiche. */}
           {(indisponible || lePlusPris) && (
-            <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+            <div className="absolute right-3 top-3 flex flex-wrap justify-end gap-1.5">
               {lePlusPris && <Pastille ton="sombre">Le plus pris</Pastille>}
               {indisponible && <Pastille ton="alerte">En entretien</Pastille>}
             </div>

@@ -13,7 +13,7 @@ export function ItinerairesApercu() {
   return (
     <Section fond="lagune" bordAbord className="py-20 sm:py-28">
       <div className="mx-auto max-w-[1280px] px-5 sm:px-8">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <TitreSection className="max-w-2xl">
             Deux circuits
             <br />
