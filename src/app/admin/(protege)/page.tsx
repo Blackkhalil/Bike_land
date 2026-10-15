@@ -227,8 +227,8 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
             valeur={formatNombre(participantsDuJour)}
             aide={
               participantsDuJour === 0
-                ? "Aucun road trip au départ aujourd'hui."
-                : "Un coco et une eau par participant au road trip."
+                ? "Aucune sortie encadrée au départ aujourd'hui."
+                : "Un coco et une eau par participant, road trip et Octobre rose."
             }
           />
           <TuileStat

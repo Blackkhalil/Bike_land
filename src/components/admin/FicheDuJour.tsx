@@ -25,6 +25,7 @@ function consignes(reservation: Reservation, sens: "depart" | "retour"): string[
       `Remettre ${n} vélo${n > 1 ? "s" : ""} et ${n} casque${n > 1 ? "s" : ""} au rassemblement${
         sortie ? ` de ${formatHoraire(sortie.rassemblement)}, départ ${formatHoraire(sortie.depart)}` : ""
       } : sortie Octobre rose.`,
+      `Prévoir ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}, offerts.`,
       "Aucune caution : la sortie est encadrée.",
     ];
   }

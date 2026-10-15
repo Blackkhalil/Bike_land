@@ -174,8 +174,8 @@ export default async function PageSuiviReservation({
                   <dd>{sortie.tenue}</dd>
                 </div>
                 <div className="flex flex-wrap gap-x-2">
-                  <dt className="font-semibold">Vélo et casque&nbsp;:</dt>
-                  <dd>remis à chacun au rassemblement</dd>
+                  <dt className="font-semibold">Compris&nbsp;:</dt>
+                  <dd>vélo et casque remis au rassemblement, eau et coco frais offerts</dd>
                 </div>
               </dl>
               {circuit && (

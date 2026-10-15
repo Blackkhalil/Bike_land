@@ -41,7 +41,7 @@ En ligne : <https://bike-land.vercel.app>
 | Accueil | `/` | Vélo en vedette en 3D, les trois gammes, le parc, carrousel de photos, avis |
 | Nos produits | `/produits` | Gbashi bike (le road trip du dimanche, sport devant la plage), road trip du samedi, location libre, avec leurs affiches ; Octobre rose en octobre |
 | Octobre rose | `/octobre-rose` | La sortie de saison, réservée et payée en ligne sans choix de vélo |
-| Catalogue | `/velos` | Les trois gammes en cadres (le Premium « le plus pris »), puis les vélos de chacune |
+| Catalogue | `/velos` | Les trois gammes en cadres (le Premium « le plus pris ») ; un cadre touché affiche les vélos de sa gamme, et d'elle seule |
 | Fiche vélo | `/velos/[slug]` | Gamme et tarif, caractéristiques, disponibilité à l'heure, avis |
 | Itinéraires | `/itineraires`, `/itineraires/[slug]` | Deux parcours de la route des Pêches, étape par étape |
 | Comment ça marche | `/comment-ca-marche` | Le déroulé d'une sortie, les moyens de paiement, ce qui est compris |
@@ -68,8 +68,8 @@ entretien, le retirer, changer sa gamme.
 
 `/admin/especes`, pour le client qui paie au comptoir. Le commercial choisit la
 formule, le créneau et le vélo, saisit le client et son nom à lui, et encaisse le
-montant affiché. La location libre y part à l'heure voulue, de 6 h à 21 h, et rentre
-à 22 h au plus tard (`OUVERTURE_COMPTOIR_HEURE`, `FERMETURE_COMPTOIR_HEURE`) ; en
+montant affiché. La location libre y part à l'heure que tape le commercial (une heure
+pleine), et rentre à 22 h au plus tard (`OUVERTURE_COMPTOIR_HEURE`, `FERMETURE_COMPTOIR_HEURE`) ; en
 ligne, elle garde les horaires de l'atelier. Octobre rose s'y vend aussi, à la
 personne, sans vélo à choisir. Ce montant vient de `calculerDevis`, comme en ligne, au prix de la
 plaquette (sans les 125 F de frais du paiement en ligne, voir

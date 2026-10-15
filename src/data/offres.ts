@@ -168,7 +168,7 @@ export const EXIGENCES: Record<CodeOffre, string[]> = {
   "octobre-rose": [
     `Dress code : ${(OCTOBRE_ROSE.sortie?.tenue ?? "tout le monde en rose").toLowerCase()}.`,
     "Être au point de départ à l'heure du rassemblement : le groupe part à l'heure.",
-    "Rien d'autre à apporter : vélo et casque sont fournis, sans caution.",
+    "Rien d'autre à apporter : vélo et casque sont fournis, eau et coco frais offerts, sans caution.",
   ],
 };
 
@@ -282,12 +282,12 @@ export const FERMETURE_HEURE = 19;
 /**
  * Les heures de la location libre vendue au comptoir, en espèces.
  *
- * Plus larges qu'en ligne : au comptoir, l'exploitant saisit l'heure qu'il
- * veut, et la location libre s'y prend jusqu'à 22 h, le vélo rentré à
- * 22 h au plus tard. La réservation en ligne garde les horaires de
- * l'atelier (OUVERTURE_HEURE, FERMETURE_HEURE).
+ * Plus larges qu'en ligne : au comptoir, l'exploitant tape lui-même l'heure
+ * de départ qu'il veut, à l'heure pleine, et la location libre s'y prend
+ * jusqu'à 22 h, le vélo rentré à 22 h au plus tard. La réservation en
+ * ligne garde les horaires de l'atelier (OUVERTURE_HEURE, FERMETURE_HEURE).
  */
-export const OUVERTURE_COMPTOIR_HEURE = 6;
+export const OUVERTURE_COMPTOIR_HEURE = 0;
 export const FERMETURE_COMPTOIR_HEURE = 22;
 
 /**

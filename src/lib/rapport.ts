@@ -40,9 +40,9 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
   const departs = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retours = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
   const aPayer = reservations.filter(estEnAttente);
-  // Les cocos et les eaux du road trip : Octobre rose n'en sert pas.
+  // Les cocos et les eaux des sorties encadrées : road trip et Octobre rose.
   const participants = departs
-    .filter((r) => r.offre === "road-trip")
+    .filter((r) => r.offre !== "location-libre")
     .reduce((total, r) => total + r.nombrePersonnes, 0);
   const cautions = departs
     .filter((r) => r.offre === "location-libre")
@@ -179,7 +179,7 @@ export function construireRapport(entrees: {
         {
           libelle: "Cocos et eaux à prévoir",
           valeur: nombre(jour.participants),
-          aide: "Un coco et une eau par participant au road trip.",
+          aide: "Un coco et une eau par participant, road trip et Octobre rose.",
         },
         {
           libelle: "Cautions à encaisser",

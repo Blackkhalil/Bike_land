@@ -138,7 +138,7 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
     lignes.push({
       libelle:
         nombrePersonnes > 1 ? `Octobre rose, ${nombrePersonnes} personnes` : "Octobre rose, 1 personne",
-      detail: `${prixUnitaire.toLocaleString("fr-FR")} FCFA par personne, vélo et casque compris`,
+      detail: `${prixUnitaire.toLocaleString("fr-FR")} FCFA par personne, vélo, casque, eau et coco compris`,
       montantXof: sousTotalXof,
     });
   } else if (!gamme) {

@@ -85,12 +85,27 @@ const jourLisible = (date: string) => {
 };
 
 /**
- * Le départ proposé : l'heure qui court, ramenée dans les heures du
- * comptoir (de 6 h, retour à 22 h au plus tard).
+ * Le départ proposé tant que le commercial n'a rien tapé : l'heure qui
+ * court, ramenée dans les heures du comptoir (retour à 22 h au plus tard).
  */
 function heureParDefaut(heure: number, duree: number): number {
   return Math.min(Math.max(heure, OUVERTURE_COMPTOIR_HEURE), FERMETURE_COMPTOIR_HEURE - duree);
 }
+
+/**
+ * L'heure tapée par le commercial : « 17 », « 17 h », « 17h00 », « 17:00 ».
+ * Une heure pleine seulement : la location se compte à l'heure, et les
+ * minutes ne sont pas gardées. `null` si la saisie n'en est pas une.
+ */
+function lireHeureTapee(saisie: string): number | null {
+  const trouve = saisie.trim().toLowerCase().match(/^(\d{1,2})\s*(?:h|:)?\s*(?:00)?$/);
+  if (!trouve) return null;
+  const heure = Number(trouve[1]);
+  return heure <= 23 ? heure : null;
+}
+
+/** La saisie porte-t-elle des minutes (« 17 h 30 ») ? */
+const avecMinutes = (saisie: string) => /^\d{1,2}\s*(?:h|:)\s*\d{1,2}\s*$/i.test(saisie.trim());
 
 /**
  * La sortie Octobre rose, si elle se vend encore au comptoir : fixée, et
@@ -280,11 +295,13 @@ export function VenteEspeces({
   const [dateLocation, setDateLocation] = useState(ici.date);
   const [dateRoadTrip, setDateRoadTrip] = useState(() => premierRoadTripAVenir(ici));
   const [dureeHeures, setDureeHeures] = useState(1);
-  // L'heure de départ suit l'horloge tant que le commercial ne l'a pas
-  // choisie lui-même : une page ouverte le matin propose encore, l'après-
-  // midi, l'heure qui court.
-  const [heureChoisie, setHeureChoisie] = useState<number | null>(null);
-  const heureDebut = heureChoisie ?? heureParDefaut(ici.heure, dureeHeures);
+  // L'heure de départ, tapée par le commercial. Tant qu'il n'a rien tapé,
+  // elle suit l'horloge : une page ouverte le matin propose encore,
+  // l'après-midi, l'heure qui court.
+  const [heureSaisie, setHeureSaisie] = useState<string | null>(null);
+  const texteHeure = heureSaisie ?? String(heureParDefaut(ici.heure, dureeHeures));
+  const heureTapee = lireHeureTapee(texteHeure);
+  const heureDebut = heureTapee ?? heureParDefaut(ici.heure, dureeHeures);
   const [nombrePersonnes, setNombrePersonnes] = useState(1);
   const [veloId, setVeloId] = useState("");
   const [client, setClient] = useState(CLIENT_VIDE);
@@ -398,7 +415,11 @@ export function VenteEspeces({
             ? "Plus aucun vélo libre pour la sortie Octobre rose."
             : `Il ne reste que ${placesRose} vélo${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""} pour la sortie.`
           : null
-        : !velo
+        : !encadree && heureTapee === null
+          ? avecMinutes(texteHeure)
+            ? "Heure pleine seulement, par exemple 17 : les minutes ne sont pas notées."
+            : "Tapez l'heure de départ : une heure pleine, par exemple 17."
+          : !velo
           ? "Choisissez le vélo."
           : !enEtat(velo)
             ? "Ce vélo est en entretien."
@@ -435,13 +456,9 @@ export function VenteEspeces({
     demarrerTransition(() => routeur.refresh());
   };
 
-  const choisirDuree = (duree: number) => {
-    setDureeHeures(duree);
-    // Un départ qui ferait rentrer le vélo après 22 h recule d'autant.
-    setHeureChoisie((choisie) =>
-      choisie === null ? null : Math.min(choisie, FERMETURE_COMPTOIR_HEURE - duree),
-    );
-  };
+  // L'heure tapée n'est jamais changée en douce : si la nouvelle durée fait
+  // rentrer le vélo après 22 h, l'écran le dit et le commercial corrige.
+  const choisirDuree = (duree: number) => setDureeHeures(duree);
 
   const appliquerCode = async () => {
     if (!velo || !codeNormalise) return;
@@ -498,7 +515,7 @@ export function VenteEspeces({
     setMaintenant(heureCourante);
     setDateLocation(maintenantIci.date);
     setDateRoadTrip(premierRoadTripAVenir(maintenantIci));
-    setHeureChoisie(null);
+    setHeureSaisie(null);
     setVente(null);
     setClient(CLIENT_VIDE);
     setCode("");
@@ -616,11 +633,6 @@ export function VenteEspeces({
   }
 
   const datesRoadTrip = joursDeRoadTrip(ici.date);
-  // Au comptoir, l'heure que l'on veut : de 6 h, retour à 22 h au plus tard.
-  const heuresProposees: number[] = [];
-  for (let h = OUVERTURE_COMPTOIR_HEURE; h + dureeHeures <= FERMETURE_COMPTOIR_HEURE; h += 1) {
-    heuresProposees.push(h);
-  }
   const formules: (readonly [CodeOffre, string, string])[] = [
     ["location-libre", "Location libre", "À l'heure, avec caution"],
     ["road-trip", "Road trip", "Samedi et dimanche, 8 h"],
@@ -812,20 +824,40 @@ export function VenteEspeces({
             </div>
             <div>
               <label htmlFor="vente-heure" className="text-[0.8rem] text-gris-cadre">
-                Départ
+                Départ, à l&apos;heure
               </label>
-              <select
-                id="vente-heure"
-                value={heureDebut}
-                onChange={(evenement) => setHeureChoisie(Number(evenement.target.value))}
-                className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem]"
+              {/* Le commercial tape l'heure qu'il veut. Une heure pleine : la
+                  location se compte à l'heure, retour à 22 h au plus tard. */}
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  id="vente-heure"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  maxLength={8}
+                  value={texteHeure}
+                  onChange={(evenement) => setHeureSaisie(evenement.target.value)}
+                  onFocus={(evenement) => evenement.target.select()}
+                  aria-invalid={heureTapee === null || heureFin > FERMETURE_COMPTOIR_HEURE ? true : undefined}
+                  aria-describedby="vente-heure-aide"
+                  className="w-24 rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem] tabular-nums outline-none focus:border-orange-signal aria-[invalid=true]:border-orange-signal"
+                />
+                <span className="text-[0.92rem]" aria-hidden="true">
+                  h
+                </span>
+              </div>
+              <p
+                id="vente-heure-aide"
+                className={`mt-1.5 text-[0.76rem] ${
+                  heureTapee !== null && heureFin > FERMETURE_COMPTOIR_HEURE ? "text-orange-sourd" : "text-gris-cadre"
+                }`}
               >
-                {heuresProposees.map((h) => (
-                  <option key={h} value={h}>
-                    {h} h, retour {h + dureeHeures} h
-                  </option>
-                ))}
-              </select>
+                {heureTapee === null
+                  ? "Une heure pleine, de 0 à 21 h : par exemple 17."
+                  : heureFin > FERMETURE_COMPTOIR_HEURE
+                    ? `Retour à ${heureFin} h : trop tard, le vélo rentre à ${FERMETURE_COMPTOIR_HEURE} h au plus tard.`
+                    : `Retour du vélo à ${heureFin} h.`}
+              </p>
             </div>
           </div>
         )}

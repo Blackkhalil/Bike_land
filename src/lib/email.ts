@@ -327,6 +327,7 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
         ["Départ du groupe", sortie.depart],
         ["Retour", `vers ${sortie.retour}`],
         ["Dress code", sortie.tenue],
+        ["Compris", "Vélo, casque, eau et coco frais"],
       ]
     : [["Date", formatCreneau(reservation)]];
 
@@ -661,7 +662,7 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
     reservation.cautionXof > 0
       ? `À réclamer au départ : pièce d'identité, engagement signé et caution de ${formatXof(reservation.cautionXof)} en espèces.`
       : enRose(reservation)
-        ? `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}) et ${n} casque${n > 1 ? "s" : ""} pour la sortie Octobre rose.`
+        ? `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}), ${n} casque${n > 1 ? "s" : ""}, ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""} pour la sortie Octobre rose.`
         : `À prévoir : ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
 
   return envoyer({

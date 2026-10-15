@@ -277,6 +277,7 @@ export default async function PageProduits() {
                       </Repere>
                     )}
                     <Repere terme="Tarif">{tarifOctobreRose()}, tous vélos</Repere>
+                    <Repere terme="Compris">Vélo, casque, eau et coco frais</Repere>
                   </>
                 ) : (
                   <>

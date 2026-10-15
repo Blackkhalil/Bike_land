@@ -5,7 +5,14 @@ import { useState } from "react";
 import { ajouterJours, aujourdhui, listerJours, versISO } from "@/lib/dates";
 import { seulementPayees } from "@/lib/reservations";
 import { formatDateCourte, formatPlageReservation } from "@/lib/format";
-import { FERMETURE_COMPTOIR_HEURE, OUVERTURE_COMPTOIR_HEURE } from "@/data/offres";
+import { FERMETURE_COMPTOIR_HEURE } from "@/data/offres";
+
+/**
+ * Le début de la journée dessinée. Le comptoir accepte toute heure, mais
+ * une location avant 6 h reste rare : la dessiner à partir de minuit
+ * écraserait toutes les autres barres. Elle s'affiche alors depuis 6 h.
+ */
+const DEBUT_JOURNEE = 6;
 import type { Reservation, Velo } from "@/lib/types";
 
 /**
@@ -192,17 +199,17 @@ export const premierJourVisible = () => versISO(new Date());
  * apparaître côte à côte deux sorties du même vélo le même jour. Sans
  * cela, elles se superposeraient et la seconde serait invisible.
  *
- * La journée va de 6 h à 22 h, les heures du comptoir : une location du
- * soir saisie en espèces s'y voit comme les autres.
+ * La journée va de 6 h à 22 h : une location du soir saisie en espèces
+ * s'y voit comme les autres.
  */
 function positionBarre(creneau: {
   indexDebut: number;
   indexFin: number;
   reservation: { heureDebut: number; heureFin: number };
 }): { left: number; width: number } {
-  const amplitude = FERMETURE_COMPTOIR_HEURE - OUVERTURE_COMPTOIR_HEURE;
-  const debutRelatif = Math.max(0, creneau.reservation.heureDebut - OUVERTURE_COMPTOIR_HEURE) / amplitude;
-  const finRelative = Math.min(amplitude, creneau.reservation.heureFin - OUVERTURE_COMPTOIR_HEURE) / amplitude;
+  const amplitude = FERMETURE_COMPTOIR_HEURE - DEBUT_JOURNEE;
+  const debutRelatif = Math.max(0, creneau.reservation.heureDebut - DEBUT_JOURNEE) / amplitude;
+  const finRelative = Math.min(amplitude, Math.max(1, creneau.reservation.heureFin - DEBUT_JOURNEE)) / amplitude;
 
   const gauche = (creneau.indexDebut + debutRelatif) * LARGEUR_JOUR;
   const droite = (creneau.indexFin + finRelative) * LARGEUR_JOUR;

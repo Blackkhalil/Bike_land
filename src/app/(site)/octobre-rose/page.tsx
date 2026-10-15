@@ -104,7 +104,7 @@ export default async function PageOctobreRose() {
                   <span className="font-display text-[1.25rem]">{formatXof(sortie.prixXof)}</span> par
                   personne, tous vélos
                 </Repere>
-                <Repere terme="Compris">Vélo et casque, sans caution</Repere>
+                <Repere terme="Compris">Vélo, casque, eau et coco frais</Repere>
               </dl>
             ) : (
               <p className="mt-8 max-w-xl text-[0.98rem] font-semibold">
@@ -190,7 +190,7 @@ export default async function PageOctobreRose() {
               <p className="etiquette opacity-75">Bon à savoir</p>
               <ul className="mt-3 space-y-2.5 text-[0.9rem] leading-relaxed">
                 <li>Un vélo vous est attribué : le prix est le même pour tous nos vélos.</li>
-                <li>Vélo et casque fournis, sans caution : la sortie est encadrée.</li>
+                <li>Vélo, casque, eau et coco frais offerts, sans caution : la sortie est encadrée.</li>
                 <li>
                   Le point de départ exact, la facture et l&apos;itinéraire arrivent par email dès le
                   paiement.

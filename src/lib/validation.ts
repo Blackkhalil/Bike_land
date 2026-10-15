@@ -252,9 +252,8 @@ export type EntreeContact = z.infer<typeof schemaContact>;
  * vend donc encore après sa clôture de la veille à 22 h, ou un dimanche
  * fermé en ligne parce que presque complet, et une location libre peut
  * partir dans l'heure qui a commencé, ou être saisie après coup dans la
- * journée. Elle part à l'heure que veut le commercial, de 6 h à 21 h, et
- * rentre à 22 h au plus tard (OUVERTURE_COMPTOIR_HEURE,
- * FERMETURE_COMPTOIR_HEURE).
+ * journée. Elle part à l'heure pleine que tape le commercial, et rentre à
+ * 22 h au plus tard (OUVERTURE_COMPTOIR_HEURE, FERMETURE_COMPTOIR_HEURE).
  *
  * Octobre rose se vend sans vélo choisi : les vélos sont attribués d'office,
  * un par participant, comme en ligne.
