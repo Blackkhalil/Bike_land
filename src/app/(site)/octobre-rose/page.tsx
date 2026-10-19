@@ -82,10 +82,14 @@ export default async function PageOctobreRose() {
               Roulez en rose avec nous
             </TitreSection>
             <p className="mt-6 max-w-xl text-[1.02rem] leading-relaxed">
-              Octobre rose est le mois de la lutte contre le cancer du sein. Bike Land soutient la
-              cause avec une sortie à vélo, tous en rose, pour rappeler qu&apos;un dépistage précoce
-              sauve des vies. Le prix est réduit, et c&apos;est le même pour tous nos vélos&nbsp;: rien à
-              choisir, on s&apos;inscrit et on paie.
+              Octobre rose est le mois de la lutte contre le cancer du sein. Bike Land soutient cette
+              noble cause qu&apos;est la sensibilisation contre le cancer du sein. Ainsi, nous
+              organisons une sortie à vélo, tous en rose, pour rappeler qu&apos;un dépistage à temps
+              peut sauver des vies.
+            </p>
+            <p className="mt-4 max-w-xl text-[1.02rem] leading-relaxed">
+              Le prix de la balade est forfaitaire afin de faire participer un maximum de personnes.
+              Alors inscrivez-vous pour apporter votre pierre à l&apos;édifice.
             </p>
             {sortie ? (
               <dl className="mt-8 max-w-xl">
