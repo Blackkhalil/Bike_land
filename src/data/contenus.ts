@@ -76,9 +76,13 @@ export const itineraires: Itineraire[] = [
   },
 ];
 
-/** Le circuit de la sortie Octobre rose (voir src/data/octobre-rose.ts), `null` sans sortie fixée. */
+/**
+ * Le circuit des sorties Octobre rose (voir src/data/octobre-rose.ts),
+ * `null` sans sortie fixée. Toutes les sorties roulent le même : celui de
+ * la première.
+ */
 export function itineraireOctobreRose(): Itineraire | null {
-  const slug = OCTOBRE_ROSE.sortie?.itineraire;
+  const slug = OCTOBRE_ROSE.sorties[0]?.itineraire;
   return slug ? (itineraires.find((itineraire) => itineraire.slug === slug) ?? null) : null;
 }
 

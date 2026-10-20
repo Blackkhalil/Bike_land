@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { creneauOctobreRose } from "@/data/octobre-rose";
+import { creneauOctobreRose, OCTOBRE_ROSE, sortieOctobreRoseDu } from "@/data/octobre-rose";
 import {
   DUREE_ROAD_TRIP_HEURES,
   FERMETURE_RESERVATIONS_HEURE,
@@ -19,6 +19,7 @@ import {
   envoyerReceptionDemande,
 } from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
+import { formatDateAvecJour } from "@/lib/format";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
 import { estEnAttente } from "@/lib/reservations";
 import { site } from "@/lib/site";
@@ -27,7 +28,12 @@ import {
   schemaInscriptionOctobreRose,
   schemaReservation,
 } from "@/lib/validation";
-import { lireOuverture, motifDeRefus, personnesMaxPour } from "@/lib/ouverture";
+import {
+  lireOuverture,
+  motifDeRefus,
+  personnesMaxPour,
+  refusInscriptionOctobreRose,
+} from "@/lib/ouverture";
 
 /**
  * Création d'une réservation.
@@ -206,16 +212,17 @@ const INSCRIPTIONS_PAR_HEURE = 12;
 const finDeNumero = (telephone?: string) => (telephone ?? "").replace(/[^0-9]/g, "").slice(-8);
 
 /**
- * L'inscription à Octobre rose : ni vélo, ni date, ni heure à vérifier,
- * ce sont ceux de la sortie fixée. Restent l'ouverture des inscriptions
- * (heure limite, et « Sold out » depuis le tableau de bord) et les places :
- * autant que de vélos libres sur le créneau de la sortie.
+ * L'inscription à Octobre rose : ni vélo ni heure à vérifier, ce sont ceux
+ * de la sortie du jour choisi. Restent, pour ce jour-là seulement,
+ * l'ouverture des inscriptions (heure limite du jour, et « Sold out »
+ * depuis le tableau de bord) et les places : autant que de vélos libres sur
+ * le créneau de cette sortie.
  *
  * Une inscription retient ses vélos le temps du paiement, jusqu'à cinq à
- * la fois. Deux garde-fous empêchent qu'on retienne la sortie sans payer :
- * une seule inscription en attente par email et par numéro (une demande
- * qui n'est pas arrivée se relance depuis le lien reçu par email, sans se
- * réinscrire), et un plafond par adresse.
+ * la fois. Deux garde-fous empêchent qu'on retienne les sorties sans payer :
+ * une seule inscription en attente par email et par numéro, tous jours
+ * confondus (une demande qui n'est pas arrivée se relance depuis le lien
+ * reçu par email, sans se réinscrire), et un plafond par adresse.
  */
 async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Preparation> {
   const analyse = schemaInscriptionOctobreRose.safeParse(corps);
@@ -229,27 +236,31 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
   }
   const donnees = analyse.data;
 
-  const creneau = creneauOctobreRose();
-  if (!creneau) {
+  // Le schéma n'accepte que les jours des sorties : la sortie existe.
+  const sortie = sortieOctobreRoseDu(donnees.date);
+  if (!sortie) {
     return {
       refus: NextResponse.json(
-        { erreur: "La sortie Octobre rose n'est pas encore ouverte à l'inscription.", code: "FERME" },
-        { status: 403 },
+        { erreur: "Aucune sortie Octobre rose ce jour-là.", champs: { date: "Jour non proposé." } },
+        { status: 422 },
       ),
     };
   }
+  const creneau = creneauOctobreRose(sortie);
 
   const indisponible = paiementIndisponible();
   if (indisponible) return { refus: indisponible };
 
-  const refus = motifDeRefus(await lireOuverture(), {
-    offre: "octobre-rose",
-    dateDebut: creneau.date,
-    dateFin: creneau.date,
-    heureDebut: creneau.heureDebut,
-  });
+  // L'heure limite de ce jour-là, et son réglage au tableau de bord. Une
+  // inscription close ou fermée pour un jour ne dit rien de l'autre.
+  const refus = refusInscriptionOctobreRose(await lireOuverture(), sortie);
   if (refus) {
-    return { refus: NextResponse.json({ erreur: refus, code: "COMPLET" }, { status: 409 }) };
+    return {
+      refus: NextResponse.json(
+        { erreur: refus.erreur, code: refus.code },
+        { status: refus.code === "FERME" ? 403 : 409 },
+      ),
+    };
   }
 
   let essais = 0;
@@ -273,16 +284,18 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
     };
   }
 
-  // La même personne a déjà une inscription qui attend son paiement : elle
-  // retient déjà ses vélos. On la renvoie vers elle au lieu d'en ouvrir une
-  // seconde, qui en retiendrait autant.
+  // La même personne a déjà une inscription qui attend son paiement, quel
+  // qu'en soit le jour : elle retient déjà des vélos. On la renvoie vers
+  // elle au lieu d'en ouvrir une seconde, qui en retiendrait autant. Payée,
+  // elle laisse s'inscrire pour un autre jour.
   const email = donnees.client.email.trim().toLowerCase();
   const numero = finDeNumero(donnees.client.telephone);
+  const jours = OCTOBRE_ROSE.sorties.map((s) => s.date).sort();
   const enAttente = (
     await depot.listerReservations({
       statut: "EN_ATTENTE_PAIEMENT",
-      depuis: creneau.date,
-      jusqua: creneau.date,
+      depuis: jours[0],
+      jusqua: jours[jours.length - 1],
     })
   ).find(
     (r) =>
@@ -291,11 +304,13 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
       (r.client.email.toLowerCase() === email || (numero.length === 8 && finDeNumero(r.client.telephone) === numero)),
   );
   if (enAttente) {
+    const autreJour =
+      enAttente.dateDebut !== sortie.date ? `, pour le ${formatDateAvecJour(enAttente.dateDebut)},` : "";
     return {
       refus: NextResponse.json(
         {
           erreur:
-            `Une inscription à votre nom attend déjà son paiement (${enAttente.reference}). ` +
+            `Une inscription à votre nom${autreJour} attend déjà son paiement (${enAttente.reference}). ` +
             "Validez la demande sur votre téléphone, ou relancez-la depuis le lien reçu par email. " +
             "Sans paiement, elle se libère d'elle-même au bout de 30 minutes.",
           code: "EN_ATTENTE",
@@ -306,7 +321,8 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
   }
 
   // Contrôle en amont, comme pour un vélo choisi : la transaction qui écrit
-  // attribue les vélos et refait le compte.
+  // attribue les vélos et refait le compte. Les places sont celles de ce
+  // jour-là : chaque sortie a ses vélos.
   const libres = await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin);
   if (libres.length < donnees.nombrePersonnes) {
     return {
@@ -433,9 +449,11 @@ async function creerEtEncaisser(demande: DemandeReservation) {
     );
   } catch (erreur) {
     if (erreur instanceof ConflitDisponibiliteError) {
-      // Octobre rose : une autre inscription vient de prendre des vélos. Le
-      // formulaire ajuste le nombre de places qu'il propose.
-      const creneau = demande.offre === "octobre-rose" ? creneauOctobreRose() : null;
+      // Octobre rose : une autre inscription vient de prendre des vélos sur
+      // la sortie de ce jour. Le formulaire ajuste le nombre de places qu'il
+      // propose pour ce jour-là.
+      const sortie = demande.offre === "octobre-rose" ? sortieOctobreRoseDu(demande.dateDebut) : null;
+      const creneau = sortie ? creneauOctobreRose(sortie) : null;
       const places = creneau
         ? (await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin).catch(() => null))?.length
         : undefined;

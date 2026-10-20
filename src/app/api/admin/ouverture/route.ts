@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { codeOctobreRose } from "@/data/octobre-rose";
+import { codeOctobreRose, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import { CRENEAUX_ROAD_TRIP, heureAuBenin } from "@/data/offres";
 import { sessionAdminValide } from "@/lib/admin";
 import { estDateISOValide } from "@/lib/dates";
@@ -12,8 +12,9 @@ import { rafraichirSitePublic } from "@/lib/rafraichir";
  * Ouvrir ou fermer la réservation, depuis le tableau de bord.
  *
  * Trois gestes : ouvrir ou fermer un créneau de road trip pour toutes les
- * semaines (ou l'inscription en ligne à Octobre rose, sous son propre
- * code), fermer un jour précis quand il est complet, et le rouvrir.
+ * semaines (ou l'inscription en ligne à une sortie Octobre rose, chacune
+ * sous son propre code, daté), fermer un jour précis quand il est complet,
+ * et le rouvrir.
  *
  * Les fiches des vélos sont mises en cache. Après chaque changement, on
  * demande à Next de les reconstruire à la prochaine visite : sans cela,
@@ -22,8 +23,12 @@ import { rafraichirSitePublic } from "@/lib/rafraichir";
 const schema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("creneau"),
-    // L'inscription à Octobre rose se règle sous le code de la sortie en cours.
-    code: z.enum([codeOctobreRose(), ...CRENEAUX_ROAD_TRIP.map((c) => c.code)] as [string, ...string[]]),
+    // Chaque sortie Octobre rose se règle sous son propre code : fermer un
+    // jour laisse les autres ouverts.
+    code: z.enum([
+      ...CRENEAUX_ROAD_TRIP.map((c) => c.code),
+      ...OCTOBRE_ROSE.sorties.map((sortie) => codeOctobreRose(sortie)),
+    ] as [string, ...string[]]),
     actif: z.boolean(),
   }),
   z.object({

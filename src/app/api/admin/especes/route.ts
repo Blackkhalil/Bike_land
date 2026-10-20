@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { creneauOctobreRose } from "@/data/octobre-rose";
+import {
+  creneauOctobreRose,
+  formatHoraire,
+  sortieOctobreRoseDu,
+  sortieOctobreRosePartie,
+} from "@/data/octobre-rose";
 import { DUREE_ROAD_TRIP_HEURES, heureAuBenin } from "@/data/offres";
 import { dateAuBenin } from "@/lib/dates";
 import { sessionAdminValide } from "@/lib/admin";
@@ -14,7 +19,7 @@ import {
   envoyerNotificationAdmin,
 } from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
-import { resumeOffre } from "@/lib/format";
+import { formatDateAvecJour, resumeOffre } from "@/lib/format";
 import { lienDeSuivi } from "@/lib/lien-suivi";
 import { personnesMaxPour } from "@/lib/ouverture";
 import { MESSAGES_REFUS } from "@/lib/parrainage";
@@ -55,7 +60,8 @@ import {
  *    son lien lui a été rendu, pour le montant prévu par les CGV.
  *
  * Le prix n'est jamais saisi : il vient de `calculerDevis`, comme en ligne,
- * au prix de la plaquette, sans les frais du paiement en ligne.
+ * au prix de la plaquette, sans les frais du paiement en ligne. Octobre rose
+ * se vend au prix comptoir de la sortie du jour choisi (`prixComptoirXof`).
  */
 export const maxDuration = 30;
 
@@ -189,23 +195,43 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
 }
 
 /**
- * Une vente Octobre rose au comptoir : au prix d'une place, frais du
- * paiement en ligne retirés comme pour toute vente en espèces, sans code de
- * parrainage (le prix est déjà réduit). Les vélos sont attribués d'office à
- * l'enregistrement ; « libre » dit qu'il en reste assez pour ces personnes.
- * Le comptoir vend jusqu'au départ, et même après coup, comme le road trip :
- * ni l'heure limite des inscriptions en ligne ni le « Sold out » du tableau
- * de bord ne s'y appliquent.
+ * Une vente Octobre rose au comptoir, pour la sortie du jour choisi : au
+ * prix comptoir de cette sortie, le même qu'en ligne avant les frais de
+ * paiement (les 125 F ne s'en retirent pas), sans code de parrainage (le
+ * prix est forfaitaire). Les vélos sont attribués d'office à
+ * l'enregistrement ; « libre » dit qu'il en reste assez ce jour-là pour ces
+ * personnes. Le comptoir vend jusqu'au départ du groupe de ce jour : ni
+ * l'heure limite des inscriptions en ligne ni le « Sold out » du tableau de
+ * bord ne s'y appliquent, mais une sortie partie ne se vend plus.
  */
 async function preparerOctobreRose(donnees: EntreeDevisComptoir): Promise<Preparation> {
-  const creneau = creneauOctobreRose();
-  if (!creneau) {
+  // Le schéma n'accepte que les jours des sorties.
+  const sortie = sortieOctobreRoseDu(donnees.date);
+  if (!sortie) {
     return {
-      refus: NextResponse.json({ erreur: "La sortie Octobre rose n'est pas fixée." }, { status: 409 }),
+      refus: NextResponse.json(
+        { erreur: "Aucune sortie Octobre rose ce jour-là.", champs: { date: "Jour sans sortie." } },
+        { status: 422 },
+      ),
     };
   }
+  if (sortieOctobreRosePartie(sortie, Date.now())) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur:
+            `La sortie du ${formatDateAvecJour(sortie.date)} est partie à ` +
+            `${formatHoraire(sortie.depart)}${String.fromCharCode(0xa0)}: elle ne se vend plus.`,
+          code: "PARTIE",
+        },
+        { status: 409 },
+      ),
+    };
+  }
+  const creneau = creneauOctobreRose(sortie);
   const devisFinal = calculerDevis({
     offre: "octobre-rose",
+    date: sortie.date,
     nombrePersonnes: donnees.nombrePersonnes,
     especes: true,
   });

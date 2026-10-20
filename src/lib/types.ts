@@ -13,9 +13,10 @@ import type { GammeVelo } from "@/data/offres";
  * Les offres. Definie ici et non dans data/offres.ts pour que la couche de
  * donnees n'ait pas a dependre du contenu editorial.
  *
- * `octobre-rose` est la sortie de saison (src/data/octobre-rose.ts) : un
- * prix par personne quel que soit le velo, et des velos attribues
- * d'office, un par participant.
+ * `octobre-rose` est la sortie de saison (src/data/octobre-rose.ts), une
+ * par jour fixe : le client choisit son jour, qui est la date de la
+ * reservation. Un prix par personne quel que soit le velo, et des velos
+ * attribues d'office, un par participant.
  */
 export type CodeOffre = "road-trip" | "location-libre" | "octobre-rose";
 

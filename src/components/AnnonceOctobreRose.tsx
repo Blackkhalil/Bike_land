@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Bouton, BoutonLien } from "@/components/Bouton";
 import { Pastille } from "@/components/ui";
-import { OCTOBRE_ROSE } from "@/data/octobre-rose";
+import { OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
 import {
   inscriptionsOctobreRoseOuvertes,
   octobreRoseEnCours,
@@ -126,13 +126,16 @@ export function AnnonceOctobreRose() {
   if (!visible) return null;
 
   const rendezVous = rendezVousOctobreRose();
-  const tenue = OCTOBRE_ROSE.sortie?.tenue;
+  // Les sorties partagent leur tenue : la première la dit pour toutes.
+  const tenue = OCTOBRE_ROSE.sorties[0]?.tenue;
   const dressCode = tenue ? ` Dress code\u00a0: ${tenue.charAt(0).toLowerCase()}${tenue.slice(1)}.` : "";
   const texte = rendezVous
-    ? `${rendezVous.charAt(0).toUpperCase()}${rendezVous.slice(1)}\u00a0: une sortie à vélo aux couleurs d'Octobre rose, le mois de sensibilisation au cancer du sein.${dressCode}`
+    ? `${rendezVous.charAt(0).toUpperCase()}${rendezVous.slice(1)}\u00a0: des sorties à vélo aux couleurs d'Octobre rose, le mois de sensibilisation au cancer du sein.${dressCode}`
     : "Une sortie à vélo aux couleurs d'Octobre rose, le mois de sensibilisation au cancer du sein, se prépare. Date et programme très bientôt.";
   const tarif = tarifOctobreRose();
-  const prix = tarif ? ` ${tarif}, le même pour tous nos vélos.` : "";
+  const prix = tarif
+    ? ` ${tarif}, le même pour tous nos vélos. Offerts à chacun\u00a0: ${texteOffertOctobreRose()}.`
+    : "";
 
   return (
     <dialog

@@ -7,15 +7,16 @@
  * ce qui permet de vérifier leur contenu en développement.
  */
 
-import { itineraireOctobreRose } from "@/data/contenus";
-import { formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
-import { creneauDuDepart, EXIGENCES } from "@/data/offres";
+import { itineraires } from "@/data/contenus";
+import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
+import { creneauDuDepart, exigencesOctobreRose } from "@/data/offres";
 
 import { site } from "./site";
 import { numeroDeFacture } from "./facture";
 import {
   formatCreneau,
   formatDateAvecJour,
+  formatDateComplete,
   formatXof,
   libelleReglement,
   libelleRemise,
@@ -24,33 +25,62 @@ import {
 } from "./format";
 import { paiementPrincipal } from "./reservations";
 import type { Reservation } from "./types";
+import { estPayeeEnLigne, lienWhatsAppReservation } from "./whatsapp";
 
 /** Le rose d'Octobre rose, celui du site (--color-rose-octobre). */
 const ROSE = "#e8458b";
+
+/**
+ * L'espace insécable de la typographie française : avant « : », « ? »,
+ * « ! », et entre un nombre et son unité, « 16 h 30 » ou « 3 vélos ».
+ */
+const INSECABLE = String.fromCharCode(0xa0);
 
 /** Une réservation de la sortie Octobre rose : ses emails passent au rose. */
 function enRose(reservation: Reservation): boolean {
   return reservation.offre === "octobre-rose";
 }
 
+/** « 3 vélos », « 1 casque » : le nombre et ce qu'il compte, d'un seul tenant. */
+function compte(n: number, singulier: string, pluriel = `${singulier}s`): string {
+  return `${n}${INSECABLE}${n > 1 ? pluriel : singulier}`;
+}
+
 /** « 3 personnes », « 1 personne ». */
 function personnes(n: number): string {
-  return `${n} personne${n > 1 ? "s" : ""}`;
+  return compte(n, "personne");
+}
+
+/** « Référence : BL-4F2K9Q », une ligne de la version texte. */
+function champ(libelle: string, valeur: string): string {
+  return `${libelle}${INSECABLE}: ${valeur}`;
+}
+
+/** « samedi 24 octobre » devient « Samedi 24 octobre », en tête de ligne. */
+function majuscule(texte: string): string {
+  return texte.charAt(0).toUpperCase() + texte.slice(1);
 }
 
 /**
- * Ce que la sortie Octobre rose a de propre, pour les emails : le rendez-
- * vous à la minute près, la tenue, et le circuit, avec le lien vers sa
- * page. `null` si la sortie décrite n'est pas celle de cette réservation
- * (une facture de l'an dernier renvoyée cette année) : l'email s'en tient
- * alors aux heures enregistrées.
+ * Ce que la sortie Octobre rose de cette réservation a de propre, pour les
+ * emails : son jour, le rendez-vous et le départ à la minute près, la
+ * tenue, et le circuit, avec le lien vers sa page. La sortie se retrouve
+ * par le jour de la réservation : chacun reçoit les heures de son jour, le
+ * samedi comme le dimanche. `null` pour une inscription d'une campagne
+ * passée (une facture de l'an dernier renvoyée cette année) : l'email s'en
+ * tient alors aux heures enregistrées.
  */
 function detailsSortie(reservation: Reservation) {
-  const sortie = OCTOBRE_ROSE.sortie;
-  if (!sortie || sortie.date !== reservation.dateDebut) return null;
-  const circuit = itineraireOctobreRose();
+  const sortie = sortieDeLaReservation(reservation);
+  if (!sortie) return null;
+  // Le circuit de cette sortie-là, pas celui de la première de la liste :
+  // un jour ajouté plus tard peut rouler ailleurs.
+  const circuit = itineraires.find((itineraire) => itineraire.slug === sortie.itineraire);
   return {
+    /** « samedi 24 octobre », pour les phrases. */
     jour: formatDateAvecJour(sortie.date),
+    /** « samedi 24 octobre 2026 », pour la ligne « Date ». */
+    date: formatDateComplete(sortie.date),
     rassemblement: formatHoraire(sortie.rassemblement),
     depart: formatHoraire(sortie.depart),
     retour: formatHoraire(sortie.retour),
@@ -58,11 +88,62 @@ function detailsSortie(reservation: Reservation) {
     itineraire: circuit
       ? {
           titre: circuit.titre,
-          detail: `${circuit.distanceKm} km aller-retour, ${circuit.duree.toLowerCase()}, niveau ${circuit.niveau.toLowerCase()}. ${circuit.resume}`,
+          // Sans la durée habituelle du circuit : celle de la sortie se lit
+          // dans ses heures, du départ au retour, juste au-dessus.
+          detail: `${circuit.distanceKm}${INSECABLE}km aller-retour, niveau ${circuit.niveau.toLowerCase()}. ${circuit.resume}`,
           url: `${site.url}/itineraires/${circuit.slug}`,
         }
       : undefined,
   };
+}
+
+/** Le lien WhatsApp d'une réservation, et le numéro auquel il écrit. */
+interface WhatsAppReservation {
+  lien: string;
+  numero: string;
+}
+
+/**
+ * La réservation à envoyer sur WhatsApp, à Ulrich : le même message déjà
+ * écrit que celui qu'ouvre la page de suivi juste après le paiement (voir
+ * src/lib/whatsapp.ts). Le client n'a qu'à appuyer sur « Envoyer » pour
+ * avoir sa réservation sous la main dans WhatsApp.
+ *
+ * Seulement pour une réservation payée en ligne : une vente au comptoir
+ * s'est conclue devant l'équipe, en espèces.
+ */
+function whatsappDe(reservation: Reservation, lienSuivi: string): WhatsAppReservation | null {
+  if (!estPayeeEnLigne(reservation)) return null;
+  return {
+    lien: lienWhatsAppReservation(reservation, lienSuivi),
+    // La ligne d'Ulrich : celle sur laquelle `lienWhatsApp` ouvre la conversation.
+    numero: site.whatsapp[1].numero,
+  };
+}
+
+/**
+ * Le lien WhatsApp dans la version texte : l'adresse entière, longue
+ * puisque le message y est écrit, seule sur sa ligne pour rester cliquable.
+ */
+function texteWhatsApp(whatsapp: WhatsAppReservation): string[] {
+  return [
+    `Recevoir votre réservation sur WhatsApp${INSECABLE}: ce lien ouvre la conversation avec Ulrich ` +
+      `(${whatsapp.numero}), le message déjà écrit avec toute votre réservation. ` +
+      `Appuyez sur «${INSECABLE}Envoyer${INSECABLE}»${INSECABLE}: vous l'aurez sous la main dans WhatsApp.`,
+    whatsapp.lien,
+    "",
+  ];
+}
+
+/**
+ * La ligne d'Octobre rose sur la facture : « Octobre rose, 3 personnes ×
+ * 2 125 FCFA ». Un prix forfaitaire par personne, le même pour tous les
+ * vélos.
+ */
+function ligneFactureOctobreRose(reservation: Reservation): string {
+  const n = reservation.nombrePersonnes;
+  const prixUnitaire = Math.round(reservation.sousTotalXof / Math.max(n, 1));
+  return `Octobre rose, ${personnes(n)} × ${formatXof(prixUnitaire)}`;
 }
 
 interface Message {
@@ -218,7 +299,8 @@ function aPrevoir(reservation: Reservation): string[] {
       "La signature de l'engagement de restitution, sur place.",
     ];
   }
-  if (reservation.offre === "octobre-rose") return EXIGENCES["octobre-rose"];
+  // Les consignes avec les heures de la sortie de ce jour-là.
+  if (reservation.offre === "octobre-rose") return exigencesOctobreRose(sortieDeLaReservation(reservation));
   // Gbashi bike, le dimanche : la séance de sport demande une tenue.
   const consigne = creneauDuDepart(reservation.dateDebut, reservation.heureDebut)?.consigne;
   return [
@@ -318,7 +400,7 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
   const facture = numeroDeFacture(reservation);
   const paiement = paiementPrincipal(reservation);
   const reglement = paiement ? libelleReglement(paiement.moyen) : null;
-  const prixUnitaire = Math.round(reservation.sousTotalXof / Math.max(n, 1));
+  const whatsapp = whatsappDe(reservation, lienSuivi);
 
   const lignesSortie: [string, string][] = sortie
     ? [
@@ -327,7 +409,8 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
         ["Départ du groupe", sortie.depart],
         ["Retour", `vers ${sortie.retour}`],
         ["Dress code", sortie.tenue],
-        ["Compris", "Vélo, casque, eau et coco frais"],
+        ["Compris", "Vélo et casque"],
+        ["Offert à chacun", texteOffertOctobreRose()],
       ]
     : [["Date", formatCreneau(reservation)]];
 
@@ -335,7 +418,7 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
     `Bonjour ${reservation.client.prenom},`,
     "",
     `Merci de rouler avec nous pour Octobre rose : votre paiement est reçu, ${places}.`,
-    `Bike Land soutient la lutte contre le cancer du sein : d'où ce prix réduit, le même pour tous nos vélos.`,
+    `Bike Land soutient la lutte contre le cancer du sein : d'où ce prix forfaitaire, le même pour tous nos vélos.`,
     "",
     `Référence : ${reservation.reference}`,
     `Participants : ${personnes(n)}`,
@@ -352,10 +435,11 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
     `Carte : ${rendezVous.carte}`,
     "",
     `Votre facture ${facture} :`,
-    `  Octobre rose, ${personnes(n)} × ${formatXof(prixUnitaire)} : ${formatXof(reservation.sousTotalXof)}`,
+    `  ${ligneFactureOctobreRose(reservation)} : ${formatXof(reservation.sousTotalXof)}`,
     `  Total réglé : ${formatXof(reservation.totalXof)}${reglement ? `, ${reglement}` : ""}`,
     `  À télécharger depuis votre lien : ${lienSuivi}#facture`,
     "",
+    ...(whatsapp ? texteWhatsApp(whatsapp) : []),
     "Une question, un retard ? Écrivez-nous sur WhatsApp :",
     ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
     "",
@@ -383,12 +467,13 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
         ["Montant réglé", formatXof(reservation.totalXof)],
       ],
       action: { libelle: "Voir ma réservation", url: lienSuivi },
+      whatsapp: whatsapp ?? undefined,
       itineraire: sortie?.itineraire,
       rendezVous,
       facture: {
         numero: facture,
         lignes: [
-          [`Octobre rose, ${personnes(n)} × ${formatXof(prixUnitaire)}`, formatXof(reservation.sousTotalXof)],
+          [ligneFactureOctobreRose(reservation), formatXof(reservation.sousTotalXof)],
           ["Total réglé", formatXof(reservation.totalXof)],
           ...(reglement ? ([["Règlement", reglement]] as [string, string][]) : []),
         ],
@@ -405,6 +490,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
   const velo = reservation.lignes[0];
   const prevoir = aPrevoir(reservation);
   const rendezVous = rendezVousDe(reservation);
+  const whatsapp = whatsappDe(reservation, lienSuivi);
 
   const texte = [
     `Bonjour ${reservation.client.prenom},`,
@@ -422,6 +508,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
     rendezVous.indication,
     `Carte : ${rendezVous.carte}`,
     "",
+    ...(whatsapp ? texteWhatsApp(whatsapp) : []),
     "Une question, un retard ? Écrivez-nous sur WhatsApp :",
     ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
     "",
@@ -460,6 +547,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
       // réservation n'avait rien à cliquer. C'est pourtant l'email vers
       // lequel il revient, bien plus que vers celui de la demande.
       action: { libelle: "Voir ma réservation", url: lienSuivi },
+      whatsapp: whatsapp ?? undefined,
       rendezVous,
       pied: `À prévoir au départ : ${prevoir.join(" ")}`,
     }),
@@ -662,7 +750,7 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
     reservation.cautionXof > 0
       ? `À réclamer au départ : pièce d'identité, engagement signé et caution de ${formatXof(reservation.cautionXof)} en espèces.`
       : enRose(reservation)
-        ? `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}), ${n} casque${n > 1 ? "s" : ""}, ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""} pour la sortie Octobre rose.`
+        ? `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}), ${n} casque${n > 1 ? "s" : ""}, et à offrir ${texteOffertOctobreRose(n)} pour la sortie Octobre rose.`
         : `À prévoir : ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
 
   return envoyer({
@@ -949,6 +1037,8 @@ function gabarit(contenu: {
   intro: string;
   lignes: [string, string][];
   action?: { libelle: string; url: string };
+  /** La réservation à recevoir sur WhatsApp, message déjà écrit (voir `whatsappDe`). */
+  whatsapp?: WhatsAppReservation;
   rendezVous?: RendezVous;
   itineraire?: { titre: string; detail: string; url: string };
   facture?: { numero: string; lignes: [string, string][]; url: string };
@@ -975,6 +1065,18 @@ function gabarit(contenu: {
 
   const action = contenu.action
     ? `<a href="${echapper(contenu.action.url)}" style="display:inline-block;margin-top:28px;background:${accent};color:${texteBouton};text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:600;font-size:15px">${echapper(contenu.action.libelle)}</a>`
+    : "";
+
+  // Le vert de WhatsApp, que le client reconnaît d'un coup d'œil ; le
+  // texte du bouton en noir, plus lisible que le blanc sur ce vert.
+  const whatsapp = contenu.whatsapp
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;border:2px solid #25d366;border-radius:14px">
+        <tr><td style="padding:22px 24px">
+          <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">Sur WhatsApp</p>
+          <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#0e0e0e">Recevez votre réservation dans WhatsApp&nbsp;: le message est déjà écrit, vers Ulrich, de l'équipe ${echapper(site.nom)} (${echapper(contenu.whatsapp.numero)}). Il ne vous reste qu'à appuyer sur «&nbsp;Envoyer&nbsp;».</p>
+          <a href="${echapper(contenu.whatsapp.lien)}" style="display:inline-block;margin-top:16px;background:#25d366;color:#0e0e0e;text-decoration:none;padding:12px 24px;border-radius:999px;font-weight:600;font-size:14px">Recevoir ma réservation sur WhatsApp</a>
+        </td></tr>
+      </table>`
     : "";
 
   const bandeau = rose
@@ -1042,6 +1144,7 @@ function gabarit(contenu: {
           <p style="margin:14px 0 26px;font-size:15px;line-height:1.6;color:#6b6b6b">${echapper(contenu.intro)}</p>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${lignes}</table>
           ${action}
+          ${whatsapp}
           ${itineraire}
           ${rendezVous}
           ${facture}

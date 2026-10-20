@@ -16,11 +16,20 @@
  * facture à l'heure, le road trip au forfait.
  */
 
-import { creneauOctobreRose, formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
+import {
+  creneauOctobreRose,
+  formatHoraire,
+  OCTOBRE_ROSE,
+  texteOffertOctobreRose,
+  type SortieOctobreRose,
+} from "@/data/octobre-rose";
 import { DECALAGE_BENIN_MS } from "@/lib/dates";
 import type { CodeOffre } from "@/lib/types";
 
 export type { CodeOffre };
+
+/** L'espace insécable de la typographie française, avant « : ». */
+const INSECABLE = String.fromCharCode(0xa0);
 
 /**
  * Les trois gammes de vélos.
@@ -165,12 +174,28 @@ export const EXIGENCES: Record<CodeOffre, string[]> = {
     "Signer l'engagement de restitution, en ligne puis sur place au départ.",
     `Laisser une caution de ${CAUTION_LOCATION_LIBRE_XOF.toLocaleString("fr-FR")} FCFA, rendue à la restitution du vélo.`,
   ],
-  "octobre-rose": [
-    `Dress code : ${(OCTOBRE_ROSE.sortie?.tenue ?? "tout le monde en rose").toLowerCase()}.`,
-    "Être au point de départ à l'heure du rassemblement : le groupe part à l'heure.",
-    "Rien d'autre à apporter : vélo et casque sont fournis, eau et coco frais offerts, sans caution.",
-  ],
+  // Ce qui vaut pour toutes les sorties de la campagne. Une sortie connue
+  // donne en plus ses heures : `exigencesOctobreRose(sortie)`.
+  "octobre-rose": exigencesOctobreRose(null),
 };
+
+/**
+ * Ce que le participant doit savoir d'une sortie Octobre rose : la tenue,
+ * l'heure du rassemblement, ce qui est fourni et offert. Sans sortie (une
+ * inscription d'une campagne passée), les mêmes consignes, sans les heures.
+ */
+export function exigencesOctobreRose(sortie: SortieOctobreRose | null): string[] {
+  const tenue = sortie?.tenue ?? OCTOBRE_ROSE.sorties[0]?.tenue ?? "Tout le monde en rose";
+  return [
+    `Dress code${INSECABLE}: ${tenue.charAt(0).toLowerCase()}${tenue.slice(1)}.`,
+    sortie
+      ? `Être au point de départ à ${formatHoraire(sortie.rassemblement)}, l'heure du rassemblement${INSECABLE}: ` +
+        `le groupe part à ${formatHoraire(sortie.depart)}, à l'heure.`
+      : `Être au point de départ à l'heure du rassemblement${INSECABLE}: le groupe part à l'heure.`,
+    `Rien d'autre à apporter${INSECABLE}: vélo et casque sont fournis, sans caution. ` +
+      `Offerts à chacun${INSECABLE}: ${texteOffertOctobreRose()}.`,
+  ];
+}
 
 export const OFFRES: {
   code: CodeOffre;
@@ -299,7 +324,7 @@ export const FERMETURE_COMPTOIR_HEURE = 22;
  * ferme à 19 h, le client ne pourrait pas rendre le vélo.
  *
  * Le jour connu, les règles de `motifHoraireLocation` s'ajoutent : pas de
- * location libre pendant le road trip du week-end ni pendant la sortie
+ * location libre pendant le road trip du week-end ni pendant une sortie
  * Octobre rose, ni sur une heure déjà passée le jour même.
  */
 export function heuresDepartPossibles(
@@ -336,8 +361,10 @@ export function roadTripsDuJour(date: string) {
  *  - Le week-end, de 8 h à 11 h, les vélos sont sur la route avec le
  *    groupe du road trip : aucune location libre ne peut empiéter sur
  *    ces heures. Elle commence donc à 11 h le samedi et le dimanche.
- *  - Le jour d'Octobre rose, de même pendant la sortie, du rassemblement
- *    au retour des vélos (voir `creneauOctobreRose`).
+ *  - Le jour d'une sortie Octobre rose, de même pendant la sortie, du
+ *    rassemblement au retour des vélos (voir `creneauOctobreRose`) : de
+ *    16 h à 18 h ce jour-là. Les autres heures et les autres jours restent
+ *    ouverts.
  *  - Le jour même, seules les heures à venir restent : à 15 h, un départ
  *    à 9 h n'a plus de sens, et le client l'aurait payé pour rien.
  */
@@ -357,16 +384,21 @@ export function motifHoraireLocation(
       `ne peut pas empiéter sur ces heures.`
     );
   }
-  const octobreRose = creneauOctobreRose();
-  if (
-    octobreRose &&
-    octobreRose.date === date &&
-    heureDebut < octobreRose.heureFin &&
-    heureDebut + dureeHeures > octobreRose.heureDebut
-  ) {
+  // Chaque sortie bloque son seul jour : toutes sont parcourues, ouvrir un
+  // jour de plus ne demande rien d'autre que de l'ajouter à la liste.
+  const sortie = OCTOBRE_ROSE.sorties.find((candidate) => {
+    const creneau = creneauOctobreRose(candidate);
     return (
-      `Ce jour-là, de ${formatHeure(octobreRose.heureDebut)} à ${formatHeure(octobreRose.heureFin)}, ` +
-      `les vélos sont à la sortie Octobre rose (départ ${formatHoraire(OCTOBRE_ROSE.sortie!.depart)}) : ` +
+      creneau.date === date &&
+      heureDebut < creneau.heureFin &&
+      heureDebut + dureeHeures > creneau.heureDebut
+    );
+  });
+  if (sortie) {
+    const creneau = creneauOctobreRose(sortie);
+    return (
+      `Ce jour-là, de ${formatHeure(creneau.heureDebut)} à ${formatHeure(creneau.heureFin)}, ` +
+      `les vélos sont à la sortie Octobre rose (départ ${formatHoraire(sortie.depart)})${INSECABLE}: ` +
       `la location libre ne peut pas empiéter sur ces heures.`
     );
   }

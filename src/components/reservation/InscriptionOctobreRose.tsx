@@ -4,11 +4,26 @@ import { useRouter } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 
 import { Bouton, BoutonLien } from "@/components/Bouton";
-import { clotureInscriptionsOctobreRose, departOctobreRose } from "@/data/octobre-rose";
-import { inscriptionsOctobreRoseOuvertes, MESSAGES_WHATSAPP, placesRestantes } from "@/data/produits";
+import {
+  clotureInscriptionsOctobreRose,
+  departOctobreRose,
+  formatHoraire,
+  inscriptionOctobreRoseOuverte,
+  OCTOBRE_ROSE,
+  sortieOctobreRoseDu,
+  sortieOctobreRosePartie,
+  type SortieOctobreRose,
+} from "@/data/octobre-rose";
+import {
+  horaireDeLaSortie,
+  jourDeLaSortie,
+  MESSAGES_WHATSAPP,
+  placesRestantes,
+} from "@/data/produits";
 import { EXPIRATION_PANIER_MINUTES } from "@/data/offres";
+import type { DateISO } from "@/lib/dates";
 import { diagnostiquer } from "@/lib/echecs-paiement";
-import { formatXof } from "@/lib/format";
+import { formatDateAvecJour, formatXof } from "@/lib/format";
 import { fraisEncaissement, moyensDisponibles, TAUX_ENCAISSEMENT } from "@/lib/tarifs-paiement";
 import { lienWhatsApp } from "@/lib/site";
 import type { MoyenPaiement } from "@/lib/types";
@@ -16,70 +31,98 @@ import { SuiviPaiementMomo } from "./SuiviPaiementMomo";
 
 /**
  * L'horloge de la page : elle se met à jour d'elle-même à l'heure limite
- * des inscriptions, puis au départ du groupe, sans être rechargée.
+ * des inscriptions de chaque jour, puis au départ de chaque groupe, sans
+ * être rechargée. Le minuteur suivant se pose quand le précédent sonne.
  */
 function abonnementHorloge(rappel: () => void) {
-  const minuteurs = [clotureInscriptionsOctobreRose(), departOctobreRose()]
-    .filter((instant): instant is number => instant !== null)
-    .map((instant) => instant - new Date().getTime() + 1000)
-    .filter((delai) => delai > 0 && delai < 2 ** 31 - 1)
-    .map((delai) => setTimeout(rappel, delai));
-  return () => minuteurs.forEach((minuteur) => clearTimeout(minuteur));
+  let minuteur: ReturnType<typeof setTimeout> | undefined;
+  const programmer = () => {
+    const maintenant = new Date().getTime();
+    const prochain = OCTOBRE_ROSE.sorties
+      .flatMap((sortie) => [clotureInscriptionsOctobreRose(sortie), departOctobreRose(sortie)])
+      .filter((instant) => instant > maintenant)
+      .sort((a, b) => a - b)[0];
+    if (prochain === undefined) return;
+    const delai = prochain - maintenant + 1000;
+    if (delai >= 2 ** 31 - 1) return;
+    minuteur = setTimeout(() => {
+      rappel();
+      programmer();
+    }, delai);
+  };
+  programmer();
+  return () => clearTimeout(minuteur);
 }
-
-/** Le groupe est-il parti ? */
-function apresLeDepart(): boolean {
-  const depart = departOctobreRose();
-  return depart !== null && new Date().getTime() >= depart;
-}
-
-
 
 /**
- * L'inscription à Octobre rose : on clique, on paie.
+ * L'état de chaque jour à l'horloge, en une chaîne comparable d'un rendu à
+ * l'autre : « o » inscriptions ouvertes ou « f » closes, puis « p » groupe
+ * parti ou « - ».
+ */
+function horlogeDesJours(dates: DateISO[], maintenant: number): string {
+  return dates
+    .map((date) => {
+      const sortie = sortieOctobreRoseDu(date);
+      if (!sortie) return "fp";
+      return (
+        (inscriptionOctobreRoseOuverte(sortie, maintenant) ? "o" : "f") +
+        (sortieOctobreRosePartie(sortie, maintenant) ? "p" : "-")
+      );
+    })
+    .join(",");
+}
+
+/** Un jour de sortie, tel que le serveur l'a vu au rendu de la page. */
+export interface JourInscription {
+  /** AAAA-MM-JJ : une sortie de src/data/octobre-rose.ts. */
+  date: DateISO;
+  /** Les vélos libres ce jour-là, au rendu. */
+  places: number;
+  /** Les vélos retenus par des inscriptions qui attendent leur paiement. */
+  placesEnAttente: number;
+  /** Le jour n'est pas fermé (« Sold out ») depuis le tableau de bord. */
+  ouvertEnLigne: boolean;
+}
+
+/**
+ * L'inscription à Octobre rose : on choisit son jour, on paie.
  *
- * Pas de vélo à choisir ni de date : la sortie est fixée, et le serveur
- * attribue un vélo libre à chaque participant. Le client dit combien ils
- * sont et qui il est, choisit son opérateur, et la demande de paiement part
- * sur son téléphone. La suite est celle du tunnel : la page attend la
+ * Pas de vélo à choisir : le serveur attribue un vélo libre à chaque
+ * participant, ce jour-là. Le client choisit son jour, dit combien ils sont
+ * et qui il est, choisit son opérateur, et la demande de paiement part sur
+ * son téléphone. La suite est celle du tunnel : la page attend la
  * validation, puis mène au suivi de la réservation, et l'email de
  * confirmation, aux couleurs d'Octobre rose, part avec la facture.
  *
- * La page est mise en cache : l'heure limite des inscriptions est donc
- * relue dans le navigateur, et le serveur refait tous les contrôles.
+ * Avec plusieurs jours ouverts, aucun n'est choisi d'avance : un samedi pris
+ * par erreur pour un dimanche ferait venir quelqu'un le mauvais jour.
+ *
+ * La page est mise en cache : les heures limites sont donc relues dans le
+ * navigateur, et le serveur refait tous les contrôles.
  */
 export function InscriptionOctobreRose({
-  prixXof,
-  placesInitiales,
-  placesEnAttente,
+  jours,
   maxParInscription,
-  ouvertAuServeur,
-  partiAuServeur,
-  ouvertEnLigne,
+  maintenantAuServeur,
 }: {
-  /** Prix d'une place, en ligne. */
-  prixXof: number;
-  /** Les vélos libres sur la sortie au moment du rendu. */
-  placesInitiales: number;
-  /** Les vélos retenus par des inscriptions qui attendent leur paiement. */
-  placesEnAttente: number;
+  /** Les jours de la campagne, dans l'ordre. */
+  jours: JourInscription[];
   maxParInscription: number;
-  /** L'heure limite des inscriptions n'était pas passée au rendu. */
-  ouvertAuServeur: boolean;
-  /** Le groupe était déjà parti au rendu. */
-  partiAuServeur: boolean;
-  /** L'inscription n'est pas fermée (« Sold out ») depuis le tableau de bord. */
-  ouvertEnLigne: boolean;
+  /** L'instant du rendu côté serveur : l'horloge s'hydrate dessus. */
+  maintenantAuServeur: number;
 }) {
   const routeur = useRouter();
-  const ouvertes = useSyncExternalStore(
+  const dates = jours.map((jour) => jour.date);
+  const horloge = useSyncExternalStore(
     abonnementHorloge,
-    () => inscriptionsOctobreRoseOuvertes(new Date()),
-    () => ouvertAuServeur,
-  );
-  const partie = useSyncExternalStore(abonnementHorloge, apresLeDepart, () => partiAuServeur);
+    () => horlogeDesJours(dates, new Date().getTime()),
+    () => horlogeDesJours(dates, maintenantAuServeur),
+  ).split(",");
 
-  const [places, setPlaces] = useState(placesInitiales);
+  const [placesParJour, setPlacesParJour] = useState<Record<string, number>>(() =>
+    Object.fromEntries(jours.map((jour) => [jour.date, jour.places])),
+  );
+  const [choix, setChoix] = useState<DateISO | null>(null);
   const [nombre, setNombre] = useState(1);
   const [prenom, setPrenom] = useState("");
   const [nom, setNom] = useState("");
@@ -101,7 +144,38 @@ export function InscriptionOctobreRose({
     urlCheckout?: string;
   } | null>(null);
 
-  const maximum = Math.max(1, Math.min(maxParInscription, places));
+  // Chaque jour, avec ce qui l'empêche d'être choisi s'il y a quelque chose.
+  const etats = jours.flatMap((jour, index) => {
+    const sortie = sortieOctobreRoseDu(jour.date);
+    if (!sortie) return [];
+    const [clos, parti] = horloge[index] ?? "fp";
+    const places = placesParJour[jour.date] ?? jour.places;
+    const motif =
+      parti === "p"
+        ? "Sortie passée"
+        : clos !== "o"
+          ? "Inscriptions closes"
+          : !jour.ouvertEnLigne
+            ? "Sold out"
+            : places === 0
+              ? jour.placesEnAttente > 0
+                ? "Complet pour le moment"
+                : "Complet"
+              : null;
+    return [{ ...jour, sortie, places, ouvertALHeure: clos === "o", parti: parti === "p", motif }];
+  });
+  const aVenir = etats.filter((etat) => !etat.parti);
+  const choisissables = etats.filter((etat) => etat.motif === null);
+  // Un seul jour possible : il est choisi d'office. Un jour choisi qui ne
+  // l'est plus (heure limite passée entre-temps) est à rechoisir.
+  const jourChoisi =
+    choisissables.length === 1
+      ? choisissables[0]
+      : (choisissables.find((etat) => etat.date === choix) ?? null);
+  const sortieChoisie: SortieOctobreRose | null = jourChoisi?.sortie ?? null;
+  const prixXof = sortieChoisie?.prixXof ?? Math.min(...etats.map((etat) => etat.sortie.prixXof));
+
+  const maximum = Math.max(1, Math.min(maxParInscription, jourChoisi?.places ?? maxParInscription));
   const personnes = Math.min(nombre, maximum);
   const total = prixXof * personnes;
   const debite = total + fraisEncaissement(total);
@@ -112,40 +186,42 @@ export function InscriptionOctobreRose({
     /^\S+@\S+\.\S+$/.test(email.trim()) &&
     /^[+0-9 ().-]{8,20}$/.test(telephone.trim());
 
-  // Pourquoi l'on ne peut pas s'inscrire, s'il y a une raison. Jamais pendant
-  // qu'un paiement est en cours : la demande est sur le téléphone du client,
-  // l'heure limite ou les places n'y changent plus rien.
-  const empechement = attente
-    ? null
-    : partie
-      ? {
-          pastille: "Merci",
-          titre: "La sortie a eu lieu",
-          texte: "Merci à toutes celles et à tous ceux qui ont roulé en rose avec nous. Rendez-vous l'an prochain !",
-          whatsapp: false,
-        }
-      : !ouvertes
+  // Pourquoi l'on ne peut s'inscrire à aucun jour, s'il y a une raison.
+  // Jamais pendant qu'un paiement est en cours : la demande est sur le
+  // téléphone du client, l'heure limite ou les places n'y changent plus rien.
+  // Tant qu'un jour reste possible, le formulaire s'affiche, et les jours
+  // impossibles y disent pourquoi.
+  const ouvertsALHeure = aVenir.filter((etat) => etat.ouvertALHeure);
+  const empechement =
+    attente || choisissables.length > 0
+      ? null
+      : aVenir.length === 0
         ? {
-            pastille: "Inscriptions closes",
-            titre: "Les inscriptions en ligne sont closes",
-            texte: "Il reste peut-être un vélo : écrivez-nous sur WhatsApp avant le rassemblement.",
-            whatsapp: true,
+            pastille: "Merci",
+            titre: "La sortie a eu lieu",
+            texte: "Merci à toutes celles et à tous ceux qui ont roulé en rose avec nous. Rendez-vous l'an prochain !",
+            whatsapp: false,
           }
-        : !ouvertEnLigne || (places === 0 && placesEnAttente === 0)
+        : ouvertsALHeure.length === 0
           ? {
-              pastille: "Sold out",
-              titre: "Toutes les places sont prises",
-              texte: "Écrivez-nous sur WhatsApp : si une place se libère, nous vous la gardons.",
+              pastille: "Inscriptions closes",
+              titre: "Les inscriptions en ligne sont closes",
+              texte: "Il reste peut-être un vélo : écrivez-nous sur WhatsApp avant le rassemblement.",
               whatsapp: true,
             }
-          : places === 0
+          : ouvertsALHeure.some((etat) => etat.motif === "Complet pour le moment")
             ? {
                 pastille: "Complet pour le moment",
                 titre: "Les dernières places attendent leur paiement",
                 texte: `Celles qui ne seront pas payées se libèrent d'ici ${EXPIRATION_PANIER_MINUTES} minutes. Revenez un peu plus tard, ou écrivez-nous sur WhatsApp.`,
                 whatsapp: true,
               }
-            : null;
+            : {
+                pastille: "Sold out",
+                titre: "Toutes les places sont prises",
+                texte: "Écrivez-nous sur WhatsApp : si une place se libère, nous vous la gardons.",
+                whatsapp: true,
+              };
 
   if (empechement) {
     return (
@@ -175,6 +251,8 @@ export function InscriptionOctobreRose({
   }
 
   const envoyer = async () => {
+    if (!jourChoisi) return;
+    const date = jourChoisi.date;
     setEnvoi(true);
     setErreur(null);
     setErreurs({});
@@ -185,6 +263,7 @@ export function InscriptionOctobreRose({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           offre: "octobre-rose",
+          date,
           nombrePersonnes: personnes,
           client: { prenom, nom, email, telephone },
           moyenPaiement: moyen,
@@ -194,8 +273,11 @@ export function InscriptionOctobreRose({
       const donnees = await reponse.json().catch(() => ({}));
 
       if (!reponse.ok) {
-        // Des places viennent d'être prises : le serveur dit combien il en reste.
-        if (typeof donnees.places === "number") setPlaces(donnees.places);
+        // Des places viennent d'être prises : le serveur dit combien il en
+        // reste ce jour-là.
+        if (typeof donnees.places === "number") {
+          setPlacesParJour((avant) => ({ ...avant, [date]: donnees.places }));
+        }
         setErreur(
           `${donnees.erreur ?? "L'inscription n'a pas pu aboutir."}${
             reponse.status === 409 || reponse.status === 403 ? " Aucun montant n'a été prélevé." : ""
@@ -235,8 +317,8 @@ export function InscriptionOctobreRose({
     <div className="rounded-[var(--radius-bloc)] bg-white p-6 sm:p-8">
       <h2 className="titre-editorial text-[1.6rem]">Je réserve ma place</h2>
       <p className="mt-2 text-[0.92rem] leading-relaxed text-gris-cadre">
-        {formatXof(prixXof)} par personne, quel que soit le vélo : rien à choisir, un vélo vous est
-        attribué. {placesRestantes(places)}
+        {formatXof(prixXof)} par personne, quel que soit le vélo&nbsp;: choisissez votre jour, un vélo
+        vous est attribué.
       </p>
 
       {attente ? (
@@ -267,11 +349,57 @@ export function InscriptionOctobreRose({
           className="mt-6"
           onSubmit={(evenement) => {
             evenement.preventDefault();
-            if (cgv && coordonneesValides && !envoi) void envoyer();
+            if (jourChoisi && cgv && coordonneesValides && !envoi) void envoyer();
           }}
           noValidate
         >
-          <div>
+          {/* Le jour d'abord : c'est lui qui fixe les places et le vélo
+              attribué. Un jour impossible reste visible, avec sa raison. */}
+          <fieldset>
+            <legend className="etiquette opacity-75">Votre jour</legend>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {aVenir.map((etat) => {
+                const actif = jourChoisi?.date === etat.date;
+                const possible = etat.motif === null;
+                return (
+                  <label
+                    key={etat.date}
+                    className={`rounded-[var(--radius-bouton)] border p-4 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-noir-piste ${
+                      actif
+                        ? "border-rose-octobre bg-rose-octobre/15"
+                        : possible
+                          ? "cursor-pointer border-noir-piste/15 bg-craie"
+                          : "cursor-not-allowed border-noir-piste/10 bg-craie opacity-60"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="rose-jour"
+                      id={`rose-jour-${etat.date}`}
+                      value={etat.date}
+                      checked={actif}
+                      disabled={!possible}
+                      onChange={() => setChoix(etat.date)}
+                      className="sr-only"
+                    />
+                    <span className="block font-semibold">{jourDeLaSortie(etat.sortie)}</span>
+                    <span className="mt-0.5 block text-[0.85rem]">
+                      {horaireDeLaSortie(etat.sortie)}, rassemblement à {formatHoraire(etat.sortie.rassemblement)}
+                    </span>
+                    <span
+                      className={`mt-1.5 block text-[0.8rem] font-semibold ${possible ? "text-noir-piste/75" : "text-orange-sourd"}`}
+                      lang={etat.motif === "Sold out" ? "en" : undefined}
+                    >
+                      {etat.motif ?? placesRestantes(etat.places)}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+            {erreurs.date && <p className="mt-1.5 text-[0.8rem] text-orange-sourd">{erreurs.date}</p>}
+          </fieldset>
+
+          <div className="mt-6">
             <label htmlFor="rose-personnes" className="etiquette opacity-75">
               Nombre de personnes
             </label>
@@ -370,7 +498,8 @@ export function InscriptionOctobreRose({
           <dl className="mt-6 rounded-[var(--radius-carte)] bg-craie p-5 text-[0.88rem]">
             <div className="flex justify-between gap-4">
               <dt className="text-gris-cadre">
-                Octobre rose, {personnes}&nbsp;personne{personnes > 1 ? "s" : ""}
+                Octobre rose{jourChoisi ? `, ${formatDateAvecJour(jourChoisi.date)}` : ""},{" "}
+                {personnes}&nbsp;personne{personnes > 1 ? "s" : ""}
               </dt>
               <dd className="shrink-0 whitespace-nowrap tabular-nums">{formatXof(total)}</dd>
             </div>
@@ -422,14 +551,22 @@ export function InscriptionOctobreRose({
             </p>
           )}
 
-          <Bouton type="submit" variante="sombre" taille="lg" className="mt-6 w-full sm:w-auto" disabled={!cgv || !coordonneesValides || envoi}>
+          <Bouton
+            type="submit"
+            variante="sombre"
+            taille="lg"
+            className="mt-6 w-full sm:w-auto"
+            disabled={!jourChoisi || !cgv || !coordonneesValides || envoi}
+          >
             {envoi ? "Envoi de la demande…" : `Payer ${formatXof(debite)}`}
           </Bouton>
-          {(!coordonneesValides || !cgv) && (
+          {(!jourChoisi || !coordonneesValides || !cgv) && (
             <p className="mt-3 text-[0.82rem] text-gris-cadre">
-              {!coordonneesValides
-                ? "Prénom, nom, email et numéro Mobile Money sont nécessaires pour payer."
-                : "Acceptez les conditions générales pour payer."}
+              {!jourChoisi
+                ? "Choisissez votre jour pour payer."
+                : !coordonneesValides
+                  ? "Prénom, nom, email et numéro Mobile Money sont nécessaires pour payer."
+                  : "Acceptez les conditions générales pour payer."}
             </p>
           )}
         </form>

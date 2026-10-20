@@ -2,15 +2,31 @@
 
 import { useSyncExternalStore, type ReactNode } from "react";
 
-import { clotureInscriptionsOctobreRose } from "@/data/octobre-rose";
+import { clotureInscriptionsOctobreRose, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import { inscriptionsOctobreRoseOuvertes } from "@/data/produits";
 
-/** L'horloge : un rendu de plus à l'heure limite des inscriptions. */
-function abonnementCloture(rappel: () => void) {
-  const cloture = clotureInscriptionsOctobreRose();
-  const delai = cloture === null ? -1 : cloture - new Date().getTime() + 1000;
-  if (delai <= 0 || delai >= 2 ** 31 - 1) return () => {};
-  const minuteur = setTimeout(rappel, delai);
+/**
+ * L'horloge : un rendu de plus à chaque heure limite des inscriptions, jour
+ * après jour. Le minuteur suivant se pose quand le précédent sonne : une
+ * page restée ouverte bascule le samedi, puis le dimanche.
+ */
+export function abonnementClotures(rappel: () => void) {
+  let minuteur: ReturnType<typeof setTimeout> | undefined;
+  const programmer = () => {
+    const maintenant = new Date().getTime();
+    const prochaine = OCTOBRE_ROSE.sorties
+      .map(clotureInscriptionsOctobreRose)
+      .filter((cloture) => cloture > maintenant)
+      .sort((a, b) => a - b)[0];
+    if (prochaine === undefined) return;
+    const delai = prochaine - maintenant + 1000;
+    if (delai >= 2 ** 31 - 1) return;
+    minuteur = setTimeout(() => {
+      rappel();
+      programmer();
+    }, delai);
+  };
+  programmer();
   return () => clearTimeout(minuteur);
 }
 
@@ -34,7 +50,7 @@ export function SelonInscriptionsOctobreRose({
   closes: ReactNode;
 }) {
   const enCours = useSyncExternalStore(
-    abonnementCloture,
+    abonnementClotures,
     () => inscriptionsOctobreRoseOuvertes(new Date()),
     () => ouvertesAuServeur,
   );

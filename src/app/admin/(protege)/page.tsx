@@ -9,26 +9,19 @@ import { Courbe } from "@/components/graphiques/Courbe";
 import { Jauge, TuileStat } from "@/components/graphiques/TuileStat";
 import { SelecteurPeriode } from "@/components/admin/SelecteurPeriode";
 import { exigerSessionAdmin } from "@/lib/admin";
-import { indicateursDuJour } from "@/lib/rapport";
+import { AIDE_A_PREVOIR, indicateursDuJour } from "@/lib/rapport";
 import { depot } from "@/lib/db";
 import { aujourdhui, nombreDeJours } from "@/lib/dates";
-import { formatDate, formatNombre, formatXof } from "@/lib/format";
+import { formatDate, formatDateAvecJour, formatNombre, formatXof } from "@/lib/format";
 import {
   calculerStatistiques,
   construirePeriode,
   type Granularite,
 } from "@/lib/statistiques";
 import { PilotageOuverture } from "@/components/admin/PilotageOuverture";
-import {
-  clotureInscriptionsOctobreRose,
-  codeOctobreRose,
-  creneauOctobreRose,
-  formatHoraire,
-  OCTOBRE_ROSE,
-} from "@/data/octobre-rose";
+import { clotureInscriptionsOctobreRose, formatHoraire } from "@/data/octobre-rose";
 import { CRENEAUX_ROAD_TRIP, creneauxDisponibles, heureAuBenin } from "@/data/offres";
-import { inscriptionsOctobreRoseOuvertes } from "@/data/produits";
-import { lireOuverture, octobreRoseOuvertEnLigne } from "@/lib/ouverture";
+import { etatsSortiesOctobreRose, lireOuverture } from "@/lib/ouverture";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
 
@@ -118,17 +111,10 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   const ouverture = await lireOuverture();
   const departsProposes = creneauxDisponibles(new Date(), ouverture);
   const aujourdhuiBenin = heureAuBenin().date;
-  // L'inscription en ligne à Octobre rose se pilote comme un créneau, tant
-  // que la sortie est à venir.
-  const sortieRose = OCTOBRE_ROSE.sortie && OCTOBRE_ROSE.sortie.date >= aujourdhuiBenin ? OCTOBRE_ROSE.sortie : null;
-  const roseEnLigne = octobreRoseOuvertEnLigne(ouverture);
+  // L'inscription en ligne à Octobre rose se pilote comme un créneau, jour
+  // par jour, tant que la sortie de ce jour est à venir.
   const instantRose = new Date();
-  const roseOuverte = inscriptionsOctobreRoseOuvertes(instantRose);
-  const roseCloturee = instantRose.getTime() >= (clotureInscriptionsOctobreRose() ?? 0);
-  const creneauRose = sortieRose ? creneauOctobreRose() : null;
-  const placesRose = creneauRose
-    ? (await depot.velosLibres(creneauRose.date, creneauRose.heureDebut, creneauRose.heureFin)).length
-    : 0;
+  const joursRose = (await etatsSortiesOctobreRose(instantRose, ouverture)).filter((etat) => !etat.partie);
 
   const totalClients = stats.nouveauxClients + stats.clientsRecurrents;
   const joursCompares = nombreDeJours(stats.fenetreCourante.debut, stats.fenetreCourante.fin);
@@ -143,7 +129,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
     departs: departsDuJour,
     retours: retoursDuJour,
     aPayer,
-    participants: participantsDuJour,
+    aPrevoir,
     cautions: cautionsAcollecter,
   } = indicateursDuJour(reservations, jour);
 
@@ -223,12 +209,13 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
             }
           />
           <TuileStat
-            libelle="Cocos et eaux à prévoir"
-            valeur={formatNombre(participantsDuJour)}
+            libelle="Cocos à prévoir"
+            valeur={formatNombre(aPrevoir.cocos)}
             aide={
-              participantsDuJour === 0
+              aPrevoir.cocos === 0 && aPrevoir.eaux === 0
                 ? "Aucune sortie encadrée au départ aujourd'hui."
-                : "Un coco et une eau par participant, road trip et Octobre rose."
+                : `Et ${formatNombre(aPrevoir.gateaux)} gâteau${aPrevoir.gateaux > 1 ? "x" : ""}, ` +
+                  `${formatNombre(aPrevoir.eaux)} bouteille${aPrevoir.eaux > 1 ? "s" : ""} d'eau. ${AIDE_A_PREVOIR}`
             }
           />
           <TuileStat
@@ -265,28 +252,26 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
               actif: ouverture.creneauxActifs.has(c.code),
               prochainDepart: departsProposes.find((d) => d.code === c.code)?.date,
             })),
-            ...(sortieRose
-              ? [
-                  {
-                    code: codeOctobreRose(sortieRose),
-                    libelle: "Octobre rose",
-                    horaire: `${formatHoraire(sortieRose.rassemblement)} - ${formatHoraire(sortieRose.retour)}`,
-                    actif: roseEnLigne,
-                    // Proposée tant que l'heure limite des inscriptions n'est pas passée.
-                    prochainDepart: roseEnLigne && roseOuverte ? sortieRose.date : undefined,
-                    remarque:
-                      roseEnLigne && !roseOuverte
-                        ? roseCloturee
-                          ? `Inscriptions en ligne closes depuis ${formatHoraire(sortieRose.finInscriptions)} le jour de la sortie : le comptoir vend encore.`
-                          : "L'inscription en ligne s'ouvre en octobre."
-                        : roseEnLigne && placesRose === 0
-                          ? "Ouvert, mais complet : plus aucun vélo libre pour la sortie (le site affiche « Sold out »)."
-                          : roseEnLigne
-                            ? `Ouvert : ${placesRose} place${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""}, sortie du ${formatDate(sortieRose.date)}.`
-                            : undefined,
-                  },
-                ]
-              : []),
+            // Une ligne par jour de sortie Octobre rose : chacun s'ouvre et se
+            // ferme seul.
+            ...joursRose.map((etat) => ({
+              code: etat.code,
+              libelle: `Octobre rose · ${formatDateAvecJour(etat.sortie.date)}`,
+              horaire: `${formatHoraire(etat.sortie.rassemblement)} - ${formatHoraire(etat.sortie.retour)}`,
+              actif: etat.ouverteEnLigne,
+              // Proposée tant que l'heure limite des inscriptions n'est pas passée.
+              prochainDepart: etat.ouverteEnLigne && etat.inscriptionsOuvertes ? etat.sortie.date : undefined,
+              remarque:
+                etat.ouverteEnLigne && !etat.inscriptionsOuvertes
+                  ? instantRose.getTime() >= clotureInscriptionsOctobreRose(etat.sortie)
+                    ? `Inscriptions en ligne closes depuis ${formatHoraire(etat.sortie.finInscriptions)} ce jour-là : le comptoir vend encore jusqu'au départ.`
+                    : "L'inscription en ligne s'ouvre en octobre."
+                  : etat.ouverteEnLigne && etat.places === 0
+                    ? "Ouvert, mais complet : plus aucun vélo libre ce jour-là (le site affiche « Sold out »)."
+                    : etat.ouverteEnLigne
+                      ? `Ouvert : ${etat.places} place${etat.places > 1 ? "s" : ""} libre${etat.places > 1 ? "s" : ""}.`
+                      : undefined,
+            })),
           ]}
           joursFermes={ouverture.joursFermes.filter((j) => j.date >= aujourdhuiBenin)}
           aujourdhui={aujourdhuiBenin}

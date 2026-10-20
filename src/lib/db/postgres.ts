@@ -24,7 +24,6 @@ import type {
 } from "@prisma/client";
 
 import { nombreDeJours, versISO, type DateISO } from "../dates";
-import { creneauOctobreRose } from "@/data/octobre-rose";
 import {
   DUREE_ROAD_TRIP_HEURES,
   EXPIRATION_PANIER_MINUTES,
@@ -60,6 +59,7 @@ import type {
 } from "../types";
 import {
   ConflitDisponibiliteError,
+  creneauOctobreRoseDemande,
   messagePlacesManquantes,
   ordreAttribution,
   resteUneHeureLibre,
@@ -600,15 +600,10 @@ const depotDirect: Depot = {
     demande: DemandeReservation,
   ): Promise<ResultatReservation> {
     // Octobre rose ne se réserve pas sur un vélo choisi : les vélos sont
-    // attribués plus bas, dans la transaction, un par participant.
+    // attribués plus bas, dans la transaction, un par participant, parmi
+    // ceux libres sur la sortie du jour demandé.
     const octobreRose = demande.offre === "octobre-rose";
-    const creneauSortie = octobreRose ? creneauOctobreRose() : null;
-    if (octobreRose) {
-      if (!creneauSortie) throw new Error("La sortie Octobre rose n'est pas fixée.");
-      if (demande.dateDebut !== creneauSortie.date || demande.heureDebut !== creneauSortie.heureDebut) {
-        throw new Error("Une inscription à Octobre rose porte sur le jour et l'heure de la sortie.");
-      }
-    }
+    const creneauSortie = octobreRose ? creneauOctobreRoseDemande(demande) : null;
     const bike =
       octobreRose || !demande.veloId
         ? null
@@ -630,8 +625,9 @@ const depotDirect: Depot = {
       // La gamme vient du vélo lu en base, jamais de l'appelant : c'est
       // elle qui fixe le prix, et la laisser passer par le navigateur
       // reviendrait à laisser choisir son tarif. Octobre rose n'en a pas
-      // besoin, son prix ne dépend pas du vélo.
+      // besoin, son prix ne dépend pas du vélo mais du jour de sa sortie.
       gamme: bike?.tier,
+      date: demande.dateDebut,
       nombrePersonnes: demande.nombrePersonnes,
       dureeHeures: demande.dureeHeures,
       options: demande.options,
@@ -640,7 +636,7 @@ const depotDirect: Depot = {
       especes: Boolean(encaissement),
     });
 
-    // Pas de code de parrainage sur Octobre rose : son prix est déjà réduit.
+    // Pas de code de parrainage sur Octobre rose : son prix est forfaitaire.
     const codeSaisi =
       demande.codeParrainage && !octobreRose
         ? normaliserCode(demande.codeParrainage)
@@ -757,6 +753,7 @@ const depotDirect: Depot = {
             ? calculerDevis({
                 offre: demande.offre,
                 gamme: bike?.tier,
+                date: demande.dateDebut,
                 nombrePersonnes: demande.nombrePersonnes,
                 dureeHeures: demande.dureeHeures,
                 options: demande.options,

@@ -13,6 +13,7 @@
  */
 
 import { listerJours, type DateISO } from "../dates";
+import { creneauOctobreRose, sortieOctobreRoseDu } from "@/data/octobre-rose";
 import type { GammeVelo } from "@/data/offres";
 import type { CodeParrainage, VerificationParrainage } from "../parrainage";
 import type {
@@ -110,9 +111,18 @@ export interface DemandeReservation {
   offre: CodeOffre;
   nombrePersonnes?: number;
   dureeHeures?: number;
+  /**
+   * Octobre rose : le jour de la sortie choisie, qui la désigne parmi celles
+   * de la campagne (`sortieOctobreRoseDu`), et `dateFin` le même jour. Un
+   * jour sans sortie est refusé.
+   */
   dateDebut: DateISO;
   dateFin: DateISO;
-  /** Heure de départ. Imposée par le créneau en road trip, choisie sinon. */
+  /**
+   * Heure de départ. Imposée par le créneau en road trip, et pour Octobre
+   * rose par la sortie du jour (`creneauOctobreRose(sortie).heureDebut`) ;
+   * choisie en location libre.
+   */
   heureDebut: number;
   options: { code: string; quantite: number }[];
   /**
@@ -192,11 +202,35 @@ export function ordreAttribution<T extends { gamme: GammeVelo; nom: string }>(ve
 }
 
 /**
+ * Le créneau de la sortie Octobre rose que vise une inscription : celle du
+ * jour demandé, à l'heure de son rassemblement, dans la journée. Écrit une
+ * fois ici pour que la démonstration et la base refusent exactement la même
+ * chose : le dépôt n'écrit jamais une inscription hors des sorties de la
+ * campagne, quoi que l'appelant ait vérifié avant lui.
+ */
+export function creneauOctobreRoseDemande(
+  demande: Pick<DemandeReservation, "dateDebut" | "dateFin" | "heureDebut">,
+): { date: DateISO; heureDebut: number; heureFin: number } {
+  const sortie = sortieOctobreRoseDu(demande.dateDebut);
+  if (!sortie) throw new Error(`Aucune sortie Octobre rose le ${demande.dateDebut}.`);
+  const creneau = creneauOctobreRose(sortie);
+  if (
+    demande.dateDebut !== creneau.date ||
+    demande.dateFin !== creneau.date ||
+    demande.heureDebut !== creneau.heureDebut
+  ) {
+    throw new Error("Une inscription à Octobre rose porte sur le jour et l'heure de sa sortie.");
+  }
+  return creneau;
+}
+
+/**
  * Le message d'une sortie qui n'a plus assez de vélos libres pour cette
- * inscription : au client en ligne, ou au commercial au comptoir.
+ * inscription : au client en ligne, ou au commercial au comptoir. Les places
+ * se comptent par sortie, donc par jour.
  */
 export function messagePlacesManquantes(demandees: number, libres: number, auComptoir = false): string {
-  if (libres === 0) return "Plus aucune place : tous les vélos de la sortie sont pris.";
+  if (libres === 0) return "Plus aucune place ce jour-là : tous les vélos de la sortie sont pris.";
   if (auComptoir) {
     return libres === 1
       ? "Il ne reste qu'un vélo libre pour la sortie : une seule personne."
@@ -241,7 +275,8 @@ export interface Depot {
   /**
    * Les vélos en état et libres sur tout ce créneau, dans l'ordre où ils
    * seraient attribués (`ordreAttribution`). Leur nombre est celui des
-   * places restantes d'une sortie comme Octobre rose. Indicatif : c'est la
+   * places restantes d'une sortie Octobre rose, pour son jour seul : chaque
+   * sortie a son créneau (`creneauOctobreRose`). Indicatif : c'est la
    * transaction qui écrit qui attribue, et revérifie.
    */
   velosLibres(date: DateISO, heureDebut: number, heureFin: number): Promise<Velo[]>;

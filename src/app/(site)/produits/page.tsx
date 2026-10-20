@@ -11,7 +11,7 @@ import { LienChoixProduit } from "@/components/LienChoixProduit";
 import { Pastille, Section, TitreSection } from "@/components/ui";
 import { AFFICHES_GBASHI, AFFICHES_ROAD_TRIP } from "@/data/affiches";
 import { itineraireOctobreRose, itineraires } from "@/data/contenus";
-import { creneauOctobreRose, formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
+import { formatHoraire, OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   CRENEAUX_ROAD_TRIP,
@@ -29,15 +29,15 @@ import {
   CRENEAU_GBASHI_BIKE,
   CRENEAU_ROAD_TRIP,
   inscriptionsOctobreRoseOuvertes,
+  jourDeLaSortie,
   jourOctobreRose,
   MESSAGES_WHATSAPP,
   octobreRoseEnCours,
   placesRestantes,
   tarifOctobreRose,
 } from "@/data/produits";
-import { depot } from "@/lib/db";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
-import { lireOuverture, octobreRoseOuvertEnLigne } from "@/lib/ouverture";
+import { etatsSortiesOctobreRose, lireOuverture } from "@/lib/ouverture";
 import { lienWhatsApp, site } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -172,20 +172,19 @@ export default async function PageProduits() {
   const samediComplet = complets.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
   const avecOctobreRose = octobreRoseEnCours(maintenant);
   // Octobre rose se réserve sur sa propre page. Ici, on dit seulement s'il
-  // reste des places : complet, ou fermé depuis le tableau de bord, la
-  // carte affiche « Sold out » et renvoie vers WhatsApp.
-  const sortie = OCTOBRE_ROSE.sortie;
-  const creneauRose = creneauOctobreRose();
-  const placesRose =
-    creneauRose && avecOctobreRose
-      ? (await depot.velosLibres(creneauRose.date, creneauRose.heureDebut, creneauRose.heureFin)).length
-      : 0;
-  // Une sortie fixée, payante, s'inscrit en ligne. Complète si elle est
-  // fermée depuis le tableau de bord ou s'il ne reste aucun vélo libre.
-  // L'heure limite, elle, se relit dans le navigateur
+  // reste des places, jour par jour : quand plus aucun jour à venir n'en a,
+  // complets ou fermés depuis le tableau de bord, la carte affiche « Sold
+  // out » et renvoie vers WhatsApp. Les sorties partagent leurs horaires :
+  // la première les dit pour toutes.
+  const sortie = OCTOBRE_ROSE.sorties[0] ?? null;
+  const joursRose = avecOctobreRose
+    ? (await etatsSortiesOctobreRose(maintenant, ouverture)).filter((etat) => !etat.partie)
+    : [];
+  // Des sorties fixées, payantes, s'inscrivent en ligne. Les heures
+  // limites, elles, se relisent dans le navigateur
   // (SelonInscriptionsOctobreRose) : la page peut dater d'avant.
-  const roseEnLigne = sortie !== null && sortie.prixXof > 0;
-  const roseComplete = !octobreRoseOuvertEnLigne(ouverture) || placesRose === 0;
+  const roseEnLigne = OCTOBRE_ROSE.sorties.some((sortieRose) => sortieRose.prixXof > 0);
+  const roseComplete = joursRose.every((etat) => !etat.inscriptionsOuvertes || etat.complete || etat.places === 0);
   const roseOuverteAuServeur = inscriptionsOctobreRoseOuvertes(maintenant);
   const circuitRose = itineraireOctobreRose();
 
@@ -216,7 +215,7 @@ export default async function PageProduits() {
           En groupe le samedi, version sport le dimanche, ou en solo à l&apos;heure&nbsp;: tout part de
           la route des Pêches, à Fidjrossè.
           <EnSaisonOctobreRose enSaisonAuServeur={avecOctobreRose}>
-            {" Et ce mois-ci, une sortie aux couleurs d'Octobre rose."}
+            {" Et ce mois-ci, des sorties aux couleurs d'Octobre rose."}
           </EnSaisonOctobreRose>
         </p>
         <nav aria-label="Nos produits" className="mt-10 flex flex-wrap gap-2">
@@ -258,9 +257,9 @@ export default async function PageProduits() {
               <TitreSection className="mt-5">Octobre rose</TitreSection>
               <p className="mt-3 font-display text-[1.4rem] leading-tight">Roulez en rose avec nous</p>
               <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed">
-                Une sortie à vélo aux couleurs d&apos;Octobre rose, le mois de sensibilisation au
-                cancer du sein. Bike Land soutient la cause&nbsp;: un prix réduit, le même pour tous
-                nos vélos. On roule ensemble, tous en rose.
+                Des sorties à vélo aux couleurs d&apos;Octobre rose, le mois de sensibilisation au
+                cancer du sein. Bike Land soutient la cause&nbsp;: un prix forfaitaire, le même pour
+                tous nos vélos. On roule ensemble, tous en rose.
               </p>
               <dl className="mt-8 max-w-md">
                 {sortie ? (
@@ -277,7 +276,8 @@ export default async function PageProduits() {
                       </Repere>
                     )}
                     <Repere terme="Tarif">{tarifOctobreRose()}, tous&nbsp;vélos</Repere>
-                    <Repere terme="Compris">Vélo, casque, eau et coco frais</Repere>
+                    <Repere terme="Compris">Vélo et casque</Repere>
+                    <Repere terme="Offert à chacun">{texteOffertOctobreRose()}</Repere>
                   </>
                 ) : (
                   <>
@@ -312,9 +312,19 @@ export default async function PageProduits() {
                             Je réserve ma place
                           </BoutonLien>
                           <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed">
-                            Pas de vélo à choisir&nbsp;: dites combien vous êtes et payez par Mobile
-                            Money. {placesRestantes(placesRose)}
+                            Pas de vélo à choisir&nbsp;: choisissez votre jour, dites combien vous êtes
+                            et payez par Mobile Money.
                           </p>
+                          <ul className="mt-2 max-w-md space-y-0.5 text-[0.85rem]">
+                            {joursRose.map((etat) => (
+                              <li key={etat.sortie.date}>
+                                <span className="font-semibold">{jourDeLaSortie(etat.sortie)}</span>&nbsp;:{" "}
+                                {etat.inscriptionsOuvertes && !etat.complete && etat.places > 0
+                                  ? placesRestantes(etat.places)
+                                  : "plus de place en ligne."}
+                              </li>
+                            ))}
+                          </ul>
                         </>
                       )
                     }

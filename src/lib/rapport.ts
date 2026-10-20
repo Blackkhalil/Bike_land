@@ -11,6 +11,7 @@
  * `indicateursDuJour`, que la page utilise aussi.
  */
 
+import { OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
 import { aujourdhui } from "@/lib/dates";
 import { libelleCommission, libelleReduction, type CodeParrainage } from "@/lib/parrainage";
 import { estEnAttente, estPayee, seulementPayees } from "@/lib/reservations";
@@ -34,21 +35,51 @@ import type { Client, Reservation, StatistiquesPartenaire, Velo } from "@/lib/ty
  * annoncent toujours les mêmes chiffres. On se fie à l'état de la
  * réservation et non à ses dates : un vélo déjà remis n'est plus « à
  * préparer », un vélo pas encore parti n'est pas « attendu au retour ».
+ *
+ * `participants` compte les participants des sorties encadrées (road trip
+ * et Octobre rose). `aPrevoir` dit ce qu'il faut leur préparer : au road
+ * trip, un coco et une eau par participant ; à Octobre rose, ce que la
+ * campagne offre à chacun (`OCTOBRE_ROSE.offertParPersonne`, deux cocos,
+ * deux gâteaux et deux bouteilles d'eau).
  */
 export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui()) {
   const actives = seulementPayees(reservations);
   const departs = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retours = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
   const aPayer = reservations.filter(estEnAttente);
-  // Les cocos et les eaux des sorties encadrées : road trip et Octobre rose.
-  const participants = departs
-    .filter((r) => r.offre !== "location-libre")
-    .reduce((total, r) => total + r.nombrePersonnes, 0);
+  const participantsDe = (offre: "road-trip" | "octobre-rose") =>
+    departs.filter((r) => r.offre === offre).reduce((total, r) => total + r.nombrePersonnes, 0);
+  const participantsRoadTrip = participantsDe("road-trip");
+  const participantsOctobreRose = participantsDe("octobre-rose");
+  const participants = participantsRoadTrip + participantsOctobreRose;
+  const offert = OCTOBRE_ROSE.offertParPersonne;
+  const aPrevoir = {
+    cocos: participantsRoadTrip + participantsOctobreRose * offert.cocos,
+    gateaux: participantsOctobreRose * offert.gateaux,
+    eaux: participantsRoadTrip + participantsOctobreRose * offert.eaux,
+  };
   const cautions = departs
     .filter((r) => r.offre === "location-libre")
     .reduce((total, r) => total + r.cautionXof, 0);
-  return { departs, retours, aPayer, participants, cautions };
+  return {
+    departs,
+    retours,
+    aPayer,
+    participants,
+    participantsRoadTrip,
+    participantsOctobreRose,
+    aPrevoir,
+    cautions,
+  };
 }
+
+/**
+ * Ce que l'on prépare par participant, en toutes lettres, pour l'aide des
+ * indicateurs : l'écran et les exports disent la même chose.
+ */
+export const AIDE_A_PREVOIR =
+  `Un coco et une eau par participant au road trip${String.fromCharCode(0xa0)}; ` +
+  `${texteOffertOctobreRose()} par participant à Octobre rose.`;
 
 /* ---------------------------------------------------- La structure */
 
@@ -177,9 +208,19 @@ export function construireRapport(entrees: {
           aide: "Paniers encore dans leur délai, vélo retenu.",
         },
         {
-          libelle: "Cocos et eaux à prévoir",
-          valeur: nombre(jour.participants),
-          aide: "Un coco et une eau par participant, road trip et Octobre rose.",
+          libelle: "Cocos à prévoir",
+          valeur: nombre(jour.aPrevoir.cocos),
+          aide: AIDE_A_PREVOIR,
+        },
+        {
+          libelle: "Gâteaux à prévoir",
+          valeur: nombre(jour.aPrevoir.gateaux),
+          aide: "Pour Octobre rose seulement.",
+        },
+        {
+          libelle: "Eaux à prévoir",
+          valeur: nombre(jour.aPrevoir.eaux),
+          aide: `${nombre(jour.participants)} participant${jour.participants > 1 ? "s" : ""} aux sorties encadrées.`,
         },
         {
           libelle: "Cautions à encaisser",

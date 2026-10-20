@@ -12,7 +12,17 @@
  * restée ouverte la propose encore.
  */
 
-import { codeOctobreRose, creneauOctobreRose, OCTOBRE_ROSE } from "@/data/octobre-rose";
+import {
+  clotureInscriptionsOctobreRose,
+  codeOctobreRose,
+  creneauOctobreRose,
+  formatHoraire,
+  inscriptionOctobreRoseOuverte,
+  OCTOBRE_ROSE,
+  sortieOctobreRoseDu,
+  sortieOctobreRosePartie,
+  type SortieOctobreRose,
+} from "@/data/octobre-rose";
 import {
   clotureRoadTrip,
   CRENEAUX_ROAD_TRIP,
@@ -24,11 +34,14 @@ import {
   roadTripsDuJour,
   type OuvertureCreneaux,
 } from "@/data/offres";
-import { inscriptionsOctobreRoseOuvertes } from "@/data/produits";
 import { depot } from "@/lib/db";
 import { listerJours, type DateISO } from "@/lib/dates";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatDateAvecJour } from "@/lib/format";
+import { estEnAttente } from "@/lib/reservations";
 import type { CodeOffre, JourFerme, Velo } from "@/lib/types";
+
+/** L'espace insécable de la typographie française, avant « : ». */
+const INSECABLE = String.fromCharCode(0xa0);
 
 export interface Ouverture extends OuvertureCreneaux {
   joursFermes: JourFerme[];
@@ -37,47 +50,187 @@ export interface Ouverture extends OuvertureCreneaux {
 /**
  * Les réglages, valeurs par défaut comprises.
  *
- * L'inscription en ligne à Octobre rose s'ouvre et se ferme comme un
- * créneau, sous son propre code (`codeOctobreRose`, daté) : ouverte tant
- * que l'exploitant n'y a pas touché, elle figure alors parmi les
- * `creneauxActifs`.
+ * L'inscription en ligne à chaque sortie Octobre rose s'ouvre et se ferme
+ * comme un créneau, sous son propre code, daté (`codeOctobreRose`) : chaque
+ * jour se règle seul. Ouverte tant que l'exploitant n'y a pas touché, elle
+ * figure alors parmi les `creneauxActifs`.
  */
 export async function lireOuverture(): Promise<Ouverture> {
   const brut = await depot.lireOuverture();
   const actifs: string[] = CRENEAUX_ROAD_TRIP.filter((c) => brut.creneaux[c.code] ?? c.actifParDefaut).map(
     (c) => c.code,
   );
-  const codeRose = codeOctobreRose();
-  if (brut.creneaux[codeRose] ?? true) actifs.push(codeRose);
+  for (const sortie of OCTOBRE_ROSE.sorties) {
+    const code = codeOctobreRose(sortie);
+    if (brut.creneaux[code] ?? true) actifs.push(code);
+  }
   return { creneauxActifs: new Set(actifs), joursFermes: brut.joursFermes };
 }
 
 /**
- * L'inscription en ligne à Octobre rose est-elle ouverte depuis le tableau
- * de bord ? Fermée sous son code, ou le jour de la sortie fermé pour
- * toutes les formules (pluie, imprévu) : « Sold out ».
+ * L'inscription en ligne à cette sortie Octobre rose est-elle ouverte
+ * depuis le tableau de bord ? Fermée sous son code, ou son jour fermé pour
+ * toutes les formules (pluie, imprévu) : « Sold out ». Les autres sorties ne
+ * sont pas concernées.
  */
-export function octobreRoseOuvertEnLigne(ouverture: OuvertureCreneaux): boolean {
-  const date = OCTOBRE_ROSE.sortie?.date;
-  const jourFerme = ouverture.joursFermes.some((j) => j.date === date && j.formule === "toutes");
-  return ouverture.creneauxActifs.has(codeOctobreRose()) && !jourFerme;
+export function octobreRoseOuvertEnLigne(ouverture: OuvertureCreneaux, sortie: SortieOctobreRose): boolean {
+  const jourFerme = ouverture.joursFermes.some((j) => j.date === sortie.date && j.formule === "toutes");
+  return ouverture.creneauxActifs.has(codeOctobreRose(sortie)) && !jourFerme;
 }
 
 /**
- * La sortie Octobre rose chevauche-t-elle un road trip ce jour-là ? Les
+ * Une sortie Octobre rose chevauche-t-elle ces heures ce jour-là ? Les
  * vélos d'un road trip de plusieurs personnes ne sont pas tous inscrits
  * dans la base (une ligne par réservation) : la sortie compterait comme
  * libres des vélos partis avec le groupe. Une telle configuration est
  * refusée des deux côtés plutôt que de surréserver.
  */
 function octobreRoseChevaucheRoadTrip(date: DateISO, heureDebut: number, heureFin: number): boolean {
-  const creneau = creneauOctobreRose();
-  return (
-    creneau !== null &&
-    creneau.date === date &&
-    heureDebut < creneau.heureFin &&
-    heureFin > creneau.heureDebut
+  return OCTOBRE_ROSE.sorties.some((sortie) => {
+    const creneau = creneauOctobreRose(sortie);
+    return creneau.date === date && heureDebut < creneau.heureFin && heureFin > creneau.heureDebut;
+  });
+}
+
+/** Pourquoi l'inscription en ligne à une sortie est refusée, et sous quel code. */
+export interface RefusOctobreRose {
+  erreur: string;
+  /**
+   * `FERME` : pas ou plus d'inscription en ligne à cette heure (heure limite
+   * du jour passée, avant octobre, sortie gratuite, configuration à
+   * corriger). `COMPLET` : la sortie est fermée depuis le tableau de bord.
+   */
+  code: "FERME" | "COMPLET";
+}
+
+/**
+ * Pourquoi l'inscription en ligne à cette sortie ne peut pas être prise en
+ * ce moment, ou `null` si elle le peut : l'heure limite de son jour, et son
+ * réglage au tableau de bord. Les places se comptent à part, dans la base.
+ * Le comptoir n'y est pas soumis : il vend jusqu'au départ.
+ */
+export function refusInscriptionOctobreRose(
+  ouverture: OuvertureCreneaux,
+  sortie: SortieOctobreRose,
+  maintenant: Date = new Date(),
+): RefusOctobreRose | null {
+  const creneau = creneauOctobreRose(sortie);
+  const conflitRoadTrip = roadTripsDuJour(sortie.date).some(
+    (c) => creneau.heureDebut < c.heureFin && creneau.heureFin > c.heureDebut,
   );
+  if (conflitRoadTrip) {
+    console.error(
+      `[ouverture] la sortie Octobre rose du ${sortie.date} chevauche un road trip : inscriptions refusées. Corrigez src/data/octobre-rose.ts.`,
+    );
+    return {
+      erreur: "Les inscriptions en ligne ne sont pas ouvertes pour le moment. Écrivez-nous sur WhatsApp.",
+      code: "FERME",
+    };
+  }
+  const jour = formatDateAvecJour(sortie.date);
+  if (!inscriptionOctobreRoseOuverte(sortie, maintenant)) {
+    if (sortie.prixXof <= 0) {
+      return { erreur: "Cette sortie ne se réserve pas en ligne. Écrivez-nous sur WhatsApp.", code: "FERME" };
+    }
+    if (maintenant.getTime() >= clotureInscriptionsOctobreRose(sortie)) {
+      return {
+        erreur:
+          `Les inscriptions en ligne à la sortie du ${jour} sont closes depuis ` +
+          `${formatHoraire(sortie.finInscriptions)}. Écrivez-nous sur WhatsApp pour une dernière place.`,
+        code: "FERME",
+      };
+    }
+    // Avant octobre : la campagne n'a pas commencé.
+    return {
+      erreur: "Les inscriptions en ligne à Octobre rose ouvrent en octobre. Écrivez-nous sur WhatsApp en attendant.",
+      code: "FERME",
+    };
+  }
+  if (!octobreRoseOuvertEnLigne(ouverture, sortie)) {
+    return {
+      erreur:
+        `La sortie du ${jour} est complète en ligne. Écrivez-nous sur WhatsApp${INSECABLE}: ` +
+        "nous vous dirons s'il reste de la place.",
+      code: "COMPLET",
+    };
+  }
+  return null;
+}
+
+/** Où en est une sortie Octobre rose, pour la page, l'inscription et le tableau de bord. */
+export interface EtatSortieOctobreRose {
+  sortie: SortieOctobreRose;
+  /** Le code de son réglage au tableau de bord (`codeOctobreRose`). */
+  code: string;
+  /** Les heures pleines qu'elle retient sur les vélos (`creneauOctobreRose`). */
+  creneau: { date: DateISO; heureDebut: number; heureFin: number };
+  /** Les places restantes : les vélos en état et libres sur ce créneau, ce jour-là. */
+  places: number;
+  /** Les vélos retenus par des inscriptions en ligne qui attendent encore leur paiement. */
+  placesEnAttente: number;
+  /** Ni la sortie ni son jour ne sont fermés depuis le tableau de bord. */
+  ouverteEnLigne: boolean;
+  /** À l'horloge : mois de la campagne, prix à payer, heure limite du jour pas encore passée. */
+  inscriptionsOuvertes: boolean;
+  /** Le groupe est parti : la sortie ne se vend plus, ni en ligne ni au comptoir. */
+  partie: boolean;
+  /**
+   * « Sold out » : fermée depuis le tableau de bord, ou plus aucun vélo, ni
+   * libre, ni retenu par un paiement qui peut encore échouer. Avec
+   * `places === 0` et des places en attente, la sortie n'est complète que
+   * pour le moment.
+   */
+  complete: boolean;
+  /** Tout est réuni pour s'inscrire en ligne à cet instant. */
+  enVente: boolean;
+}
+
+/**
+ * L'état de chaque sortie de la campagne, dans l'ordre des jours, sorties
+ * passées comprises (`partie`). Vide tant qu'aucune sortie n'est fixée.
+ * Lit la base : réservé au serveur. Le serveur recompte tout de même à
+ * chaque inscription ; ceci sert à l'affichage.
+ */
+export async function etatsSortiesOctobreRose(
+  maintenant: Date = new Date(),
+  ouverture?: OuvertureCreneaux,
+): Promise<EtatSortieOctobreRose[]> {
+  const sorties = [...OCTOBRE_ROSE.sorties].sort((a, b) => a.date.localeCompare(b.date));
+  if (sorties.length === 0) return [];
+  const [reglages, libres, enAttente] = await Promise.all([
+    ouverture ?? lireOuverture(),
+    Promise.all(
+      sorties.map((sortie) => {
+        const creneau = creneauOctobreRose(sortie);
+        return depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin);
+      }),
+    ),
+    depot.listerReservations({
+      statut: "EN_ATTENTE_PAIEMENT",
+      depuis: sorties[0].date,
+      jusqua: sorties[sorties.length - 1].date,
+    }),
+  ]);
+  return sorties.map((sortie, index) => {
+    const places = libres[index].length;
+    const placesEnAttente = enAttente
+      .filter((r) => r.offre === "octobre-rose" && r.dateDebut === sortie.date && estEnAttente(r))
+      .reduce((total, r) => total + r.lignes.length, 0);
+    const ouverteEnLigne = octobreRoseOuvertEnLigne(reglages, sortie);
+    const inscriptionsOuvertes = inscriptionOctobreRoseOuverte(sortie, maintenant);
+    return {
+      sortie,
+      code: codeOctobreRose(sortie),
+      creneau: creneauOctobreRose(sortie),
+      places,
+      placesEnAttente,
+      ouverteEnLigne,
+      inscriptionsOuvertes,
+      partie: sortieOctobreRosePartie(sortie, maintenant),
+      complete: !ouverteEnLigne || (places === 0 && placesEnAttente === 0),
+      enVente: inscriptionsOuvertes && ouverteEnLigne && places > 0,
+    };
+  });
 }
 
 /** Les départs de road trip à proposer en ce moment. */
@@ -118,21 +271,10 @@ export function motifDeRefus(
   },
 ): string | null {
   if (demande.offre === "octobre-rose") {
-    const creneau = creneauOctobreRose();
-    const conflitRoadTrip =
-      creneau !== null &&
-      roadTripsDuJour(creneau.date).some((c) => octobreRoseChevaucheRoadTrip(creneau.date, c.heureDebut, c.heureFin));
-    if (conflitRoadTrip) {
-      console.error("[ouverture] la sortie Octobre rose chevauche un road trip : inscriptions refusées. Corrigez src/data/octobre-rose.ts.");
-      return "Les inscriptions en ligne ne sont pas ouvertes pour le moment. Écrivez-nous sur WhatsApp.";
-    }
-    if (!inscriptionsOctobreRoseOuvertes(new Date())) {
-      return "Les inscriptions en ligne à Octobre rose sont closes. Écrivez-nous sur WhatsApp pour une dernière place.";
-    }
-    if (!octobreRoseOuvertEnLigne(ouverture)) {
-      return "La sortie Octobre rose est complète en ligne. Écrivez-nous sur WhatsApp : nous vous dirons s'il reste de la place.";
-    }
-    return null;
+    // Le jour désigne la sortie : chacune a son heure limite et son réglage.
+    const sortie = sortieOctobreRoseDu(demande.dateDebut);
+    if (!sortie) return "Aucune sortie Octobre rose ce jour-là. Choisissez l'un des jours proposés.";
+    return refusInscriptionOctobreRose(ouverture, sortie)?.erreur ?? null;
   }
 
   if (demande.offre === "road-trip") {

@@ -4,7 +4,14 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { creneauOctobreRose, formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
+import {
+  creneauOctobreRose,
+  formatHoraire,
+  minutesDe,
+  OCTOBRE_ROSE,
+  sortieDeLaReservation,
+  type SortieOctobreRose,
+} from "@/data/octobre-rose";
 import {
   CRENEAUX_ROAD_TRIP,
   DUREE_ROAD_TRIP_HEURES,
@@ -108,13 +115,24 @@ function lireHeureTapee(saisie: string): number | null {
 const avecMinutes = (saisie: string) => /^\d{1,2}\s*(?:h|:)\s*\d{1,2}\s*$/i.test(saisie.trim());
 
 /**
- * La sortie Octobre rose, si elle se vend encore au comptoir : fixée, et
- * pas encore passée. Le jour même, elle se vend jusqu'au soir, après coup
- * compris, comme le road trip.
+ * Les sorties Octobre rose qui se vendent encore au comptoir : fixées, et
+ * dont le groupe n'est pas parti. Le jour même, jusqu'à l'heure du départ ;
+ * le serveur tranche à la minute près (il refuse après 16 h 30).
  */
-function octobreRoseEnVente(jour: string) {
-  const creneau = creneauOctobreRose();
-  return creneau && OCTOBRE_ROSE.sortie && creneau.date >= jour ? creneau : null;
+function sortiesRoseEnVente(jour: string, heure: number): SortieOctobreRose[] {
+  return OCTOBRE_ROSE.sorties.filter(
+    (sortie) =>
+      sortie.date > jour || (sortie.date === jour && heure < Math.ceil(minutesDe(sortie.depart) / 60)),
+  );
+}
+
+/** « Samedi 24 ou dimanche 25, 16 h 30 » : les jours en vente, pour le bouton de la formule. */
+function detailFormuleRose(sorties: SortieOctobreRose[]): string {
+  const jours = sorties.map((sortie, index) => {
+    const jour = formatDateAvecJour(sortie.date).split(" ").slice(0, 2).join(" ");
+    return index === 0 ? jour.charAt(0).toUpperCase() + jour.slice(1) : jour;
+  });
+  return `${jours.join(" ou ")}, ${formatHoraire(sorties[0].depart)}`;
 }
 
 /** Les prochains jours de road trip, aujourd'hui compris s'il en part un. */
@@ -303,6 +321,8 @@ export function VenteEspeces({
   const heureTapee = lireHeureTapee(texteHeure);
   const heureDebut = heureTapee ?? heureParDefaut(ici.heure, dureeHeures);
   const [nombrePersonnes, setNombrePersonnes] = useState(1);
+  // Le jour de la sortie Octobre rose vendue ; à défaut, la prochaine.
+  const [jourRose, setJourRose] = useState<string | null>(null);
   const [veloId, setVeloId] = useState("");
   const [client, setClient] = useState(CLIENT_VIDE);
   const [code, setCode] = useState("");
@@ -333,8 +353,12 @@ export function VenteEspeces({
   }, []);
 
   // Octobre rose, tant qu'il se vend : sans vélo à choisir, les vélos sont
-  // attribués d'office à l'enregistrement, un par personne.
-  const sortieRose = octobreRoseEnVente(ici.date);
+  // attribués d'office à l'enregistrement, un par personne, le jour choisi.
+  // Sans choix, la prochaine sortie : le sélecteur l'affiche, rien ne se
+  // vend sans que le jour soit sous les yeux.
+  const sortiesRose = sortiesRoseEnVente(ici.date, ici.heure);
+  const sortieRoseChoisie = sortiesRose.find((sortie) => sortie.date === jourRose) ?? sortiesRose[0] ?? null;
+  const sortieRose = sortieRoseChoisie ? creneauOctobreRose(sortieRoseChoisie) : null;
   const octobreRose = offre === "octobre-rose" && sortieRose !== null;
   const roadTrip = offre === "road-trip";
   // Les deux sorties encadrées se vendent à la personne, sans durée.
@@ -356,6 +380,17 @@ export function VenteEspeces({
   // Octobre rose : autant de places que de vélos en état et libres sur la
   // sortie. Le serveur refait le compte à l'enregistrement.
   const placesRose = octobreRose ? velos.filter((v) => enEtat(v) && !occupeSurCreneau(v.id)).length : 0;
+  // Les places d'un jour de sortie, pour le sélecteur.
+  const placesLe = (sortie: SortieOctobreRose) => {
+    const c = creneauOctobreRose(sortie);
+    return velos.filter(
+      (v) =>
+        enEtat(v) &&
+        !(occupes[v.id] ?? []).some((pris) =>
+          creneauxSeChevauchent({ debut: c.date, fin: c.date, heureDebut: c.heureDebut, heureFin: c.heureFin }, pris),
+        ),
+    ).length;
+  };
   // Une personne, un vélo : pas plus de personnes que de vélos en état dans
   // la gamme pour un road trip, que de places libres pour Octobre rose.
   const personnesMax = octobreRose
@@ -368,11 +403,11 @@ export function VenteEspeces({
   // Le devis : calculé ici pour s'afficher tout de suite, avec la même
   // fonction que le serveur, au prix de la plaquette (sans les frais du
   // paiement en ligne). Avec un code, seul le serveur fait foi. Pas de code
-  // sur Octobre rose : son prix est déjà réduit.
+  // sur Octobre rose : son prix est forfaitaire.
   const codeNormalise = octobreRose ? "" : code.trim().toUpperCase().replace(/\s+/g, "");
   const signature = JSON.stringify([offre, veloId, date, heure, encadree ? 0 : dureeHeures, personnes, codeNormalise]);
   const devisLocal = octobreRose
-    ? calculerDevis({ offre: "octobre-rose", nombrePersonnes: personnes, especes: true })
+    ? calculerDevis({ offre: "octobre-rose", date, nombrePersonnes: personnes, especes: true })
     : velo
       ? calculerDevis({
           offre,
@@ -400,19 +435,19 @@ export function VenteEspeces({
     roadTripsDuJour(date).some((c) => heure < c.heureFin && heureFin > c.heureDebut);
   // Une location libre saisie au comptoir pendant la sortie Octobre rose :
   // le site ne la propose pas, le comptoir la laisse passer en prévenant.
-  const pendantOctobreRose =
-    !encadree &&
-    sortieRose !== null &&
-    sortieRose.date === date &&
-    heure < sortieRose.heureFin &&
-    heureFin > sortieRose.heureDebut;
+  const creneauRoseChevauche = encadree
+    ? null
+    : (OCTOBRE_ROSE.sorties
+        .map(creneauOctobreRose)
+        .find((c) => c.date === date && heure < c.heureFin && heureFin > c.heureDebut) ?? null);
+  const pendantOctobreRose = creneauRoseChevauche !== null;
   const obstacleCreneau =
     offre === "octobre-rose" && !sortieRose
-      ? "La sortie Octobre rose est passée : choisissez une autre formule."
+      ? "Les sorties Octobre rose sont passées : choisissez une autre formule."
       : octobreRose
         ? placesRose < personnes
           ? placesRose === 0
-            ? "Plus aucun vélo libre pour la sortie Octobre rose."
+            ? "Plus aucun vélo libre pour la sortie Octobre rose de ce jour."
             : `Il ne reste que ${placesRose} vélo${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""} pour la sortie.`
           : null
         : !encadree && heureTapee === null
@@ -636,14 +671,8 @@ export function VenteEspeces({
   const formules: (readonly [CodeOffre, string, string])[] = [
     ["location-libre", "Location libre", "À l'heure, avec caution"],
     ["road-trip", "Road trip", "Samedi et dimanche, 8 h"],
-    ...(sortieRose && OCTOBRE_ROSE.sortie
-      ? ([
-          [
-            "octobre-rose",
-            "Octobre rose",
-            `${jourLisible(sortieRose.date)}, ${formatHoraire(OCTOBRE_ROSE.sortie.rassemblement)}`,
-          ],
-        ] as const)
+    ...(sortiesRose.length > 0
+      ? ([["octobre-rose", "Octobre rose", detailFormuleRose(sortiesRose)]] as const)
       : []),
   ];
 
@@ -702,12 +731,30 @@ export function VenteEspeces({
         {octobreRose ? (
           <div className="mt-2 grid *:min-w-0 gap-4 sm:grid-cols-2">
             <div className="rounded-[var(--radius-bouton)] bg-rose-octobre/15 px-4 py-3">
-              <p className="text-[0.92rem] font-semibold">{jourLisible(sortieRose.date)}</p>
-              {OCTOBRE_ROSE.sortie && (
-                <p className="mt-0.5 text-[0.8rem] text-noir-piste/80">
-                  Rassemblement {formatHoraire(OCTOBRE_ROSE.sortie.rassemblement)}, départ{" "}
-                  {formatHoraire(OCTOBRE_ROSE.sortie.depart)}, retour vers{" "}
-                  {formatHoraire(OCTOBRE_ROSE.sortie.retour)}
+              <label htmlFor="vente-jour-rose" className="text-[0.8rem] text-noir-piste/80">
+                Jour de la sortie
+              </label>
+              <select
+                id="vente-jour-rose"
+                value={sortieRose.date}
+                onChange={(evenement) => setJourRose(evenement.target.value)}
+                className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white px-4 py-2.5 text-[0.92rem] font-semibold"
+              >
+                {sortiesRose.map((sortie) => {
+                  const libres = placesLe(sortie);
+                  return (
+                    <option key={sortie.date} value={sortie.date}>
+                      {jourLisible(sortie.date)} ·{" "}
+                      {libres === 0 ? "complet" : `${libres} vélo${libres > 1 ? "s" : ""} libre${libres > 1 ? "s" : ""}`}
+                    </option>
+                  );
+                })}
+              </select>
+              {sortieRoseChoisie && (
+                <p className="mt-1.5 text-[0.8rem] text-noir-piste/80">
+                  Rassemblement {formatHoraire(sortieRoseChoisie.rassemblement)}, départ{" "}
+                  {formatHoraire(sortieRoseChoisie.depart)}, retour vers{" "}
+                  {formatHoraire(sortieRoseChoisie.retour)}
                 </p>
               )}
             </div>
@@ -893,9 +940,9 @@ export function VenteEspeces({
             heures. Vérifiez qu&apos;un vélo reste bien au point de départ.
           </p>
         )}
-        {pendantOctobreRose && sortieRose && (
+        {pendantOctobreRose && creneauRoseChevauche && (
           <p className="mt-2 rounded-[var(--radius-bouton)] border-l-4 border-rose-octobre bg-rose-octobre/10 px-3 py-2 text-[0.8rem] leading-relaxed">
-            La sortie Octobre rose occupe les vélos de {sortieRose.heureDebut} h à {sortieRose.heureFin} h
+            La sortie Octobre rose occupe les vélos de {creneauRoseChevauche.heureDebut} h à {creneauRoseChevauche.heureFin} h
             ce jour-là : le site ne propose pas ces heures. Ce vélo ne pourra pas servir à la sortie.
           </p>
         )}
@@ -1019,10 +1066,10 @@ export function VenteEspeces({
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">5. L&apos;encaissement</legend>
         <div className="mt-2 grid *:min-w-0 gap-4 sm:grid-cols-2">
-          {/* Pas de code sur Octobre rose : son prix est déjà réduit. */}
+          {/* Pas de code sur Octobre rose : son prix est forfaitaire. */}
           {octobreRose ? (
             <p className="self-center text-[0.8rem] leading-relaxed text-gris-cadre">
-              Octobre rose est déjà à prix réduit : pas de code de parrainage.
+              Octobre rose a un prix forfaitaire, le même pour tous&nbsp;: pas de code de parrainage.
             </p>
           ) : (
           <div>
@@ -1093,7 +1140,7 @@ export function VenteEspeces({
         </p>
         {octobreRose && devisLocal && (
           <p className="mt-2 text-[0.82rem] text-craie/75">
-            Octobre rose, {personnes} personne{personnes > 1 ? "s" : ""} ·{" "}
+            Octobre rose, {jourLisible(date)}, {personnes}&nbsp;personne{personnes > 1 ? "s" : ""} ·{" "}
             {formatXof(devisLocal.sousTotalXof / personnes)} par personne en espèces
           </p>
         )}
@@ -1153,6 +1200,8 @@ function VenteTerminee({ vente, onNouvelle }: { vente: VenteEnregistree; onNouve
   // ce que le serveur révèle au moment de noter le départ.
   const [annulee, setAnnulee] = useState(false);
   const [annuleeAilleurs, setAnnuleeAilleurs] = useState(false);
+  // Octobre rose : la sortie de ce jour-là, pour l'heure du rassemblement.
+  const sortieVente = sortieDeLaReservation({ offre: vente.offre, dateDebut: vente.dateDebut });
 
   const remettre = async () => {
     setDepart("en-cours");
@@ -1216,8 +1265,8 @@ function VenteTerminee({ vente, onNouvelle }: { vente: VenteEnregistree; onNouve
       <p className="mt-1 text-[0.88rem]">
         {vente.client} · {vente.formule} · {vente.veloNom}
         <span className="block text-gris-cadre">
-          {vente.offre === "octobre-rose" && OCTOBRE_ROSE.sortie
-            ? `${jourLisible(vente.dateDebut)}, rassemblement à ${formatHoraire(OCTOBRE_ROSE.sortie.rassemblement)} : vélos à remettre au rassemblement`
+          {vente.offre === "octobre-rose" && sortieVente
+            ? `${jourLisible(vente.dateDebut)}, rassemblement à ${formatHoraire(sortieVente.rassemblement)} : vélos à remettre au rassemblement`
             : `${jourLisible(vente.dateDebut)}, de ${vente.heureDebut} h à ${vente.heureFin} h`}
         </span>
       </p>

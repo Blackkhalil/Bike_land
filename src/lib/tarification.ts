@@ -10,15 +10,15 @@
  *
  *  - **road trip** : forfait par personne, selon la gamme du vélo ;
  *  - **location libre** : grille horaire, selon la gamme du vélo ;
- *  - **Octobre rose** : un prix par personne, le même pour tous les vélos
- *    (src/data/octobre-rose.ts).
+ *  - **Octobre rose** : un prix par personne, le même pour tous les vélos,
+ *    celui de la sortie du jour choisi (src/data/octobre-rose.ts).
  *
  * La tarification journalière (majoration de haute saison, remises de
  * durée) a été retirée : elle ne correspondait plus à l'activité.
  */
 
 import { optionsLocation } from "@/data/catalogue";
-import { OCTOBRE_ROSE } from "@/data/octobre-rose";
+import { sortieOctobreRoseDu, texteOffertOctobreRose } from "@/data/octobre-rose";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   COCOS_ROAD_TRIP,
@@ -28,6 +28,8 @@ import {
   type CodeOffre,
   type GammeVelo,
 } from "@/data/offres";
+import type { DateISO } from "./dates";
+import { formatXof } from "./format";
 import type { OptionLocation } from "./types";
 
 export interface OptionChoisie {
@@ -54,6 +56,12 @@ export interface ParametresDevis {
   gamme?: GammeVelo;
   /** Road trip et Octobre rose : nombre de participants. Un par défaut. */
   nombrePersonnes?: number;
+  /**
+   * Octobre rose : le jour de la sortie choisie, AAAA-MM-JJ. C'est lui qui
+   * désigne la sortie, donc son prix ; un jour sans sortie n'a pas de tarif.
+   * Ignoré par les autres formules.
+   */
+  date?: DateISO;
   /** Location libre : durée en heures, telle que publiée dans la grille. */
   dureeHeures?: number;
   options?: OptionChoisie[];
@@ -69,8 +77,10 @@ export interface ParametresDevis {
   /**
    * Vente réglée en espèces au comptoir : au prix de la plaquette, sans les
    * frais du paiement en ligne que portent les tarifs du site (cf.
-   * `FRAIS_PAIEMENT_EN_LIGNE_XOF`). Le serveur ne l'accorde qu'à une vente
-   * saisie dans l'administration, jamais à une réservation en ligne.
+   * `FRAIS_PAIEMENT_EN_LIGNE_XOF`). Octobre rose fait exception : son prix
+   * au comptoir est celui de la sortie (`prixComptoirXof`). Le serveur ne
+   * l'accorde qu'à une vente saisie dans l'administration, jamais à une
+   * réservation en ligne.
    */
   especes?: boolean;
 }
@@ -106,7 +116,7 @@ export class DureeNonTarifeeError extends Error {
   }
 }
 
-/** Erreur métier : rien ne fixe le prix demandé (gamme absente, sortie non fixée). */
+/** Erreur métier : rien ne fixe le prix demandé (gamme absente, jour sans sortie Octobre rose). */
 export class TarifIntrouvableError extends Error {
   constructor(message: string) {
     super(message);
@@ -128,17 +138,18 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
   const fraisRetires = parametres.especes ? FRAIS_PAIEMENT_EN_LIGNE_XOF : 0;
 
   if (offre === "octobre-rose") {
-    const sortie = OCTOBRE_ROSE.sortie;
-    if (!sortie) throw new TarifIntrouvableError("La sortie Octobre rose n'est pas encore fixée.");
-    // Un prix par personne, quel que soit le vélo attribué. Une sortie
-    // gratuite ne coûte rien, même au comptoir.
-    const prixUnitaire = Math.max(0, sortie.prixXof - (sortie.prixXof > 0 ? fraisRetires : 0));
+    const sortie = parametres.date ? sortieOctobreRoseDu(parametres.date) : null;
+    if (!sortie) throw new TarifIntrouvableError("Aucune sortie Octobre rose ce jour-là.");
+    // Un prix par personne, quel que soit le vélo attribué. Au comptoir, le
+    // prix est celui que Bike Land a fixé pour la sortie, et non le prix en
+    // ligne moins les frais : les 125 F ne s'en retirent pas.
+    const prixUnitaire = parametres.especes ? sortie.prixComptoirXof : sortie.prixXof;
     sousTotalXof = prixUnitaire * nombrePersonnes;
     cautionXof = 0;
     lignes.push({
       libelle:
         nombrePersonnes > 1 ? `Octobre rose, ${nombrePersonnes} personnes` : "Octobre rose, 1 personne",
-      detail: `${prixUnitaire.toLocaleString("fr-FR")} FCFA par personne, vélo, casque, eau et coco compris`,
+      detail: `${formatXof(prixUnitaire)} par personne, vélo et casque compris, ${texteOffertOctobreRose()} offerts`,
       montantXof: sousTotalXof,
     });
   } else if (!gamme) {

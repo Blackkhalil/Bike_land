@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
+import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
 import { formatDate, formatXof, resumeOffre } from "@/lib/format";
 import type { Reservation } from "@/lib/types";
 
@@ -20,12 +20,12 @@ function consignes(reservation: Reservation, sens: "depart" | "retour"): string[
   if (reservation.offre === "octobre-rose") {
     const n = reservation.nombrePersonnes;
     if (sens === "retour") return [`Récupérer ${n > 1 ? `les ${n} vélos et casques` : "le vélo et le casque"}.`];
-    const sortie = OCTOBRE_ROSE.sortie;
+    const sortie = sortieDeLaReservation(reservation);
     return [
       `Remettre ${n} vélo${n > 1 ? "s" : ""} et ${n} casque${n > 1 ? "s" : ""} au rassemblement${
         sortie ? ` de ${formatHoraire(sortie.rassemblement)}, départ ${formatHoraire(sortie.depart)}` : ""
       } : sortie Octobre rose.`,
-      `Prévoir ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}, offerts.`,
+      `Prévoir ${texteOffertOctobreRose(n)}, offerts.`,
       "Aucune caution : la sortie est encadrée.",
     ];
   }

@@ -5,7 +5,7 @@
  * CFA n'a pas de subdivision utilisée, donc aucun arrondi flottant à gérer.
  */
 
-import { formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
+import { formatHoraire, sortieDeLaReservation } from "@/data/octobre-rose";
 import { creneauDuDepart } from "@/data/offres";
 
 import type { CodeOffre, MoyenPaiement } from "./types";
@@ -87,6 +87,14 @@ const formatteurJourMois = new Intl.DateTimeFormat("fr-FR", {
   timeZone: "UTC",
 });
 
+const formatteurDateComplete = new Intl.DateTimeFormat("fr-FR", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
 /**
  * « 1 novembre » devient « 1er novembre », comme l'écrit le français :
  * Intl ne le fait pas. Les autres jours ne bougent pas.
@@ -107,6 +115,15 @@ export function formatDateAvecJour(valeur: string | Date): string {
   return premierDuMois(formatteurJourMois.format(versDate(valeur)));
 }
 
+/**
+ * « samedi 24 octobre 2026 » : le jour de la semaine et l'année. Pour une
+ * sortie Octobre rose, le jour de la semaine compte : le client a choisi
+ * entre le samedi et le dimanche.
+ */
+export function formatDateComplete(valeur: string | Date): string {
+  return premierDuMois(formatteurDateComplete.format(versDate(valeur)));
+}
+
 export function formatPeriode(debut: string | Date, fin: string | Date): string {
   const d = versDate(debut);
   const f = versDate(fin);
@@ -124,9 +141,10 @@ export function formatPeriode(debut: string | Date, fin: string | Date): string 
  * horaire, sinon le coordinateur et le client ne s'attendent pas au même
  * moment au point de départ.
  *
- * La sortie Octobre rose s'annonce par son rendez-vous et son départ, à la
- * minute près, plutôt que par les heures pleines qu'elle retient sur les
- * vélos (voir `sortieDe`).
+ * Une sortie Octobre rose s'annonce par son jour, de la semaine compris,
+ * son rendez-vous et son départ, à la minute près, plutôt que par les
+ * heures pleines qu'elle retient sur les vélos (voir `sortieDe`) :
+ * « samedi 24 octobre 2026, rassemblement à 16 h, départ 16 h 30 ».
  */
 export function formatCreneau(reservation: {
   dateDebut: string | Date;
@@ -137,7 +155,7 @@ export function formatCreneau(reservation: {
   const sortie = sortieDe(reservation);
   if (sortie) {
     return (
-      `${formatDate(reservation.dateDebut)}, rassemblement à ${formatHoraire(sortie.rassemblement)}, ` +
+      `${formatDateComplete(reservation.dateDebut)}, rassemblement à ${formatHoraire(sortie.rassemblement)}, ` +
       `départ ${formatHoraire(sortie.depart)}`
     );
   }
@@ -150,20 +168,18 @@ export function formatPlageHoraire(heureDebut: number, heureFin: number): string
 }
 
 /**
- * La sortie Octobre rose d'une réservation, quand c'en est une et qu'elle
- * est celle de la campagne décrite (src/data/octobre-rose.ts) : ses
- * horaires à la minute près ne valent que pour elle. Une inscription d'une
- * campagne passée garde ses heures enregistrées.
+ * La sortie Octobre rose d'une réservation, retrouvée par son jour parmi
+ * celles de la campagne décrite (src/data/octobre-rose.ts) : ses horaires à
+ * la minute près ne valent que pour elle. Une inscription d'une campagne
+ * passée garde ses heures enregistrées.
  */
 function sortieDe(reservation: { offre?: CodeOffre; dateDebut: string | Date }) {
-  const sortie = OCTOBRE_ROSE.sortie;
-  const jour = typeof reservation.dateDebut === "string" ? reservation.dateDebut.slice(0, 10) : versDate(reservation.dateDebut).toISOString().slice(0, 10);
-  return reservation.offre === "octobre-rose" && sortie && sortie.date === jour ? sortie : null;
+  return reservation.offre ? sortieDeLaReservation({ offre: reservation.offre, dateDebut: reservation.dateDebut }) : null;
 }
 
 /**
  * L'horaire d'une réservation, sans le jour : « 8 h - 11 h », et pour
- * Octobre rose, du rassemblement au retour, « 16 h - 18 h 30 ».
+ * Octobre rose, du rassemblement au retour, « 16 h - 17 h 30 ».
  */
 export function formatPlageReservation(reservation: {
   offre?: CodeOffre;

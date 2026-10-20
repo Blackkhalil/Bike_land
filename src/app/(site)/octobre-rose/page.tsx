@@ -8,31 +8,32 @@ import { InscriptionOctobreRose } from "@/components/reservation/InscriptionOcto
 import { Pastille, Section, TitreSection } from "@/components/ui";
 import { itineraireOctobreRose } from "@/data/contenus";
 import {
-  creneauOctobreRose,
-  departOctobreRose,
   formatHoraire,
   OCTOBRE_ROSE,
   PLACES_MAX_PAR_INSCRIPTION,
+  texteOffertOctobreRose,
 } from "@/data/octobre-rose";
-import { inscriptionsOctobreRoseOuvertes, jourOctobreRose, MESSAGES_WHATSAPP } from "@/data/produits";
-import { depot } from "@/lib/db";
-import { formatXof } from "@/lib/format";
-import { lireOuverture, octobreRoseOuvertEnLigne } from "@/lib/ouverture";
-import { estEnAttente } from "@/lib/reservations";
+import { horaireDeLaSortie, jourOctobreRose, MESSAGES_WHATSAPP, tarifOctobreRose } from "@/data/produits";
+import { etatsSortiesOctobreRose } from "@/lib/ouverture";
 import { lienWhatsApp } from "@/lib/site";
+
+const joursDeLaCampagne = jourOctobreRose();
 
 export const metadata: Metadata = {
   title: "Octobre rose",
   description:
-    "Une sortie à vélo en rose pour soutenir la lutte contre le cancer du sein, sur la route des Pêches jusqu'à l'Amazone. Un prix réduit, le même pour tous les vélos : on s'inscrit et on paie en ligne.",
+    `Des sorties à vélo en rose${joursDeLaCampagne ? `, ${joursDeLaCampagne.toLowerCase()},` : ""} ` +
+    "pour soutenir la lutte contre le cancer du sein, sur la route des Pêches jusqu'à l'Amazone. " +
+    "Un prix forfaitaire, le même pour tous les vélos : on choisit son jour, on s'inscrit et on paie en ligne.",
   alternates: { canonical: "/octobre-rose" },
 };
 
 /**
- * Régénérée au plus toutes les trente secondes : elle compte les places
- * (les vélos encore libres sur la sortie), que chaque inscription fait
- * baisser. Le serveur recompte de toute façon à l'inscription, et l'heure
- * limite est relue dans le navigateur (InscriptionOctobreRose).
+ * Régénérée au plus toutes les trente secondes : elle compte les places de
+ * chaque jour (les vélos encore libres sur sa sortie), que chaque
+ * inscription fait baisser. Le serveur recompte de toute façon à
+ * l'inscription, et les heures limites sont relues dans le navigateur
+ * (InscriptionOctobreRose).
  */
 export const revalidate = 30;
 
@@ -47,30 +48,20 @@ function Repere({ terme, children }: { terme: string; children: ReactNode }) {
 }
 
 /**
- * La sortie Octobre rose : ce qu'elle est, et l'inscription, payée en ligne
- * d'un seul geste (voir src/data/octobre-rose.ts).
+ * Les sorties Octobre rose : ce qu'elles sont, et l'inscription, payée en
+ * ligne d'un seul geste, le client choisissant son jour (voir
+ * src/data/octobre-rose.ts).
  */
 export default async function PageOctobreRose() {
-  const sortie = OCTOBRE_ROSE.sortie;
-  const creneau = creneauOctobreRose();
+  // Les sorties partagent leurs horaires : la première les dit pour toutes.
+  const sortie = OCTOBRE_ROSE.sorties[0] ?? null;
   const circuit = itineraireOctobreRose();
   const maintenant = new Date();
 
-  // Sans sortie fixée, ou une fois le groupe parti : la page reste en ligne
-  // pour qui suit un ancien lien, sans rien à vendre.
-  const [ouverture, libres, enAttente] = await Promise.all([
-    lireOuverture(),
-    creneau ? depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin) : Promise.resolve([]),
-    creneau
-      ? depot.listerReservations({ statut: "EN_ATTENTE_PAIEMENT", depuis: creneau.date, jusqua: creneau.date })
-      : Promise.resolve([]),
-  ]);
-  // Les vélos retenus le temps d'un paiement : une sortie sans place libre
-  // n'est pas « Sold out » tant que ces inscriptions peuvent encore expirer.
-  const placesEnAttente = enAttente
-    .filter((reservation) => reservation.offre === "octobre-rose" && estEnAttente(reservation))
-    .reduce((total, reservation) => total + reservation.lignes.length, 0);
-  const depart = departOctobreRose();
+  // Sans sortie fixée, ou une fois le dernier groupe parti : la page reste
+  // en ligne pour qui suit un ancien lien, sans rien à vendre.
+  const etats = await etatsSortiesOctobreRose(maintenant);
+  const payants = etats.filter((etat) => etat.sortie.prixXof > 0);
 
   return (
     <>
@@ -95,9 +86,7 @@ export default async function PageOctobreRose() {
               <dl className="mt-8 max-w-xl">
                 <Repere terme="Date">{jourOctobreRose()}</Repere>
                 <Repere terme="Rassemblement">{formatHoraire(sortie.rassemblement)}, au point de départ</Repere>
-                <Repere terme="Départ et retour">
-                  {formatHoraire(sortie.depart)} - {formatHoraire(sortie.retour)}
-                </Repere>
+                <Repere terme="Départ et retour">{horaireDeLaSortie(sortie)}</Repere>
                 <Repere terme="Dress code">{sortie.tenue}</Repere>
                 {circuit && (
                   <Repere terme="Itinéraire">
@@ -105,10 +94,10 @@ export default async function PageOctobreRose() {
                   </Repere>
                 )}
                 <Repere terme="Tarif">
-                  <span className="font-display text-[1.25rem]">{formatXof(sortie.prixXof)}</span> par
-                  personne, tous&nbsp;vélos
+                  <span className="font-display text-[1.25rem]">{tarifOctobreRose()}</span>, tous&nbsp;vélos
                 </Repere>
-                <Repere terme="Compris">Vélo, casque, eau et coco frais</Repere>
+                <Repere terme="Compris">Vélo et casque</Repere>
+                <Repere terme="Offert à chacun">{texteOffertOctobreRose()}</Repere>
               </dl>
             ) : (
               <p className="mt-8 max-w-xl text-[0.98rem] font-semibold">
@@ -132,15 +121,16 @@ export default async function PageOctobreRose() {
       <Section fond="craie" className="py-16 sm:py-20">
         <div id="inscription" className="grid scroll-mt-[72px] gap-10 lg:grid-cols-12">
           <div className="lg:col-span-7">
-            {sortie && sortie.prixXof > 0 && creneau ? (
+            {payants.length > 0 ? (
               <InscriptionOctobreRose
-                prixXof={sortie.prixXof}
-                placesInitiales={libres.length}
-                placesEnAttente={placesEnAttente}
+                jours={payants.map((etat) => ({
+                  date: etat.sortie.date,
+                  places: etat.places,
+                  placesEnAttente: etat.placesEnAttente,
+                  ouvertEnLigne: etat.ouverteEnLigne,
+                }))}
                 maxParInscription={PLACES_MAX_PAR_INSCRIPTION}
-                ouvertAuServeur={inscriptionsOctobreRoseOuvertes(maintenant)}
-                partiAuServeur={depart !== null && maintenant.getTime() >= depart}
-                ouvertEnLigne={octobreRoseOuvertEnLigne(ouverture)}
+                maintenantAuServeur={maintenant.getTime()}
               />
             ) : (
               <div className="rounded-[var(--radius-bloc)] bg-white p-6 sm:p-8">
@@ -168,7 +158,9 @@ export default async function PageOctobreRose() {
                 <p className="etiquette opacity-75">Le parcours</p>
                 <p className="mt-2 font-display text-[1.25rem] font-bold leading-tight">{circuit.titre}</p>
                 <p className="mt-1 text-[0.85rem] text-gris-cadre">
-                  {circuit.distanceKm} km aller-retour · {circuit.duree.toLowerCase()} · niveau{" "}
+                  {/* Sans la durée habituelle du circuit : celle de la sortie se lit
+                      dans ses heures, du départ au retour. */}
+                  {circuit.distanceKm} km aller-retour · niveau{" "}
                   {circuit.niveau.toLowerCase()}
                 </p>
                 <ol className="mt-4 space-y-3 text-[0.9rem]">
@@ -194,7 +186,11 @@ export default async function PageOctobreRose() {
               <p className="etiquette opacity-75">Bon à savoir</p>
               <ul className="mt-3 space-y-2.5 text-[0.9rem] leading-relaxed">
                 <li>Un vélo vous est attribué : le prix est le même pour tous nos vélos.</li>
-                <li>Vélo, casque, eau et coco frais offerts, sans caution : la sortie est encadrée.</li>
+                <li>
+                  Vélo et casque fournis, {texteOffertOctobreRose()} offerts à chacun, sans caution&nbsp;: la
+                  sortie est encadrée.
+                </li>
+                <li>D&apos;autres créneaux pourront ouvrir selon la demande.</li>
                 <li>
                   Le point de départ exact, la facture et l&apos;itinéraire arrivent par email dès le
                   paiement.

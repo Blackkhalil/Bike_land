@@ -11,7 +11,6 @@
 
 import { optionsLocation, pointsDeRetrait, velos } from "@/data/catalogue";
 import { aujourdhui, nombreDeJours, type DateISO } from "../dates";
-import { creneauOctobreRose } from "@/data/octobre-rose";
 import {
   DUREE_ROAD_TRIP_HEURES,
   EXPIRATION_PANIER_MINUTES,
@@ -40,6 +39,7 @@ import type {
 } from "../types";
 import {
   ConflitDisponibiliteError,
+  creneauOctobreRoseDemande,
   creneauxSeChevauchent,
   messagePlacesManquantes,
   ordreAttribution,
@@ -253,15 +253,10 @@ export const depotDemo: Depot = {
 
   async creerReservation(demande: DemandeReservation): Promise<ResultatReservation> {
     // Même règle qu'en base : Octobre rose ne se réserve pas sur un vélo
-    // choisi, les vélos sont attribués plus bas, un par participant.
+    // choisi, les vélos sont attribués plus bas, un par participant, parmi
+    // ceux libres sur la sortie du jour demandé.
     const octobreRose = demande.offre === "octobre-rose";
-    const creneauSortie = octobreRose ? creneauOctobreRose() : null;
-    if (octobreRose) {
-      if (!creneauSortie) throw new Error("La sortie Octobre rose n'est pas fixée.");
-      if (demande.dateDebut !== creneauSortie.date || demande.heureDebut !== creneauSortie.heureDebut) {
-        throw new Error("Une inscription à Octobre rose porte sur le jour et l'heure de la sortie.");
-      }
-    }
+    const creneauSortie = octobreRose ? creneauOctobreRoseDemande(demande) : null;
     const velo = octobreRose ? undefined : velos.find((v) => v.id === demande.veloId);
     if (!octobreRose && !velo) throw new Error("Vélo introuvable.");
 
@@ -276,8 +271,9 @@ export const depotDemo: Depot = {
     const devisBrut = calculerDevis({
       offre: demande.offre,
       // La gamme vient du vélo, jamais de l'appelant : c'est elle qui
-      // fixe le prix. Octobre rose s'en passe.
+      // fixe le prix. Octobre rose s'en passe : le jour de sa sortie le fixe.
       gamme: velo?.gamme,
+      date: demande.dateDebut,
       nombrePersonnes: demande.nombrePersonnes,
       dureeHeures: demande.dureeHeures,
       options: demande.options,
@@ -325,7 +321,7 @@ export const depotDemo: Depot = {
 
     // Le code est vérifié et consommé dans la foulée, avec la même règle
     // qu'en production, sans quoi les deux modes ne répondraient pas pareil.
-    // Pas de code sur Octobre rose : son prix est déjà réduit.
+    // Pas de code sur Octobre rose : son prix est forfaitaire.
     let remise: { code: string; montantXof: number } | undefined;
     if (demande.codeParrainage && !octobreRose) {
       const controle = controleCode(demande.codeParrainage, devisBrut.totalXof);
@@ -342,6 +338,7 @@ export const depotDemo: Depot = {
       ? calculerDevis({
           offre: demande.offre,
           gamme: velo?.gamme,
+          date: demande.dateDebut,
           nombrePersonnes: demande.nombrePersonnes,
           dureeHeures: demande.dureeHeures,
           options: demande.options,

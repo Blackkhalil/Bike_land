@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AnnulerReservation } from "@/components/reservation/AnnulerReservation";
+import { EnvoiWhatsApp } from "@/components/reservation/EnvoiWhatsApp";
 import { FormulaireAvis } from "@/components/reservation/FormulaireAvis";
 import { PaiementEnAttente } from "@/components/reservation/PaiementEnAttente";
 import { EXPIRATION_PANIER_MINUTES, formatHeure, panierExpire } from "@/data/offres";
@@ -11,7 +12,7 @@ import { VeloIllustration } from "@/components/VeloIllustration";
 import { Etiquette, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue, optionsLocation } from "@/data/catalogue";
 import { itineraireOctobreRose } from "@/data/contenus";
-import { formatHoraire, OCTOBRE_ROSE } from "@/data/octobre-rose";
+import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
 import { depot } from "@/lib/db";
 import { ajouterJours, aujourdhui } from "@/lib/dates";
 import { motifDepuisCode } from "@/lib/echecs-paiement";
@@ -26,6 +27,7 @@ import {
 import { numeroDeFacture } from "@/lib/facture";
 import { site } from "@/lib/site";
 import type { StatutReservation } from "@/lib/types";
+import { estPayeeEnLigne, lienWhatsAppReservation } from "@/lib/whatsapp";
 
 export const metadata: Metadata = {
   title: "Ma réservation",
@@ -69,12 +71,9 @@ export default async function PageSuiviReservation({
   const ligne = reservation.lignes[0];
   const velo = catalogue.find((v) => v.id === ligne?.veloId);
   // Octobre rose : la sortie remplace le vélo, remis au rassemblement, et
-  // s'annonce à la minute près. Seulement pour la sortie de la campagne
+  // s'annonce à la minute près. Celle de son jour, dans la campagne
   // décrite : une inscription d'une campagne passée garde ses heures.
-  const sortie =
-    reservation.offre === "octobre-rose" && OCTOBRE_ROSE.sortie?.date === reservation.dateDebut
-      ? OCTOBRE_ROSE.sortie
-      : null;
+  const sortie = sortieDeLaReservation(reservation);
   const circuit = sortie ? itineraireOctobreRose() : null;
   const points = await depot.listerPointsDeRetrait();
   const point = points.find((p) => p.id === reservation.pointDeRetraitId);
@@ -122,6 +121,17 @@ export default async function PageSuiviReservation({
             à tout moment, sans mot de passe.
           </p>
         </div>
+      )}
+
+      {/* Une réservation payée en ligne, à venir : le client la reçoit sur
+          WhatsApp, d'office juste après le paiement, puis d'un bouton. Pas
+          pour une vente au comptoir, réglée en espèces face à l'équipe. */}
+      {reservation.statut === "CONFIRMEE" && estPayeeEnLigne(reservation) && (
+        <EnvoiWhatsApp
+          lien={lienWhatsAppReservation(reservation, `${site.url}/reservation/${token}`)}
+          reference={reservation.reference}
+          automatique={nouvelle}
+        />
       )}
 
       {relanceProposable && (
@@ -175,7 +185,11 @@ export default async function PageSuiviReservation({
                 </div>
                 <div>
                   <dt className="inline font-semibold">Compris&nbsp;:</dt>{" "}
-                  <dd className="inline">vélo et casque remis au rassemblement, eau et coco frais offerts</dd>
+                  <dd className="inline">vélo et casque remis au rassemblement</dd>
+                </div>
+                <div>
+                  <dt className="inline font-semibold">Offert à chacun&nbsp;:</dt>{" "}
+                  <dd className="inline">{texteOffertOctobreRose()}</dd>
                 </div>
               </dl>
               {circuit && (

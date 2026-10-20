@@ -9,7 +9,7 @@
 import { z } from "zod";
 
 import { optionsLocation } from "@/data/catalogue";
-import { creneauOctobreRose, PLACES_MAX_PAR_INSCRIPTION } from "@/data/octobre-rose";
+import { creneauOctobreRose, PLACES_MAX_PAR_INSCRIPTION, sortieOctobreRoseDu } from "@/data/octobre-rose";
 import {
   CRENEAUX_ROAD_TRIP,
   FERMETURE_COMPTOIR_HEURE,
@@ -81,12 +81,22 @@ const cgvEnLigne = z.literal(true, {
 });
 
 /**
- * L'inscription en ligne à Octobre rose : combien de personnes, et qui
- * paie. Ni vélo, ni date, ni heure : le serveur prend ceux de la sortie
- * fixée (src/data/octobre-rose.ts), et attribue les vélos lui-même.
+ * Le jour d'une sortie Octobre rose : l'un de ceux de la campagne
+ * (src/data/octobre-rose.ts), et aucun autre. C'est le jour qui désigne la
+ * sortie, donc son prix, ses horaires et ses places.
+ */
+const jourDeSortie = dateISO.refine((date) => sortieOctobreRoseDu(date) !== null, {
+  message: "Choisissez l'un des jours de la sortie Octobre rose.",
+});
+
+/**
+ * L'inscription en ligne à Octobre rose : le jour choisi, combien de
+ * personnes, et qui paie. Ni vélo ni heure : le serveur prend les horaires
+ * de la sortie de ce jour, et attribue les vélos lui-même.
  */
 export const schemaInscriptionOctobreRose = z.object({
   offre: z.literal("octobre-rose"),
+  date: jourDeSortie,
   nombrePersonnes: z
     .number()
     .int()
@@ -256,7 +266,9 @@ export type EntreeContact = z.infer<typeof schemaContact>;
  * 22 h au plus tard (OUVERTURE_COMPTOIR_HEURE, FERMETURE_COMPTOIR_HEURE).
  *
  * Octobre rose se vend sans vélo choisi : les vélos sont attribués d'office,
- * un par participant, comme en ligne.
+ * un par participant, comme en ligne. `date` est le jour de la sortie
+ * choisie, `heureDebut` l'heure pleine de son rassemblement
+ * (`creneauOctobreRose(sortie).heureDebut`).
  */
 const champsComptoir = z.object({
   veloId: z.string().optional(),
@@ -294,10 +306,11 @@ function reglesComptoir(valeurs: z.infer<typeof champsComptoir>, contexte: z.Ref
     );
     if (!creneau) signaler("date", "Le road trip part le samedi et le dimanche, à 8 h.");
   } else if (valeurs.offre === "octobre-rose") {
-    const sortie = creneauOctobreRose();
-    if (!sortie) signaler("offre", "La sortie Octobre rose n'est pas fixée.");
-    else if (valeurs.date !== sortie.date || valeurs.heureDebut !== sortie.heureDebut) {
-      signaler("date", "Octobre rose se vend pour le jour et l'heure de la sortie.");
+    // Le jour désigne la sortie : un jour sans sortie n'a ni prix ni vélos.
+    const sortie = sortieOctobreRoseDu(valeurs.date);
+    if (!sortie) signaler("date", "Choisissez l'un des jours de la sortie Octobre rose.");
+    else if (valeurs.heureDebut !== creneauOctobreRose(sortie).heureDebut) {
+      signaler("heureDebut", "Octobre rose se vend pour l'heure de la sortie de ce jour.");
     }
   } else if (
     valeurs.dureeHeures !== undefined &&
