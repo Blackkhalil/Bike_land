@@ -173,12 +173,12 @@ export const schemaReservation = z
   .refine(
     (valeurs) => {
       if (valeurs.offre !== "location-libre" || valeurs.dureeHeures === undefined) return true;
-      // On refuse un départ dont le retour tomberait après la fermeture :
-      // le client ne pourrait pas rendre le vélo.
+      // On refuse un départ hors des heures proposées : après 20 h, ou
+      // dont le retour tomberait après 22 h, le vélo ne serait pas rendu.
       return heuresDepartPossibles(valeurs.dureeHeures).includes(valeurs.heureDebut);
     },
     {
-      message: "Cette heure de départ ne laisse pas le temps de rendre le vélo.",
+      message: "Cette heure de départ n'est pas proposée : départs de 8 h à 20 h, vélo rendu à 22 h au plus tard.",
       path: ["heureDebut"],
     },
   )

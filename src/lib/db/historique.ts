@@ -194,11 +194,12 @@ function fabriquerReservation(contexte: {
   const dureeHeures = estRoadTrip ? undefined : choisirDuree(hasard);
 
   // Les heures se déduisent de la formule : le road trip part au créneau
-  // encadré, la location libre à une heure tirée parmi les départs
-  // compatibles avec l'heure de fermeture.
+  // encadré, la location libre à une heure tirée parmi les départs que le
+  // site propose ce jour-là (ni pendant le road trip du week-end, ni pendant
+  // une sortie Octobre rose).
   const heureDebut = estRoadTrip
     ? CRENEAUX_ROAD_TRIP[0].heureDebut
-    : tirerHeureDepart(hasard, dureeHeures ?? 1);
+    : tirerHeureDepart(hasard, dureeHeures ?? 1, dateDebut);
   const heureFin = heureDebut + (estRoadTrip ? DUREE_ROAD_TRIP_HEURES : (dureeHeures ?? 1));
 
   // Depuis que la disponibilité se compte à l'heure, deux sorties du même
@@ -411,8 +412,12 @@ function tirageDePoisson(hasard: () => number, lambda: number): number {
 
 export const aujourdHuiDemo = (): DateISO => versISO(new Date());
 
-/** Une heure de départ plausible pour une location libre de cette durée. */
-function tirerHeureDepart(hasard: () => number, dureeHeures: number): number {
-  const possibles = heuresDepartPossibles(dureeHeures);
+/**
+ * Une heure de départ plausible pour une location libre de cette durée, ce
+ * jour-là. L'instant de référence est l'an 1970 : la règle « pas d'heure
+ * déjà passée aujourd'hui » ne doit pas vider l'historique d'aujourd'hui.
+ */
+function tirerHeureDepart(hasard: () => number, dureeHeures: number, date: DateISO): number {
+  const possibles = heuresDepartPossibles(dureeHeures, date, 0);
   return possibles[Math.floor(hasard() * possibles.length)] ?? possibles[0];
 }

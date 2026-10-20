@@ -300,17 +300,23 @@ export function creneauDuDepart(date: string, heureDebut: number) {
 export const DUREE_ROAD_TRIP_HEURES =
   CRENEAUX_ROAD_TRIP[0].heureFin - CRENEAUX_ROAD_TRIP[0].heureDebut;
 
-/** Amplitude d'ouverture de l'atelier, pour la location libre. */
+/**
+ * Les heures de la location libre en ligne : départs de 8 h à 20 h, le
+ * vélo rendu à 22 h au plus tard, comme au comptoir. À 20 h, on part donc
+ * pour une ou deux heures ; à 19 h, pour trois au plus.
+ */
 export const OUVERTURE_HEURE = 8;
-export const FERMETURE_HEURE = 19;
+export const FERMETURE_HEURE = 22;
+/** Le dernier départ proposé en ligne. */
+export const DERNIER_DEPART_HEURE = 20;
 
 /**
  * Les heures de la location libre vendue au comptoir, en espèces.
  *
  * Plus larges qu'en ligne : au comptoir, l'exploitant tape lui-même l'heure
- * de départ qu'il veut, à l'heure pleine, et la location libre s'y prend
- * jusqu'à 22 h, le vélo rentré à 22 h au plus tard. La réservation en
- * ligne garde les horaires de l'atelier (OUVERTURE_HEURE, FERMETURE_HEURE).
+ * de départ qu'il veut, à l'heure pleine, dès minuit, le vélo rentré à 22 h
+ * au plus tard. En ligne, les départs vont de 8 h à 20 h
+ * (OUVERTURE_HEURE, DERNIER_DEPART_HEURE), avec le même retour à 22 h.
  */
 export const OUVERTURE_COMPTOIR_HEURE = 0;
 export const FERMETURE_COMPTOIR_HEURE = 22;
@@ -319,9 +325,9 @@ export const FERMETURE_COMPTOIR_HEURE = 22;
  * Heures de départ proposées pour une durée donnée, et pour un jour
  * quand on le connaît.
  *
- * On ne propose que les départs dont le retour tombe avant la fermeture :
- * inutile d'offrir 17 h pour quatre heures de location si l'atelier
- * ferme à 19 h, le client ne pourrait pas rendre le vélo.
+ * On ne propose que les départs de 8 h à 20 h dont le retour tombe à 22 h
+ * au plus tard : inutile d'offrir 20 h pour quatre heures de location, le
+ * client ne pourrait pas rendre le vélo.
  *
  * Le jour connu, les règles de `motifHoraireLocation` s'ajoutent : pas de
  * location libre pendant le road trip du week-end ni pendant une sortie
@@ -333,7 +339,7 @@ export function heuresDepartPossibles(
   maintenant: Date | number = new Date(),
 ): number[] {
   const heures: number[] = [];
-  for (let h = OUVERTURE_HEURE; h + dureeHeures <= FERMETURE_HEURE; h += 1) {
+  for (let h = OUVERTURE_HEURE; h <= DERNIER_DEPART_HEURE && h + dureeHeures <= FERMETURE_HEURE; h += 1) {
     if (date && motifHoraireLocation(date, h, dureeHeures, maintenant)) continue;
     heures.push(h);
   }

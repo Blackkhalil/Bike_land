@@ -18,6 +18,7 @@ import {
   creneauxDisponibles,
   departsComplets,
   DUREE_MAX_LOCATION_LIBRE,
+  DERNIER_DEPART_HEURE,
   FERMETURE_HEURE,
   formatHeure,
   GRILLE_HORAIRE,
@@ -516,8 +517,8 @@ export default async function PageProduits() {
             <p className="mt-3 font-display text-[1.4rem] leading-tight">{locationLibre?.accroche}</p>
             <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-gris-cadre">
               Vous prenez le vélo et vous roulez où vous voulez, à votre rythme, de 1 à{" "}
-              {DUREE_MAX_LOCATION_LIBRE} heures. Le vélo revient à l&apos;atelier avant{" "}
-              {formatHeure(FERMETURE_HEURE)}.
+              {DUREE_MAX_LOCATION_LIBRE} heures. Départs jusqu&apos;à {formatHeure(DERNIER_DEPART_HEURE)}, le vélo
+              revient à l&apos;atelier à {formatHeure(FERMETURE_HEURE)} au plus tard.
             </p>
             <dl className="mt-8 max-w-md">
               <Repere terme="Tarif">

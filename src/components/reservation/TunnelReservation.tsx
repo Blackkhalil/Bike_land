@@ -14,6 +14,7 @@ import {
   DUREE_ROAD_TRIP_HEURES as dureeRoadTrip,
   EXIGENCES,
   EXPIRATION_PANIER_MINUTES,
+  DERNIER_DEPART_HEURE as dernierDepart,
   FERMETURE_HEURE as fermeture,
   formatHeure,
   GRILLE_HORAIRE,
@@ -634,9 +635,9 @@ export function TunnelReservation({
                   À quelle heure ?
                 </legend>
                 <p className="mt-1.5 text-[0.8rem] text-gris-cadre">
-                  L&apos;atelier ouvre à {formatHeure(ouvertureAtelier)} et ferme à{" "}
-                  {formatHeure(fermeture)} : nous ne proposons que les départs
-                  qui vous laissent le temps de rendre le vélo.
+                  Départs de {formatHeure(ouvertureAtelier)} à {formatHeure(dernierDepart)}, vélo rendu à{" "}
+                  {formatHeure(fermeture)} au plus tard&nbsp;: nous ne proposons que les départs
+                  qui vous laissent le temps de le rendre.
                 </p>
                 {roadTripsCeJour.map((creneau) => (
                   <p
