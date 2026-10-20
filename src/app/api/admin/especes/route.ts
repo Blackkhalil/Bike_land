@@ -147,23 +147,24 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   }
 
   const roadTrip = donnees.offre === "road-trip";
-  // Une personne, un vélo : même plafond qu'en ligne.
-  if (roadTrip) {
-    const personnesMax = personnesMaxPour(velo, await depot.listerVelos());
-    if (donnees.nombrePersonnes > personnesMax) {
-      return {
-        refus: NextResponse.json(
-          {
-            erreur:
-              personnesMax === 1
-                ? `Le ${velo.nom} est un exemplaire unique : une seule personne.`
-                : `Cette gamme compte ${personnesMax} vélos en état : ${personnesMax} personnes au plus.`,
-            champs: { nombrePersonnes: "Trop de personnes pour cette gamme." },
-          },
-          { status: 422 },
-        ),
-      };
-    }
+  // Un vélo par personne, en road trip comme en location libre : pas plus
+  // que la gamme n'a de vélos en état. Ce qu'il en reste de libres à cette
+  // heure se vérifie plus bas.
+  const personnesMax = personnesMaxPour(velo, await depot.listerVelos());
+  if (donnees.nombrePersonnes > personnesMax) {
+    const quoi = roadTrip ? "personnes" : "vélos";
+    return {
+      refus: NextResponse.json(
+        {
+          erreur:
+            personnesMax === 1
+              ? `Le ${velo.nom} est un exemplaire unique : ${roadTrip ? "une seule personne" : "un seul vélo"}.`
+              : `Cette gamme compte ${personnesMax} vélos en état : ${personnesMax} ${quoi} au plus.`,
+          champs: { nombrePersonnes: `Trop de ${quoi} pour cette gamme.` },
+        },
+        { status: 422 },
+      ),
+    };
   }
 
   // Au prix de la plaquette : les espèces ne paient pas les frais du
@@ -171,7 +172,7 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   const parametres = {
     offre: donnees.offre,
     gamme: velo.gamme,
-    nombrePersonnes: roadTrip ? donnees.nombrePersonnes : 1,
+    nombrePersonnes: donnees.nombrePersonnes,
     dureeHeures: roadTrip ? undefined : donnees.dureeHeures,
     especes: true,
   };
@@ -194,10 +195,10 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
     ? donnees.heureDebut + DUREE_ROAD_TRIP_HEURES
     : donnees.heureDebut + (donnees.dureeHeures ?? 1);
   const libreChoisi = await depot.estDisponible(velo.id, donnees.date, donnees.date, donnees.heureDebut, heureFin);
-  // Un vélo par personne : un road trip à plusieurs prend d'autres vélos de
-  // la gamme, qui doivent être libres eux aussi à cette heure.
+  // Un vélo par personne : à plusieurs, road trip ou location libre, il faut
+  // d'autres vélos de la gamme, libres eux aussi à cette heure.
   const libresGamme =
-    roadTrip && donnees.nombrePersonnes > 1
+    donnees.nombrePersonnes > 1
       ? (await depot.velosLibres(donnees.date, donnees.heureDebut, heureFin)).filter((autre) => autre.gamme === velo.gamme)
           .length
       : undefined;
@@ -369,7 +370,7 @@ async function enregistrer(corps: Record<string, unknown>) {
       // Octobre rose : pas de vélo choisi, le dépôt les attribue.
       veloId: preparation.velo?.id,
       offre: donnees.offre,
-      nombrePersonnes: donnees.offre === "location-libre" ? 1 : donnees.nombrePersonnes,
+      nombrePersonnes: donnees.nombrePersonnes,
       dureeHeures: donnees.offre === "location-libre" ? donnees.dureeHeures : undefined,
       dateDebut: donnees.date,
       dateFin: donnees.date,

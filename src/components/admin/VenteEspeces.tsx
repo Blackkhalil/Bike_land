@@ -391,14 +391,15 @@ export function VenteEspeces({
         ),
     ).length;
   };
-  // Une personne, un vélo : pas plus de personnes que de vélos en état dans
-  // la gamme pour un road trip, que de places libres pour Octobre rose.
-  const personnesMax = octobreRose
-    ? Math.max(1, placesRose)
-    : velo
-      ? Math.max(1, velos.filter((v) => v.gamme === velo.gamme && enEtat(v)).length)
-      : 1;
-  const personnes = encadree ? Math.min(nombrePersonnes, personnesMax) : 1;
+  // Un vélo par personne : pas plus de personnes, ou de vélos en location
+  // libre, que la gamme du vélo choisi n'en a de libres à cette heure ; pas
+  // plus de places que de vélos libres pour Octobre rose. Le serveur refait
+  // le compte à l'enregistrement.
+  const libresDeLaGamme = velo
+    ? velos.filter((v) => v.gamme === velo.gamme && enEtat(v) && !occupeSurCreneau(v.id)).length
+    : 0;
+  const personnesMax = octobreRose ? Math.max(1, placesRose) : Math.max(1, libresDeLaGamme);
+  const personnes = Math.min(nombrePersonnes, personnesMax);
 
   // Le devis : calculé ici pour s'afficher tout de suite, avec la même
   // fonction que le serveur, au prix de la plaquette (sans les frais du
@@ -481,6 +482,9 @@ export function VenteEspeces({
 
   const choisirOffre = (nouvelle: CodeOffre) => {
     setOffre(nouvelle);
+    // Un nombre choisi pour une formule ne passe pas à l'autre : trois
+    // personnes en road trip ne deviennent pas trois vélos en location libre.
+    if (nouvelle !== offre) setNombrePersonnes(1);
     setErreur(null);
   };
 
@@ -1017,6 +1021,35 @@ export function VenteEspeces({
           })}
         </div>
         {erreurs.veloId && <p className="mt-2 text-[0.78rem] text-orange-sourd">{erreurs.veloId}</p>}
+        {/* Plusieurs vélos de la même gamme : le vélo choisi, puis d'autres
+            libres à cette heure, attribués à l'enregistrement. */}
+        {offre === "location-libre" && velo && personnesMax > 1 && (
+          <div className="mt-4">
+            <label htmlFor="vente-velos" className="block text-[0.8rem] text-gris-cadre">
+              Nombre de vélos
+            </label>
+            <select
+              id="vente-velos"
+              value={personnes}
+              onChange={(evenement) => setNombrePersonnes(Number(evenement.target.value))}
+              className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem] sm:w-auto"
+            >
+              {Array.from({ length: personnesMax }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n} vélo{n > 1 ? "s" : ""} {nomGamme(velo.gamme)}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[0.76rem] text-gris-cadre">
+              {personnes > 1
+                ? `Le ${velo.nom}, puis ${personnes - 1} autre${personnes > 2 ? "s" : ""} vélo${personnes > 2 ? "s" : ""} ${nomGamme(velo.gamme)} libre${personnes > 2 ? "s" : ""} à cette heure, attribué${personnes > 2 ? "s" : ""} à l'enregistrement.`
+                : `Jusqu'à ${personnesMax} vélos ${nomGamme(velo.gamme)} libres à cette heure.`}
+            </p>
+            {erreurs.nombrePersonnes && (
+              <p className="mt-1.5 text-[0.78rem] text-orange-sourd">{erreurs.nombrePersonnes}</p>
+            )}
+          </div>
+        )}
       </fieldset>
       )}
 
@@ -1148,14 +1181,15 @@ export function VenteEspeces({
           <p className="mt-2 text-[0.82rem] text-craie/75">
             {roadTrip
               ? `Road trip, ${personnes} personne${personnes > 1 ? "s" : ""}`
-              : `Location libre, ${dureeHeures} h`}{" "}
+              : `Location libre, ${dureeHeures} h${personnes > 1 ? `, ${personnes} vélos` : ""}`}{" "}
             · {velo.nom}
+            {personnes > 1 ? ` et ${personnes - 1} autre${personnes > 2 ? "s" : ""} de la gamme` : ""}
           </p>
         )}
         {!encadree && devisLocal && devisLocal.cautionXof > 0 && (
           <p className="mt-2 text-[0.82rem] leading-relaxed text-craie/75">
             Plus la caution de {formatXof(devisLocal.cautionXof)} en espèces et la pièce
-            d&apos;identité, rendues au retour du vélo. La caution n&apos;est pas sur la facture.
+            d&apos;identité, rendues au retour {personnes > 1 ? "des vélos" : "du vélo"}. La caution n&apos;est pas sur la facture.
           </p>
         )}
         {client.email.trim() && (

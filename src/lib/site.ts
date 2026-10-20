@@ -52,7 +52,7 @@ export const site = {
     indication: "Dans la von juste avant la station JNP.",
     carte: "https://maps.app.goo.gl/tkfdXyVonxogwVek8",
   },
-  horaires: "Du lundi au samedi, 8 h - 19 h",
+  horaires: "Du lundi au samedi, 8 h - 22 h",
   /**
    * Immatriculations légales, à renseigner dès leur attribution.
    *
