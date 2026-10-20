@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   title: "Octobre rose",
   description:
     `Des sorties à vélo en rose${joursDeLaCampagne ? `, ${joursDeLaCampagne.toLowerCase()},` : ""} ` +
-    "pour soutenir la lutte contre le cancer du sein, sur la route des Pêches jusqu'à l'Amazone. " +
+    "pour soutenir la lutte contre le cancer du sein. " +
     "Un prix forfaitaire, le même pour tous les vélos : on choisit son jour, on s'inscrit et on paie en ligne.",
   alternates: { canonical: "/octobre-rose" },
 };
@@ -192,8 +192,7 @@ export default async function PageOctobreRose() {
                 </li>
                 <li>D&apos;autres créneaux pourront ouvrir selon la demande.</li>
                 <li>
-                  Le point de départ exact, la facture et l&apos;itinéraire arrivent par email dès le
-                  paiement.
+                  Le point de départ exact et la facture arrivent par email dès le paiement.
                 </li>
                 <li>Annulation gratuite jusqu&apos;à 72 h avant la sortie, selon nos conditions de vente.</li>
               </ul>

@@ -74,8 +74,11 @@ function detailsSortie(reservation: Reservation) {
   const sortie = sortieDeLaReservation(reservation);
   if (!sortie) return null;
   // Le circuit de cette sortie-là, pas celui de la première de la liste :
-  // un jour ajouté plus tard peut rouler ailleurs.
-  const circuit = itineraires.find((itineraire) => itineraire.slug === sortie.itineraire);
+  // un jour ajouté plus tard peut rouler ailleurs. Aucun quand la sortie
+  // n'en annonce pas (plusieurs itinéraires) : l'email n'en parle pas.
+  const circuit = sortie.itineraire
+    ? itineraires.find((itineraire) => itineraire.slug === sortie.itineraire)
+    : undefined;
   return {
     /** « samedi 24 octobre », pour les phrases. */
     jour: formatDateAvecJour(sortie.date),
@@ -387,7 +390,7 @@ function rendezVousDe(reservation: Reservation): RendezVous {
  *
  * Elle dit tout ce qui sert le jour venu, sans rien à chercher ailleurs : le
  * rendez-vous et le départ à la minute près, la tenue, le point de départ
- * et sa carte, le circuit jusqu'à l'Amazone, et la facture elle-même, avec
+ * et sa carte, le circuit quand un seul est annoncé, et la facture elle-même, avec
  * son numéro et son règlement. Pas de nom de vélo : le vélo de chacun est
  * remis au rassemblement.
  */

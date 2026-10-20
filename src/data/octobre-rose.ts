@@ -42,8 +42,12 @@ export interface SortieOctobreRose {
   prixComptoirXof: number;
   /** La tenue demandée à tous. */
   tenue: string;
-  /** Le circuit roulé : le slug d'un itinéraire de src/data/contenus.ts. */
-  itineraire: string;
+  /**
+   * Le circuit roulé, quand un seul est annoncé : le slug d'un itinéraire
+   * de src/data/contenus.ts. Sans lui, ni les pages ni les emails ne parlent
+   * d'itinéraire : en 2026, les sorties en prennent plusieurs.
+   */
+  itineraire?: string;
   /** Fin des inscriptions en ligne, le jour même. Au comptoir, on vend jusqu'au départ. */
   finInscriptions: Horaire;
 }
@@ -63,7 +67,6 @@ const SORTIE_TYPE = {
   prixXof: 2125,
   prixComptoirXof: 2125,
   tenue: "Tout le monde en rose",
-  itineraire: "route-des-peches-amazone",
   finInscriptions: "14:00",
 } as const satisfies Omit<SortieOctobreRose, "date">;
 

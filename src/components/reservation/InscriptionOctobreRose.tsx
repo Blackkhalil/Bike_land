@@ -449,7 +449,7 @@ export function InscriptionOctobreRose({
               onChange={setEmail}
               erreur={erreurs["client.email"]}
               autoComplete="email"
-              aide="Votre confirmation, la facture et l'itinéraire y sont envoyés."
+              aide="Votre confirmation et la facture y sont envoyées."
             />
             <Champ
               id="rose-telephone"
