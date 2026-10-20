@@ -42,8 +42,10 @@ import {
   creneauOctobreRoseDemande,
   creneauxSeChevauchent,
   messagePlacesManquantes,
+  messageVelosManquants,
   ordreAttribution,
   resteUneHeureLibre,
+  velosDeLaGamme,
   TransactionDejaUtiliseeError,
   type Depot,
   type DemandeReservation,
@@ -316,7 +318,16 @@ export const depotDemo: Depot = {
       if (!veloLibre(velo!.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin)) {
         throw new ConflitDisponibiliteError();
       }
-      velosAttribues = [velo!];
+      // Un vélo par personne, comme en base : le vélo choisi, puis d'autres
+      // de sa gamme, libres sur le créneau.
+      const libres = velos.filter((v) => veloLibre(v.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin));
+      const choisis = velosDeLaGamme(velo!, libres, devisBrut.nombrePersonnes);
+      if (!choisis) {
+        throw new ConflitDisponibiliteError(
+          messageVelosManquants(velo!.gamme, libres.filter((v) => v.gamme === velo!.gamme).length),
+        );
+      }
+      velosAttribues = choisis;
     }
 
     // Le code est vérifié et consommé dans la foulée, avec la même règle
@@ -398,9 +409,10 @@ export const depotDemo: Depot = {
       // Comme en base : un vélo par participant pour Octobre rose, chacun
       // au prix d'une place ; ailleurs, le vélo choisi porte la location.
       lignes: velosAttribues.map((attribue) => {
-        const prixLigne = octobreRose
-          ? Math.round(devis.sousTotalXof / velosAttribues.length)
-          : devis.sousTotalXof;
+        const prixLigne =
+          velosAttribues.length > 1
+            ? Math.round(devis.sousTotalXof / velosAttribues.length)
+            : devis.sousTotalXof;
         return {
           veloId: attribue.id,
           veloNom: attribue.nom,

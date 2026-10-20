@@ -10,7 +10,7 @@ import { DUREE_ROAD_TRIP_HEURES, heureAuBenin } from "@/data/offres";
 import { dateAuBenin } from "@/lib/dates";
 import { sessionAdminValide } from "@/lib/admin";
 import { ConflitDisponibiliteError, depot, TransactionDejaUtiliseeError } from "@/lib/db";
-import { messagePlacesManquantes } from "@/lib/db/contrat";
+import { messagePlacesManquantes, messageVelosManquants } from "@/lib/db/contrat";
 import {
   envoyerAnnulationAdmin,
   envoyerAnnulationComptoir,
@@ -118,6 +118,10 @@ type Preparation =
       refusCode?: string;
       /** Octobre rose : les places encore libres sur la sortie. */
       places?: number;
+      /** Le vélo choisi est libre ; `libre` dit en plus s'il en reste assez de sa gamme. */
+      libreChoisi?: boolean;
+      /** Road trip à plusieurs : les vélos de la gamme libres à cette heure. */
+      libresGamme?: number;
     };
 
 /**
@@ -189,9 +193,17 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   const heureFin = roadTrip
     ? donnees.heureDebut + DUREE_ROAD_TRIP_HEURES
     : donnees.heureDebut + (donnees.dureeHeures ?? 1);
-  const libre = await depot.estDisponible(velo.id, donnees.date, donnees.date, donnees.heureDebut, heureFin);
+  const libreChoisi = await depot.estDisponible(velo.id, donnees.date, donnees.date, donnees.heureDebut, heureFin);
+  // Un vélo par personne : un road trip à plusieurs prend d'autres vélos de
+  // la gamme, qui doivent être libres eux aussi à cette heure.
+  const libresGamme =
+    roadTrip && donnees.nombrePersonnes > 1
+      ? (await depot.velosLibres(donnees.date, donnees.heureDebut, heureFin)).filter((autre) => autre.gamme === velo.gamme)
+          .length
+      : undefined;
+  const libre = libreChoisi && (libresGamme === undefined || donnees.nombrePersonnes <= libresGamme);
 
-  return { velo, devis: devisFinal, heureFin, libre, refusCode };
+  return { velo, devis: devisFinal, heureFin, libre, libreChoisi, libresGamme, refusCode };
 }
 
 /**
@@ -322,10 +334,12 @@ async function enregistrer(corps: Record<string, unknown>) {
     return NextResponse.json(
       {
         erreur: preparation.velo
-          ? `Le ${preparation.velo.nom} est déjà pris sur ce créneau. Choisissez un autre vélo ou une autre heure.`
+          ? preparation.libreChoisi
+            ? messageVelosManquants(preparation.velo.gamme, preparation.libresGamme ?? 0)
+            : `Le ${preparation.velo.nom} est déjà pris sur ce créneau. Choisissez un autre vélo ou une autre heure.`
           : messagePlacesManquantes(preparation.devis.nombrePersonnes, preparation.places ?? 0, true),
-        code: preparation.velo ? "INDISPONIBLE" : "PLACES",
-        places: preparation.places,
+        code: preparation.velo && !preparation.libreChoisi ? "INDISPONIBLE" : "PLACES",
+        places: preparation.libresGamme ?? preparation.places,
       },
       { status: 409 },
     );

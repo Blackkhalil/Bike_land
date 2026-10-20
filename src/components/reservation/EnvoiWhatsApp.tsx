@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 const DELAI_MS = 1500;
 
 /**
- * La réservation envoyée sur WhatsApp, à Ulrich, de l'équipe Bike Land.
+ * La réservation envoyée sur WhatsApp, à Zayed, de l'équipe Bike Land.
  *
  * Le message est déjà écrit, avec tout ce que le client doit garder sous
  * la main (src/lib/whatsapp.ts) : il n'a qu'à appuyer sur « Envoyer », et
@@ -60,7 +60,7 @@ export function EnvoiWhatsApp({
     <div className="mb-10 rounded-[var(--radius-carte)] bg-white px-6 py-5">
       <p className="font-display text-[1.1rem] font-bold uppercase">Votre réservation sur WhatsApp</p>
       <p className="mt-2 text-[0.92rem] leading-relaxed text-gris-cadre">
-        Un message déjà rempli, avec toutes les informations de votre réservation, part vers Ulrich, de
+        Un message déjà rempli, avec toutes les informations de votre réservation, part vers Zayed, de
         l&apos;équipe Bike Land&nbsp;: il ne vous reste qu&apos;à appuyer sur «&nbsp;Envoyer&nbsp;».
       </p>
       {enRoute && (

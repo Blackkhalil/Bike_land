@@ -17,13 +17,18 @@ import {
   DERNIER_DEPART_HEURE as dernierDepart,
   FERMETURE_HEURE as fermeture,
   formatHeure,
+  GAMMES,
   GRILLE_HORAIRE,
   heuresDepartPossibles,
   OFFRES,
   OUVERTURE_HEURE as ouvertureAtelier,
   PRIX_ROAD_TRIP_XOF,
   roadTripsDuJour,
+  type GammeVelo,
 } from "@/data/offres";
+
+/** « Premium » : le nom d'une gamme, pour les phrases. */
+const nomGamme = (gamme: GammeVelo) => GAMMES.find((entree) => entree.code === gamme)?.nom ?? gamme;
 import type { DateISO } from "@/lib/dates";
 import { diagnostiquer } from "@/lib/echecs-paiement";
 import { formatDate, formatXof } from "@/lib/format";
@@ -201,35 +206,6 @@ export function TunnelReservation({
   } | null>(null);
   const [messagePaiement, setMessagePaiement] = useState<string | null>(null);
 
-  const devis = useMemo(
-    () =>
-      calculerDevis({
-        offre,
-        // La gamme est celle du vélo choisi : c'est elle qui fixe le
-        // tarif. Le serveur la relit en base avant d'encaisser, ce qui
-        // est affiché ici n'engage rien.
-        gamme: velo.gamme,
-        nombrePersonnes,
-        dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
-        options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
-        remise: remise ?? undefined,
-      }),
-    [velo.gamme, offre, nombrePersonnes, dureeHeures, optionsChoisies, remise],
-  );
-
-  // Le montant avant remise : c'est sur lui que le code s'applique, et
-  // c'est donc lui qu'on envoie vérifier.
-  const devisSansRemise = useMemo(
-    () =>
-      calculerDevis({
-        offre,
-        gamme: velo.gamme,
-        nombrePersonnes,
-        dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
-        options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
-      }),
-    [velo.gamme, offre, nombrePersonnes, dureeHeures, optionsChoisies],
-  );
 
   /**
    * Fait vérifier le code par le serveur.
@@ -305,6 +281,60 @@ export function TunnelReservation({
   const heureAffichee = heureRetenue ?? heureDebut;
   const roadTripsCeJour = offre === "location-libre" ? roadTripsDuJour(dateDebut) : [];
 
+  // Un vélo par personne, de la gamme du vélo choisi : le plafond est ce
+  // qu'il reste de cette gamme à l'heure retenue, demandé au serveur dès
+  // que le jour, l'heure ou la durée changent. En attendant sa réponse,
+  // les vélos de la gamme en état de rouler.
+  const heureFinCreneau = heureAffichee + (offre === "road-trip" ? dureeRoadTrip : dureeHeures);
+  const cleCreneau = `${velo.id}|${dateDebut}|${heureAffichee}|${heureFinCreneau}`;
+  const [libresGamme, setLibresGamme] = useState<{ cle: string; nombre: number } | null>(null);
+  useEffect(() => {
+    if (aucunDepart) return;
+    const controleur = new AbortController();
+    fetch("/api/disponibilite", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ veloId: velo.id, dateDebut, dateFin, heureDebut: heureAffichee, heureFin: heureFinCreneau }),
+      signal: controleur.signal,
+    })
+      .then((reponse) => (reponse.ok ? reponse.json() : null))
+      .then((donnees) => {
+        if (donnees && typeof donnees.libresGamme === "number") {
+          setLibresGamme({ cle: cleCreneau, nombre: donnees.libresGamme });
+        }
+      })
+      .catch(() => undefined);
+    return () => controleur.abort();
+  }, [aucunDepart, cleCreneau, velo.id, dateDebut, dateFin, heureAffichee, heureFinCreneau]);
+  const velosMax =
+    libresGamme?.cle === cleCreneau ? Math.max(1, Math.min(personnesMax, libresGamme.nombre)) : personnesMax;
+  // Le nombre choisi, ramené au plafond s'il a baissé entre-temps.
+  const nombreEffectif = Math.min(nombrePersonnes, velosMax);
+
+  // Les devis se calculent à chaque rendu : c'est une fonction pure et
+  // légère, et le compilateur de React s'occupe de la mémoïsation.
+  const devis = calculerDevis({
+    offre,
+    // La gamme est celle du vélo choisi : c'est elle qui fixe le
+    // tarif. Le serveur la relit en base avant d'encaisser, ce qui
+    // est affiché ici n'engage rien.
+    gamme: velo.gamme,
+    nombrePersonnes: nombreEffectif,
+    dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
+    options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
+    remise: remise ?? undefined,
+  });
+
+  // Le montant avant remise : c'est sur lui que le code s'applique, et
+  // c'est donc lui qu'on envoie vérifier.
+  const devisSansRemise = calculerDevis({
+    offre,
+    gamme: velo.gamme,
+    nombrePersonnes: nombreEffectif,
+    dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
+    options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
+  });
+
   /**
    * Change de formule, et remet jour et heure en accord avec elle.
    *
@@ -368,7 +398,7 @@ export function TunnelReservation({
         body: JSON.stringify({
           veloId: velo.id,
           offre,
-          nombrePersonnes,
+          nombrePersonnes: nombreEffectif,
           dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
           dateDebut,
           dateFin,
@@ -391,6 +421,10 @@ export function TunnelReservation({
           setErreurGlobale(donnees.erreur);
         } else if (reponse.status === 409 && donnees.code === "COMPLET") {
           // Jour ou départ fermé entre-temps depuis l'admin.
+          setErreurGlobale(`${donnees.erreur} Aucun montant n'a été prélevé.`);
+        } else if (reponse.status === 409 && donnees.code === "PLACES") {
+          // Des vélos de la gamme viennent d'être pris : le compteur suit.
+          if (typeof donnees.places === "number") setLibresGamme({ cle: cleCreneau, nombre: donnees.places });
           setErreurGlobale(`${donnees.erreur} Aucun montant n'a été prélevé.`);
         } else if (reponse.status === 409) {
           setErreurGlobale(
@@ -767,36 +801,37 @@ export function TunnelReservation({
               </p>
             )}
 
-            {offre === "road-trip" && personnesMax > 1 && (
+            {/* Un vélo par personne, de la gamme choisie : autant qu'il en
+                reste à cette heure. */}
+            {velosMax > 1 && (
               <fieldset className="mt-7">
                 <legend className="text-[0.9rem] font-semibold">
-                  Combien de personnes ?
+                  {offre === "road-trip" ? "Combien de personnes ?" : "Combien de vélos ?"}
                 </legend>
                 <p className="mt-1.5 text-[0.8rem] text-gris-cadre">
-                  Jusqu&apos;à {personnesMax}, autant que de vélos de cette gamme.
+                  {offre === "road-trip"
+                    ? `Jusqu'à ${velosMax}\u00a0: un vélo ${nomGamme(velo.gamme)} par personne, autant qu'il en reste à cette heure.`
+                    : `Jusqu'à ${velosMax} vélos ${nomGamme(velo.gamme)} libres à cette heure, au même prix chacun.`}
                 </p>
                 <div className="mt-3 flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() =>
-                      setNombrePersonnes((n) => Math.max(1, n - 1))
-                    }
-                    aria-label="Retirer une personne"
-                    className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white text-[1.2rem]"
+                    onClick={() => setNombrePersonnes(Math.max(1, nombreEffectif - 1))}
+                    disabled={nombreEffectif <= 1}
+                    aria-label={offre === "road-trip" ? "Retirer une personne" : "Retirer un vélo"}
+                    className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white text-[1.2rem] disabled:opacity-35"
                   >
                     −
                   </button>
-                  <span className="min-w-[3rem] text-center font-display text-[1.5rem] tabular-nums">
-                    {nombrePersonnes}
+                  <span id="tunnel-nombre-velos" aria-live="polite" className="min-w-[3rem] text-center font-display text-[1.5rem] tabular-nums">
+                    {nombreEffectif}
                   </span>
                   <button
                     type="button"
-                    onClick={() =>
-                      setNombrePersonnes((n) => Math.min(personnesMax, n + 1))
-                    }
-                    disabled={nombrePersonnes >= personnesMax}
-                    aria-label="Ajouter une personne"
-                    className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white text-[1.2rem]"
+                    onClick={() => setNombrePersonnes(Math.min(velosMax, nombreEffectif + 1))}
+                    disabled={nombreEffectif >= velosMax}
+                    aria-label={offre === "road-trip" ? "Ajouter une personne" : "Ajouter un vélo"}
+                    className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white text-[1.2rem] disabled:opacity-35"
                   >
                     +
                   </button>
@@ -1219,7 +1254,7 @@ export function TunnelReservation({
               <Pastille ton="neutre" className="whitespace-nowrap">
                 {offre === "road-trip"
                   ? `Road trip · ${devis.nombrePersonnes} pers.`
-                  : `Location libre · ${devis.dureeHeures} h`}
+                  : `Location libre · ${devis.dureeHeures} h${devis.nombrePersonnes > 1 ? ` · ${devis.nombrePersonnes} vélos` : ""}`}
               </Pastille>
             </div>
 
@@ -1259,10 +1294,13 @@ export function TunnelReservation({
 
             {devis.cautionXof > 0 ? (
               <p className="mt-3 text-[0.78rem] leading-relaxed text-gris-cadre">
-                Une caution de {formatXof(devis.cautionXof)} est remise en
-                espèces au départ, en même temps que votre pièce
-                d&apos;identité. Elle vous est rendue à la restitution du vélo,
-                elle n&apos;est jamais encaissée en ligne.
+                Une caution de {formatXof(devis.cautionXof)}
+                {devis.nombrePersonnes > 1
+                  ? ` (${formatXof(devis.cautionXof / devis.nombrePersonnes)} par vélo)`
+                  : ""}{" "}
+                est remise en espèces au départ, en même temps que votre pièce
+                d&apos;identité. Elle vous est rendue à la restitution
+                {devis.nombrePersonnes > 1 ? " des vélos" : " du vélo"}, elle n&apos;est jamais encaissée en ligne.
               </p>
             ) : (
               <p className="mt-3 text-[0.78rem] leading-relaxed text-vert-lagune">

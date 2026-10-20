@@ -107,7 +107,7 @@ interface WhatsAppReservation {
 }
 
 /**
- * La réservation à envoyer sur WhatsApp, à Ulrich : le même message déjà
+ * La réservation à envoyer sur WhatsApp, à Zayed : le même message déjà
  * écrit que celui qu'ouvre la page de suivi juste après le paiement (voir
  * src/lib/whatsapp.ts). Le client n'a qu'à appuyer sur « Envoyer » pour
  * avoir sa réservation sous la main dans WhatsApp.
@@ -119,7 +119,7 @@ function whatsappDe(reservation: Reservation, lienSuivi: string): WhatsAppReserv
   if (!estPayeeEnLigne(reservation)) return null;
   return {
     lien: lienWhatsAppReservation(reservation, lienSuivi),
-    // La ligne d'Ulrich : celle sur laquelle `lienWhatsApp` ouvre la conversation.
+    // La ligne de Zayed : celle sur laquelle `lienWhatsApp` ouvre la conversation.
     numero: site.whatsapp[1].numero,
   };
 }
@@ -130,7 +130,7 @@ function whatsappDe(reservation: Reservation, lienSuivi: string): WhatsAppReserv
  */
 function texteWhatsApp(whatsapp: WhatsAppReservation): string[] {
   return [
-    `Recevoir votre réservation sur WhatsApp${INSECABLE}: ce lien ouvre la conversation avec Ulrich ` +
+    `Recevoir votre réservation sur WhatsApp${INSECABLE}: ce lien ouvre la conversation avec Zayed ` +
       `(${whatsapp.numero}), le message déjà écrit avec toute votre réservation. ` +
       `Appuyez sur «${INSECABLE}Envoyer${INSECABLE}»${INSECABLE}: vous l'aurez sous la main dans WhatsApp.`,
     whatsapp.lien,
@@ -143,6 +143,15 @@ function texteWhatsApp(whatsapp: WhatsAppReservation): string[] {
  * 2 125 FCFA ». Un prix forfaitaire par personne, le même pour tous les
  * vélos.
  */
+/**
+ * « Vélo : Rubis », ou « Vélos : Rubis, Glacier, Soleil » pour une
+ * réservation à plusieurs, un vélo par personne.
+ */
+function nomsDesVelos(reservation: Reservation): { libelle: string; noms: string } {
+  const noms = reservation.lignes.map((ligne) => ligne.veloNom).filter(Boolean);
+  return { libelle: noms.length > 1 ? "Vélos" : "Vélo", noms: noms.join(", ") || "non précisé" };
+}
+
 function ligneFactureOctobreRose(reservation: Reservation): string {
   const n = reservation.nombrePersonnes;
   const prixUnitaire = Math.round(reservation.sousTotalXof / Math.max(n, 1));
@@ -297,7 +306,7 @@ function detailsOffre(reservation: Reservation): [string, string][] {
 function aPrevoir(reservation: Reservation): string[] {
   if (reservation.offre === "location-libre") {
     return [
-      `Une caution de ${formatXof(reservation.cautionXof)} en espèces, rendue quand vous rapportez le vélo.`,
+      `Une caution de ${formatXof(reservation.cautionXof)} en espèces, rendue quand vous rapportez ${reservation.lignes.length > 1 ? "les vélos" : "le vélo"}.`,
       "Une pièce d'identité (CIP), qui vous est rendue au retour du vélo.",
       "La signature de l'engagement de restitution, sur place.",
     ];
@@ -490,7 +499,7 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
 
 export async function envoyerConfirmation(reservation: Reservation, lienSuivi: string) {
   if (enRose(reservation)) return envoyerConfirmationOctobreRose(reservation, lienSuivi);
-  const velo = reservation.lignes[0];
+  const velos = nomsDesVelos(reservation);
   const prevoir = aPrevoir(reservation);
   const rendezVous = rendezVousDe(reservation);
   const whatsapp = whatsappDe(reservation, lienSuivi);
@@ -500,7 +509,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
     "",
     `Votre paiement est reçu, votre réservation est confirmée.`,
     `Référence : ${reservation.reference}`,
-    `Vélo : ${velo?.veloNom}`,
+    `${velos.libelle} : ${velos.noms}`,
     `Date : ${formatCreneau(reservation)}`,
     `Montant réglé : ${formatXof(reservation.totalXof)}`,
     "",
@@ -532,7 +541,7 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
       intro: `Bonjour ${reservation.client.prenom}, votre paiement est reçu.`,
       lignes: [
         ["Référence", reservation.reference],
-        ["Vélo", velo?.veloNom ?? "non précisé"],
+        [velos.libelle, velos.noms],
         ...detailsOffre(reservation),
         ["Date", formatCreneau(reservation)],
         ["Montant réglé", formatXof(reservation.totalXof)],
@@ -628,7 +637,7 @@ async function envoyerRappelOctobreRose(reservation: Reservation, lienSuivi: str
 
 export async function envoyerRappel(reservation: Reservation, lienSuivi: string) {
   if (enRose(reservation)) return envoyerRappelOctobreRose(reservation, lienSuivi);
-  const velo = reservation.lignes[0];
+  const velos = nomsDesVelos(reservation);
   const prevoir = aPrevoir(reservation);
   const rendezVous = rendezVousDe(reservation);
   const roadTrip = reservation.offre === "road-trip";
@@ -639,7 +648,7 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
     "",
     `Votre sortie ${site.nom}, c'est demain.`,
     `Référence : ${reservation.reference}`,
-    `Vélo : ${velo?.veloNom}`,
+    `${velos.libelle} : ${velos.noms}`,
     `Date : ${formatCreneau(reservation)}`,
     ...(roadTrip
       ? [`Rendez-vous à ${arrivee}, un quart d'heure avant le départ : le groupe part à l'heure.`]
@@ -671,7 +680,7 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
       intro: `Bonjour ${reservation.client.prenom}, votre sortie approche. Voici l'essentiel pour demain.`,
       lignes: [
         ["Référence", reservation.reference],
-        ["Vélo", velo?.veloNom ?? "non précisé"],
+        [velos.libelle, velos.noms],
         ...detailsOffre(reservation),
         ["Date", formatCreneau(reservation)],
         ...(roadTrip
@@ -773,7 +782,7 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
       `Email : ${reservation.client.email}`,
       `Téléphone : ${reservation.client.telephone ?? "non renseigné"}`,
       "",
-      `Vélo : ${velos}`,
+      `${reservation.lignes.length > 1 ? "Vélos" : "Vélo"} : ${velos}`,
       `Date : ${formatCreneau(reservation)}`,
       reservation.codeParrainage
         ? `Code de parrainage : ${reservation.codeParrainage}`
@@ -1076,7 +1085,7 @@ function gabarit(contenu: {
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;border:2px solid #25d366;border-radius:14px">
         <tr><td style="padding:22px 24px">
           <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">Sur WhatsApp</p>
-          <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#0e0e0e">Recevez votre réservation dans WhatsApp&nbsp;: le message est déjà écrit, vers Ulrich, de l'équipe ${echapper(site.nom)} (${echapper(contenu.whatsapp.numero)}). Il ne vous reste qu'à appuyer sur «&nbsp;Envoyer&nbsp;».</p>
+          <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#0e0e0e">Recevez votre réservation dans WhatsApp&nbsp;: le message est déjà écrit, vers Zayed, de l'équipe ${echapper(site.nom)} (${echapper(contenu.whatsapp.numero)}). Il ne vous reste qu'à appuyer sur «&nbsp;Envoyer&nbsp;».</p>
           <a href="${echapper(contenu.whatsapp.lien)}" style="display:inline-block;margin-top:16px;background:#25d366;color:#0e0e0e;text-decoration:none;padding:12px 24px;border-radius:999px;font-weight:600;font-size:14px">Recevoir ma réservation sur WhatsApp</a>
         </td></tr>
       </table>`

@@ -174,11 +174,18 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
     // refusée. Inventer un prix serait pire que de renvoyer une erreur.
     if (prix === null) throw new DureeNonTarifeeError(dureeHeures);
 
-    sousTotalXof = prix - fraisRetires;
-    cautionXof = CAUTION_LOCATION_LIBRE_XOF;
+    // Un vélo par personne : le prix et la caution se comptent par vélo.
+    sousTotalXof = (prix - fraisRetires) * nombrePersonnes;
+    cautionXof = CAUTION_LOCATION_LIBRE_XOF * nombrePersonnes;
     lignes.push({
-      libelle: `Location libre, ${dureeHeures} h`,
-      detail: "Vélo, casque et antivol compris",
+      libelle:
+        nombrePersonnes > 1
+          ? `Location libre, ${dureeHeures} h, ${nombrePersonnes} vélos`
+          : `Location libre, ${dureeHeures} h`,
+      detail:
+        nombrePersonnes > 1
+          ? `${(prix - fraisRetires).toLocaleString("fr-FR")} FCFA par vélo, casque et antivol compris`
+          : "Vélo, casque et antivol compris",
       montantXof: sousTotalXof,
     });
   }

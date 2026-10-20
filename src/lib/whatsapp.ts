@@ -2,7 +2,7 @@
  * Le message WhatsApp d'une réservation.
  *
  * Juste après un paiement en ligne, le client est envoyé sur WhatsApp, sur
- * la ligne d'Ulrich (la seconde de `site.whatsapp`, celle de `lienWhatsApp`),
+ * la ligne de Zayed (la seconde de `site.whatsapp`, celle de `lienWhatsApp`),
  * avec un message déjà écrit qui reprend toute sa réservation : il n'a qu'à
  * appuyer sur « Envoyer » pour l'avoir sous la main dans WhatsApp. La page
  * de suivi garde un bouton qui fait de même, et l'email de confirmation
@@ -66,7 +66,7 @@ export function estPayeeEnLigne(reservation: Pick<ReservationWhatsApp, "statut" 
  * Le montant, tel que le client l'a réglé. En ligne, SasPay ajoute ses
  * frais au total au moment de payer (`fraisEncaissement`) : c'est le
  * montant que le paiement a annoncé et que l'opérateur a débité, avec la
- * part des frais pour qu'Ulrich retrouve le prix de la réservation. En
+ * part des frais pour que Zayed retrouve le prix de la réservation. En
  * espèces, le total. Avant paiement, le montant à régler.
  */
 function montant(reservation: ReservationWhatsApp): string {
@@ -91,18 +91,20 @@ function montant(reservation: ReservationWhatsApp): string {
 export function messageWhatsAppReservation(reservation: ReservationWhatsApp, lienSuivi: string): string {
   // Octobre rose : la sortie de ce jour, sa tenue et ce qu'elle offre.
   const sortie = sortieDeLaReservation(reservation);
-  // Le vélo choisi ; à Octobre rose, chacun reçoit le sien au rassemblement.
-  const velo = reservation.offre === "octobre-rose" ? undefined : reservation.lignes[0]?.veloNom;
+  // Les vélos réservés, un par personne ; à Octobre rose, chacun reçoit le
+  // sien au rassemblement.
+  const velos =
+    reservation.offre === "octobre-rose" ? [] : reservation.lignes.map((ligne) => ligne.veloNom).filter(Boolean);
   const point = site.pointDeDepart;
 
   return [
-    `Bonjour Ulrich, je viens de réserver chez ${site.nom}.`,
+    `Bonjour Zayed, je viens de réserver chez ${site.nom}.`,
     "",
     ligne("Référence", reservation.reference),
     ligne("Formule", resumeOffre(reservation)),
     ligne("Date", formatCreneau(reservation)),
     ...(sortie ? [ligne("Retour", `vers ${formatHoraire(sortie.retour)}`)] : []),
-    ...(velo ? [ligne("Vélo", velo)] : []),
+    ...(velos.length > 0 ? [ligne(velos.length > 1 ? "Vélos" : "Vélo", velos.join(", "))] : []),
     ...(estPayee(reservation)
       ? [ligne("Point de départ", `${point.lieu}. ${point.indication}`), ligne("Carte", point.carte)]
       : []),
@@ -122,7 +124,7 @@ export function messageWhatsAppReservation(reservation: ReservationWhatsApp, lie
 }
 
 /**
- * La discussion WhatsApp avec Ulrich, message déjà écrit. À ouvrir dans un
+ * La discussion WhatsApp avec Zayed, message déjà écrit. À ouvrir dans un
  * nouvel onglet, ou en remplaçant la page sur téléphone : l'application
  * WhatsApp prend le relais.
  */

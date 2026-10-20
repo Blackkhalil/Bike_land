@@ -24,8 +24,15 @@ export async function POST(requete: Request) {
   }
 
   try {
-    const disponible = await depot.estDisponible(veloId, dateDebut, dateFin, heureDebut, heureFin);
-    return NextResponse.json({ disponible });
+    // Avec le nombre de vélos de sa gamme libres sur le même créneau : c'est
+    // le plafond du nombre de personnes, ou de vélos, que le tunnel propose.
+    const [disponible, velo, libres] = await Promise.all([
+      depot.estDisponible(veloId, dateDebut, dateFin, heureDebut, heureFin),
+      depot.trouverVeloParId(veloId),
+      depot.velosLibres(dateDebut, heureDebut, heureFin),
+    ]);
+    const libresGamme = velo ? libres.filter((autre) => autre.gamme === velo.gamme).length : 0;
+    return NextResponse.json({ disponible, libresGamme });
   } catch (erreur) {
     // La base n'a pas répondu, même après les reprises. On ne prétend
     // surtout pas que le vélo est libre : l'appelant doit savoir que la

@@ -39,13 +39,18 @@ function consignes(reservation: Reservation, sens: "depart" | "retour"): string[
     ];
   }
 
+  // À plusieurs, un vélo par personne : la caution est celle de tous les vélos.
+  const nombreVelos = reservation.lignes.length;
   if (sens === "retour") {
     return [
-      "Contrôler l'état du vélo avant de rendre quoi que ce soit.",
+      nombreVelos > 1
+        ? `Contrôler l'état des ${nombreVelos} vélos avant de rendre quoi que ce soit.`
+        : "Contrôler l'état du vélo avant de rendre quoi que ce soit.",
       `Rendre la caution de ${formatXof(reservation.cautionXof)} et la pièce d'identité.`,
     ];
   }
   return [
+    ...(nombreVelos > 1 ? [`Remettre ${nombreVelos} vélos et ${nombreVelos} casques.`] : []),
     "Vérifier la pièce d'identité (CIP) et la garder jusqu'au retour du vélo.",
     "Faire signer l'engagement de restitution sur papier.",
     `Encaisser la caution de ${formatXof(reservation.cautionXof)} en espèces.`,

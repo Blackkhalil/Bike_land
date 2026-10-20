@@ -30,6 +30,7 @@ import {
   FERMETURE_HEURE,
   OUVERTURE_HEURE,
   panierExpire,
+  type GammeVelo,
 } from "@/data/offres";
 import { calculerDevis } from "../tarification";
 import {
@@ -61,7 +62,9 @@ import {
   ConflitDisponibiliteError,
   creneauOctobreRoseDemande,
   messagePlacesManquantes,
+  messageVelosManquants,
   ordreAttribution,
+  velosDeLaGamme,
   resteUneHeureLibre,
   TransactionDejaUtiliseeError,
   type CreneauOccupe,
@@ -709,6 +712,38 @@ const depotDirect: Depot = {
             });
             if (conflit) throw new ConflitDisponibiliteError();
             velosAttribues = [bike!];
+            // Un vélo par personne : à plusieurs, d'autres vélos de la gamme
+            // choisie, libres sur le créneau, relus ici même pour que le
+            // niveau Serializable protège aussi leur attribution.
+            if (devisBrut.nombrePersonnes > 1) {
+              const memeGamme = await tx.bike.findMany({
+                where: { tier: bike!.tier, id: { not: bike!.id }, status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+                select: { id: true, name: true, tier: true, pickupPointId: true },
+              });
+              const pris = await tx.bookingItem.findMany({
+                where: {
+                  booking: bookingBloquant(),
+                  bikeId: { in: memeGamme.map((velo) => velo.id) },
+                  startDate: { lte: fin },
+                  endDate: { gte: debut },
+                  startHour: { lt: heureFin },
+                  endHour: { gt: demande.heureDebut },
+                },
+                select: { bikeId: true },
+              });
+              const occupes = new Set(pris.map((ligne) => ligne.bikeId));
+              const versAttribuable = (velo: { id: string; name: string; tier: GammeVelo; pickupPointId: string | null }) => ({
+                ...velo,
+                gamme: velo.tier,
+                nom: velo.name,
+              });
+              const libres = memeGamme.filter((velo) => !occupes.has(velo.id)).map(versAttribuable);
+              const choisis = velosDeLaGamme(versAttribuable(bike!), libres, devisBrut.nombrePersonnes);
+              if (!choisis) {
+                throw new ConflitDisponibiliteError(messageVelosManquants(bike!.tier, libres.length + 1));
+              }
+              velosAttribues = choisis;
+            }
           }
 
           // Le code de parrainage est revérifié et consommé **ici**, dans la même
@@ -814,9 +849,10 @@ const depotDirect: Depot = {
               // choisi porte toute la location.
               items: {
                 create: velosAttribues.map((velo) => {
-                  const prixLigne = octobreRose
-                    ? Math.round(devis.sousTotalXof / velosAttribues.length)
-                    : devis.sousTotalXof;
+                  const prixLigne =
+                    velosAttribues.length > 1
+                      ? Math.round(devis.sousTotalXof / velosAttribues.length)
+                      : devis.sousTotalXof;
                   return {
                     bikeId: velo.id,
                     startDate: debut,

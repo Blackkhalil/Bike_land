@@ -14,7 +14,7 @@
 
 import { listerJours, type DateISO } from "../dates";
 import { creneauOctobreRose, sortieOctobreRoseDu } from "@/data/octobre-rose";
-import type { GammeVelo } from "@/data/offres";
+import { GAMMES, type GammeVelo } from "@/data/offres";
 import type { CodeParrainage, VerificationParrainage } from "../parrainage";
 import type {
   AvisClient,
@@ -199,6 +199,34 @@ export function ordreAttribution<T extends { gamme: GammeVelo; nom: string }>(ve
   return [...velos].sort(
     (a, b) => RANG_GAMME[a.gamme] - RANG_GAMME[b.gamme] || a.nom.localeCompare(b.nom, "fr"),
   );
+}
+
+/**
+ * Les vélos d'une réservation à plusieurs, road trip ou location libre : un
+ * vélo par personne, de la gamme choisie. Le vélo choisi d'abord, puis
+ * d'autres de sa gamme parmi ceux libres sur le créneau, dans l'ordre
+ * d'attribution. `null` s'il n'y en a pas assez : on ne complète jamais
+ * avec une autre gamme, qui n'a pas le même prix.
+ */
+export function velosDeLaGamme<T extends { id: string; gamme: GammeVelo; nom: string }>(
+  choisi: T,
+  libres: T[],
+  nombre: number,
+): T[] | null {
+  const autres = ordreAttribution(libres.filter((velo) => velo.id !== choisi.id && velo.gamme === choisi.gamme));
+  if (autres.length + 1 < nombre) return null;
+  return [choisi, ...autres.slice(0, Math.max(0, nombre - 1))];
+}
+
+/**
+ * Pourquoi une réservation à plusieurs ne passe pas : « Il ne reste que 3
+ * vélos Premium libres à cette heure : 3 au plus. »
+ */
+export function messageVelosManquants(gamme: GammeVelo, libres: number): string {
+  const nom = GAMMES.find((entree) => entree.code === gamme)?.nom ?? gamme;
+  return libres <= 1
+    ? `Il ne reste qu'un vélo ${nom} libre à cette heure : un seul vélo pour cette réservation.`
+    : `Il ne reste que ${libres} vélos ${nom} libres à cette heure : ${libres} au plus.`;
 }
 
 /**

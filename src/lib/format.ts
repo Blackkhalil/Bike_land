@@ -230,7 +230,8 @@ export function resumeOffre(reservation: {
   if (reservation.offre === "octobre-rose") {
     return `Octobre rose · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;
   }
-  return `Location libre · ${reservation.dureeHeures ?? "?"}${INSECABLE}h`;
+  const velos = n > 1 ? ` · ${n}${INSECABLE}vélos` : "";
+  return `Location libre · ${reservation.dureeHeures ?? "?"}${INSECABLE}h${velos}`;
 }
 
 /**

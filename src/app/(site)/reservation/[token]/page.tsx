@@ -216,6 +216,15 @@ export default async function PageSuiviReservation({
               <p className="font-display text-[1.35rem] font-extrabold uppercase leading-none">
                 {ligne?.veloNom}
               </p>
+              {/* À plusieurs, un vélo par personne : les autres de la gamme. */}
+              {reservation.lignes.length > 1 && (
+                <p className="mt-1.5 text-[0.88rem] font-semibold">
+                  et&nbsp;{reservation.lignes
+                    .slice(1)
+                    .map((autre) => autre.veloNom)
+                    .join(", ")}
+                </p>
+              )}
               <p className="mt-2 text-[0.9rem] text-gris-cadre">
                 {resumeOffre(reservation)}
               </p>

@@ -172,7 +172,7 @@ export const EXIGENCES: Record<CodeOffre, string[]> = {
   "location-libre": [
     "Présenter une pièce d'identité (CIP) au départ. Elle vous est rendue au retour du vélo.",
     "Signer l'engagement de restitution, en ligne puis sur place au départ.",
-    `Laisser une caution de ${CAUTION_LOCATION_LIBRE_XOF.toLocaleString("fr-FR")} FCFA, rendue à la restitution du vélo.`,
+    `Laisser une caution de ${CAUTION_LOCATION_LIBRE_XOF.toLocaleString("fr-FR")} FCFA par vélo, rendue à la restitution.`,
   ],
   // Ce qui vaut pour toutes les sorties de la campagne. Une sortie connue
   // donne en plus ses heures : `exigencesOctobreRose(sortie)`.

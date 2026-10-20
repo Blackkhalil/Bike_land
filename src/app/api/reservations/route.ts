@@ -11,7 +11,7 @@ import {
 } from "@/data/offres";
 import { identifiantAppelant } from "@/lib/anti-force-brute";
 import { ConflitDisponibiliteError, depot } from "@/lib/db";
-import { messagePlacesManquantes, type DemandeReservation } from "@/lib/db/contrat";
+import { messagePlacesManquantes, messageVelosManquants, type DemandeReservation } from "@/lib/db/contrat";
 import {
   envoyerConfirmation,
   envoyerFacture,
@@ -31,7 +31,6 @@ import {
 import {
   lireOuverture,
   motifDeRefus,
-  personnesMaxPour,
   refusInscriptionOctobreRose,
 } from "@/lib/ouverture";
 
@@ -131,30 +130,30 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
     return { refus: NextResponse.json({ erreur: "Ce vélo n'existe pas." }, { status: 404 }) };
   }
 
-  // Une personne, un vélo : pas plus de personnes que de vélos de la
-  // gamme. Vérifié ici, le compteur du site pouvant être contourné.
-  const personnesMax = personnesMaxPour(velo, await depot.listerVelos());
-  if (donnees.nombrePersonnes > personnesMax) {
-    return {
-      refus: NextResponse.json(
-        {
-          erreur:
-            personnesMax === 1
-              ? `Le ${velo.nom} est un exemplaire unique : il se réserve pour une seule personne.`
-              : `Cette gamme compte ${personnesMax} vélos : ${personnesMax} personnes au plus.`,
-          champs: { nombrePersonnes: "Trop de personnes pour ce vélo." },
-        },
-        { status: 422 },
-      ),
-    };
-  }
-
   // L'heure de fin découle de la formule : le road trip dure le temps de
   // son créneau encadré, la location libre le nombre d'heures acheté.
   const heureFin =
     donnees.offre === "road-trip"
       ? donnees.heureDebut + DUREE_ROAD_TRIP_HEURES
       : donnees.heureDebut + (donnees.dureeHeures ?? 1);
+
+  // Un vélo par personne, de la gamme choisie : pas plus de vélos qu'il
+  // n'en reste de cette gamme, libres à cette heure. Vérifié ici, le
+  // compteur du site pouvant être contourné ; l'écriture revérifie, en
+  // transaction, au moment d'attribuer les vélos.
+  if (donnees.nombrePersonnes > 1) {
+    const libresGamme = (await depot.velosLibres(donnees.dateDebut, donnees.heureDebut, heureFin)).filter(
+      (autre) => autre.gamme === velo.gamme,
+    ).length;
+    if (donnees.nombrePersonnes > libresGamme) {
+      return {
+        refus: NextResponse.json(
+          { erreur: messageVelosManquants(velo.gamme, libresGamme), code: "PLACES", places: libresGamme },
+          { status: 409 },
+        ),
+      };
+    }
+  }
 
   // Contrôle en amont : évite d'encaisser pour un créneau déjà pris. La
   // garantie réelle reste l'écriture, en transaction sérialisable.
@@ -451,14 +450,16 @@ async function creerEtEncaisser(demande: DemandeReservation) {
     if (erreur instanceof ConflitDisponibiliteError) {
       // Octobre rose : une autre inscription vient de prendre des vélos sur
       // la sortie de ce jour. Le formulaire ajuste le nombre de places qu'il
-      // propose pour ce jour-là.
+      // propose pour ce jour-là. À plusieurs sur un vélo choisi : ce qu'il
+      // reste de sa gamme à cette heure.
       const sortie = demande.offre === "octobre-rose" ? sortieOctobreRoseDu(demande.dateDebut) : null;
       const creneau = sortie ? creneauOctobreRose(sortie) : null;
       const places = creneau
         ? (await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin).catch(() => null))?.length
         : undefined;
+      const plusieurs = !creneau && (demande.nombrePersonnes ?? 1) > 1;
       return NextResponse.json(
-        { erreur: erreur.message, code: creneau ? "PLACES" : "INDISPONIBLE", places },
+        { erreur: erreur.message, code: creneau || plusieurs ? "PLACES" : "INDISPONIBLE", places },
         { status: 409 },
       );
     }
