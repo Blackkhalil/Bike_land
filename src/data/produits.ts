@@ -139,17 +139,6 @@ export function tarifOctobreRose(): string | null {
 }
 
 /**
- * Ce qui identifie l'annonce telle qu'on l'a vue : l'année, et les jours
- * des sorties quand ils sont fixés. Une annonce fermée ne revient pas, sauf
- * quand les jours changent (une date connue, un jour ajouté), ou pour une
- * nouvelle campagne.
- */
-export function signatureOctobreRose(jour: DateISO): string {
-  const jours = OCTOBRE_ROSE.sorties.map((sortie) => sortie.date).join("+");
-  return `${jour.slice(0, 4)}|${jours || "date-a-venir"}`;
-}
-
-/**
  * « Plus qu'une place. », « Plus que 3 places. », « 9 places disponibles. »
  * Une espace insécable lie le nombre au mot « places » : le « 9 » ne reste
  * plus seul en bout de ligne.

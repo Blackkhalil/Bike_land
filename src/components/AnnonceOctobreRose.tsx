@@ -10,13 +10,8 @@ import {
   inscriptionsOctobreRoseOuvertes,
   octobreRoseEnCours,
   rendezVousOctobreRose,
-  signatureOctobreRose,
   tarifOctobreRose,
 } from "@/data/produits";
-import { aujourdhui } from "@/lib/dates";
-
-/** Ce que le navigateur retient de l'annonce fermée (voir `signatureOctobreRose`). */
-const CLE = "bikeland.octobre-rose";
 
 /** Le temps laissé à la page pour s'afficher avant l'annonce. */
 const DELAI_MS = 1500;
@@ -68,10 +63,10 @@ function Ruban({ className = "" }: { className?: string }) {
  * jusqu'au déploiement suivant. Le serveur ne rend donc rien, et l'annonce
  * s'éteint d'elle-même le 1er novembre, heure du Bénin.
  *
- * Elle s'ouvre une fois : fermée, elle ne revient pas, sauf l'octobre
- * suivant, ou quand la date de la sortie est enfin fixée (voir
- * `signatureOctobreRose`). Sans stockage (navigation privée), elle
- * s'ouvre une fois par visite.
+ * Elle s'ouvre à chaque visite, à la demande du gérant : à chaque arrivée
+ * sur le site, rechargement compris. Le navigateur ne retient rien. Dans
+ * une même visite, elle ne revient pas d'une page à l'autre : la mise en
+ * page du site reste montée, `dejaMontree` avec elle.
  *
  * C'est un <dialog> natif ouvert avec showModal() : il passe au-dessus de
  * tout, rend le reste de la page inerte, se ferme avec Échap et rend le
@@ -92,12 +87,6 @@ export function AnnonceOctobreRose() {
     const minuterie = setTimeout(() => {
       if (typeof HTMLDialogElement !== "function") return;
       if (!octobreRoseEnCours(new Date())) return;
-      const jour = aujourdhui();
-      try {
-        if (window.localStorage.getItem(CLE) === signatureOctobreRose(jour)) return;
-      } catch {
-        // Stockage indisponible (navigation privée) : une fois par visite.
-      }
       dejaMontree.current = true;
       setInscription(inscriptionsOctobreRoseOuvertes(new Date()));
       setOuverte(true);
@@ -114,11 +103,6 @@ export function AnnonceOctobreRose() {
   }, [visible]);
 
   const fermer = () => {
-    try {
-      window.localStorage.setItem(CLE, signatureOctobreRose(aujourdhui()));
-    } catch {
-      // Stockage indisponible : elle ne reviendra pas de la visite.
-    }
     dialogue.current?.close();
     setOuverte(false);
   };
