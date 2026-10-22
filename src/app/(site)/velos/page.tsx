@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import { CarteVelo } from "@/components/CarteVelo";
 import { ChoixDeGamme } from "@/components/ChoixDeGamme";
-import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, PRIX_ROAD_TRIP_XOF } from "@/data/offres";
+import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum } from "@/data/offres";
 import { formatXof } from "@/lib/format";
 import { Section, TitreSection } from "@/components/ui";
 import { depot } from "@/lib/db";
@@ -69,7 +69,7 @@ export default async function PageCatalogue() {
       pourQui: gamme.pourQui,
       description: gamme.description,
       prixHeure: formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof),
-      prixRoadTrip: formatXof(PRIX_ROAD_TRIP_XOF[gamme.code]),
+      prixRoadTrip: formatXof(prixRoadTripMinimum(gamme.code)),
       nombre: duGroupe.length,
       lePlusPris: gamme.code === GAMME_LA_PLUS_PRISE,
       velos: (

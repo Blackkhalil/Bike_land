@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Bouton } from "@/components/Bouton";
-import { creneauDuJour, formatHeure, PRIX_ROAD_TRIP_XOF, GRILLE_HORAIRE } from "@/data/offres";
+import { creneauDuJour, formatHeure, GRILLE_HORAIRE, prixRoadTripMinimum } from "@/data/offres";
 import { CLE_CHOIX_PRODUIT } from "@/data/produits";
 import { formatDate, formatXof } from "@/lib/format";
 import type { CodeOffre, Velo } from "@/lib/types";
@@ -141,7 +141,7 @@ export function WidgetReservation({
                   {
                     code: "road-trip" as const,
                     titre: "Road trip",
-                    detail: `${formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])} / pers., encadré`,
+                    detail: `dès ${formatXof(prixRoadTripMinimum(velo.gamme))} / pers., encadré`,
                   },
                   {
                     code: "location-libre" as const,

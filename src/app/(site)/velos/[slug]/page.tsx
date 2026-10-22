@@ -16,7 +16,7 @@ import {
   departsComplets,
   GAMMES,
   GRILLE_HORAIRE,
-  PRIX_ROAD_TRIP_XOF,
+  prixRoadTripMinimum,
 } from "@/data/offres";
 import { depot } from "@/lib/db";
 import { estDateISOValide } from "@/lib/dates";
@@ -146,9 +146,9 @@ export default async function PageVelo({ params }: { params: Params }) {
                   •
                 </span>
                 <span className="whitespace-nowrap">
-                  road trip{" "}
+                  road trip dès{" "}
                   <strong className="font-semibold tabular-nums text-noir-piste">
-                    {formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])}
+                    {formatXof(prixRoadTripMinimum(velo.gamme))}
                   </strong>{" "}
                   par personne
                 </span>

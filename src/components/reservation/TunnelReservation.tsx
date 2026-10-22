@@ -22,7 +22,8 @@ import {
   heuresDepartPossibles,
   OFFRES,
   OUVERTURE_HEURE as ouvertureAtelier,
-  PRIX_ROAD_TRIP_XOF,
+  prixRoadTripDu,
+  prixRoadTripMinimum,
   roadTripsDuJour,
   type GammeVelo,
 } from "@/data/offres";
@@ -319,6 +320,8 @@ export function TunnelReservation({
     // tarif. Le serveur la relit en base avant d'encaisser, ce qui
     // est affiché ici n'engage rien.
     gamme: velo.gamme,
+    // Le jour aussi, en road trip : Gbashi bike, le dimanche, a son prix.
+    date: dateDebut,
     nombrePersonnes: nombreEffectif,
     dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
     options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
@@ -330,6 +333,7 @@ export function TunnelReservation({
   const devisSansRemise = calculerDevis({
     offre,
     gamme: velo.gamme,
+    date: dateDebut,
     nombrePersonnes: nombreEffectif,
     dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
     options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
@@ -615,7 +619,9 @@ export function TunnelReservation({
                         />
                         <span className="shrink-0 font-display text-[1.1rem] text-orange-sourd">
                           {item.code === "road-trip"
-                            ? `${formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])} / pers.`
+                            ? offre === "road-trip"
+                              ? `${formatXof(prixRoadTripDu(velo.gamme, dateDebut))} / pers.`
+                              : `dès ${formatXof(prixRoadTripMinimum(velo.gamme))} / pers.`
                             : `dès ${formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)}`}
                         </span>
                       </span>
@@ -782,6 +788,10 @@ export function TunnelReservation({
                           {formatHeure(creneau.heureDebut)} -{" "}
                           {formatHeure(creneau.heureFin)}
                           {creneau.produit && ` · ${creneau.produit}, sport devant la plage`}
+                        </span>
+                        {/* Le prix du jour : Gbashi bike, le dimanche, a le sien. */}
+                        <span className="mt-0.5 block text-[0.78rem] font-semibold">
+                          {formatXof(prixRoadTripDu(velo.gamme, creneau.date))} / pers.
                         </span>
                       </button>
                     );
@@ -1253,7 +1263,7 @@ export function TunnelReservation({
               <p className="etiquette opacity-75">Récapitulatif</p>
               <Pastille ton="neutre" className="whitespace-nowrap">
                 {offre === "road-trip"
-                  ? `Road trip · ${devis.nombrePersonnes} pers.`
+                  ? `${creneauDuJour(dateDebut)?.produit ?? "Road trip"} · ${devis.nombrePersonnes} pers.`
                   : `Location libre · ${devis.dureeHeures} h${devis.nombrePersonnes > 1 ? ` · ${devis.nombrePersonnes} vélos` : ""}`}
               </Pastille>
             </div>

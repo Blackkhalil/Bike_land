@@ -95,6 +95,18 @@ export const PRIX_ROAD_TRIP_XOF: Record<GammeVelo, number> = {
   PRESTIGE: 3625,
 };
 
+/**
+ * Tarif de Gbashi bike, le road trip sport du dimanche, par personne et par
+ * gamme : la séance de sport devant la plage en plus du road trip. Comme
+ * tous les tarifs du site, frais du paiement en ligne compris ; au comptoir,
+ * en espèces, ils en sont retirés (FRAIS_PAIEMENT_EN_LIGNE_XOF).
+ */
+export const PRIX_GBASHI_BIKE_XOF: Record<GammeVelo, number> = {
+  CLASSIQUE: 3125,
+  PREMIUM: 4125,
+  PRESTIGE: 5125,
+};
+
 /** Nombre de cocos offertes au retour, par gamme. */
 export const COCOS_ROAD_TRIP: Record<GammeVelo, number> = {
   CLASSIQUE: 1,
@@ -145,6 +157,7 @@ export const DUREE_MAX_LOCATION_LIBRE = 4;
 /** Le tarif d'entrée, toutes gammes confondues, « à partir de ». */
 export const PRIX_MINIMUM_HEURE_XOF = GRILLE_HORAIRE.CLASSIQUE[0].prixXof;
 export const PRIX_MINIMUM_ROAD_TRIP_XOF = PRIX_ROAD_TRIP_XOF.CLASSIQUE;
+export const PRIX_MINIMUM_GBASHI_BIKE_XOF = PRIX_GBASHI_BIKE_XOF.CLASSIQUE;
 
 /** Prix d'une location libre pour une gamme et une durée, ou `null` hors grille. */
 export function prixLocationLibre(gamme: GammeVelo, heures: number): number | null {
@@ -254,8 +267,9 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  *
  * `produit` nomme le créneau quand il est vendu sous son propre nom : le
  * road trip du dimanche est Gbashi bike, avec une séance de sport devant
- * la plage à l'arrivée (voir src/data/produits.ts). Même réservation et
- * même prix que le road trip ; le nom s'affiche à côté du jour.
+ * la plage à l'arrivée (voir src/data/produits.ts). Même réservation que
+ * le road trip, à son propre prix (`prix`) ; le nom s'affiche à côté du
+ * jour.
  * `consigne` s'ajoute alors à ce qu'il faut prévoir, dans le formulaire
  * comme dans les emails.
  */
@@ -266,6 +280,7 @@ export const CRENEAUX_ROAD_TRIP = [
     libelle: "Samedi",
     produit: null,
     consigne: null,
+    prix: PRIX_ROAD_TRIP_XOF,
     heureDebut: 8,
     heureFin: 11,
     actifParDefaut: true,
@@ -276,6 +291,7 @@ export const CRENEAUX_ROAD_TRIP = [
     libelle: "Dimanche",
     produit: "Gbashi bike",
     consigne: "Venir en tenue de sport : à l'arrivée, séance d'exercices et de poids devant la plage.",
+    prix: PRIX_GBASHI_BIKE_XOF,
     heureDebut: 8,
     heureFin: 11,
     actifParDefaut: false,
@@ -288,6 +304,20 @@ export type CodeCreneau = (typeof CRENEAUX_ROAD_TRIP)[number]["code"];
 export function creneauDuJour(date: string) {
   const jourSemaine = new Date(`${date}T12:00:00Z`).getUTCDay();
   return CRENEAUX_ROAD_TRIP.find((c) => c.jourSemaine === jourSemaine);
+}
+
+/**
+ * Le prix par personne d'un road trip, selon la gamme et le jour : Gbashi
+ * bike, le dimanche, a le sien. Sans jour connu, celui du road trip du
+ * samedi.
+ */
+export function prixRoadTripDu(gamme: GammeVelo, date?: string): number {
+  return (date ? creneauDuJour(date)?.prix : undefined)?.[gamme] ?? PRIX_ROAD_TRIP_XOF[gamme];
+}
+
+/** Le road trip le moins cher pour cette gamme, quel que soit le jour : « dès … ». */
+export function prixRoadTripMinimum(gamme: GammeVelo): number {
+  return Math.min(...CRENEAUX_ROAD_TRIP.map((creneau) => creneau.prix[gamme]));
 }
 
 /** Le créneau encadré d'un départ : le jour de la semaine et l'heure suffisent. */

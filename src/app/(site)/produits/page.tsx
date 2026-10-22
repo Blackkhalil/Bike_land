@@ -21,9 +21,12 @@ import {
   DERNIER_DEPART_HEURE,
   FERMETURE_HEURE,
   formatHeure,
+  GAMMES,
   GRILLE_HORAIRE,
   OFFRES,
   PRIX_MINIMUM_HEURE_XOF,
+  PRIX_GBASHI_BIKE_XOF,
+  PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
 } from "@/data/offres";
 import {
@@ -390,8 +393,11 @@ export default async function PageProduits() {
               <Repere terme="Départ">Le dimanche à {heureDuCreneau(CRENEAU_GBASHI_BIKE)}, en groupe</Repere>
               <ReperesDepart complet={dimancheComplet} ouvert={dimanche} />
               <Repere terme="Tarif">
-                <span className="font-display text-[1.2rem]">dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}</span>{" "}
+                <span className="font-display text-[1.2rem]">dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}</span>{" "}
                 par personne
+                <span className="block text-[0.82rem] font-normal opacity-80">
+                  {GAMMES.map((gamme) => `${gamme.nom} ${formatXof(PRIX_GBASHI_BIKE_XOF[gamme.code])}`).join(" · ")}
+                </span>
               </Repere>
               <Repere terme="Compris">Vélo, casque, antivol, kit, eau et coco frais</Repere>
               <Repere terme="À prévoir">Une tenue de sport, et quinze minutes d&apos;avance</Repere>

@@ -23,8 +23,9 @@ import {
   CAUTION_LOCATION_LIBRE_XOF,
   COCOS_ROAD_TRIP,
   FRAIS_PAIEMENT_EN_LIGNE_XOF,
-  PRIX_ROAD_TRIP_XOF,
+  creneauDuJour,
   prixLocationLibre,
+  prixRoadTripDu,
   type CodeOffre,
   type GammeVelo,
 } from "@/data/offres";
@@ -155,13 +156,15 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
   } else if (!gamme) {
     throw new TarifIntrouvableError("La gamme du vélo est nécessaire pour fixer ce prix.");
   } else if (offre === "road-trip") {
-    const prixUnitaire = PRIX_ROAD_TRIP_XOF[gamme] - fraisRetires;
+    // Le prix du jour du départ : Gbashi bike, le dimanche, a le sien. Sans
+    // jour, celui du road trip du samedi.
+    const prixUnitaire = prixRoadTripDu(gamme, parametres.date) - fraisRetires;
     const cocos = COCOS_ROAD_TRIP[gamme];
+    const nom = (parametres.date ? creneauDuJour(parametres.date)?.produit : null) ?? "Road trip";
     sousTotalXof = prixUnitaire * nombrePersonnes;
     cautionXof = 0;
     lignes.push({
-      libelle:
-        nombrePersonnes > 1 ? `Road trip, ${nombrePersonnes} personnes` : "Road trip, 1 personne",
+      libelle: nombrePersonnes > 1 ? `${nom}, ${nombrePersonnes} personnes` : `${nom}, 1 personne`,
       detail:
         `${prixUnitaire.toLocaleString("fr-FR")} FCFA par personne, eau et ` +
         `${cocos > 1 ? `${cocos} cocos` : "1 coco"} compris`,

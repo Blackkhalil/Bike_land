@@ -6,7 +6,7 @@ import {
   GAMME_LA_PLUS_PRISE,
   GAMMES,
   GRILLE_HORAIRE,
-  PRIX_ROAD_TRIP_XOF,
+  prixRoadTripMinimum,
 } from "@/data/offres";
 import { formatNombre, formatXof } from "@/lib/format";
 import type { Velo } from "@/lib/types";
@@ -99,7 +99,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
                 <div className="flex justify-between gap-3">
                   <dt className="shrink-0 text-gris-cadre">Road trip</dt>
                   <dd className="text-right font-medium tabular-nums">
-                    {formatXof(PRIX_ROAD_TRIP_XOF[gamme.code])} / pers.
+                    dès {formatXof(prixRoadTripMinimum(gamme.code))} / pers.
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">

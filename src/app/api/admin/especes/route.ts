@@ -174,6 +174,8 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
     gamme: velo.gamme,
     nombrePersonnes: donnees.nombrePersonnes,
     dureeHeures: roadTrip ? undefined : donnees.dureeHeures,
+    // Le jour fixe le prix du road trip : Gbashi bike, le dimanche, a le sien.
+    date: donnees.date,
     especes: true,
   };
   const brut = calculerDevis(parametres);

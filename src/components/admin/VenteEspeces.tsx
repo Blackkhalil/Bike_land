@@ -14,6 +14,7 @@ import {
 } from "@/data/octobre-rose";
 import {
   CRENEAUX_ROAD_TRIP,
+  creneauDuJour,
   DUREE_ROAD_TRIP_HEURES,
   FERMETURE_COMPTOIR_HEURE,
   GAMMES,
@@ -413,6 +414,8 @@ export function VenteEspeces({
       ? calculerDevis({
           offre,
           gamme: velo.gamme,
+          // Le jour fixe le prix du road trip : Gbashi bike, le dimanche, a le sien.
+          date,
           nombrePersonnes: personnes,
           dureeHeures: roadTrip ? undefined : dureeHeures,
           especes: true,
@@ -974,6 +977,7 @@ export function VenteEspeces({
             const prix = calculerDevis({
               offre: roadTrip ? "road-trip" : "location-libre",
               gamme: v.gamme,
+              date,
               nombrePersonnes: 1,
               dureeHeures: roadTrip ? undefined : dureeHeures,
               especes: true,
@@ -1180,7 +1184,7 @@ export function VenteEspeces({
         {velo && devisLocal && (
           <p className="mt-2 text-[0.82rem] text-craie/75">
             {roadTrip
-              ? `Road trip, ${personnes} personne${personnes > 1 ? "s" : ""}`
+              ? `${creneauDuJour(date)?.produit ?? "Road trip"}, ${personnes} personne${personnes > 1 ? "s" : ""}`
               : `Location libre, ${dureeHeures} h${personnes > 1 ? `, ${personnes} vélos` : ""}`}{" "}
             · {velo.nom}
             {personnes > 1 ? ` et ${personnes - 1} autre${personnes > 2 ? "s" : ""} de la gamme` : ""}

@@ -13,7 +13,7 @@ export interface GammeAuChoix {
   description: string;
   /** « 1 125 FCFA » : le prix d'entrée, l'heure de location libre. */
   prixHeure: string;
-  /** Le road trip, par personne. */
+  /** Le road trip le moins cher, par personne : affiché « dès ». */
   prixRoadTrip: string;
   nombre: number;
   lePlusPris: boolean;
@@ -122,7 +122,7 @@ export function ChoixDeGamme({ gammes }: { gammes: GammeAuChoix[] }) {
                       {gamme.prixHeure}
                     </span>
                     <span className="mt-1 block text-[0.8rem] text-craie/60">
-                      l&apos;heure · <span className="whitespace-nowrap">road trip {gamme.prixRoadTrip} / pers.</span>
+                      l&apos;heure · <span className="whitespace-nowrap">road trip dès {gamme.prixRoadTrip} / pers.</span>
                     </span>
                   </span>
                   <span className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-craie/15 pt-4 text-[0.85rem]">
@@ -178,7 +178,7 @@ export function ChoixDeGamme({ gammes }: { gammes: GammeAuChoix[] }) {
                 <p className="shrink-0 text-[0.9rem] text-craie/70">
                   dès{" "}
                   <strong className="font-display text-[1.2rem] font-bold text-orange-signal">{gamme.prixHeure}</strong>{" "}
-                  l&apos;heure · <span className="whitespace-nowrap">road trip {gamme.prixRoadTrip}</span>
+                  l&apos;heure · <span className="whitespace-nowrap">road trip dès {gamme.prixRoadTrip}</span>
                 </p>
               </div>
               <div className="mt-8">{gamme.velos}</div>

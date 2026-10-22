@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { GAMMES, GRILLE_HORAIRE, PRIX_ROAD_TRIP_XOF, type GammeVelo } from "@/data/offres";
+import { GAMMES, GRILLE_HORAIRE, PRIX_GBASHI_BIKE_XOF, PRIX_ROAD_TRIP_XOF, type GammeVelo } from "@/data/offres";
 import { formatXof } from "@/lib/format";
 import type { StatutVelo, Velo } from "@/lib/types";
 
@@ -112,7 +112,7 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
               aria-pressed={actif}
               title={`${formatXof(prixHeure)} l'heure, road trip ${formatXof(
                 PRIX_ROAD_TRIP_XOF[gamme.code],
-              )} par personne`}
+              )} et Gbashi bike ${formatXof(PRIX_GBASHI_BIKE_XOF[gamme.code])} par personne`}
               className={`min-h-[40px] rounded-[var(--radius-bouton)] border px-3.5 text-[0.82rem] font-semibold transition-colors ${
                 actif
                   ? "border-orange-signal bg-orange-signal text-noir-piste"
@@ -127,7 +127,8 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
 
       <p className="mt-2 text-[0.78rem] text-gris-cadre">
         {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l&apos;heure, road trip{" "}
-        {formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])} par personne. Les réservations déjà prises
+        {formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])} le samedi, Gbashi bike{" "}
+        {formatXof(PRIX_GBASHI_BIKE_XOF[velo.gamme])} le dimanche, par personne. Les réservations déjà prises
         gardent leur montant.
       </p>
 

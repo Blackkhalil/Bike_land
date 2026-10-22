@@ -210,6 +210,7 @@ function fabriquerReservation(contexte: {
   const devis = calculerDevis({
     offre: estRoadTrip ? "road-trip" : "location-libre",
     gamme: velo.gamme,
+    date: dateDebut,
     nombrePersonnes,
     dureeHeures,
     options: optionsChoisies,
