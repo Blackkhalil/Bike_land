@@ -45,7 +45,11 @@ function listeFrancaise(elements: string[]): string {
 export function analyserAffiche(texte: string, nomFichier: string): FicheLue {
   const trouvailles: string[] = [];
   const brut = texte.replace(/\r/g, "");
-  const plat = brut.replace(/\s+/g, " ");
+  // Un mot coupé en fin de ligne (« TOUT- » puis « SUSPENDU ») est recollé
+  // avant tout : sinon seule la première moitié était retenue, et la fiche
+  // du Titan disait « VTT tout- ». « Bike Land - Premium », avec un espace
+  // avant le tiret, n'est pas touché.
+  const plat = brut.replace(/(\p{L})-\s+(?=\p{L})/gu, "$1-").replace(/\s+/g, " ");
 
   // --- Nom : d'abord le nom du fichier, puis un mot isolé de l'affiche.
   const motsFichier = nomFichier
