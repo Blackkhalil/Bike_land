@@ -37,6 +37,14 @@ const nextConfig: NextConfig = {
             key: "Strict-Transport-Security",
             value: "max-age=63072000; includeSubDomains",
           },
+          // Droits réservés sur la fouille de textes et de données (protocole
+          // TDMRep du W3C) et consigne aux robots d'IA de ne pas reprendre
+          // textes ni images. Sans effet sur Google : il ignore `noai` et
+          // `noimageai` et continue d'indexer le site.
+          { key: "TDM-Reservation", value: "1" },
+          { key: "X-Robots-Tag", value: "noai, noimageai" },
+          // La fenêtre du site ne partage rien avec une page qui l'ouvrirait.
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           // Coupe l'accès aux capteurs, dont aucune page n'a besoin.
           {
             key: "Permissions-Policy",
@@ -76,6 +84,14 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // Photos, affiches et vidéos : aucun autre site ne peut les afficher
+      // chez lui en pointant vers nos fichiers. Les aperçus de liens
+      // (WhatsApp, Facebook) et Google Images les lisent depuis leurs
+      // serveurs, que cet en-tête ne concerne pas ; aucun email n'en charge.
+      ...["/images/:path*", "/Video/:path*", "/carrousel/:path*", "/logo/:path*"].map((source) => ({
+        source,
+        headers: [{ key: "Cross-Origin-Resource-Policy", value: "same-origin" }],
+      })),
       // L'administration a besoin de deux choses de plus, et elle seule :
       // déposer les fichiers directement dans Vercel Blob, et lire les
       // affiches, dont la bibliothèque (WebAssembly, travailleur, données

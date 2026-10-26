@@ -2,6 +2,7 @@ import { AnnonceOctobreRose } from "@/components/AnnonceOctobreRose";
 import { BandeauAdmin } from "@/components/BandeauAdmin";
 import { EnTete } from "@/components/EnTete";
 import { PiedDePage } from "@/components/PiedDePage";
+import { ProtectionMedias } from "@/components/ProtectionMedias";
 import { Reveal } from "@/components/Reveal";
 
 /** Chrome du site public : en-tête flottant, contenu, pied de page. */
@@ -20,6 +21,7 @@ export default function LayoutSite({ children }: { children: React.ReactNode }) 
       <BandeauAdmin />
       <AnnonceOctobreRose />
       <Reveal />
+      <ProtectionMedias />
     </>
   );
 }

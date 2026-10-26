@@ -520,17 +520,17 @@ export function exporterCsv(reservations: Reservation[]): string {
       reservation.offre,
       reservation.offre !== "location-libre" ? reservation.nombrePersonnes : "",
       reservation.offre === "location-libre" ? (reservation.dureeHeures ?? "") : "",
-      `${reservation.client.prenom} ${reservation.client.nom}`,
-      reservation.client.email,
+      texteSaisi(`${reservation.client.prenom} ${reservation.client.nom}`),
+      texteSaisi(reservation.client.email),
       reservation.client.telephone ?? "",
-      reservation.lignes.map((ligne) => ligne.veloNom).join(" + "),
+      texteSaisi(reservation.lignes.map((ligne) => ligne.veloNom).join(" + ")),
       reservation.dateDebut,
       reservation.sousTotalXof,
       reservation.optionsXof,
       reservation.totalXof,
       reservation.cautionXof,
       paiementPrincipal(reservation)?.moyen ?? "",
-      paiementPrincipal(reservation)?.encaissePar ?? "",
+      texteSaisi(paiementPrincipal(reservation)?.encaissePar ?? ""),
       reservation.codeParrainage ?? "",
       reservation.codeParrainage ? reservation.remiseXof : "",
       reservation.commissionParrainageXof ?? "",
@@ -548,6 +548,17 @@ export function exporterCsv(reservations: Reservation[]): string {
 function echapperCsv(valeur: string | number): string {
   const texte = String(valeur);
   return /[";\n]/.test(texte) ? `"${texte.replace(/"/g, '""')}"` : texte;
+}
+
+/**
+ * Un texte saisi librement (nom du client, adresse, nom du vélo) ne doit
+ * pas devenir une formule dans le tableur du comptable : un nom comme
+ * « =HYPERLINK(…) » s'exécuterait à l'ouverture du fichier. Une apostrophe
+ * en tête le garde pour du texte. Le téléphone n'en a pas besoin : il
+ * n'accepte que chiffres, espaces et « + ( ) . - ».
+ */
+function texteSaisi(valeur: string): string {
+  return /^[=+\-@\t\r]/.test(valeur) ? `'${valeur}` : valeur;
 }
 
 /**

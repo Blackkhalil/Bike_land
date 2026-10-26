@@ -216,6 +216,14 @@ dialog[data-annonce]::backdrop {
   color: var(--color-craie);
 }
 
+/* Photos et vidéos : pas de menu « Enregistrer » à l'appui long sur
+   iPhone, pas de glisser vers le bureau (voir ProtectionMedias). */
+img,
+video {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
 :focus-visible {
   outline: 2px solid var(--color-orange-signal);
   outline-offset: 2px;

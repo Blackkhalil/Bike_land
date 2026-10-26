@@ -59,10 +59,16 @@ export default function PageMentionsLegales() {
 
       <ArticleLegal titre="Propriété intellectuelle">
         <p>
-          L&apos;ensemble des contenus de ce site, textes, illustrations, mise en page,
-          identité visuelle, est la propriété de {site.nom}, sauf mention contraire. Toute
-          reproduction ou représentation, totale ou partielle, sans autorisation écrite préalable
-          est interdite.
+          L&apos;ensemble des contenus de ce site, textes, photos, vidéos, affiches,
+          illustrations, mise en page, identité visuelle, tarifs et descriptifs des vélos, est la
+          propriété de {site.nom}, sauf mention contraire. Toute reproduction ou représentation,
+          totale ou partielle, sans autorisation écrite préalable est interdite.
+        </p>
+        <p>
+          Sont également interdites, sans cette autorisation, la copie automatisée du site
+          (aspiration, « scraping »), l&apos;extraction de tout ou partie de ses contenus et leur
+          utilisation pour entraîner ou alimenter un système d&apos;intelligence artificielle. Les
+          robots d&apos;indexation des moteurs de recherche restent les bienvenus.
         </p>
       </ArticleLegal>
 

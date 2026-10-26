@@ -95,7 +95,8 @@ export function PiedDePage() {
 
         <div className="mt-14 flex flex-col gap-4 border-t border-craie/15 pt-7 text-[0.8rem] text-craie/50 sm:flex-row sm:items-center sm:justify-between">
           <p>
-            © {annee} {site.nom}. Tous droits réservés.
+            © {annee} {site.nom}. Tous droits réservés. Textes, photos et vidéos protégés : toute
+            reproduction ou copie est interdite sans notre autorisation écrite.
           </p>
           <ul className="flex flex-wrap gap-x-6 gap-y-5">
             {navigationLegale.map((lien) => (
