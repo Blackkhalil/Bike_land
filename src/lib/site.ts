@@ -56,7 +56,7 @@ export const site = {
     indication: "Dans la von juste avant la station JNP.",
     carte: "https://maps.app.goo.gl/tkfdXyVonxogwVek8",
   },
-  horaires: "Du lundi au samedi, 8 h - 22 h",
+  horaires: "Tous les jours, 8 h - 22 h",
   /**
    * Les horaires pour les données structurées lues par Google : tous les
    * jours, car le dimanche se réserve aussi (Gbashi bike à 8 h, location
