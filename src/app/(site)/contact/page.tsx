@@ -5,13 +5,17 @@ import { FormulaireContact } from "@/components/FormulaireContact";
 import { Section, TitreSection } from "@/components/ui";
 import { faq } from "@/data/contenus";
 import { site } from "@/lib/site";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { filDAriane } from "@/lib/donnees-structurees";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Contact & FAQ",
+export const metadata: Metadata = metadonneesPage({
+  titre: "Contact et questions fréquentes",
   description:
-    "Questions fréquentes sur la location, le paiement Mobile Money, les sorties encadrées et l'assistance, plus un formulaire pour tout le reste.",
-  alternates: { canonical: "/contact" },
-};
+    "Une question sur la location de vélos, le paiement Mobile Money ou les sorties encadrées ? " +
+    "Lisez nos réponses ou écrivez-nous : quelqu'un vous répond.",
+  chemin: "/contact",
+});
 
 export default function PageContact() {
   // Données structurées : permet l'affichage des questions dans les
@@ -30,6 +34,7 @@ export default function PageContact() {
 
   return (
     <>
+      <DonneesStructurees donnees={filDAriane([{ nom: "Contact & FAQ", chemin: "/contact" }])} />
       <script
         type="application/ld+json"
         // Le `<` est échappé : une balise fermante apparaissant dans une

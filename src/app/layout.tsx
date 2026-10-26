@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Oswald } from "next/font/google";
 
 import { MesureAudience } from "@/components/MesureAudience";
+import { IMAGE_PARTAGE } from "@/lib/seo";
 import { site } from "@/lib/site";
 import "./globals.css";
 
@@ -25,26 +26,47 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
+  // Le titre et la description de repli, pour une page qui n'en donne
+  // pas ; chaque page publique a les siens (src/lib/seo.ts).
   title: {
-    default: `${site.nom}, location de vélos pour road trips au Bénin`,
+    default: `${site.nom}, location de vélos à Cotonou`,
     template: `%s · ${site.nom}`,
   },
   description: site.description,
+  applicationName: site.nom,
   keywords: [
-    "location vélo Bénin",
     "location vélo Cotonou",
+    "location de vélos Cotonou",
+    "louer un vélo à Cotonou",
+    "balade à vélo Cotonou",
     "road trip vélo Bénin",
     "vélo route des Pêches",
-    "cyclotourisme Bénin",
+    "sortie vélo week-end Cotonou",
+    "Gbashi bike",
   ],
   openGraph: {
     type: "website",
     locale: "fr_BJ",
     siteName: site.nom,
-    title: `${site.nom}, ${site.baseline}`,
+    title: `${site.nom}, location de vélos à Cotonou`,
     description: site.description,
+    images: [IMAGE_PARTAGE],
   },
-  robots: { index: true, follow: true },
+  twitter: {
+    card: "summary_large_image",
+    title: `${site.nom}, location de vélos à Cotonou`,
+    description: site.description,
+    images: [IMAGE_PARTAGE.url],
+  },
+  // Grandes vignettes et extraits complets dans les résultats de Google.
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+  },
+  // La balise de validation de Google Search Console, dès que le gérant
+  // l'a obtenue (src/lib/site.ts).
+  ...(site.verificationGoogle ? { verification: { google: site.verificationGoogle } } : {}),
 };
 
 export const viewport: Viewport = {

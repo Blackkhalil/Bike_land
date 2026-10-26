@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 
 import { ArticleLegal, PageLegale } from "@/components/PageLegale";
 import { site } from "@/lib/site";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Mentions légales",
-  description: "Éditeur, hébergement et propriété intellectuelle du site Bike Land.",
-  alternates: { canonical: "/mentions-legales" },
-};
+export const metadata: Metadata = metadonneesPage({
+  titre: "Mentions légales",
+  description:
+    "Mentions légales du site Bike Land, location de vélos à Cotonou : éditeur, hébergement, " +
+    "propriété intellectuelle et réutilisation des contenus.",
+  chemin: "/mentions-legales",
+});
 
 export default function PageMentionsLegales() {
   return (

@@ -5,17 +5,22 @@ import { VeloIllustration } from "@/components/VeloIllustration";
 import { Section, TitreSection } from "@/components/ui";
 import { etapesLocation } from "@/data/contenus";
 import { moyensDisponibles } from "@/lib/paiement";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { filDAriane } from "@/lib/donnees-structurees";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Comment ça marche",
+export const metadata: Metadata = metadonneesPage({
+  titre: "Louer un vélo à Cotonou en cinq étapes",
   description:
-    "Les cinq étapes d'une location Bike Land : choisir, réserver, payer en Mobile Money, récupérer et restituer. Sans compte, sans paperasse.",
-  alternates: { canonical: "/comment-ca-marche" },
-};
+    "Louer un vélo à Cotonou en cinq étapes : choisir son vélo, réserver en ligne, payer en Mobile Money, " +
+    "le récupérer et le rendre. Sans compte, sans paperasse.",
+  chemin: "/comment-ca-marche",
+});
 
 export default function PageCommentCaMarche() {
   return (
     <>
+      <DonneesStructurees donnees={filDAriane([{ nom: "Comment ça marche", chemin: "/comment-ca-marche" }])} />
       <Section fond="noir" className="pb-16 pt-32 sm:pt-40">
         <TitreSection as="h1" taille="lg" className=" max-w-4xl">
           De l&apos;envie

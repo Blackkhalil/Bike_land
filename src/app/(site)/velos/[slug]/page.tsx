@@ -18,10 +18,13 @@ import {
   GRILLE_HORAIRE,
   prixRoadTripMinimum,
 } from "@/data/offres";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { depot } from "@/lib/db";
 import { estDateISOValide } from "@/lib/dates";
+import { filDAriane, veloALouer } from "@/lib/donnees-structurees";
 import { formatDate, formatXof } from "@/lib/format";
 import { joursFermesCommeOccupes, lireOuverture } from "@/lib/ouverture";
+import { DESCRIPTION_MAX, metadonneesPage, premierQuiTient, SUFFIXE_TITRE, TITRE_MAX } from "@/lib/seo";
 
 type Params = Promise<{ slug: string }>;
 
@@ -52,11 +55,29 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const velo = await depot.trouverVeloParSlug(slug);
   if (!velo) return { title: "Vélo introuvable" };
 
-  return {
-    title: velo.nom,
-    description: `${velo.accroche}. Disponible en road trip encadré ou en location libre à l'heure, réservable en ligne sans créer de compte.`,
-    alternates: { canonical: `/velos/${velo.slug}` },
-  };
+  // Le titre et la description les plus complets qui tiennent dans les
+  // longueurs de Google (src/lib/seo.ts), selon la longueur du nom.
+  const gamme = GAMMES.find((g) => g.code === velo.gamme)?.nom ?? "";
+  const prix =
+    `À louer à Cotonou dès ${formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l'heure, ` +
+    `ou en road trip le week-end dès ${formatXof(prixRoadTripMinimum(velo.gamme))} par personne.`;
+  return metadonneesPage({
+    titre: premierQuiTient(
+      [`${velo.nom}, vélo ${gamme} à louer à Cotonou`, `${velo.nom}, vélo ${gamme} à louer`, velo.nom],
+      TITRE_MAX - SUFFIXE_TITRE.length,
+    ),
+    description: premierQuiTient(
+      [
+        `${velo.accroche}. ${prix} Réservation en ligne.`,
+        `${velo.accroche}. ${prix}`,
+        `${velo.nom}, vélo ${gamme}. ${prix} Réservation en ligne.`,
+        `${velo.nom}, vélo ${gamme}. ${prix}`,
+      ],
+      DESCRIPTION_MAX,
+    ),
+    chemin: `/velos/${velo.slug}`,
+    ...(velo.photo ? { image: { url: velo.photo, alt: `${velo.nom}, vélo ${gamme} à louer chez Bike Land` } } : {}),
+  });
 }
 
 export default async function PageVelo({ params }: { params: Params }) {
@@ -98,6 +119,15 @@ export default async function PageVelo({ params }: { params: Params }) {
 
   return (
     <>
+      <DonneesStructurees
+        donnees={[
+          filDAriane([
+            { nom: "Nos vélos", chemin: "/velos" },
+            { nom: velo.nom, chemin: `/velos/${velo.slug}` },
+          ]),
+          veloALouer(velo),
+        ]}
+      />
       {/* --- Bandeau produit --- */}
       {/* Le dégradé est clair, donc l'encre doit être sombre : l'encre par
           défaut du site est claire (le fond par défaut est noir) et le nom

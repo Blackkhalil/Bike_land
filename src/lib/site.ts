@@ -7,8 +7,12 @@
 export const site = {
   nom: "Bike Land",
   baseline: "Louez le vélo, gardez la route",
+  /**
+   * La description par défaut, pour Google et les aperçus de liens : 120 à
+   * 158 caractères (voir src/lib/seo.ts).
+   */
   description:
-    "Location de vélos sur la route des Pêches à Cotonou : randonneurs, gravels, VTC et tandem, réservables en ligne en deux minutes, sans créer de compte. Les road trips à travers le Bénin arrivent bientôt.",
+    "Location de vélos à Cotonou et road trips encadrés le week-end sur la route des Pêches. Réservation en ligne, paiement Mobile Money, sans compte à créer.",
   // Repli sur l'adresse réelle du site, et non sur un domaine que Bike
   // Land ne possède pas : un lien d'email ou un secret de revalidation ne
   // doit jamais partir vers un tiers parce qu'une variable manque.
@@ -53,6 +57,12 @@ export const site = {
     carte: "https://maps.app.goo.gl/tkfdXyVonxogwVek8",
   },
   horaires: "Du lundi au samedi, 8 h - 22 h",
+  /** Les mêmes horaires, pour les données structurées lues par Google. */
+  horairesOuverture: {
+    jours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    ouverture: "08:00",
+    fermeture: "22:00",
+  },
   /**
    * Immatriculations légales, à renseigner dès leur attribution.
    *
@@ -82,6 +92,13 @@ export const site = {
     { nom: "Instagram", url: "https://instagram.com/bikeland_bj" },
     { nom: "WhatsApp", url: "https://wa.me/2290191002201" },
   ],
+  /**
+   * Validation du site dans Google Search Console : la valeur `content` de
+   * la balise « google-site-verification » que Search Console donne au
+   * gérant (méthode « Balise HTML »). Publique par nature, puisqu'elle
+   * figure dans chaque page. Vide, aucune balise n'est posée.
+   */
+  verificationGoogle: "" as string,
 } as const;
 
 /**

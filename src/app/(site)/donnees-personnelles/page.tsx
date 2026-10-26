@@ -2,13 +2,15 @@ import type { Metadata } from "next";
 
 import { ArticleLegal, PageLegale } from "@/components/PageLegale";
 import { site } from "@/lib/site";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Protection des données personnelles",
+export const metadata: Metadata = metadonneesPage({
+  titre: "Protection des données personnelles",
   description:
-    "Quelles données Bike Land collecte, pourquoi, combien de temps, et comment exercer vos droits auprès de l'APDP au Bénin.",
-  alternates: { canonical: "/donnees-personnelles" },
-};
+    "Les données que Bike Land collecte, pourquoi et pour combien de temps, et comment exercer vos droits " +
+    "auprès de l'APDP, l'autorité béninoise compétente.",
+  chemin: "/donnees-personnelles",
+});
 
 export default function PageDonneesPersonnelles() {
   return (

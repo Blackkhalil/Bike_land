@@ -43,13 +43,17 @@ import {
 import { formatDateAvecJour, formatXof } from "@/lib/format";
 import { etatsSortiesOctobreRose, lireOuverture } from "@/lib/ouverture";
 import { lienWhatsApp, site } from "@/lib/site";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { filDAriane } from "@/lib/donnees-structurees";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Nos produits",
+export const metadata: Metadata = metadonneesPage({
+  titre: "Road trip, Gbashi bike et location à l'heure",
   description:
-    "Gbashi bike, le road trip du dimanche avec séance de sport devant la plage, le road trip encadré du samedi et la location libre à l'heure, sur la route des Pêches à Cotonou.",
-  alternates: { canonical: "/produits" },
-};
+    `Road trip encadré le samedi dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}, Gbashi bike le dimanche avec ` +
+    `séance de sport devant la plage dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}, location à l'heure à Cotonou.`,
+  chemin: "/produits",
+});
 
 /**
  * Régénérée au plus une fois par minute, à la demande, comme les fiches
@@ -209,6 +213,7 @@ export default async function PageProduits() {
   // bascule est corrigée dans le navigateur, dans un sens comme dans l'autre.
   return (
     <>
+      <DonneesStructurees donnees={filDAriane([{ nom: "Nos produits", chemin: "/produits" }])} />
       <Section fond="noir" className="pb-14 pt-32 sm:pt-40">
         <TitreSection as="h1" taille="lg" className="max-w-4xl">
           Une seule route,

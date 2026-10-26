@@ -9,13 +9,15 @@ import {
 } from "@/data/offres";
 import { formatXof } from "@/lib/format";
 import { site } from "@/lib/site";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Conditions générales de vente",
+export const metadata: Metadata = metadonneesPage({
+  titre: "Conditions générales de vente",
   description:
-    "Conditions de location Bike Land : réservation, paiement, sorties encadrées, annulation et responsabilité.",
-  alternates: { canonical: "/cgv" },
-};
+    "Conditions de vente Bike Land : réservation en ligne, paiement Mobile Money, road trips encadrés, " +
+    "location à l'heure, caution, annulation et responsabilité.",
+  chemin: "/cgv",
+});
 
 export default function PageCGV() {
   return (

@@ -9,15 +9,27 @@ import { CommentCaMarche } from "@/components/accueil/CommentCaMarche";
 import { Hero } from "@/components/accueil/Hero";
 import { ItinerairesApercu } from "@/components/accueil/ItinerairesApercu";
 import { VeloEnVedette } from "@/components/accueil/VeloEnVedette";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { GRILLE_HORAIRE } from "@/data/offres";
 import { depot } from "@/lib/db";
+import { accueil } from "@/lib/donnees-structurees";
+import { formatXof } from "@/lib/format";
 import { photosDuCarrousel } from "@/lib/photos-carrousel";
+import { metadonneesPage } from "@/lib/seo";
 import { site } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: `${site.nom}, ${site.baseline}`,
-  description: site.description,
-  alternates: { canonical: "/" },
-};
+/** L'heure de vélo la moins chère, toutes gammes confondues. */
+const PRIX_HEURE_MINIMUM = Math.min(...Object.values(GRILLE_HORAIRE).map((grille) => grille[0].prixXof));
+
+// Le mot-clé d'abord (« location de vélos à Cotonou »), la marque ensuite.
+export const metadata: Metadata = metadonneesPage({
+  titre: `Location de vélos à Cotonou, route des Pêches · ${site.nom}`,
+  titreAbsolu: true,
+  description:
+    `Louez un vélo à Cotonou dès ${formatXof(PRIX_HEURE_MINIMUM)} l'heure ou partez en road trip encadré ` +
+    "le week-end sur la route des Pêches. Réservez en ligne, payez en Mobile Money.",
+  chemin: "/",
+});
 
 /**
  * Page d'accueil.
@@ -54,6 +66,7 @@ export default async function PageAccueil() {
   ]);
   return (
     <>
+      <DonneesStructurees donnees={accueil()} />
       <Hero />
       <CatalogueApercu velos={velos.slice(0, 4)} />
       {/* Les trois gammes juste après l'aperçu du parc : le visiteur

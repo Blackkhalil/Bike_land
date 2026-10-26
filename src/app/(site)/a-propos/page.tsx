@@ -6,13 +6,17 @@ import { Section, TitreSection } from "@/components/ui";
 import { chiffresCles } from "@/data/contenus";
 import { depot } from "@/lib/db";
 import { site } from "@/lib/site";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { filDAriane } from "@/lib/donnees-structurees";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "À propos",
+export const metadata: Metadata = metadonneesPage({
+  titre: "Notre atelier de location de vélos à Cotonou",
   description:
-    "Bike Land, atelier de location de vélos sur la route des Pêches à Cotonou : notre histoire, nos valeurs, notre point de départ.",
-  alternates: { canonical: "/a-propos" },
-};
+    "Bike Land, atelier de location de vélos sur la route des Pêches à Cotonou : notre histoire, nos valeurs " +
+    "et la façon dont nous préparons chaque vélo.",
+  chemin: "/a-propos",
+});
 
 const valeurs = [
   {
@@ -42,6 +46,7 @@ export default async function PageAPropos() {
 
   return (
     <>
+      <DonneesStructurees donnees={filDAriane([{ nom: "À propos", chemin: "/a-propos" }])} />
       <Section fond="noir" className="pb-16 pt-32 sm:pt-40">
         <TitreSection as="h1" taille="lg" className=" max-w-4xl">
           Un atelier,

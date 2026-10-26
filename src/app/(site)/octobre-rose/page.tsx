@@ -13,20 +13,40 @@ import {
   PLACES_MAX_PAR_INSCRIPTION,
   texteOffertOctobreRose,
 } from "@/data/octobre-rose";
-import { horaireDeLaSortie, jourOctobreRose, MESSAGES_WHATSAPP, tarifOctobreRose } from "@/data/produits";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
+import {
+  horaireDeLaSortie,
+  jourOctobreRose,
+  MESSAGES_WHATSAPP,
+  octobreRoseEnCours,
+  tarifOctobreRose,
+} from "@/data/produits";
+import { filDAriane, sortiesOctobreRose } from "@/lib/donnees-structurees";
 import { etatsSortiesOctobreRose } from "@/lib/ouverture";
+import { DESCRIPTION_MAX, metadonneesPage, premierQuiTient } from "@/lib/seo";
 import { lienWhatsApp } from "@/lib/site";
 
-const joursDeLaCampagne = jourOctobreRose();
-
-export const metadata: Metadata = {
-  title: "Octobre rose",
-  description:
-    `Des sorties à vélo en rose${joursDeLaCampagne ? `, ${joursDeLaCampagne.toLowerCase()},` : ""} ` +
-    "pour soutenir la lutte contre le cancer du sein. " +
-    "Un prix forfaitaire, le même pour tous les vélos : on choisit son jour, on s'inscrit et on paie en ligne.",
-  alternates: { canonical: "/octobre-rose" },
-};
+/**
+ * Lue à chaque régénération, et non une fois pour toutes : en saison, la
+ * description donne les jours de la sortie ; la campagne passée, elle
+ * reste juste toute l'année, sans annoncer comme à venir des dates
+ * écoulées ni une prochaine édition que personne n'a décidée.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const jours = octobreRoseEnCours(new Date()) ? jourOctobreRose() : null;
+  const pourquoi = "une balade tout en rose pour rappeler qu'un dépistage à temps peut sauver des vies";
+  return metadonneesPage({
+    titre: "Octobre rose à vélo à Cotonou",
+    description: premierQuiTient(
+      [
+        ...(jours ? [`Octobre rose à vélo à Cotonou, ${jours.toLowerCase()} : ${pourquoi}. Prix unique, inscription en ligne.`] : []),
+        `Octobre rose à vélo avec Bike Land à Cotonou : ${pourquoi}, au même prix pour tous.`,
+      ],
+      DESCRIPTION_MAX,
+    ),
+    chemin: "/octobre-rose",
+  });
+}
 
 /**
  * Régénérée au plus toutes les trente secondes : elle compte les places de
@@ -65,6 +85,13 @@ export default async function PageOctobreRose() {
 
   return (
     <>
+      <DonneesStructurees
+        donnees={[
+          filDAriane([{ nom: "Octobre rose", chemin: "/octobre-rose" }]),
+          // Les sorties à venir seulement : une fois passées, plus rien.
+          ...sortiesOctobreRose(OCTOBRE_ROSE.sorties, maintenant),
+        ]}
+      />
       <Section fond="rose" className="pb-16 pt-32 sm:pt-40">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
           <div>

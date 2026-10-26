@@ -4,17 +4,32 @@ import { BoutonLien } from "@/components/Bouton";
 import { CarteItineraire } from "@/components/CarteItineraire";
 import { Section, TitreSection } from "@/components/ui";
 import { itineraires } from "@/data/contenus";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { filDAriane } from "@/lib/donnees-structurees";
+import { DESCRIPTION_MAX, metadonneesPage, premierQuiTient } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Itinéraires",
-  description:
-    "Quatre road trips à vélo au Bénin, du littoral aux montagnes de l'Atacora : distance, dénivelé, étapes et vélo conseillé pour chacun. Bientôt disponibles à la réservation.",
-  alternates: { canonical: "/itineraires" },
-};
+/** « Togbin (30 km, environ 3 h) et l'Amazone (18 km, environ 2 h) », tiré des circuits. */
+const CIRCUITS = itineraires
+  .map((i) => `${i.titre.replace(/^La route des Pêches jusqu'à /, "")} (${i.distanceKm} km, ${i.duree.toLowerCase()})`)
+  .join(" et ");
+
+export const metadata: Metadata = metadonneesPage({
+  titre: "Circuits à vélo sur la route des Pêches",
+  description: premierQuiTient(
+    [
+      `Circuits à vélo au départ de Cotonou, sur la route des Pêches : ${CIRCUITS}, en groupe encadré.`,
+      `Circuits à vélo au départ de Cotonou, sur la route des Pêches : ${CIRCUITS}.`,
+      "Circuits à vélo au départ de Cotonou, sur la route des Pêches : distance, durée, étapes et vélo conseillé pour chacun, en groupe encadré.",
+    ],
+    DESCRIPTION_MAX,
+  ),
+  chemin: "/itineraires",
+});
 
 export default function PageItineraires() {
   return (
     <>
+      <DonneesStructurees donnees={filDAriane([{ nom: "Itinéraires", chemin: "/itineraires" }])} />
       <Section fond="noir" className="pb-16 pt-32 sm:pt-40">
         <TitreSection as="h1" taille="lg" className="max-w-4xl">
           Deux circuits,

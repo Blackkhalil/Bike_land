@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 
+import { roleDuDeploiement } from "@/lib/deploiement";
 import { site } from "@/lib/site";
 
 /**
@@ -47,6 +48,12 @@ const ROBOTS_IA = [
 ];
 
 export default function robots(): MetadataRoute.Robots {
+  // Le domaine d'administration : rien à explorer, rien à indexer. Ses
+  // pages publiques renvoient de toute façon vers le site.
+  if (roleDuDeploiement() === "admin") {
+    return { rules: { userAgent: "*", disallow: "/" } };
+  }
+
   return {
     rules: [
       {

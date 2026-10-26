@@ -8,8 +8,11 @@ import Image from "next/image";
 import { PaysageIllustration } from "@/components/PaysageIllustration";
 import { ambiancePour } from "@/components/CarteItineraire";
 import { Pastille, Section, TitreSection } from "@/components/ui";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { itineraires } from "@/data/contenus";
 import { depot } from "@/lib/db";
+import { circuit, filDAriane } from "@/lib/donnees-structurees";
+import { DESCRIPTION_MAX, metadonneesPage, premierQuiTient, SUFFIXE_TITRE, TITRE_MAX } from "@/lib/seo";
 
 type Params = Promise<{ slug: string }>;
 
@@ -22,11 +25,23 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const itineraire = itineraires.find((item) => item.slug === slug);
   if (!itineraire) return { title: "Itinéraire introuvable" };
 
-  return {
-    title: itineraire.titre,
-    description: `${itineraire.resume} ${itineraire.distanceKm} km, ${itineraire.duree}, niveau ${itineraire.niveau.toLowerCase()}.`,
-    alternates: { canonical: `/itineraires/${itineraire.slug}` },
-  };
+  // Le résumé entier dépasse ce que Google affiche : les repères chiffrés
+  // d'abord, puis la première phrase du résumé si elle tient.
+  const reperes = `${itineraire.distanceKm} km, ${itineraire.duree.toLowerCase()}, niveau ${itineraire.niveau.toLowerCase()}`;
+  const premierePhrase = itineraire.resume.split(/(?<=\.)\s/)[0];
+  return metadonneesPage({
+    titre: premierQuiTient([`${itineraire.titre} à vélo`, itineraire.titre], TITRE_MAX - SUFFIXE_TITRE.length),
+    description: premierQuiTient(
+      [
+        `${itineraire.titre} à vélo : ${reperes}. ${premierePhrase}`,
+        `${itineraire.titre} à vélo, au départ de Cotonou : ${reperes}, en groupe encadré, coco et eau compris.`,
+        `${itineraire.titre} à vélo, au départ de Cotonou : ${reperes}, en groupe encadré.`,
+      ],
+      DESCRIPTION_MAX,
+    ),
+    chemin: `/itineraires/${itineraire.slug}`,
+    ...(itineraire.photo ? { image: { url: itineraire.photo, alt: itineraire.titre } } : {}),
+  });
 }
 
 export default async function PageItineraire({ params }: { params: Params }) {
@@ -48,6 +63,15 @@ export default async function PageItineraire({ params }: { params: Params }) {
 
   return (
     <>
+      <DonneesStructurees
+        donnees={[
+          filDAriane([
+            { nom: "Itinéraires", chemin: "/itineraires" },
+            { nom: itineraire.titre, chemin: `/itineraires/${itineraire.slug}` },
+          ]),
+          circuit(itineraire),
+        ]}
+      />
       <Section fond="noir" className="pb-12 pt-32 sm:pt-40">
         <nav aria-label="Fil d'ariane" className="etiquette flex items-center gap-2 opacity-75">
           <Link href="/itineraires" className="lien-souligne cible-elargie">

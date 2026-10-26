@@ -3,13 +3,15 @@ import type { Metadata } from "next";
 import { FormulaireSuivi } from "@/components/reservation/FormulaireSuivi";
 import { Section, TitreSection } from "@/components/ui";
 import { site } from "@/lib/site";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Suivre ma réservation",
+export const metadata: Metadata = metadonneesPage({
+  titre: "Suivre ma réservation",
   description:
-    "Retrouvez votre réservation Bike Land avec le lien reçu par email, ou demandez son renvoi.",
-  alternates: { canonical: "/reservation/suivi" },
-};
+    "Retrouvez votre réservation Bike Land grâce au lien reçu par email, ou demandez son renvoi : " +
+    "vélo, date, horaire et paiement, tout est au même endroit.",
+  chemin: "/reservation/suivi",
+});
 
 export default function PageSuivi() {
   return (

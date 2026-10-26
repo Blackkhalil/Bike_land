@@ -6,13 +6,20 @@ import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum } from
 import { formatXof } from "@/lib/format";
 import { Section, TitreSection } from "@/components/ui";
 import { depot } from "@/lib/db";
+import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { filDAriane } from "@/lib/donnees-structurees";
+import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "Nos vélos",
+/** L'heure de vélo la moins chère, toutes gammes confondues. */
+const PRIX_HEURE_MINIMUM = Math.min(...Object.values(GRILLE_HORAIRE).map((grille) => grille[0].prixXof));
+
+export const metadata: Metadata = metadonneesPage({
+  titre: `Vélos à louer à Cotonou dès ${formatXof(PRIX_HEURE_MINIMUM)} l'heure`,
   description:
-    "Le parc Bike Land, sur la route des Pêches à Cotonou : trois gammes, Classique, Premium et Prestige. Choisissez votre gamme, puis votre vélo et votre date ; la formule se choisit à l'étape suivante.",
-  alternates: { canonical: "/velos" },
-};
+    "Trois gammes de vélos à louer sur la route des Pêches à Cotonou : Classique, Premium et Prestige. " +
+    "Choisissez votre vélo et votre date, puis réservez en ligne.",
+  chemin: "/velos",
+});
 
 /**
  * Page régénérée au plus une fois par minute.
@@ -84,6 +91,7 @@ export default async function PageCatalogue() {
 
   return (
     <Section fond="noir" className="pb-24 pt-32 sm:pt-40">
+      <DonneesStructurees donnees={filDAriane([{ nom: "Nos vélos", chemin: "/velos" }])} />
       <div>
         <TitreSection className="max-w-3xl" as="h1">
           Des vélos préparés
