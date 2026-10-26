@@ -98,7 +98,7 @@ export const site = {
    * gérant (méthode « Balise HTML »). Publique par nature, puisqu'elle
    * figure dans chaque page. Vide, aucune balise n'est posée.
    */
-  verificationGoogle: "" as string,
+  verificationGoogle: "fKEB8MeH42AnSPXJl4wrT2zh0L7f_Q8lznFoqcLOKpw" as string,
 } as const;
 
 /**
