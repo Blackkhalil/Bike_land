@@ -158,7 +158,7 @@ export const faq = [
       {
         question: "Quels moyens de paiement acceptez-vous ?",
         reponse:
-          "Le Mobile Money uniquement : MTN Money et Moov Money. Une demande arrive sur votre téléphone, vous la validez avec votre code habituel. Les paiements passent par SasPay : aucune coordonnée de paiement ne transite par notre site ni n'y est conservée.",
+          "En ligne, le Mobile Money : MTN MoMo, Moov Money ou Celtiis Cash. Une demande arrive sur votre téléphone, vous la validez avec votre code habituel. Au comptoir, les espèces sont aussi acceptées. Les paiements passent par SasPay : aucune coordonnée de paiement ne transite par notre site ni n'y est conservée.",
       },
       {
         question: "Une caution est-elle demandée ?",

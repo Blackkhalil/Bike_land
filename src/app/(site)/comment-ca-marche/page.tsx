@@ -64,8 +64,8 @@ export default function PageCommentCaMarche() {
             </TitreSection>
             <p className="mt-6 max-w-md text-[0.98rem] leading-relaxed text-gris-cadre">
               Au Bénin, le Mobile Money est le moyen de paiement du quotidien. C&apos;est donc le
-              seul que nous acceptons : MTN Money ou Moov Money, depuis votre téléphone, sans
-              carte ni compte à créer.
+              seul que nous acceptons en ligne : MTN MoMo, Moov Money ou Celtiis Cash, depuis votre
+              téléphone, sans carte ni compte à créer. Au comptoir, les espèces sont aussi acceptées.
             </p>
             <ul className="mt-8 space-y-0">
               {moyensDisponibles.map((moyen) => (

@@ -18,11 +18,12 @@ export const metadata: Metadata = metadonneesPage({
   chemin: "/a-propos",
 });
 
-const valeurs = [
+/** Les valeurs de l'atelier ; la première compte les vélos réellement au parc. */
+const valeursDuParc = (nombreDeVelos: number) => [
   {
-    titre: "Onze vélos, bien suivis",
+    titre: `${nombreDeVelos} vélos, bien suivis`,
     detail:
-      "Onze machines, pas quatre-vingts. Chacune a son carnet d'entretien et son mécanicien référent. C'est ce qui nous permet de promettre qu'un vélo qui sort est un vélo qui roule.",
+      `${nombreDeVelos} machines, pas quatre-vingts. Chacune a son carnet d'entretien et son mécanicien référent. C'est ce qui nous permet de promettre qu'un vélo qui sort est un vélo qui roule.`,
   },
   {
     titre: "On répond, vraiment",
@@ -42,7 +43,12 @@ const valeurs = [
 ];
 
 export default async function PageAPropos() {
-  const points = await depot.listerPointsDeRetrait();
+  const [points, velos] = await Promise.all([depot.listerPointsDeRetrait(), depot.listerVelos()]);
+  // Le parc réel, et non un chiffre écrit une fois pour toutes.
+  const valeurs = valeursDuParc(velos.length);
+  const chiffres = chiffresCles.map((chiffre) =>
+    chiffre.unite === "vélos" ? { ...chiffre, valeur: String(velos.length) } : chiffre,
+  );
 
   return (
     <>
@@ -66,7 +72,7 @@ export default async function PageAPropos() {
         <div className="relative aspect-square overflow-hidden sm:aspect-16/9">
           <Image
             src="/images/streetsh-vZAk_n9Plfc-unsplash-carre.jpg"
-            alt="Un vélo prêt à partir devant l'atelier"
+            alt="Un vélo prêt à partir"
             fill
             // Visible dès le premier écran. Next 16 déprécie `priority`.
             loading="eager"
@@ -77,7 +83,7 @@ export default async function PageAPropos() {
         </div>
 
         <dl className="mt-12 grid gap-8 border-t border-noir-piste/12 pt-10 sm:grid-cols-2 lg:grid-cols-4">
-          {chiffresCles.map((chiffre) => (
+          {chiffres.map((chiffre) => (
             <div key={chiffre.detail}>
               <dt className="font-display text-[3rem] font-extrabold leading-none text-orange-sourd">
                 {chiffre.valeur}

@@ -58,6 +58,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   // Le titre et la description les plus complets qui tiennent dans les
   // longueurs de Google (src/lib/seo.ts), selon la longueur du nom.
   const gamme = GAMMES.find((g) => g.code === velo.gamme)?.nom ?? "";
+  // L'accroche saisie dans l'admin peut finir par un point : on n'en veut qu'un.
+  const accroche = velo.accroche.trim().replace(/\.+$/, "");
   const prix =
     `À louer à Cotonou dès ${formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l'heure, ` +
     `ou en road trip le week-end dès ${formatXof(prixRoadTripMinimum(velo.gamme))} par personne.`;
@@ -68,8 +70,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     ),
     description: premierQuiTient(
       [
-        `${velo.accroche}. ${prix} Réservation en ligne.`,
-        `${velo.accroche}. ${prix}`,
+        `${accroche}. ${prix} Réservation en ligne.`,
+        `${accroche}. ${prix}`,
         `${velo.nom}, vélo ${gamme}. ${prix} Réservation en ligne.`,
         `${velo.nom}, vélo ${gamme}. ${prix}`,
       ],
@@ -204,7 +206,7 @@ export default async function PageVelo({ params }: { params: Params }) {
             <div className="relative mx-auto mt-4 aspect-16/9 w-full max-w-4xl overflow-hidden">
               <Image
                 src={velo.photo}
-                alt={velo.nom}
+                alt={`${velo.nom}, vélo ${GAMMES.find((g) => g.code === velo.gamme)?.nom ?? ""} à louer chez Bike Land`}
                 fill
                 priority
                 sizes="(min-width: 1024px) 900px, 100vw"
