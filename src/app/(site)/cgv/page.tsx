@@ -73,9 +73,9 @@ export default function PageCGV() {
           Aucun autre supplément n&apos;est appliqué.
         </p>
         <p>
-          Le paiement s&apos;effectue par Mobile Money : MTN Money, Moov Money ou Celtiis
-          Cash. Aucune
-          coordonnée de paiement n&apos;est conservée par {site.nom}.
+          Le paiement en ligne s&apos;effectue par Mobile Money : MTN Money, Moov Money ou
+          Celtiis Cash. Au comptoir, il peut aussi se faire en espèces. Aucune coordonnée de
+          paiement n&apos;est conservée par {site.nom}.
         </p>
       </ArticleLegal>
 

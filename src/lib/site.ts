@@ -57,9 +57,13 @@ export const site = {
     carte: "https://maps.app.goo.gl/tkfdXyVonxogwVek8",
   },
   horaires: "Du lundi au samedi, 8 h - 22 h",
-  /** Les mêmes horaires, pour les données structurées lues par Google. */
+  /**
+   * Les horaires pour les données structurées lues par Google : tous les
+   * jours, car le dimanche se réserve aussi (Gbashi bike à 8 h, location
+   * libre à partir de 11 h, voir src/data/offres.ts).
+   */
   horairesOuverture: {
-    jours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+    jours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
     ouverture: "08:00",
     fermeture: "22:00",
   },

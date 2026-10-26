@@ -47,11 +47,14 @@ import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { filDAriane } from "@/lib/donnees-structurees";
 import { metadonneesPage } from "@/lib/seo";
 
+/** L'heure de vélo la moins chère, toutes gammes confondues. */
+const PRIX_HEURE_MINIMUM = Math.min(...Object.values(GRILLE_HORAIRE).map((grille) => grille[0].prixXof));
+
 export const metadata: Metadata = metadonneesPage({
   titre: "Road trip, Gbashi bike et location à l'heure",
   description:
-    `Road trip encadré le samedi dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}, Gbashi bike le dimanche avec ` +
-    `séance de sport devant la plage dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}, location à l'heure à Cotonou.`,
+    `Road trip le samedi dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}, Gbashi bike avec sport sur la plage le dimanche ` +
+    `dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}, et location à l'heure dès ${formatXof(PRIX_HEURE_MINIMUM)} à Cotonou.`,
   chemin: "/produits",
 });
 

@@ -3,7 +3,8 @@ import Link from "next/link";
 
 import { VeloIllustration } from "./VeloIllustration";
 import { Pastille } from "./ui";
-import { GAMME_LA_PLUS_PRISE, GAMMES } from "@/data/offres";
+import { GAMME_LA_PLUS_PRISE } from "@/data/offres";
+import { libelleVelo } from "@/lib/seo";
 import type { Velo } from "@/lib/types";
 
 /**
@@ -57,7 +58,7 @@ export function CarteVelo({
           {velo.photo ? (
             <Image
               src={velo.photo}
-              alt={`${velo.nom}, vélo ${GAMMES.find((g) => g.code === velo.gamme)?.nom ?? ""}`}
+              alt={libelleVelo(velo)}
               fill
               // La fiche cadrée à gauche s'affiche plus large que la carte
               // (16:9 dans un cadre 8:7, soit environ une fois et demie).

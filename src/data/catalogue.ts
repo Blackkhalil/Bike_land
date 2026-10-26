@@ -234,7 +234,7 @@ export const velos: Velo[] = [
     statut: "DISPONIBLE",
     accroche: "Jantes bâton, double frein à disque, cadre acier haute résistance",
     description:
-      "Le haut du parc. Cadre en acier haute résistance, suspension avant et arrière, double frein à disque, et des jantes bâton magnésium à six branches qui ne se dévoilent pas. Pneus KENDA tout-terrain, vingt et une vitesses, roues de 26 pouces. Noir et rouge.",
+      "Le haut du parc. Cadre en acier haute résistance, suspension avant et arrière, double frein à disque, et des jantes bâton en magnésium à six branches qui ne se voilent pas. Pneus KENDA tout-terrain, vingt et une vitesses, roues de 26 pouces. Noir et rouge.",
     poidsKg: 18,
     vitesses: 21,
     chargeMaxKg: 130,
@@ -329,9 +329,9 @@ export const velos: Velo[] = [
     gamme: "PREMIUM",
     taille: "M",
     statut: "DISPONIBLE",
-    accroche: "Semi-rigide noir et bleu, la marque anglaise",
+    accroche: "Semi-rigide noir et bleu de la marque anglaise Raleigh",
     description:
-      "Semi-rigide à fourche suspendue, vingt et une vitesses, roues de 26 pouces. Freinage V-Brake sur jante. Noir et bleu, signé Raleigh, l'une des plus vieilles marques de cycle au monde.",
+      "Semi-rigide à fourche suspendue, vingt et une vitesses, roues de 26 pouces. Freinage V-Brake sur jante. Noir et bleu, signé Raleigh, l'une des plus vieilles marques de cycles au monde.",
     poidsKg: 15,
     vitesses: 21,
     chargeMaxKg: 110,

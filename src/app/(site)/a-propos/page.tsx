@@ -23,7 +23,7 @@ const valeursDuParc = (nombreDeVelos: number) => [
   {
     titre: `${nombreDeVelos} vélos, bien suivis`,
     detail:
-      `${nombreDeVelos} machines, pas quatre-vingts. Chacune a son carnet d'entretien et son mécanicien référent. C'est ce qui nous permet de promettre qu'un vélo qui sort est un vélo qui roule.`,
+      `Un parc de ${nombreDeVelos} machines, pas de quatre-vingts. Chacune a son carnet d'entretien et son mécanicien référent. C'est ce qui nous permet de promettre qu'un vélo qui sort est un vélo qui roule.`,
   },
   {
     titre: "On répond, vraiment",

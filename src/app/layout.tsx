@@ -58,12 +58,6 @@ export const metadata: Metadata = {
     description: site.description,
     images: [IMAGE_PARTAGE.url],
   },
-  // Grandes vignettes et extraits complets dans les résultats de Google.
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
-  },
   // La balise de validation de Google Search Console, dès que le gérant
   // l'a obtenue (src/lib/site.ts).
   ...(site.verificationGoogle ? { verification: { google: site.verificationGoogle } } : {}),

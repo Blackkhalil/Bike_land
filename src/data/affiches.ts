@@ -20,10 +20,10 @@ export const AFFICHES_GBASHI: Affiche[] = [
   ["La pause coco, étape 2 : des participants boivent un coco frais à l'ombre", "On recharge les batteries avant l'effort"],
   ["Place à la muscu, on Gbashi ! Étape 3 : un sportif soulève des haltères devant les vélos", "Ta salle de sport, c'est la plage"],
   ["Chacun son exercice : une participante soulève deux haltères", "Bras, jambes, dos : tout le corps y passe"],
-  ["Des coachs pour te guider : un coach corrige un mouvement sur la plage", "Chaque mouvement est montré et corrigé sur place"],
-  ["On se donne à fond : un sportif concentré, les vélos garés derrière lui", "Et les vélos attendent juste à côté"],
+  ["Des coachs pour te guider : un coach accompagne un participant sur la plage", "Chaque mouvement est montré et corrigé sur place"],
+  ["On se donne à fond : un sportif concentré pendant l'effort", "Et les vélos attendent juste à côté"],
   ["Ouvert à tous les niveaux : une participante soulève des haltères sur le sable", "Débutant ou confirmé, chacun à son rythme"],
-  ["Retour au point de départ, étape 4 : les participants repartent à vélo", "À vélo, les muscles chauds et le sourire en plus"],
+  ["Retour au point de départ, étape 4 : le groupe reprend la route", "À vélo, les muscles chauds et le sourire en plus"],
   ["Fier de son dimanche ! Un participant pose avec son vélo", "Du vélo, de la muscu, et l'envie de revenir"],
 ].map(([scene, legende], index) => ({
   src: `/images/produits/gbashi/${String(index + 1).padStart(2, "0")}.jpg`,

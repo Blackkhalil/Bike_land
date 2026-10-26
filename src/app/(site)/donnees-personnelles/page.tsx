@@ -7,8 +7,8 @@ import { metadonneesPage } from "@/lib/seo";
 export const metadata: Metadata = metadonneesPage({
   titre: "Protection des données personnelles",
   description:
-    "Les données que Bike Land collecte, pourquoi et pour combien de temps, et comment exercer vos droits " +
-    "auprès de l'APDP, l'autorité béninoise compétente.",
+    "Quelles données Bike Land collecte, pourquoi, combien de temps elles sont conservées et comment " +
+    "exercer vos droits auprès de l'APDP, l'autorité béninoise.",
   chemin: "/donnees-personnelles",
 });
 

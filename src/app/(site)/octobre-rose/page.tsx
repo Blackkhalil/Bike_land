@@ -33,14 +33,23 @@ import { lienWhatsApp } from "@/lib/site";
  * écoulées ni une prochaine édition que personne n'a décidée.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const jours = octobreRoseEnCours(new Date()) ? jourOctobreRose() : null;
-  const pourquoi = "une balade tout en rose pour rappeler qu'un dépistage à temps peut sauver des vies";
+  const maintenant = new Date();
+  const jours = jourOctobreRose()?.toLowerCase() ?? null;
+  const enSaison = octobreRoseEnCours(maintenant);
+  const pourquoi = "pour rappeler que dépister à temps le cancer du sein peut sauver des vies";
   return metadonneesPage({
     titre: "Octobre rose à vélo à Cotonou",
     description: premierQuiTient(
       [
-        ...(jours ? [`Octobre rose à vélo à Cotonou, ${jours.toLowerCase()} : ${pourquoi}. Prix unique, inscription en ligne.`] : []),
-        `Octobre rose à vélo avec Bike Land à Cotonou : ${pourquoi}, au même prix pour tous.`,
+        // En saison : les jours à venir, et l'inscription.
+        ...(enSaison && jours
+          ? [`Octobre rose à vélo à Cotonou, ${jours} : une balade tout en rose ${pourquoi}. Inscription en ligne.`]
+          : []),
+        // La campagne passée : ce qui a eu lieu, sans rien vendre.
+        ...(!enSaison && jours
+          ? [`Octobre rose ${OCTOBRE_ROSE.annee} à vélo avec Bike Land à Cotonou : des balades tout en rose, ${jours}, ${pourquoi}.`]
+          : []),
+        `Octobre rose à vélo avec Bike Land à Cotonou : une balade tout en rose ${pourquoi}.`,
       ],
       DESCRIPTION_MAX,
     ),
@@ -89,7 +98,7 @@ export default async function PageOctobreRose() {
         donnees={[
           filDAriane([{ nom: "Octobre rose", chemin: "/octobre-rose" }]),
           // Les sorties à venir seulement : une fois passées, plus rien.
-          ...sortiesOctobreRose(OCTOBRE_ROSE.sorties, maintenant),
+          ...sortiesOctobreRose(etats, maintenant),
         ]}
       />
       <Section fond="rose" className="pb-16 pt-32 sm:pt-40">

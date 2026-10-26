@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
+import { GAMMES } from "@/data/offres";
 import { site } from "@/lib/site";
+import type { Velo } from "@/lib/types";
 
 /**
  * Référencement : ce que Google et les aperçus de liens (WhatsApp,
@@ -32,6 +34,16 @@ export const IMAGE_PARTAGE = {
   height: 630,
   alt: "Une sortie Bike Land à vélo sur la route des Pêches, à Cotonou",
 } as const;
+
+/**
+ * « Northpoint, vélo Premium », ou « Vélo Prestige N° 1 » quand le nom dit
+ * déjà la gamme : pour les titres et les textes des photos.
+ */
+export function libelleVelo(velo: Pick<Velo, "nom" | "gamme">): string {
+  const gamme = GAMMES.find((g) => g.code === velo.gamme)?.nom ?? "";
+  if (!gamme || velo.nom.toLowerCase().includes(gamme.toLowerCase())) return `Vélo ${velo.nom}`;
+  return `${velo.nom}, vélo ${gamme}`;
+}
 
 /** Le premier texte qui tient dans la longueur donnée, sinon le dernier. */
 export function premierQuiTient(candidats: string[], longueurMax: number): string {
@@ -66,6 +78,12 @@ export function metadonneesPage({ titre, titreAbsolu = false, description, chemi
     title: titreAbsolu ? { absolute: titre } : titre,
     description,
     alternates: { canonical: chemin },
+    // Grandes vignettes et extraits complets dans les résultats de Google.
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+    },
     openGraph: {
       type: "website",
       locale: "fr_BJ",

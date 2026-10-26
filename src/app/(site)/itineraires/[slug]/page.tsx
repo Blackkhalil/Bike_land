@@ -39,8 +39,9 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       ],
       DESCRIPTION_MAX,
     ),
+    // L'aperçu garde la photo de sortie Bike Land : celle du circuit est une
+    // photo d'illustration, prise ailleurs.
     chemin: `/itineraires/${itineraire.slug}`,
-    ...(itineraire.photo ? { image: { url: itineraire.photo, alt: itineraire.titre } } : {}),
   });
 }
 
@@ -99,7 +100,7 @@ export default async function PageItineraire({ params }: { params: Params }) {
           {itineraire.photo ? (
             <Image
               src={itineraire.photo}
-              alt={`${itineraire.titre}, ${itineraire.region}`}
+              alt={itineraire.photoAlt ?? `${itineraire.titre}, ${itineraire.region}`}
               fill
               priority
               sizes="(min-width: 1280px) 1200px, 100vw"

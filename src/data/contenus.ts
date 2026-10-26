@@ -11,6 +11,7 @@ export const itineraires: Itineraire[] = [
   {
     slug: "route-des-peches-togbin",
     photo: "/images/coen-van-de-broek-OFyh9TpMyM8-unsplash.jpg",
+    photoAlt: "Deux cyclistes côte à côte sur une route en bord de mer",
     titre: "La route des Pêches jusqu'à Togbin",
     region: "Fidjrossè → Togbin",
     distanceKm: 30,
@@ -45,6 +46,7 @@ export const itineraires: Itineraire[] = [
   {
     slug: "route-des-peches-amazone",
     photo: "/images/hannah-carr-I079C4gOe8s-unsplash.jpg",
+    photoAlt: "Un cycliste sur une route bordée d'arbres, au soleil couchant",
     titre: "La route des Pêches jusqu'à l'Amazone",
     region: "Fidjrossè → l'Amazone",
     distanceKm: 18,
@@ -110,7 +112,7 @@ export const etapesLocation = [
     numero: "03",
     titre: "Payez en Mobile Money",
     detail:
-      "MTN Money ou Moov Money, à la dernière étape seulement. La facture part par email dans la minute.",
+      "MTN MoMo, Moov Money ou Celtiis Cash, à la dernière étape seulement. La facture part par email dans la minute.",
   },
   {
     numero: "04",
@@ -143,7 +145,7 @@ export const faq = [
       {
         question: "Puis-je modifier ou annuler ma réservation ?",
         reponse:
-          "Oui, depuis votre lien de suivi. L'annulation est gratuite jusqu'à 72 heures avant le départ, puis 50 % du montant est retenu. Passé l'heure de départ, la location est due.",
+          "Vous pouvez l'annuler depuis votre lien de suivi ; pour changer de date, appelez-nous ou écrivez-nous sur WhatsApp. L'annulation est gratuite jusqu'à 72 heures avant le départ, puis 50 % du montant est retenu. Passé l'heure de départ, la location est due.",
       },
       {
         question: "Combien de temps à l'avance faut-il réserver ?",
@@ -158,7 +160,7 @@ export const faq = [
       {
         question: "Quels moyens de paiement acceptez-vous ?",
         reponse:
-          "En ligne, le Mobile Money : MTN MoMo, Moov Money ou Celtiis Cash. Une demande arrive sur votre téléphone, vous la validez avec votre code habituel. Au comptoir, les espèces sont aussi acceptées. Les paiements passent par SasPay : aucune coordonnée de paiement ne transite par notre site ni n'y est conservée.",
+          "En ligne, le Mobile Money : MTN MoMo, Moov Money ou Celtiis Cash. Une demande arrive sur votre téléphone, vous la validez avec votre code habituel. Les paiements en ligne passent par SasPay : votre code Mobile Money se saisit sur votre téléphone, jamais sur notre site. Au comptoir, les espèces sont aussi acceptées.",
       },
       {
         question: "Une caution est-elle demandée ?",

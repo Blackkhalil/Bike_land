@@ -270,6 +270,11 @@ export interface Itineraire {
   teintes: [string, string];
   /** Photographie du parcours ; repli sur l'illustration si absente. */
   photo?: string;
+  /**
+   * Ce que montre vraiment la photo, pour son texte alternatif : une photo
+   * d'illustration ne doit pas se faire passer pour le circuit lui-même.
+   */
+  photoAlt?: string;
 }
 
 export interface MessageContact {

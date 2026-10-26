@@ -24,7 +24,7 @@ import { estDateISOValide } from "@/lib/dates";
 import { filDAriane, veloALouer } from "@/lib/donnees-structurees";
 import { formatDate, formatXof } from "@/lib/format";
 import { joursFermesCommeOccupes, lireOuverture } from "@/lib/ouverture";
-import { DESCRIPTION_MAX, metadonneesPage, premierQuiTient, SUFFIXE_TITRE, TITRE_MAX } from "@/lib/seo";
+import { DESCRIPTION_MAX, libelleVelo, metadonneesPage, premierQuiTient, SUFFIXE_TITRE, TITRE_MAX } from "@/lib/seo";
 
 type Params = Promise<{ slug: string }>;
 
@@ -56,30 +56,36 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!velo) return { title: "Vélo introuvable" };
 
   // Le titre et la description les plus complets qui tiennent dans les
-  // longueurs de Google (src/lib/seo.ts), selon la longueur du nom.
-  const gamme = GAMMES.find((g) => g.code === velo.gamme)?.nom ?? "";
+  // longueurs de Google (src/lib/seo.ts). L'accroche, seule information
+  // propre au vélo, passe avant tout : la phrase de prix raccourcit d'abord.
+  const libelle = libelleVelo(velo);
   // L'accroche saisie dans l'admin peut finir par un point : on n'en veut qu'un.
   const accroche = velo.accroche.trim().replace(/\.+$/, "");
-  const prix =
-    `À louer à Cotonou dès ${formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l'heure, ` +
-    `ou en road trip le week-end dès ${formatXof(prixRoadTripMinimum(velo.gamme))} par personne.`;
-  return metadonneesPage({
+  const heure = formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof);
+  const roadTrip = formatXof(prixRoadTripMinimum(velo.gamme));
+  const prixLong = `À louer à Cotonou dès ${heure} l'heure, ou en road trip le week-end dès ${roadTrip} par personne.`;
+  const prixCourt = `À louer à Cotonou dès ${heure} l'heure, road trip dès ${roadTrip}.`;
+  const metadonnees = metadonneesPage({
     titre: premierQuiTient(
-      [`${velo.nom}, vélo ${gamme} à louer à Cotonou`, `${velo.nom}, vélo ${gamme} à louer`, velo.nom],
+      [`${libelle} à louer à Cotonou`, `${libelle} à louer`, velo.nom],
       TITRE_MAX - SUFFIXE_TITRE.length,
     ),
     description: premierQuiTient(
       [
-        `${accroche}. ${prix} Réservation en ligne.`,
-        `${accroche}. ${prix}`,
-        `${velo.nom}, vélo ${gamme}. ${prix} Réservation en ligne.`,
-        `${velo.nom}, vélo ${gamme}. ${prix}`,
+        `${accroche}. ${prixLong} Réservation en ligne.`,
+        `${accroche}. ${prixLong}`,
+        `${accroche}. ${prixCourt}`,
+        `${accroche}. À Cotonou dès ${heure} l'heure.`,
+        `${libelle}. ${prixLong} Réservation en ligne.`,
+        `${libelle}. ${prixLong}`,
       ],
       DESCRIPTION_MAX,
     ),
     chemin: `/velos/${velo.slug}`,
-    ...(velo.photo ? { image: { url: velo.photo, alt: `${velo.nom}, vélo ${gamme} à louer chez Bike Land` } } : {}),
+    ...(velo.photo ? { image: { url: velo.photo, alt: `${libelle}, à louer chez Bike Land` } } : {}),
   });
+  // Un vélo retiré sort de l'index, comme il est sorti du plan du site.
+  return velo.statut === "RETIRE" ? { ...metadonnees, robots: { index: false, follow: true } } : metadonnees;
 }
 
 export default async function PageVelo({ params }: { params: Params }) {
@@ -206,7 +212,7 @@ export default async function PageVelo({ params }: { params: Params }) {
             <div className="relative mx-auto mt-4 aspect-16/9 w-full max-w-4xl overflow-hidden">
               <Image
                 src={velo.photo}
-                alt={`${velo.nom}, vélo ${GAMMES.find((g) => g.code === velo.gamme)?.nom ?? ""} à louer chez Bike Land`}
+                alt={`${libelleVelo(velo)}, à louer chez Bike Land`}
                 fill
                 priority
                 sizes="(min-width: 1024px) 900px, 100vw"

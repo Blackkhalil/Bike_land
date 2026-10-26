@@ -12,8 +12,8 @@ import { metadonneesPage } from "@/lib/seo";
 export const metadata: Metadata = metadonneesPage({
   titre: "Louer un vélo à Cotonou en cinq étapes",
   description:
-    "Louer un vélo à Cotonou en cinq étapes : choisir son vélo, réserver en ligne, payer en Mobile Money, " +
-    "le récupérer et le rendre. Sans compte, sans paperasse.",
+    "Choisissez votre vélo, réservez en ligne sans créer de compte, payez en Mobile Money et retrouvez " +
+    "le coordinateur au départ, à Cotonou.",
   chemin: "/comment-ca-marche",
 });
 

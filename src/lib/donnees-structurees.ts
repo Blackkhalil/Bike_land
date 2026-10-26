@@ -5,8 +5,8 @@ import {
   PRIX_ROAD_TRIP_XOF,
   prixRoadTripMinimum,
 } from "@/data/offres";
-import type { SortieOctobreRose } from "@/data/octobre-rose";
 import { formatXof } from "@/lib/format";
+import type { EtatSortieOctobreRose } from "@/lib/ouverture";
 import { IMAGE_PARTAGE } from "@/lib/seo";
 import { site } from "@/lib/site";
 import type { Itineraire, Velo } from "@/lib/types";
@@ -20,8 +20,8 @@ import type { Itineraire, Velo } from "@/lib/types";
  *  - rien qui ne soit sur le site : l'adresse précise et le point de
  *    départ restent réservés aux clients (src/lib/site.ts), seules la
  *    ville et le pays sont donnés ;
- *  - les notes ne viennent que d'avis réels de clients, et ne sont
- *    publiées que lorsqu'il y en a.
+ *  - aucune note par vélo : un avis porte sur la sortie Bike Land, pas
+ *    sur la machine, et le site a retiré les étoiles par vélo pour cela.
  */
 
 const ID_ENTREPRISE = `${site.url}/#entreprise`;
@@ -144,7 +144,6 @@ export function veloALouer(velo: Velo) {
             price: prix,
             priceCurrency: "XOF",
             unitCode: unite,
-            referenceQuantity: { "@type": "QuantitativeValue", value: 1, unitCode: unite },
           },
         }
       : {}),
@@ -162,18 +161,6 @@ export function veloALouer(velo: Velo) {
       offre("Location à l'heure", GRILLE_HORAIRE[velo.gamme][0].prixXof, "HUR"),
       offre("Road trip encadré, par personne", prixRoadTripMinimum(velo.gamme)),
     ],
-    // Des avis réels de clients, et seulement s'il y en a.
-    ...(velo.nombreAvis > 0 && velo.noteMoyenne > 0
-      ? {
-          aggregateRating: {
-            "@type": "AggregateRating",
-            ratingValue: velo.noteMoyenne,
-            reviewCount: velo.nombreAvis,
-            bestRating: 5,
-            worstRating: 1,
-          },
-        }
-      : {}),
   };
 }
 
@@ -186,7 +173,8 @@ export function circuit(itineraire: Itineraire) {
     description: itineraire.resume,
     url: adresseComplete(`/itineraires/${itineraire.slug}`),
     touristType: "Cyclisme",
-    ...(itineraire.photo ? { image: adresseComplete(itineraire.photo) } : {}),
+    // La vraie sortie Bike Land : la photo du circuit est une illustration.
+    image: adresseComplete(IMAGE_PARTAGE.url),
     provider: REFERENCE_ENTREPRISE,
     itinerary: {
       "@type": "ItemList",
@@ -209,10 +197,10 @@ function instantAuBenin(date: string, horaire: string): string {
  * afficher (date, lieu, prix). Une sortie passée n'en produit plus : la
  * page reste en ligne toute l'année sans annoncer de date écoulée.
  */
-export function sortiesOctobreRose(sorties: readonly SortieOctobreRose[], maintenant: Date) {
-  return sorties
-    .filter((sortie) => new Date(instantAuBenin(sortie.date, sortie.depart)) > maintenant)
-    .map((sortie) => ({
+export function sortiesOctobreRose(etats: readonly EtatSortieOctobreRose[], maintenant: Date) {
+  return etats
+    .filter(({ sortie }) => new Date(instantAuBenin(sortie.date, sortie.depart)) > maintenant)
+    .map(({ sortie, places, ouverteEnLigne }) => ({
       "@context": "https://schema.org",
       "@type": "Event",
       name: "Octobre rose à vélo avec Bike Land",
@@ -233,7 +221,9 @@ export function sortiesOctobreRose(sorties: readonly SortieOctobreRose[], mainte
         "@type": "Offer",
         price: sortie.prixXof,
         priceCurrency: "XOF",
-        availability: "https://schema.org/InStock",
+        // Complète ou fermée au tableau de bord : plus de place à vendre.
+        availability:
+          ouverteEnLigne && places > 0 ? "https://schema.org/InStock" : "https://schema.org/SoldOut",
         url: adresseComplete("/octobre-rose"),
       },
     }));

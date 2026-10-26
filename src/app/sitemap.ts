@@ -11,19 +11,19 @@ import type { Velo } from "@/lib/types";
 export const revalidate = 3600;
 
 /** Les pages publiques et indexables, hors fiches vélo et itinéraires. */
-const PAGES: { chemin: string; priorite: number; frequence: "daily" | "weekly" | "monthly" | "yearly" }[] = [
-  { chemin: "", priorite: 1, frequence: "weekly" },
-  { chemin: "/velos", priorite: 0.9, frequence: "daily" },
-  { chemin: "/produits", priorite: 0.9, frequence: "weekly" },
-  { chemin: "/octobre-rose", priorite: 0.6, frequence: "monthly" },
-  { chemin: "/itineraires", priorite: 0.7, frequence: "monthly" },
-  { chemin: "/comment-ca-marche", priorite: 0.7, frequence: "monthly" },
-  { chemin: "/contact", priorite: 0.7, frequence: "monthly" },
-  { chemin: "/a-propos", priorite: 0.6, frequence: "yearly" },
-  { chemin: "/reservation/suivi", priorite: 0.3, frequence: "yearly" },
-  { chemin: "/cgv", priorite: 0.3, frequence: "yearly" },
-  { chemin: "/mentions-legales", priorite: 0.2, frequence: "yearly" },
-  { chemin: "/donnees-personnelles", priorite: 0.2, frequence: "yearly" },
+const PAGES = [
+  "",
+  "/velos",
+  "/produits",
+  "/octobre-rose",
+  "/itineraires",
+  "/comment-ca-marche",
+  "/contact",
+  "/a-propos",
+  "/reservation/suivi",
+  "/cgv",
+  "/mentions-legales",
+  "/donnees-personnelles",
 ];
 
 /** Une image en adresse complète, comme Google la demande. */
@@ -49,9 +49,11 @@ async function velosDuParc(): Promise<Velo[]> {
  * Plan du site pour Google et Bing : les pages publiques et indexables,
  * avec les photos des vélos.
  *
- * Pas de date de mise à jour : nous n'en avons pas de fiable par page, et
- * Google cesse de lire `lastmod` dès qu'il constate qu'elle change à
- * chaque publication sans que la page change.
+ * Ni date de mise à jour, ni fréquence, ni priorité : nous n'avons pas de
+ * date fiable par page (Google cesse de lire `lastmod` dès qu'il la voit
+ * changer à chaque publication), et Google ignore les deux autres. Sans
+ * elles, chaque entrée reste conforme au schéma de sitemaps.org, que Next
+ * enfreint en plaçant les images avant la fréquence et la priorité.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Le domaine d'administration n'a rien à faire indexer.
@@ -60,21 +62,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const velos = await velosDuParc();
 
   return [
-    ...PAGES.map((page) => ({
-      url: `${site.url}${page.chemin}`,
-      changeFrequency: page.frequence,
-      priority: page.priorite,
-    })),
+    ...PAGES.map((chemin) => ({ url: `${site.url}${chemin}` })),
     ...velos.map((velo) => ({
       url: `${site.url}/velos/${velo.slug}`,
-      changeFrequency: "weekly" as const,
-      priority: 0.8,
       ...(velo.photo ? { images: [adresseComplete(velo.photo)] } : {}),
     })),
-    ...itineraires.map((itineraire) => ({
-      url: `${site.url}/itineraires/${itineraire.slug}`,
-      changeFrequency: "monthly" as const,
-      priority: 0.6,
-    })),
+    ...itineraires.map((itineraire) => ({ url: `${site.url}/itineraires/${itineraire.slug}` })),
   ];
 }
