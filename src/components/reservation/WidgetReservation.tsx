@@ -4,10 +4,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Bouton } from "@/components/Bouton";
-import { creneauDuJour, formatHeure, GRILLE_HORAIRE, prixRoadTripMinimum } from "@/data/offres";
+import { creneauDuJour, formatHeure, GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum, type GammeVelo } from "@/data/offres";
 import { CLE_CHOIX_PRODUIT } from "@/data/produits";
 import { formatDate, formatXof } from "@/lib/format";
-import type { CodeOffre, Velo } from "@/lib/types";
+import type { CodeOffre } from "@/lib/types";
 import type { DateISO } from "@/lib/dates";
 import { Calendrier, type PeriodeOccupee } from "./Calendrier";
 import type { CreneauProposable } from "./TunnelReservation";
@@ -16,42 +16,48 @@ import { NoteHoraires, useReservationsOuvertes } from "./NoteHoraires";
 import { site } from "@/lib/site";
 
 /**
- * Encart de réservation de la fiche produit.
+ * Encart de réservation d'une gamme.
  *
- * Le vélo est déjà choisi puisqu'on est sur sa fiche : il ne reste qu'à
- * dire quand. Et « quand » ne veut pas dire la même chose selon la
- * formule, d'où le choix en tête d'encart :
+ * Le client choisit une gamme, pas un vélo : un vélo libre de la gamme lui
+ * est attribué à la réservation, et réglé à sa taille au départ. Il ne
+ * reste qu'à dire comment et quand, et « quand » ne veut pas dire la même
+ * chose selon la formule, d'où le choix en tête d'encart :
  *
  *  - **Road trip** : la sortie est encadrée et part en groupe. Il n'y a
  *    donc rien à choisir d'autre que le créneau, samedi ou dimanche matin
  *    (le dimanche, c'est Gbashi bike) : un calendrier laisserait croire
  *    qu'on peut partir un mardi.
- *  - **Location libre** : le vélo est à vous, le calendrier a tout son
- *    sens. L'heure de départ se choisit à l'étape suivante, une fois la
- *    durée connue.
+ *  - **Location libre** : le calendrier a tout son sens. Un jour n'y est
+ *    barré que si tous les vélos de la gamme sont pris. L'heure de départ
+ *    se choisit à l'étape suivante, une fois la durée connue.
  */
 export function WidgetReservation({
-  velo,
+  gamme,
   periodesOccupees,
   creneaux,
   complets,
+  aucunVelo = false,
 }: {
-  velo: Velo;
+  gamme: GammeVelo;
+  /** Les heures où plus aucun vélo de la gamme n'est libre (`occupationsDeLaGamme`). */
   periodesOccupees: PeriodeOccupee[];
   /** Les départs encadrés, calculés côté serveur : le samedi, aujourd'hui. */
   creneaux: CreneauProposable[];
   /** Les départs fermés par l'exploitant, montrés « Sold out » (voir `departsComplets`). */
   complets: CreneauProposable[];
+  /** Tous les vélos de la gamme sont à l'atelier : rien à réserver. */
+  aucunVelo?: boolean;
 }) {
   const routeur = useRouter();
+  const nom = GAMMES.find((entree) => entree.code === gamme)?.nom ?? gamme;
 
   /**
    * Jour pré-rempli, lu dans l'adresse, paramètre `debut`.
    *
    * Lu ici, dans le navigateur, et non dans la page : un composant
    * serveur qui consulte les paramètres d'URL force Next à reconstruire
-   * la page à chaque visite. Pour deux paramètres facultatifs, la fiche
-   * vélo cessait d'être cachable et s'effondrait sous la charge.
+   * la page à chaque visite. Pour deux paramètres facultatifs, la page
+   * cessait d'être cachable et s'effondrait sous la charge.
    */
   const parametres = useSearchParams();
   const jourDemande = parametres.get("debut");
@@ -70,7 +76,7 @@ export function WidgetReservation({
     codeDemande ?? premierDepart(creneaux)?.code ?? "",
   );
 
-  // Le produit choisi sur la page Nos produits, ou ici sur une autre fiche,
+  // Le produit choisi sur la page Nos produits, ou ici sur une autre gamme,
   // retenu le temps de la visite. Lu après le premier rendu : le serveur
   // n'en sait rien. Un jour dans l'adresse garde la main sur le départ.
   useEffect(() => {
@@ -93,7 +99,7 @@ export function WidgetReservation({
     try {
       window.sessionStorage.setItem(CLE_CHOIX_PRODUIT, choix);
     } catch {
-      // Stockage indisponible : le choix vaut pour cette fiche seulement.
+      // Stockage indisponible : le choix vaut pour cette page seulement.
     }
   };
   const ouvertes = useReservationsOuvertes();
@@ -102,7 +108,6 @@ export function WidgetReservation({
   const fermeLaNuit = offre === "road-trip" && ouvertes === false;
   const [redirection, setRedirection] = useState(false);
 
-  const indisponible = velo.statut === "MAINTENANCE" || velo.statut === "RETIRE";
   const creneau = creneaux.find((item) => item.code === creneauChoisi);
 
   // Ce qu'il manque encore pour pouvoir continuer, selon la formule.
@@ -120,15 +125,15 @@ export function WidgetReservation({
         ? `debut=${creneau.date}&fin=${creneau.date}&heure=${creneau.heureDebut}`
         : `debut=${jour}&fin=${jour}`;
 
-    routeur.push(`/reservation?velo=${velo.slug}&offre=${offre}&${parametres}`);
+    routeur.push(`/reservation?gamme=${gamme.toLowerCase()}&offre=${offre}&${parametres}`);
   };
 
   return (
-    <div className="rounded-[var(--radius-bloc)] border border-noir-piste/10 bg-white p-6 sm:p-7">
-      {indisponible ? (
+    <div className="rounded-[var(--radius-bloc)] border border-noir-piste/10 bg-white p-6 text-noir-piste sm:p-7">
+      {aucunVelo ? (
         <div className="rounded-[var(--radius-carte)] bg-orange-signal/15 p-5 text-[0.9rem] leading-relaxed text-orange-sourd">
-          Ce vélo est actuellement à l&apos;atelier. Écrivez-nous pour connaître sa date de retour
-          ou pour qu&apos;on vous propose un modèle équivalent.
+          Tous les vélos {nom} sont à l&apos;atelier en ce moment. Choisissez une autre gamme, ou
+          écrivez-nous pour savoir quand ils repartent.
         </div>
       ) : (
         <>
@@ -141,12 +146,12 @@ export function WidgetReservation({
                   {
                     code: "road-trip" as const,
                     titre: "Road trip",
-                    detail: `dès ${formatXof(prixRoadTripMinimum(velo.gamme))} / pers., encadré`,
+                    detail: `dès ${formatXof(prixRoadTripMinimum(gamme))} / pers., encadré`,
                   },
                   {
                     code: "location-libre" as const,
                     titre: "Location libre",
-                    detail: `dès ${formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l'heure`,
+                    detail: `dès ${formatXof(GRILLE_HORAIRE[gamme][0].prixXof)} l'heure`,
                   },
                 ]
               ).map((item) => {
@@ -259,11 +264,11 @@ export function WidgetReservation({
                     ? "Aucun départ ouvert"
                     : !pretAContinuer
                       ? "Choisissez un jour"
-                    : "Réserver ce vélo"}
+                      : `Réserver un vélo ${nom}`}
           </Bouton>
 
           <p className="mt-3 text-center text-[0.76rem] text-gris-cadre">
-            Aucun compte à créer. Durée, heure et paiement à l&apos;étape suivante.
+            Aucun compte à créer. Durée, heure, nombre de vélos et paiement à l&apos;étape suivante.
           </p>
         </>
       )}

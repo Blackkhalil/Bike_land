@@ -46,6 +46,7 @@ import {
   ordreAttribution,
   resteUneHeureLibre,
   velosDeLaGamme,
+  velosLibresDeLaGamme,
   TransactionDejaUtiliseeError,
   type Depot,
   type DemandeReservation,
@@ -259,8 +260,12 @@ export const depotDemo: Depot = {
     // ceux libres sur la sortie du jour demandé.
     const octobreRose = demande.offre === "octobre-rose";
     const creneauSortie = octobreRose ? creneauOctobreRoseDemande(demande) : null;
-    const velo = octobreRose ? undefined : velos.find((v) => v.id === demande.veloId);
-    if (!octobreRose && !velo) throw new Error("Vélo introuvable.");
+    const velo = octobreRose || !demande.veloId ? undefined : velos.find((v) => v.id === demande.veloId);
+    if (!octobreRose && demande.veloId && !velo) throw new Error("Vélo introuvable.");
+    // Même règle qu'en base : la gamme du vélo précis (le comptoir), sinon
+    // celle que le client a choisie sur le site.
+    const gamme = octobreRose ? undefined : (velo?.gamme ?? demande.gamme);
+    if (!octobreRose && !gamme) throw new Error("Gamme manquante.");
 
     // Même règle qu'en base : une vente au comptoir se règle en espèces.
     const encaissement = demande.encaissement;
@@ -272,9 +277,9 @@ export const depotDemo: Depot = {
     // s'applique.
     const devisBrut = calculerDevis({
       offre: demande.offre,
-      // La gamme vient du vélo, jamais de l'appelant : c'est elle qui
-      // fixe le prix. Octobre rose s'en passe : le jour de sa sortie le fixe.
-      gamme: velo?.gamme,
+      // La gamme fixe le prix, et les vélos attribués sont de cette gamme.
+      // Octobre rose s'en passe : le jour de sa sortie le fixe.
+      gamme,
       date: demande.dateDebut,
       nombrePersonnes: demande.nombrePersonnes,
       dureeHeures: demande.dureeHeures,
@@ -314,6 +319,22 @@ export const depotDemo: Depot = {
         );
       }
       velosAttribues = libres.slice(0, devisBrut.nombrePersonnes);
+    } else if (!velo) {
+      // Réservation par gamme, comme en base : autant de vélos de la gamme
+      // libres sur le créneau que de personnes, dans l'ordre d'attribution.
+      const libres = velos.filter(
+        (v) =>
+          v.statut !== "MAINTENANCE" &&
+          v.statut !== "RETIRE" &&
+          veloLibre(v.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin),
+      );
+      const choisis = velosLibresDeLaGamme(gamme!, libres, devisBrut.nombrePersonnes);
+      if (!choisis) {
+        throw new ConflitDisponibiliteError(
+          messageVelosManquants(gamme!, libres.filter((v) => v.gamme === gamme).length),
+        );
+      }
+      velosAttribues = choisis;
     } else {
       if (!veloLibre(velo!.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin)) {
         throw new ConflitDisponibiliteError();
@@ -348,7 +369,7 @@ export const depotDemo: Depot = {
     const devis = remise
       ? calculerDevis({
           offre: demande.offre,
-          gamme: velo?.gamme,
+          gamme,
           date: demande.dateDebut,
           nombrePersonnes: demande.nombrePersonnes,
           dureeHeures: demande.dureeHeures,

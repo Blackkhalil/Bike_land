@@ -125,10 +125,14 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
     return { refus: NextResponse.json({ erreur: refus, code: "COMPLET" }, { status: 409 }) };
   }
 
-  const velo = await depot.trouverVeloParId(donnees.veloId);
-  if (!velo) {
+  // Un vélo précis : seulement depuis un tunnel ouvert avant que le site ne
+  // fasse choisir une gamme. Sinon, la gamme choisie, dont les vélos sont
+  // attribués à l'écriture.
+  const velo = donnees.veloId ? await depot.trouverVeloParId(donnees.veloId) : null;
+  if (donnees.veloId && !velo) {
     return { refus: NextResponse.json({ erreur: "Ce vélo n'existe pas." }, { status: 404 }) };
   }
+  const gamme = velo ? velo.gamme : donnees.gamme!;
 
   // L'heure de fin découle de la formule : le road trip dure le temps de
   // son créneau encadré, la location libre le nombre d'heures acheté.
@@ -138,44 +142,51 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
       : donnees.heureDebut + (donnees.dureeHeures ?? 1);
 
   // Un vélo par personne, de la gamme choisie : pas plus de vélos qu'il
-  // n'en reste de cette gamme, libres à cette heure. Vérifié ici, le
-  // compteur du site pouvant être contourné ; l'écriture revérifie, en
-  // transaction, au moment d'attribuer les vélos.
-  if (donnees.nombrePersonnes > 1) {
+  // n'en reste de cette gamme, libres à cette heure, et au moins un. Vérifié
+  // ici, le compteur du site pouvant être contourné ; l'écriture revérifie,
+  // en transaction, au moment d'attribuer les vélos.
+  if (!velo || donnees.nombrePersonnes > 1) {
     const libresGamme = (await depot.velosLibres(donnees.dateDebut, donnees.heureDebut, heureFin)).filter(
-      (autre) => autre.gamme === velo.gamme,
+      (autre) => autre.gamme === gamme,
     ).length;
     if (donnees.nombrePersonnes > libresGamme) {
       return {
         refus: NextResponse.json(
-          { erreur: messageVelosManquants(velo.gamme, libresGamme), code: "PLACES", places: libresGamme },
+          {
+            erreur: messageVelosManquants(gamme, libresGamme),
+            code: libresGamme === 0 ? "INDISPONIBLE" : "PLACES",
+            places: libresGamme,
+          },
           { status: 409 },
         ),
       };
     }
   }
 
-  // Contrôle en amont : évite d'encaisser pour un créneau déjà pris. La
-  // garantie réelle reste l'écriture, en transaction sérialisable.
-  const libre = await depot.estDisponible(
-    velo.id,
-    donnees.dateDebut,
-    donnees.dateFin,
-    donnees.heureDebut,
-    heureFin,
-  );
-  if (!libre) {
-    return {
-      refus: NextResponse.json(
-        { erreur: "Ce vélo n'est plus libre sur ce créneau.", code: "INDISPONIBLE" },
-        { status: 409 },
-      ),
-    };
+  // Contrôle en amont du vélo précis : évite d'encaisser pour un créneau
+  // déjà pris. La garantie réelle reste l'écriture, en transaction
+  // sérialisable.
+  if (velo) {
+    const libre = await depot.estDisponible(
+      velo.id,
+      donnees.dateDebut,
+      donnees.dateFin,
+      donnees.heureDebut,
+      heureFin,
+    );
+    if (!libre) {
+      return {
+        refus: NextResponse.json(
+          { erreur: "Ce vélo n'est plus libre sur ce créneau.", code: "INDISPONIBLE" },
+          { status: 409 },
+        ),
+      };
+    }
   }
 
   return {
     demande: {
-      veloId: velo.id,
+      ...(velo ? { veloId: velo.id } : { gamme }),
       offre: donnees.offre,
       nombrePersonnes: donnees.nombrePersonnes,
       dureeHeures: donnees.dureeHeures,
@@ -454,12 +465,26 @@ async function creerEtEncaisser(demande: DemandeReservation) {
       // reste de sa gamme à cette heure.
       const sortie = demande.offre === "octobre-rose" ? sortieOctobreRoseDu(demande.dateDebut) : null;
       const creneau = sortie ? creneauOctobreRose(sortie) : null;
+      // Réservation par gamme : ce qu'il reste de la gamme sur ce créneau,
+      // pour que le tunnel ramène son compteur à ce qui est encore possible.
+      const heureFin =
+        demande.offre === "road-trip"
+          ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
+          : demande.heureDebut + (demande.dureeHeures ?? 1);
       const places = creneau
         ? (await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin).catch(() => null))?.length
-        : undefined;
+        : demande.gamme
+          ? (await depot.velosLibres(demande.dateDebut, demande.heureDebut, heureFin).catch(() => null))?.filter(
+              (velo) => velo.gamme === demande.gamme,
+            ).length
+          : undefined;
       const plusieurs = !creneau && (demande.nombrePersonnes ?? 1) > 1;
       return NextResponse.json(
-        { erreur: erreur.message, code: creneau || plusieurs ? "PLACES" : "INDISPONIBLE", places },
+        {
+          erreur: erreur.message,
+          code: creneau || (plusieurs && places !== 0) ? "PLACES" : "INDISPONIBLE",
+          places,
+        },
         { status: 409 },
       );
     }

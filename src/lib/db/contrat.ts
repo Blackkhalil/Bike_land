@@ -103,11 +103,19 @@ export function resteUneHeureLibre(
 
 export interface DemandeReservation {
   /**
-   * Le vélo choisi par le client. Absent pour Octobre rose : le dépôt
-   * attribue alors d'office un vélo libre par participant, dans la
-   * transaction qui écrit (voir `ordreAttribution`).
+   * Un vélo précis : celui que le commercial tend au comptoir, ou celui
+   * d'un ancien lien de réservation encore ouvert. Le site public ne fait
+   * plus choisir de vélo : il envoie `gamme`.
    */
   veloId?: string;
+  /**
+   * La gamme choisie par le client sur le site, sans vélo précis : le dépôt
+   * attribue d'office, dans la transaction qui écrit, autant de vélos de
+   * cette gamme libres sur le créneau que de personnes (ou de vélos loués),
+   * dans l'ordre d'attribution. Ignorée quand `veloId` est donné, et pour
+   * Octobre rose, dont les vélos sont attribués toutes gammes confondues.
+   */
+  gamme?: GammeVelo;
   offre: CodeOffre;
   nombrePersonnes?: number;
   dureeHeures?: number;
@@ -219,12 +227,70 @@ export function velosDeLaGamme<T extends { id: string; gamme: GammeVelo; nom: st
 }
 
 /**
+ * Les vélos libres d'une gamme pour une réservation sans vélo précis : un
+ * par personne, dans l'ordre d'attribution. `null` s'il n'y en a pas
+ * assez : on ne complète jamais avec une autre gamme, qui n'a pas le même
+ * prix.
+ */
+export function velosLibresDeLaGamme<T extends { gamme: GammeVelo; nom: string }>(
+  gamme: GammeVelo,
+  libres: T[],
+  nombre: number,
+): T[] | null {
+  const deLaGamme = ordreAttribution(libres.filter((velo) => velo.gamme === gamme));
+  return deLaGamme.length < nombre ? null : deLaGamme.slice(0, nombre);
+}
+
+/**
+ * Les heures où plus aucun vélo d'une gamme n'est libre, pour le calendrier
+ * d'une réservation par gamme : un jour n'y est plein que si tous les vélos
+ * de la gamme le sont en même temps. Les créneaux de chaque vélo s'y
+ * croisent heure par heure, de l'ouverture à la fermeture, et ressortent
+ * regroupés en plages d'un seul jour.
+ */
+export function occupationsDeLaGamme(
+  creneauxParVelo: CreneauOccupe[][],
+  ouverture: number,
+  fermeture: number,
+): CreneauOccupe[] {
+  if (creneauxParVelo.length === 0) return [];
+  const jours = new Set<DateISO>();
+  for (const creneaux of creneauxParVelo) {
+    for (const creneau of creneaux) {
+      for (const jour of listerJours(creneau.debut, creneau.fin)) jours.add(jour);
+    }
+  }
+  const pleines: CreneauOccupe[] = [];
+  for (const jour of [...jours].sort()) {
+    let debutPlage: number | null = null;
+    for (let heure = ouverture; heure <= fermeture; heure += 1) {
+      const toutPris =
+        heure < fermeture &&
+        creneauxParVelo.every((creneaux) =>
+          creneaux.some(
+            (c) => jour >= c.debut && jour <= c.fin && c.heureDebut <= heure && heure < c.heureFin,
+          ),
+        );
+      if (toutPris && debutPlage === null) debutPlage = heure;
+      if (!toutPris && debutPlage !== null) {
+        pleines.push({ debut: jour, fin: jour, heureDebut: debutPlage, heureFin: heure });
+        debutPlage = null;
+      }
+    }
+  }
+  return pleines;
+}
+
+/**
  * Pourquoi une réservation à plusieurs ne passe pas : « Il ne reste que 3
  * vélos Premium libres à cette heure : 3 au plus. »
  */
 export function messageVelosManquants(gamme: GammeVelo, libres: number): string {
   const nom = GAMMES.find((entree) => entree.code === gamme)?.nom ?? gamme;
-  return libres <= 1
+  if (libres <= 0) {
+    return `Plus aucun vélo ${nom} n'est libre à cette heure : choisissez une autre heure, un autre jour ou une autre gamme.`;
+  }
+  return libres === 1
     ? `Il ne reste qu'un vélo ${nom} libre à cette heure : un seul vélo pour cette réservation.`
     : `Il ne reste que ${libres} vélos ${nom} libres à cette heure : ${libres} au plus.`;
 }

@@ -70,7 +70,7 @@ export const GAMMES: {
     code: "PRESTIGE",
     nom: "Prestige",
     description:
-      "Une seule machine, la plus aboutie du parc : cadre acier haute résistance, double frein à disque, jantes bâton magnésium.",
+      "Une seule machine, la plus aboutie du parc : cadre acier haute résistance, double frein à disque, jantes bâton en magnésium.",
     machine: "Acier haute résistance, double disque, jantes bâton",
     pourQui: "La plus belle machine du parc, quand elle est libre.",
   },

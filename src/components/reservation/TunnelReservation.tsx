@@ -82,7 +82,13 @@ export interface CreneauProposable {
 }
 
 interface Props {
-  velo: Velo;
+  /**
+   * La gamme choisie. Le client ne choisit pas de vélo : des vélos libres de
+   * cette gamme lui sont attribués à la réservation, un par personne.
+   */
+  gamme: GammeVelo;
+  /** Un vélo de la gamme, pour l'image d'en-tête seulement. */
+  apercu?: Pick<Velo, "photo" | "categorie" | "teintes">;
   offre: CodeOffre;
   dureeHeures: number;
   nombrePersonnes: number;
@@ -111,7 +117,8 @@ interface Props {
 }
 
 export function TunnelReservation({
-  velo,
+  gamme,
+  apercu,
   offre: offreInitiale,
   dureeHeures: dureeInitiale,
   nombrePersonnes: personnesInitiales,
@@ -282,12 +289,13 @@ export function TunnelReservation({
   const heureAffichee = heureRetenue ?? heureDebut;
   const roadTripsCeJour = offre === "location-libre" ? roadTripsDuJour(dateDebut) : [];
 
-  // Un vélo par personne, de la gamme du vélo choisi : le plafond est ce
-  // qu'il reste de cette gamme à l'heure retenue, demandé au serveur dès
-  // que le jour, l'heure ou la durée changent. En attendant sa réponse,
-  // les vélos de la gamme en état de rouler.
+  // Un vélo par personne, de la gamme choisie : le plafond est ce qu'il
+  // reste de cette gamme à l'heure retenue, demandé au serveur dès que le
+  // jour, l'heure ou la durée changent. En attendant sa réponse, les vélos
+  // de la gamme en état de rouler. Zéro : la gamme est complète à cette
+  // heure, il faut en changer avant de continuer.
   const heureFinCreneau = heureAffichee + (offre === "road-trip" ? dureeRoadTrip : dureeHeures);
-  const cleCreneau = `${velo.id}|${dateDebut}|${heureAffichee}|${heureFinCreneau}`;
+  const cleCreneau = `${gamme}|${dateDebut}|${heureAffichee}|${heureFinCreneau}`;
   const [libresGamme, setLibresGamme] = useState<{ cle: string; nombre: number } | null>(null);
   useEffect(() => {
     if (aucunDepart) return;
@@ -295,7 +303,7 @@ export function TunnelReservation({
     fetch("/api/disponibilite", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ veloId: velo.id, dateDebut, dateFin, heureDebut: heureAffichee, heureFin: heureFinCreneau }),
+      body: JSON.stringify({ gamme, dateDebut, dateFin, heureDebut: heureAffichee, heureFin: heureFinCreneau }),
       signal: controleur.signal,
     })
       .then((reponse) => (reponse.ok ? reponse.json() : null))
@@ -306,9 +314,10 @@ export function TunnelReservation({
       })
       .catch(() => undefined);
     return () => controleur.abort();
-  }, [aucunDepart, cleCreneau, velo.id, dateDebut, dateFin, heureAffichee, heureFinCreneau]);
+  }, [aucunDepart, cleCreneau, gamme, dateDebut, dateFin, heureAffichee, heureFinCreneau]);
   const velosMax =
     libresGamme?.cle === cleCreneau ? Math.max(1, Math.min(personnesMax, libresGamme.nombre)) : personnesMax;
+  const gammeComplete = libresGamme?.cle === cleCreneau && libresGamme.nombre === 0;
   // Le nombre choisi, ramené au plafond s'il a baissé entre-temps.
   const nombreEffectif = Math.min(nombrePersonnes, velosMax);
 
@@ -316,10 +325,9 @@ export function TunnelReservation({
   // légère, et le compilateur de React s'occupe de la mémoïsation.
   const devis = calculerDevis({
     offre,
-    // La gamme est celle du vélo choisi : c'est elle qui fixe le
-    // tarif. Le serveur la relit en base avant d'encaisser, ce qui
-    // est affiché ici n'engage rien.
-    gamme: velo.gamme,
+    // La gamme choisie fixe le tarif. Le serveur recalcule tout avant
+    // d'encaisser : ce qui est affiché ici n'engage rien.
+    gamme,
     // Le jour aussi, en road trip : Gbashi bike, le dimanche, a son prix.
     date: dateDebut,
     nombrePersonnes: nombreEffectif,
@@ -332,7 +340,7 @@ export function TunnelReservation({
   // c'est donc lui qu'on envoie vérifier.
   const devisSansRemise = calculerDevis({
     offre,
-    gamme: velo.gamme,
+    gamme,
     date: dateDebut,
     nombrePersonnes: nombreEffectif,
     dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
@@ -400,7 +408,7 @@ export function TunnelReservation({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          veloId: velo.id,
+          gamme,
           offre,
           nombrePersonnes: nombreEffectif,
           dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
@@ -431,8 +439,11 @@ export function TunnelReservation({
           if (typeof donnees.places === "number") setLibresGamme({ cle: cleCreneau, nombre: donnees.places });
           setErreurGlobale(`${donnees.erreur} Aucun montant n'a été prélevé.`);
         } else if (reponse.status === 409) {
+          // Plus aucun vélo de la gamme sur ce créneau : le compteur le dit,
+          // et le bouton attend une autre heure.
+          if (typeof donnees.places === "number") setLibresGamme({ cle: cleCreneau, nombre: donnees.places });
           setErreurGlobale(
-            "Ce vélo vient d'être réservé sur ce créneau. Choisissez une autre heure ou un autre vélo. Aucun montant n'a été prélevé.",
+            `${donnees.erreur ?? `Plus aucun vélo ${nomGamme(gamme)} n'est libre sur ce créneau : choisissez une autre heure, un autre jour ou une autre gamme.`} Aucun montant n'a été prélevé.`,
           );
         } else {
           setErreurGlobale(
@@ -546,18 +557,26 @@ export function TunnelReservation({
             <h2 className="titre-editorial text-[1.6rem]">Votre location</h2>
 
             <div className="mt-6 flex flex-wrap items-center gap-5 rounded-[var(--radius-carte)] bg-craie p-5">
-              <div
-                className="grid h-24 w-32 shrink-0 place-items-center rounded-[var(--radius-bouton)] px-2"
-                style={{ background: velo.teintes[1] }}
-              >
-                <VeloIllustration
-                  categorie={velo.categorie}
-                  teintes={velo.teintes}
-                  className="w-full"
-                />
-              </div>
+              {apercu?.photo ? (
+                <div className="relative h-24 w-32 shrink-0 overflow-hidden rounded-[var(--radius-bouton)] bg-white">
+                  <Image
+                    src={apercu.photo}
+                    alt={`Un vélo ${nomGamme(gamme)}`}
+                    fill
+                    sizes="128px"
+                    className={`object-cover ${apercu.photo.startsWith("/images/affiches/") ? "object-left" : ""}`}
+                  />
+                </div>
+              ) : apercu ? (
+                <div
+                  className="grid h-24 w-32 shrink-0 place-items-center rounded-[var(--radius-bouton)] px-2"
+                  style={{ background: apercu.teintes[1] }}
+                >
+                  <VeloIllustration categorie={apercu.categorie} teintes={apercu.teintes} className="w-full" />
+                </div>
+              ) : null}
               <div className="flex-1">
-                <p className="titre-editorial text-[1.35rem]">{velo.nom}</p>
+                <p className="titre-editorial text-[1.35rem]">Vélo {nomGamme(gamme)}</p>
                 <p className="mt-2 text-[0.85rem]">
                   Le{" "}
                   <strong className="font-semibold">
@@ -576,14 +595,15 @@ export function TunnelReservation({
                   </strong>
                 </p>
                 <p className="mt-1 text-[0.8rem] text-gris-cadre">
-                  Réglé à votre taille au départ.
+                  Un vélo de la gamme, attribué selon les disponibilités et réglé à votre taille au
+                  départ.
                 </p>
               </div>
               {/* Le road trip n'a pas de date à changer : il part à l'un
                   du créneau proposé juste en dessous. */}
               {offre === "location-libre" && (
                 <a
-                  href={`/velos/${velo.slug}?debut=${dateDebut}&fin=${dateFin}`}
+                  href={`/reserver/${gamme.toLowerCase()}?debut=${dateDebut}`}
                   className="lien-souligne cible-elargie text-[0.82rem] font-semibold text-orange-signal"
                 >
                   Changer le jour
@@ -620,9 +640,9 @@ export function TunnelReservation({
                         <span className="shrink-0 font-display text-[1.1rem] text-orange-sourd">
                           {item.code === "road-trip"
                             ? offre === "road-trip"
-                              ? `${formatXof(prixRoadTripDu(velo.gamme, dateDebut))} / pers.`
-                              : `dès ${formatXof(prixRoadTripMinimum(velo.gamme))} / pers.`
-                            : `dès ${formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)}`}
+                              ? `${formatXof(prixRoadTripDu(gamme, dateDebut))} / pers.`
+                              : `dès ${formatXof(prixRoadTripMinimum(gamme))} / pers.`
+                            : `dès ${formatXof(GRILLE_HORAIRE[gamme][0].prixXof)}`}
                         </span>
                       </span>
                       <span className="mt-2 text-[0.85rem] leading-relaxed text-gris-cadre">
@@ -641,7 +661,7 @@ export function TunnelReservation({
                   Combien de temps ?
                 </legend>
                 <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {GRILLE_HORAIRE[velo.gamme].map((palier) => {
+                  {GRILLE_HORAIRE[gamme].map((palier) => {
                     const actif = dureeHeures === palier.heures;
                     return (
                       <button
@@ -697,7 +717,7 @@ export function TunnelReservation({
                     {heuresDepartPossibles(1, dateDebut, maintenant).length > 0
                       ? "Choisissez une durée plus courte, ou "
                       : "Choisissez "}
-                    <Link href={`/velos/${velo.slug}`} className="font-semibold underline">
+                    <Link href={`/reserver/${gamme.toLowerCase()}`} className="font-semibold underline">
                       un autre jour
                     </Link>
                     .
@@ -791,7 +811,7 @@ export function TunnelReservation({
                         </span>
                         {/* Le prix du jour : Gbashi bike, le dimanche, a le sien. */}
                         <span className="mt-0.5 block text-[0.78rem] font-semibold">
-                          {formatXof(prixRoadTripDu(velo.gamme, creneau.date))} / pers.
+                          {formatXof(prixRoadTripDu(gamme, creneau.date))} / pers.
                         </span>
                       </button>
                     );
@@ -805,9 +825,9 @@ export function TunnelReservation({
               // que de montrer un compteur bloqué à 1, qui laisserait
               // croire à une panne.
               <p className="mt-7 rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.86rem] leading-relaxed">
-                <span className="font-semibold">Une personne.</span> Le {velo.nom} est un
-                exemplaire unique : il se réserve pour une seule personne. Pour venir à
-                plusieurs, choisissez un vélo Classique ou Premium.
+                <span className="font-semibold">Une personne.</span> La gamme {nomGamme(gamme)} ne
+                compte qu&apos;un vélo : il se réserve pour une seule personne. Pour venir à
+                plusieurs, choisissez la gamme Classique ou Premium.
               </p>
             )}
 
@@ -820,8 +840,8 @@ export function TunnelReservation({
                 </legend>
                 <p className="mt-1.5 text-[0.8rem] text-gris-cadre">
                   {offre === "road-trip"
-                    ? `Jusqu'à ${velosMax}\u00a0: un vélo ${nomGamme(velo.gamme)} par personne, autant qu'il en reste à cette heure.`
-                    : `Jusqu'à ${velosMax} vélos ${nomGamme(velo.gamme)} libres à cette heure, au même prix chacun.`}
+                    ? `Jusqu'à ${velosMax}\u00a0: un vélo ${nomGamme(gamme)} par personne, autant qu'il en reste à cette heure.`
+                    : `Jusqu'à ${velosMax} vélos ${nomGamme(gamme)} libres à cette heure, au même prix chacun.`}
                 </p>
                 <div className="mt-3 flex items-center gap-3">
                   <button
@@ -921,9 +941,25 @@ export function TunnelReservation({
               </fieldset>
             )}
 
+            {gammeComplete && (
+              <p
+                role="status"
+                className="mt-8 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-white px-4 py-3 text-[0.86rem] leading-relaxed"
+              >
+                Plus aucun vélo {nomGamme(gamme)} n&apos;est libre à cette heure.{" "}
+                {offre === "road-trip"
+                  ? "Choisissez un autre départ, ou "
+                  : "Choisissez une autre heure, un autre jour, ou "}
+                <Link href="/velos" className="font-semibold underline">
+                  une autre gamme
+                </Link>
+                .
+              </p>
+            )}
+
             <Bouton
               onClick={() => setEtape(2)}
-              disabled={aucunDepart}
+              disabled={aucunDepart || gammeComplete}
               taille="lg"
               className="mt-8"
             >
@@ -1242,7 +1278,7 @@ export function TunnelReservation({
               ) : (
                 <Bouton
                   onClick={envoyer}
-                  disabled={!cgv || envoiEnCours || fermeLaNuit || aucunDepart}
+                  disabled={!cgv || envoiEnCours || fermeLaNuit || aucunDepart || gammeComplete}
                   taille="lg"
                 >
                   {envoiEnCours

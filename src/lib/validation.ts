@@ -44,9 +44,15 @@ const schemaOption =
       })
     : z.never();
 
+/** Une gamme de vélos : c'est elle que le client choisit sur le site, et elle fixe le prix. */
+const gammeVelo = z.enum(["CLASSIQUE", "PREMIUM", "PRESTIGE"]);
+
 export const schemaDisponibilite = z
   .object({
-    veloId: z.string().min(1),
+    // La gamme, depuis que le site fait choisir une gamme et non un vélo ;
+    // un vélo précis reste accepté pour une page ouverte avant ce changement.
+    veloId: z.string().min(1).optional(),
+    gamme: gammeVelo.optional(),
     dateDebut: dateISO,
     dateFin: dateISO,
     // Depuis que la disponibilité se compte à l'heure, une période seule
@@ -57,6 +63,10 @@ export const schemaDisponibilite = z
   .refine((valeurs) => valeurs.heureDebut < valeurs.heureFin, {
     message: "L'heure de retour doit suivre l'heure de départ.",
     path: ["heureFin"],
+  })
+  .refine((valeurs) => Boolean(valeurs.veloId || valeurs.gamme), {
+    message: "Gamme manquante.",
+    path: ["gamme"],
   });
 
 /** Le client d'une réservation en ligne : le téléphone y reçoit la demande de paiement. */
@@ -110,7 +120,11 @@ export const schemaInscriptionOctobreRose = z.object({
 
 export const schemaReservation = z
   .object({
-    veloId: z.string().min(1, "Vélo manquant."),
+    // Le client choisit une gamme, et le serveur lui attribue des vélos
+    // libres de cette gamme. Un vélo précis reste accepté : un tunnel ouvert
+    // avant ce changement l'envoie encore.
+    veloId: z.string().min(1).optional(),
+    gamme: gammeVelo.optional(),
     offre: z.enum(["road-trip", "location-libre"]),
     nombrePersonnes: z.number().int().min(1).max(12).default(1),
     // La durée n'est acceptée que si elle figure dans la grille
@@ -182,6 +196,10 @@ export const schemaReservation = z
       path: ["heureDebut"],
     },
   )
+  .refine((valeurs) => Boolean(valeurs.veloId || valeurs.gamme), {
+    message: "Choisissez une gamme de vélo.",
+    path: ["gamme"],
+  })
   .refine((valeurs) => valeurs.dateDebut <= valeurs.dateFin, {
     message: "La date de retour doit suivre la date de départ.",
     path: ["dateFin"],

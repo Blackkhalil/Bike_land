@@ -10,12 +10,13 @@ import {
   creneauxDisponibles,
   departsComplets,
   DUREE_ROAD_TRIP_HEURES,
+  GAMMES,
   heuresDepartPossibles,
 } from "@/data/offres";
 import type { CodeOffre } from "@/lib/types";
 import { depot } from "@/lib/db";
 import { aujourdhui, estDateISOValide } from "@/lib/dates";
-import { lireOuverture, motifDeRefus, personnesMaxPour } from "@/lib/ouverture";
+import { lireOuverture, motifDeRefus } from "@/lib/ouverture";
 import { formatDate } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -31,6 +32,10 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
 export default async function PageReservation({ searchParams }: { searchParams: Recherche }) {
   const parametres = await searchParams;
 
+  // La gamme choisie (« premium »). Un ancien lien porte encore un vélo
+  // précis (?velo=) : il mène à la gamme de ce vélo, qu'on réserve comme les
+  // autres, sans vélo choisi.
+  const segmentGamme = typeof parametres.gamme === "string" ? parametres.gamme : null;
   const slug = typeof parametres.velo === "string" ? parametres.velo : null;
   // L'offre vient de l'URL mais n'est jamais crue sur parole : le prix
   // est recalcule cote serveur a la creation, et la validation Zod
@@ -58,13 +63,10 @@ export default async function PageReservation({ searchParams }: { searchParams: 
       : departsPossibles.includes(heureBrute)
         ? heureBrute
         : (departsPossibles[0] ?? CRENEAUX_ROAD_TRIP[0].heureDebut);
-  const heureFin =
-    heureDebut + (offre === "road-trip" ? DUREE_ROAD_TRIP_HEURES : dureeHeures);
-
   // Sans période valide, il n'y a rien à réserver : on renvoie au catalogue
   // plutôt que d'afficher un tunnel vide.
   if (
-    !slug ||
+    (!segmentGamme && !slug) ||
     !debut ||
     !fin ||
     !estDateISOValide(debut) ||
@@ -89,17 +91,47 @@ export default async function PageReservation({ searchParams }: { searchParams: 
       ? motifDeRefus(ouverture, { offre, dateDebut: debut, dateFin: fin, heureDebut })
       : null;
 
-  const velo = await depot.trouverVeloParSlug(slug);
-  if (!velo) redirect("/velos");
+  const veloDuLien = !segmentGamme && slug ? await depot.trouverVeloParSlug(slug) : null;
+  const codeGamme = segmentGamme?.toUpperCase() ?? veloDuLien?.gamme;
+  const gamme = GAMMES.find((entree) => entree.code === codeGamme);
+  if (!gamme) redirect("/velos");
 
-  const [disponible, points, parc] = await Promise.all([
-    depot.estDisponible(velo.id, debut, fin, heureDebut, heureFin),
-    depot.listerPointsDeRetrait(),
-    depot.listerVelos(),
-  ]);
-  // Pas plus de personnes que de vélos de cette gamme : une seule pour le
-  // Prestige, exemplaire unique.
-  const personnesMax = personnesMaxPour(velo, parc);
+  const [points, parc] = await Promise.all([depot.listerPointsDeRetrait(), depot.listerVelos()]);
+
+  // Reste-t-il un vélo de la gamme sur ce créneau ? Le tunnel recompte
+  // ensuite à chaque changement d'heure, et l'écriture tranche.
+  const gammeLibreA = async (heure: number, duree: number) =>
+    (await depot.velosLibres(debut, heure, heure + duree)).some((velo) => velo.gamme === gamme.code);
+
+  // Le road trip part à son créneau. La location libre garde l'heure
+  // demandée si un vélo de la gamme y est libre, sinon la première heure
+  // du jour où il en reste un : une gamme pleine à 8 h ne doit pas fermer
+  // une journée encore libre l'après-midi. Le jour n'est complet que si
+  // aucune heure ne l'est.
+  let heureRetenue = heureDebut;
+  let disponible = false;
+  if (offre === "road-trip") {
+    disponible = await gammeLibreA(heureDebut, DUREE_ROAD_TRIP_HEURES);
+  } else {
+    const candidates = [heureDebut, ...departsPossibles.filter((heure) => heure !== heureDebut)];
+    for (const heure of candidates) {
+      if (await gammeLibreA(heure, dureeHeures)) {
+        heureRetenue = heure;
+        disponible = true;
+        break;
+      }
+    }
+  }
+  // Pas plus de personnes que de vélos de la gamme en état de rouler : une
+  // seule pour le Prestige, exemplaire unique.
+  const enEtat = parc.filter(
+    (velo) => velo.gamme === gamme.code && velo.statut !== "MAINTENANCE" && velo.statut !== "RETIRE",
+  );
+  const personnesMax = Math.max(1, enEtat.length);
+  // Un vélo de la gamme pour l'image d'en-tête du tunnel : celui du lien
+  // s'il y en a un, sinon le premier qui a une photo.
+  const apercu = veloDuLien ?? enEtat.find((velo) => velo.photo) ?? enEtat[0];
+  const lienGamme = `/reserver/${gamme.code.toLowerCase()}`;
 
   const optionsDemandees = (
     Array.isArray(parametres.option) ? parametres.option : parametres.option ? [parametres.option] : []
@@ -119,7 +151,7 @@ export default async function PageReservation({ searchParams }: { searchParams: 
             prélevé.
           </p>
           <Link
-            href={`/velos/${velo.slug}`}
+            href={lienGamme}
             className="mt-6 inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
           >
             Choisir une autre date
@@ -128,15 +160,16 @@ export default async function PageReservation({ searchParams }: { searchParams: 
       ) : disponible ? (
         <div className="mt-12">
           <TunnelReservation
-            velo={velo}
-            point={points.find((point) => point.id === velo.pointDeRetraitId)}
+            gamme={gamme.code}
+            apercu={apercu}
+            point={points.find((point) => point.id === apercu?.pointDeRetraitId)}
             offre={offre}
             dureeHeures={dureeHeures}
             nombrePersonnes={Math.min(nombrePersonnes, personnesMax)}
             personnesMax={personnesMax}
             dateDebut={debut}
             dateFin={fin}
-            heureDebut={heureDebut}
+            heureDebut={heureRetenue}
             creneaux={creneaux}
             complets={complets}
             instant={maintenant.getTime()}
@@ -145,17 +178,25 @@ export default async function PageReservation({ searchParams }: { searchParams: 
         </div>
       ) : (
         <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
-          <p className="titre-editorial text-[1.4rem]">Ce vélo n&apos;est plus libre</p>
+          <p className="titre-editorial text-[1.4rem]">Plus de vélo {gamme.nom} libre</p>
           <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
-            Quelqu&apos;un a réservé le {velo.nom} sur ce créneau pendant que vous
-            choisissiez vos options. Aucun montant n&apos;a été prélevé.
+            Tous les vélos {gamme.nom} sont pris {offre === "road-trip" ? "sur ce départ" : "ce jour-là"}.
+            Choisissez un autre jour, ou une autre gamme. Aucun montant n&apos;a été prélevé.
           </p>
-          <Link
-            href={`/velos?debut=${debut}&fin=${fin}`}
-            className="mt-6 inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
-          >
-            Voir les vélos libres sur ce créneau
-          </Link>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link
+              href={lienGamme}
+              className="inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
+            >
+              Choisir un autre jour
+            </Link>
+            <Link
+              href="/velos"
+              className="inline-flex rounded-full border border-noir-piste/30 px-6 py-3 text-sm font-semibold text-noir-piste"
+            >
+              Voir les autres gammes
+            </Link>
+          </div>
         </div>
       )}
     </Section>

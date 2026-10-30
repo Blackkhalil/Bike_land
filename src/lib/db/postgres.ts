@@ -65,6 +65,7 @@ import {
   messageVelosManquants,
   ordreAttribution,
   velosDeLaGamme,
+  velosLibresDeLaGamme,
   resteUneHeureLibre,
   TransactionDejaUtiliseeError,
   type CreneauOccupe,
@@ -611,7 +612,13 @@ const depotDirect: Depot = {
       octobreRose || !demande.veloId
         ? null
         : await client().bike.findUnique({ where: { id: demande.veloId } });
-    if (!octobreRose && !bike) throw new Error("Vélo introuvable.");
+    if (!octobreRose && demande.veloId && !bike) throw new Error("Vélo introuvable.");
+    // La gamme qui fixe le prix : celle du vélo précis s'il y en a un (le
+    // comptoir), lue en base et jamais chez l'appelant ; sinon celle que le
+    // client a choisie sur le site, dont les vélos lui sont attribués plus
+    // bas. Octobre rose n'en a pas : le jour de sa sortie fixe son prix.
+    const gamme = octobreRose ? undefined : (bike?.tier ?? demande.gamme);
+    if (!octobreRose && !gamme) throw new Error("Gamme manquante.");
 
     // Une vente au comptoir ne se règle qu'en espèces : sans ce contrôle,
     // une réservation pourrait naître payée par un Mobile Money qui n'a
@@ -625,11 +632,9 @@ const depotDirect: Depot = {
     // s'applique, et c'est lui qu'on compare au montant plafond.
     const devisBrut = calculerDevis({
       offre: demande.offre,
-      // La gamme vient du vélo lu en base, jamais de l'appelant : c'est
-      // elle qui fixe le prix, et la laisser passer par le navigateur
-      // reviendrait à laisser choisir son tarif. Octobre rose n'en a pas
-      // besoin, son prix ne dépend pas du vélo mais du jour de sa sortie.
-      gamme: bike?.tier,
+      // La gamme fixe le prix, et les vélos attribués sont de cette gamme :
+      // le client paie la gamme qu'il roule (voir plus haut).
+      gamme,
       date: demande.dateDebut,
       nombrePersonnes: demande.nombrePersonnes,
       dureeHeures: demande.dureeHeures,
@@ -699,7 +704,7 @@ const depotDirect: Depot = {
               );
             }
             velosAttribues = libres.slice(0, devisBrut.nombrePersonnes);
-          } else {
+          } else if (bike) {
             const conflit = await tx.bookingItem.findFirst({
               where: conflitHoraire(
                 bike!.id,
@@ -744,6 +749,37 @@ const depotDirect: Depot = {
               }
               velosAttribues = choisis;
             }
+          } else {
+            // Réservation par gamme, sans vélo précis : les vélos de la gamme
+            // en état, moins ceux déjà pris sur le créneau, relus ici même
+            // pour que le niveau Serializable protège leur attribution, comme
+            // pour Octobre rose. Deux réservations simultanées lisent les
+            // mêmes lignes : PostgreSQL en annule une, qui, rejouée, voit les
+            // vélos pris par l'autre.
+            const deLaGamme = await tx.bike.findMany({
+              where: { tier: gamme!, status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+              select: { id: true, name: true, tier: true, pickupPointId: true },
+            });
+            const pris = await tx.bookingItem.findMany({
+              where: {
+                booking: bookingBloquant(),
+                bikeId: { in: deLaGamme.map((velo) => velo.id) },
+                startDate: { lte: fin },
+                endDate: { gte: debut },
+                startHour: { lt: heureFin },
+                endHour: { gt: demande.heureDebut },
+              },
+              select: { bikeId: true },
+            });
+            const occupes = new Set(pris.map((ligne) => ligne.bikeId));
+            const libres = deLaGamme
+              .filter((velo) => !occupes.has(velo.id))
+              .map((velo) => ({ ...velo, gamme: velo.tier, nom: velo.name }));
+            const choisis = velosLibresDeLaGamme(gamme!, libres, devisBrut.nombrePersonnes);
+            if (!choisis) {
+              throw new ConflitDisponibiliteError(messageVelosManquants(gamme!, libres.length));
+            }
+            velosAttribues = choisis;
           }
 
           // Le code de parrainage est revérifié et consommé **ici**, dans la même
@@ -787,7 +823,7 @@ const depotDirect: Depot = {
           const devis = remise
             ? calculerDevis({
                 offre: demande.offre,
-                gamme: bike?.tier,
+                gamme,
                 date: demande.dateDebut,
                 nombrePersonnes: demande.nombrePersonnes,
                 dureeHeures: demande.dureeHeures,

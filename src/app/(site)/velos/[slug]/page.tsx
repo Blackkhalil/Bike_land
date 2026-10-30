@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -8,22 +7,13 @@ import { CarteVelo } from "@/components/CarteVelo";
 import { SpecificationsAnnotees } from "@/components/SpecificationsAnnotees";
 import Image from "next/image";
 import { VeloIllustration } from "@/components/VeloIllustration";
-import { WidgetReservation } from "@/components/reservation/WidgetReservation";
-import { Etoiles, Pastille, Section, TitreSection } from "@/components/ui";
+import { Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue } from "@/data/catalogue";
-import {
-  creneauxDisponibles,
-  departsComplets,
-  GAMMES,
-  GRILLE_HORAIRE,
-  prixRoadTripMinimum,
-} from "@/data/offres";
+import { GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum } from "@/data/offres";
 import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { depot } from "@/lib/db";
-import { estDateISOValide } from "@/lib/dates";
 import { filDAriane, veloALouer } from "@/lib/donnees-structurees";
-import { formatDate, formatXof } from "@/lib/format";
-import { joursFermesCommeOccupes, lireOuverture } from "@/lib/ouverture";
+import { formatXof } from "@/lib/format";
 import { DESCRIPTION_MAX, libelleVelo, metadonneesPage, premierQuiTient, SUFFIXE_TITRE, TITRE_MAX } from "@/lib/seo";
 
 type Params = Promise<{ slug: string }>;
@@ -94,26 +84,18 @@ export default async function PageVelo({ params }: { params: Params }) {
   const velo = await depot.trouverVeloParSlug(slug);
   if (!velo) notFound();
 
-  const [periodesReservees, points, tousLesVelos, ouverture] = await Promise.all([
-    depot.periodesIndisponibles(velo.id),
-    depot.listerPointsDeRetrait(),
-    depot.listerVelos(),
-    lireOuverture(),
-  ]);
-  // Les jours fermés depuis l'admin se lisent dans le calendrier comme des
-  // journées complètes : il les barre sans qu'on ait à lui apprendre quoi
-  // que ce soit.
-  const periodesOccupees = [...periodesReservees, ...joursFermesCommeOccupes(ouverture)];
+  const [points, tousLesVelos] = await Promise.all([depot.listerPointsDeRetrait(), depot.listerVelos()]);
+  // On ne réserve plus un vélo précis mais une gamme : la fiche montre le
+  // vélo, et renvoie à la réservation de sa gamme.
+  const gamme = GAMMES.find((entree) => entree.code === velo.gamme);
+  const nomGamme = gamme?.nom ?? velo.gamme;
+  const lienGamme = `/reserver/${velo.gamme.toLowerCase()}`;
+  const seulDeSaGamme = tousLesVelos.filter((autre) => autre.gamme === velo.gamme).length <= 1;
 
   const point = points.find((p) => p.id === velo.pointDeRetraitId);
   // Les autres vélos du parc, sans trier par catégorie : elle ne guide
   // plus le choix du client.
   const similaires = tousLesVelos.filter((autre) => autre.id !== velo.id).slice(0, 3);
-
-  // Les dates pré-remplies (?debut=&fin=) sont lues par le widget, dans
-  // le navigateur. Les lire ici obligerait Next à rendre la page à chaque
-  // visite pour deux paramètres facultatifs, et c'est précisément ce qui
-  // faisait tomber la fiche vélo sous la charge.
 
   // Ni catégorie ni taille : elles ne changent rien pour le client, le
   // coordinateur réglant la machine à sa morphologie au départ.
@@ -165,7 +147,7 @@ export default async function PageVelo({ params }: { params: Params }) {
                   le client doit savoir dans quelle catégorie il regarde
                   avant de lire le prix. */}
               <p className="etiquette text-orange-sourd">
-                {GAMMES.find((entree) => entree.code === velo.gamme)?.nom ?? velo.gamme}
+                {nomGamme}
               </p>
               <TitreSection as="h1" taille="lg" className="mt-2">
                 {velo.nom}
@@ -192,11 +174,10 @@ export default async function PageVelo({ params }: { params: Params }) {
                 </span>
               </p>
 
-              {/* L'encart de réservation passe sous la description sous
-                  1024 px, à plus de trois écrans du haut : ce bouton y
-                  mène d'un geste. */}
-              <BoutonLien href="#reserver" className="mt-6 w-full sm:w-auto lg:hidden">
-                Réserver ce vélo
+              {/* Sous 1024 px, l'encart passe sous la description : ce
+                  bouton mène à la réservation d'un geste. */}
+              <BoutonLien href={lienGamme} className="mt-6 w-full sm:w-auto lg:hidden">
+                Réserver un vélo {nomGamme}
               </BoutonLien>
             </div>
             {/* Plus d'étoiles par vélo : les avis portent sur l'expérience
@@ -280,27 +261,27 @@ export default async function PageVelo({ params }: { params: Params }) {
               <p className="text-[0.85rem] font-semibold">Bon à savoir</p>
               <p className="mt-3 text-[0.92rem] leading-relaxed text-gris-cadre">
                 Le prix dépend de la gamme du vélo et de la formule : forfait par personne pour
-                le road trip encadré, grille horaire pour la location libre. Choisissez votre
-                formule dans l&apos;encart de réservation.
+                le road trip encadré, grille horaire pour la location libre. Formule et jour se
+                choisissent sur la page de la gamme.
               </p>
             </div>
           </div>
 
           <div id="reserver" className="scroll-mt-24 lg:col-span-5">
-            <div className="lg:sticky lg:top-24">
-              {/* Le widget lit les paramètres de l'URL, ce qui n'est
-                  possible dans une page prérendue qu'à l'intérieur d'une
-                  frontière Suspense : le reste de la fiche part du cache
-                  immédiatement, et l'encart de réservation se pose
-                  dessus. */}
-              <Suspense fallback={<SqueletteReservation />}>
-                <WidgetReservation
-                  creneaux={creneauxDisponibles(new Date(), ouverture)}
-                  complets={departsComplets(new Date(), ouverture)}
-                  velo={velo}
-                  periodesOccupees={periodesOccupees}
-                />
-              </Suspense>
+            <div className="rounded-[var(--radius-bloc)] border border-noir-piste/10 bg-white p-6 text-noir-piste sm:p-7 lg:sticky lg:top-24">
+              <p className="etiquette text-orange-sourd">Gamme {nomGamme}</p>
+              <p className="titre-editorial mt-3 text-[1.45rem]">On réserve une gamme, pas un vélo</p>
+              <p className="mt-3 text-[0.92rem] leading-relaxed text-gris-cadre">
+                {seulDeSaGamme
+                  ? `Le ${velo.nom} est l'unique vélo ${nomGamme} : il vous est réservé s'il est libre sur votre créneau.`
+                  : `Le ${velo.nom} fait partie des vélos ${nomGamme}. À la réservation, nous vous attribuons un vélo ${nomGamme} libre sur votre créneau : celui-ci ou un autre de la gamme, réglé à votre taille au départ.`}
+              </p>
+              <BoutonLien href={lienGamme} taille="lg" className="mt-6 w-full">
+                Réserver un vélo {nomGamme}
+              </BoutonLien>
+              <p className="mt-3 text-center text-[0.76rem] text-gris-cadre">
+                Road trip ou location libre, jour et paiement à l&apos;étape suivante.
+              </p>
             </div>
           </div>
         </div>
@@ -344,14 +325,4 @@ function fondDuBandeau(teinte: string | undefined): string {
   // Luminance perçue (ITU-R BT.601), de 0 à 255.
   const luminance = 0.299 * ((rvb >> 16) & 255) + 0.587 * ((rvb >> 8) & 255) + 0.114 * (rvb & 255);
   return luminance > 160 ? teinte : "#e0dcd3";
-}
-
-/** Emplacement réservé pendant que l'encart de réservation s'installe. */
-function SqueletteReservation() {
-  return (
-    <div
-      aria-hidden="true"
-      className="min-h-[26rem] animate-pulse rounded-[var(--radius-bloc)] border border-noir-piste/10 bg-white/60"
-    />
-  );
 }

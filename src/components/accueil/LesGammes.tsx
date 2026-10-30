@@ -122,14 +122,14 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
               </p>
 
               <Link
-                href={`/velos#gamme-${gamme.code.toLowerCase()}`}
+                href={`/reserver/${gamme.code.toLowerCase()}`}
                 className={`mt-6 inline-flex justify-center rounded-[var(--radius-bouton)] px-5 py-3 text-[0.88rem] font-semibold transition-opacity hover:opacity-85 ${
                   misEnAvant
                     ? "bg-orange-signal text-noir-piste"
                     : "border border-noir-piste/25 text-noir-piste"
                 }`}
               >
-                Voir les vélos {gamme.nom}
+                Réserver un vélo {gamme.nom}
               </Link>
             </article>
           );

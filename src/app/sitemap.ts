@@ -14,6 +14,10 @@ export const revalidate = 3600;
 const PAGES = [
   "",
   "/velos",
+  // Les trois gammes, là où l'on réserve.
+  "/reserver/classique",
+  "/reserver/premium",
+  "/reserver/prestige",
   "/produits",
   "/octobre-rose",
   "/itineraires",

@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
+import Image from "next/image";
+import Link from "next/link";
 
-import { CarteVelo } from "@/components/CarteVelo";
-import { ChoixDeGamme } from "@/components/ChoixDeGamme";
-import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum } from "@/data/offres";
-import { formatXof } from "@/lib/format";
-import { Section, TitreSection } from "@/components/ui";
-import { depot } from "@/lib/db";
 import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { Section, TitreSection } from "@/components/ui";
+import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum } from "@/data/offres";
+import { depot } from "@/lib/db";
 import { filDAriane } from "@/lib/donnees-structurees";
+import { formatXof } from "@/lib/format";
 import { metadonneesPage } from "@/lib/seo";
 
 /** L'heure de vélo la moins chère, toutes gammes confondues. */
@@ -17,75 +17,38 @@ export const metadata: Metadata = metadonneesPage({
   titre: `Vélos à louer à Cotonou dès ${formatXof(PRIX_HEURE_MINIMUM)} l'heure`,
   description:
     "Trois gammes de vélos à louer sur la route des Pêches à Cotonou : Classique, Premium et Prestige. " +
-    "Choisissez votre vélo et votre date, puis réservez en ligne.",
+    "Choisissez votre gamme et votre jour, puis réservez en ligne.",
   chemin: "/velos",
 });
 
 /**
- * Page régénérée au plus une fois par minute.
- *
- * Elle était reconstruite à chaque visite, au motif que le parc dépend
- * des réservations. C'est faux ici : sans filtre de date, cette page ne
- * montre aucune disponibilité, elle liste les vélos qui ne sont pas
- * retirés du parc, ce qui change deux fois par an.
- *
- * Le coût était mesurable : neuf réponses servies sur soixante lors d'un
- * test de charge, le pool de connexions épuisé. Une minute de cache
- * suffit à l'effacer.
- *
- * Les disponibilités réelles se jouent dans le tunnel et, en dernier
- * ressort, dans la transaction sérialisable qui écrit la réservation.
+ * Page régénérée au plus une fois par minute : elle compte les vélos de
+ * chaque gamme, ce qui change deux fois par an. Les disponibilités réelles
+ * se jouent dans le tunnel et, en dernier ressort, dans la transaction
+ * sérialisable qui écrit la réservation.
  */
 export const revalidate = 60;
 
 /**
- * Le catalogue : c'est là que mène « Réserver ».
+ * Là où mène « Réserver un vélo » : les trois gammes, et rien d'autre.
  *
- * Aucun filtre : ni type de vélo, ni taille, ni point de départ.
- *
- * Avec un parc restreint sur un seul point, filtrer n'aide personne. Surtout,
- * ni le type ni la taille ne changent quoi que ce soit : le prix dépend
- * de la gamme et de la formule, et le coordinateur règle la machine à la
- * morphologie du client au départ. Afficher ces critères laisserait
- * croire qu'ils comptent.
- *
- * Le visiteur choisit d'abord sa gamme, présentée en cadre avec son prix
- * d'entrée et son nombre de vélos : il comprend tout de suite pourquoi un
- * vélo coûte plus qu'un autre. Les vélos de la gamme choisie s'affichent
- * alors, et eux seuls (ChoixDeGamme) ; il en choisit un, puis une date.
+ * Le client ne choisit plus un vélo précis, il choisit une gamme : c'est
+ * elle qui fixe le prix, et un vélo libre de la gamme lui est attribué à la
+ * réservation, réglé à sa taille au départ. Une gamme touchée ouvre sa page
+ * de réservation (/reserver/<gamme>), où se choisissent la formule (road
+ * trip ou location libre) et le jour, et où restent les photos de ses
+ * vélos.
  */
-/**
- * Les colonnes de la grille des vélos d'une gamme, selon leur nombre : une
- * carte seule sur la dernière rangée laissait les deux tiers du cadre vides.
- * Quatre ou huit vélos se rangent par deux, puis par quatre sur grand écran ;
- * sept finissent en 4 + 3 ; les autres nombres gardent trois colonnes.
- */
-function colonnesDeLaGrille(nombre: number): string {
-  if (nombre % 4 === 0) return "sm:grid-cols-2 xl:grid-cols-4";
-  if (nombre % 4 === 3 && nombre > 3) return "sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
-  return "sm:grid-cols-2 lg:grid-cols-3";
-}
-
 export default async function PageCatalogue() {
   const velos = await depot.listerVelos();
   const gammes = GAMMES.map((gamme) => {
-    const duGroupe = velos.filter((velo) => velo.gamme === gamme.code);
+    const deLaGamme = velos.filter((velo) => velo.gamme === gamme.code);
     return {
-      code: gamme.code,
-      nom: gamme.nom,
-      pourQui: gamme.pourQui,
-      description: gamme.description,
-      prixHeure: formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof),
-      prixRoadTrip: formatXof(prixRoadTripMinimum(gamme.code)),
-      nombre: duGroupe.length,
+      ...gamme,
+      nombre: deLaGamme.length,
+      // La photo d'un vélo de la gamme, pour la reconnaître d'un coup d'œil.
+      photo: deLaGamme.find((velo) => velo.photo)?.photo,
       lePlusPris: gamme.code === GAMME_LA_PLUS_PRISE,
-      velos: (
-        <div className={`grid gap-6 ${colonnesDeLaGrille(duGroupe.length)}`}>
-          {duGroupe.map((velo) => (
-            <CarteVelo key={velo.id} velo={velo} />
-          ))}
-        </div>
-      ),
     };
   }).filter((gamme) => gamme.nombre > 0);
 
@@ -99,13 +62,13 @@ export default async function PageCatalogue() {
           pour la route des Pêches
         </TitreSection>
         <p className="mt-6 max-w-xl text-[0.98rem] leading-relaxed text-craie/70">
-          Trois gammes, trois tarifs. Choisissez d&apos;abord votre gamme&nbsp;: ses vélos
-          s&apos;affichent, vous prenez celui qui vous plaît, puis votre date. Il sera réglé à votre
-          taille au départ, et un coordinateur vérifie freins et pression avant que vous partiez.
+          Trois gammes, trois tarifs. Choisissez votre gamme, puis votre formule et votre jour&nbsp;:
+          nous vous attribuons un vélo libre de la gamme, réglé à votre taille au départ, et un
+          coordinateur vérifie freins et pression avant que vous partiez.
         </p>
       </div>
 
-      {velos.length === 0 ? (
+      {gammes.length === 0 ? (
         <div className="mt-16 rounded-[var(--radius-carte)] bg-white px-8 py-16 text-center">
           <p className="titre-editorial text-[1.6rem] text-noir-piste">Aucun vélo disponible</p>
           <p className="mx-auto mt-4 max-w-md text-[0.95rem] leading-relaxed text-gris-cadre">
@@ -114,7 +77,71 @@ export default async function PageCatalogue() {
           </p>
         </div>
       ) : (
-        <ChoixDeGamme gammes={gammes} />
+        <nav aria-label="Nos gammes de vélos" className="mt-12">
+          {/* Trois cadres de front seulement dès 1024 px : dessous, ils
+              s'empilent, chacun gardant la largeur de lire son prix. */}
+          <ul className="grid gap-5 lg:grid-cols-3">
+            {gammes.map((gamme) => (
+              <li key={gamme.code}>
+                <Link
+                  href={`/reserver/${gamme.code.toLowerCase()}`}
+                  className={`group flex h-full flex-col overflow-hidden rounded-[var(--radius-bloc)] border-2 transition-colors ${
+                    gamme.lePlusPris
+                      ? "border-orange-signal/70 bg-noir-releve hover:border-orange-signal"
+                      : "border-craie/15 bg-noir-releve/60 hover:border-craie/40"
+                  }`}
+                >
+                  {gamme.photo && (
+                    <span className="relative block aspect-16/9 overflow-hidden bg-craie">
+                      <Image
+                        src={gamme.photo}
+                        alt={`Un vélo ${gamme.nom} Bike Land`}
+                        fill
+                        sizes="(min-width: 1024px) 400px, 100vw"
+                        className={`object-cover transition-transform duration-300 group-hover:scale-[1.03] ${
+                          gamme.photo.startsWith("/images/affiches/") ? "object-left" : ""
+                        }`}
+                      />
+                    </span>
+                  )}
+                  <span className="flex flex-1 flex-col p-6">
+                    <span className="flex min-h-9 items-center justify-between gap-3">
+                      <span className="titre-editorial text-[1.7rem] text-craie">{gamme.nom}</span>
+                      {gamme.lePlusPris && (
+                        <span className="shrink-0 rounded-full bg-orange-signal px-3 py-1 text-xs font-semibold uppercase tracking-[0.06em] text-noir-piste">
+                          Le plus pris
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-2 text-[0.88rem] leading-relaxed text-craie/70">{gamme.pourQui}</span>
+                    <span className="mb-5 mt-5 block">
+                      <span className="font-display text-[1.9rem] font-extrabold leading-none tabular-nums text-orange-signal">
+                        {formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof)}
+                      </span>
+                      <span className="mt-1 block text-[0.8rem] text-craie/60">
+                        l&apos;heure ·{" "}
+                        <span className="whitespace-nowrap">
+                          road trip dès {formatXof(prixRoadTripMinimum(gamme.code))} / pers.
+                        </span>
+                      </span>
+                    </span>
+                    <span className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-craie/15 pt-4 text-[0.85rem]">
+                      <span className="text-craie/70">
+                        {gamme.nombre === 1 ? "1 vélo, exemplaire unique" : `${gamme.nombre} vélos`}
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-semibold text-craie underline-offset-4 group-hover:underline">
+                        Réserver un vélo {gamme.nom}
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                          <path d="M1.5 6h9M6.5 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
       )}
     </Section>
   );
