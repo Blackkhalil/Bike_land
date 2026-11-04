@@ -14,8 +14,9 @@ import {
   GAMME_LA_PLUS_PRISE,
   GAMMES,
   GRILLE_HORAIRE,
+  noteDepartsHorsGamme,
   OUVERTURE_HEURE,
-  prixRoadTripMinimum,
+  sortieEncadreeDe,
 } from "@/data/offres";
 import { depot } from "@/lib/db";
 import { occupationsDeLaGamme } from "@/lib/db/contrat";
@@ -46,14 +47,27 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const gamme = gammeDeLAdresse((await params).gamme);
   if (!gamme) return { title: "Gamme introuvable" };
   const heure = formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof);
-  const roadTrip = formatXof(prixRoadTripMinimum(gamme.code));
+  // Le road trip encadré le week-end, ou Gbashi bike le dimanche pour le
+  // Classique, qui ne roule pas le samedi.
+  const sortie = sortieEncadreeDe(gamme.code);
+  const prixSortie = sortie ? formatXof(sortie.prixMinimum) : "";
+  const enSortie = !sortie
+    ? ""
+    : sortie.nom === "Road trip"
+      ? `, ou en road trip encadré le week-end dès ${prixSortie} par personne`
+      : `, ou en ${sortie.nom} ${sortie.avantPrix} ${prixSortie} par personne`;
+  const enSortieCourt = !sortie
+    ? ""
+    : sortie.nom === "Road trip"
+      ? `, road trip encadré dès ${prixSortie} par personne`
+      : `, ${sortie.nom} ${sortie.avantPrix} ${prixSortie} par personne`;
   return metadonneesPage({
     titre: `Location de vélo ${gamme.nom} à Cotonou`,
     description: premierQuiTient(
       [
-        `Vélo ${gamme.nom} à louer à Cotonou dès ${heure} l'heure, ou en road trip encadré le week-end dès ${roadTrip} par personne. Réservez en ligne, payez en Mobile Money.`,
-        `Vélo ${gamme.nom} à louer à Cotonou dès ${heure} l'heure, ou en road trip encadré le week-end dès ${roadTrip} par personne. Réservation en ligne.`,
-        `Vélo ${gamme.nom} à louer à Cotonou dès ${heure} l'heure, road trip encadré dès ${roadTrip} par personne.`,
+        `Vélo ${gamme.nom} à louer à Cotonou dès ${heure} l'heure${enSortie}. Réservez en ligne, payez en Mobile Money.`,
+        `Vélo ${gamme.nom} à louer à Cotonou dès ${heure} l'heure${enSortie}. Réservation en ligne.`,
+        `Vélo ${gamme.nom} à louer à Cotonou dès ${heure} l'heure${enSortieCourt}.`,
       ],
       DESCRIPTION_MAX,
     ),
@@ -98,6 +112,10 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
   const lePlusPris = gamme.code === GAMME_LA_PLUS_PRISE;
   const autres = GAMMES.filter((autre) => autre.code !== gamme.code);
   const nombre = deLaGamme.length;
+  const sortie = sortieEncadreeDe(gamme.code);
+  // « Le road trip du samedi se fait en vélo Premium ou Prestige » : sur la
+  // page Classique, sous le prix.
+  const horsGamme = noteDepartsHorsGamme(gamme.code);
 
   return (
     <>
@@ -130,17 +148,27 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
                 {formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof)}
               </strong>
               l&apos;heure
-              <span aria-hidden="true" className="hidden px-1 opacity-40 sm:inline">
-                •
-              </span>
-              <span className="whitespace-nowrap">
-                road trip dès{" "}
-                <strong className="font-semibold tabular-nums text-craie">
-                  {formatXof(prixRoadTripMinimum(gamme.code))}
-                </strong>{" "}
-                par personne
-              </span>
+              {/* Le road trip, ou Gbashi bike le dimanche pour le Classique,
+                  qui ne roule pas le samedi. */}
+              {sortie && (
+                <>
+                  <span aria-hidden="true" className="hidden px-1 opacity-40 sm:inline">
+                    •
+                  </span>
+                  {/* Un bloc à part, qui passe entier à la ligne : la phrase
+                      longue du Classique (Gbashi bike le dimanche) s'y replie
+                      sans déborder d'un téléphone. */}
+                  <span className="min-w-0">
+                    {sortie.nomDansLaPhrase} {sortie.avantPrix}{" "}
+                    <strong className="whitespace-nowrap font-semibold tabular-nums text-craie">
+                      {formatXof(sortie.prixMinimum)}
+                    </strong>{" "}
+                    par personne
+                  </span>
+                </>
+              )}
             </p>
+            {horsGamme && <p className="mt-2 max-w-xl text-[0.88rem] text-craie/60">{horsGamme}</p>}
 
             <p className="mt-8 max-w-xl text-[0.98rem] leading-relaxed text-craie/75">{gamme.description}</p>
 

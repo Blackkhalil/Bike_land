@@ -92,10 +92,11 @@ sur place. La colonne `collectedBy` est ajoutée par `prisma/especes.sql`.
 réservation (`src/data/produits.ts`, prix dans `src/data/offres.ts`) :
 
 - **Gbashi bike** est le road trip du dimanche, avec une séance de sport devant la
-  plage à l'arrivée. Même réservation, même prix : c'est le créneau « Dimanche » du
-  tableau de bord, qui affiche son nom. Le formulaire, les emails et l'admin le
-  nomment aussi, et demandent de venir en tenue de sport.
-- **Road trip** est la sortie du samedi, **location libre** le vélo à l'heure.
+  plage à l'arrivée, dans les trois gammes, à son propre prix : c'est le créneau
+  « Dimanche » du tableau de bord, qui affiche son nom. Le formulaire, les emails et
+  l'admin le nomment aussi, et demandent de venir en tenue de sport.
+- **Road trip** est la sortie du samedi, en Premium ou Prestige seulement ;
+  **location libre** le vélo à l'heure, dans les trois gammes.
 - **Octobre rose** n'existe qu'en octobre de l'année de la campagne. Tout se règle
   dans `src/data/octobre-rose.ts` : la date, le rassemblement, le départ et le
   retour à la minute près, le prix en ligne (le même pour tous les vélos ; au
@@ -178,18 +179,24 @@ widget, le tunnel, l'API et l'admin lisent la même grille.
 | 3 h | 3 125 | 4 625 | 6 125 |
 | 4 h | 3 625 | 5 625 | 7 125 |
 
-### Road trip encadré
+### Road trip encadré, par personne
 
-| Gamme | Prix | Cocos offertes |
-|---|---|---|
-| Classique | 2 625 | 1 |
-| Premium | 3 125 | 2 |
-| Prestige | 3 625 | 2 |
+| Gamme | Samedi (road trip) | Dimanche (Gbashi bike) | Cocos offertes |
+|---|---|---|---|
+| Classique | pas de road trip | 3 125 | 1 |
+| Premium | 3 125 | 4 125 | 2 |
+| Prestige | 3 625 | 5 125 | 2 |
+
+**Le road trip du samedi se roule en Premium ou Prestige** (décision du gérant, novembre
+2026) : le Classique n'a pas de prix dans `PRIX_ROAD_TRIP_XOF`, et une gamme sans prix ne
+roule pas ce départ (`roadTripPossible`, `motifRoadTripGamme`). Le site ne le lui propose
+pas, le tunnel, l'API et le comptoir le refusent avec le motif, et les réservations déjà
+prises gardent leur montant. Le Classique garde la location libre et Gbashi bike.
 
 Ces tarifs comprennent 125 F de frais du paiement en ligne, par location libre et par
 personne en road trip (`FRAIS_PAIEMENT_EN_LIGNE_XOF`). **Au comptoir, en espèces, on paie
-le prix de la plaquette**, ces 125 F en moins : 1 000 F l'heure en Classique, 2 500 F le
-road trip Classique. Seule une vente saisie dans l'administration y a droit.
+le prix de la plaquette**, ces 125 F en moins : 1 000 F l'heure en Classique, 3 000 F le
+road trip Premium. Seule une vente saisie dans l'administration y a droit.
 
 Le road trip part sur un créneau fixe, le samedi et le dimanche de 8 h à 11 h (chaque
 créneau s'ouvre et se ferme depuis le tableau de bord). Le dimanche, il se vend sous le
@@ -204,7 +211,7 @@ pas non plus en ligne entre 22 h et 8 h. Le site le signale et le serveur refuse
 réservation ; un paiement déjà commencé, lui, peut se terminer.
 
 **La location libre se réserve à toute heure**, la nuit comprise. Le samedi et le
-dimanche, elle commence à 11 h, les vélos étant en road trip de 8 h à 11 h, et le jour
+dimanche, elle commence à 11 h, après le road trip de 8 h à 11 h, et le jour
 même seules les heures à venir sont proposées. Toutes les règles horaires sont lues à
 l'heure de Cotonou (UTC+1), pas sur l'horloge du serveur.
 
@@ -453,7 +460,7 @@ jamais accessible par la seule couleur.
 | Décision | Raison |
 |---|---|
 | Montants en **entiers de FCFA** | Le franc CFA n'a pas de subdivision en usage, aucun arrondi flottant à gérer |
-| Prix non arrondis | 1 125 et 2 625 sont les prix décidés, les afficher autrement serait mentir sur le montant débité |
+| Prix non arrondis | 1 125 et 3 125 sont les prix décidés, les afficher autrement serait mentir sur le montant débité |
 | Une seule source de prix | `offres.ts` sert au widget, au tunnel, à l'API et à l'admin : le prix affiché est celui qui sera encaissé |
 | Le prix envoyé par le client est **ignoré** | Il est recalculé côté serveur à partir du vélo et de la durée |
 | Durées limitées à la grille publiée | Aucun tarif ne peut être inventé par l'appelant |

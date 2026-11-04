@@ -16,6 +16,7 @@ import {
   DUREE_ROAD_TRIP_HEURES,
   GRILLE_HORAIRE,
   heuresDepartPossibles,
+  roadTripPossible,
 } from "@/data/offres";
 import { creneauxSeChevauchent, type CreneauOccupe } from "./contrat";
 import { calculerDevis } from "../tarification";
@@ -189,7 +190,10 @@ function fabriquerReservation(contexte: {
   // Mélange des deux formules, à peu près deux tiers de road trips : sans
   // cela le tableau de bord montrerait une colonne systématiquement vide
   // et donnerait l'impression que la location libre ne marche pas.
-  const estRoadTrip = impose ? impose.offre === "road-trip" : hasard() < 0.65;
+  // Un Classique ne roule pas le road trip du samedi (ni un jour sans
+  // départ, qui prend le prix du samedi) : il part alors en location libre.
+  const estRoadTrip =
+    (impose ? impose.offre === "road-trip" : hasard() < 0.65) && roadTripPossible(velo.gamme, dateDebut);
   const nombrePersonnes = estRoadTrip ? choisirParticipants(hasard) : 1;
   const dureeHeures = estRoadTrip ? undefined : choisirDuree(hasard);
 

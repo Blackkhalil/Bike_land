@@ -9,7 +9,7 @@ import Image from "next/image";
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue } from "@/data/catalogue";
-import { GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum } from "@/data/offres";
+import { GAMMES, GRILLE_HORAIRE, noteDepartsHorsGamme, sortieEncadreeDe } from "@/data/offres";
 import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { depot } from "@/lib/db";
 import { filDAriane, veloALouer } from "@/lib/donnees-structurees";
@@ -52,9 +52,20 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   // L'accroche saisie dans l'admin peut finir par un point : on n'en veut qu'un.
   const accroche = velo.accroche.trim().replace(/\.+$/, "");
   const heure = formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof);
-  const roadTrip = formatXof(prixRoadTripMinimum(velo.gamme));
-  const prixLong = `À louer à Cotonou dès ${heure} l'heure, ou en road trip le week-end dès ${roadTrip} par personne.`;
-  const prixCourt = `À louer à Cotonou dès ${heure} l'heure, road trip dès ${roadTrip}.`;
+  // Le road trip le week-end, ou Gbashi bike le dimanche pour un Classique,
+  // qui ne roule pas le samedi.
+  const sortie = sortieEncadreeDe(velo.gamme);
+  const prixSortie = sortie ? formatXof(sortie.prixMinimum) : "";
+  const enSortie = !sortie
+    ? ""
+    : sortie.nom === "Road trip"
+      ? `, ou en road trip le week-end dès ${prixSortie} par personne`
+      : `, ou en ${sortie.nom} ${sortie.avantPrix} ${prixSortie} par personne`;
+  const enSortieCourt = !sortie
+    ? ""
+    : `, ${sortie.nomDansLaPhrase} ${sortie.avantPrix} ${prixSortie}`;
+  const prixLong = `À louer à Cotonou dès ${heure} l'heure${enSortie}.`;
+  const prixCourt = `À louer à Cotonou dès ${heure} l'heure${enSortieCourt}.`;
   const metadonnees = metadonneesPage({
     titre: premierQuiTient(
       [`${libelle} à louer à Cotonou`, `${libelle} à louer`, velo.nom],
@@ -91,6 +102,10 @@ export default async function PageVelo({ params }: { params: Params }) {
   const nomGamme = gamme?.nom ?? velo.gamme;
   const lienGamme = `/reserver/${velo.gamme.toLowerCase()}`;
   const seulDeSaGamme = tousLesVelos.filter((autre) => autre.gamme === velo.gamme).length <= 1;
+  const sortie = sortieEncadreeDe(velo.gamme);
+  // « Le road trip du samedi se fait en vélo Premium ou Prestige » : sur la
+  // fiche d'un Classique.
+  const horsGamme = noteDepartsHorsGamme(velo.gamme);
 
   const point = points.find((p) => p.id === velo.pointDeRetraitId);
   // Les autres vélos du parc, sans trier par catégorie : elle ne guide
@@ -162,16 +177,25 @@ export default async function PageVelo({ params }: { params: Params }) {
                   {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)}
                 </strong>
                 l&apos;heure
-                <span aria-hidden="true" className="hidden px-1 opacity-40 sm:inline">
-                  •
-                </span>
-                <span className="whitespace-nowrap">
-                  road trip dès{" "}
-                  <strong className="font-semibold tabular-nums text-noir-piste">
-                    {formatXof(prixRoadTripMinimum(velo.gamme))}
-                  </strong>{" "}
-                  par personne
-                </span>
+                {/* Le road trip, ou Gbashi bike le dimanche pour un
+                    Classique, qui ne roule pas le samedi. */}
+                {sortie && (
+                  <>
+                    <span aria-hidden="true" className="hidden px-1 opacity-40 sm:inline">
+                      •
+                    </span>
+                    {/* Un bloc à part, qui passe entier à la ligne : la
+                        phrase longue du Classique (Gbashi bike le dimanche)
+                        s'y replie sans déborder d'un téléphone. */}
+                    <span className="min-w-0">
+                      {sortie.nomDansLaPhrase} {sortie.avantPrix}{" "}
+                      <strong className="whitespace-nowrap font-semibold tabular-nums text-noir-piste">
+                        {formatXof(sortie.prixMinimum)}
+                      </strong>{" "}
+                      par personne
+                    </span>
+                  </>
+                )}
               </p>
 
               {/* Sous 1024 px, l'encart passe sous la description : ce
@@ -261,8 +285,11 @@ export default async function PageVelo({ params }: { params: Params }) {
               <p className="text-[0.85rem] font-semibold">Bon à savoir</p>
               <p className="mt-3 text-[0.92rem] leading-relaxed text-gris-cadre">
                 Le prix dépend de la gamme du vélo et de la formule : forfait par personne pour
-                le road trip encadré, grille horaire pour la location libre. Formule et jour se
-                choisissent sur la page de la gamme.
+                {sortie && sortie.nom !== "Road trip"
+                  ? ` ${sortie.nom} ${sortie.avantPrix.replace(/ à$/, "")}`
+                  : " le road trip encadré"}
+                , grille horaire pour la location libre. Formule et jour se choisissent sur la page
+                de la gamme.{horsGamme && ` ${horsGamme}`}
               </p>
             </div>
           </div>
@@ -280,7 +307,8 @@ export default async function PageVelo({ params }: { params: Params }) {
                 Réserver un vélo {nomGamme}
               </BoutonLien>
               <p className="mt-3 text-center text-[0.76rem] text-gris-cadre">
-                Road trip ou location libre, jour et paiement à l&apos;étape suivante.
+                {sortie ? `${sortie.nom} ou location libre` : "Location libre"}, jour et paiement à
+                l&apos;étape suivante.
               </p>
             </div>
           </div>

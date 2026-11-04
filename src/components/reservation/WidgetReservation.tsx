@@ -4,7 +4,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Bouton } from "@/components/Bouton";
-import { creneauDuJour, formatHeure, GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum, type GammeVelo } from "@/data/offres";
+import {
+  creneauDuJour,
+  formatHeure,
+  GAMMES,
+  GRILLE_HORAIRE,
+  noteDepartsHorsGamme,
+  sortieEncadreeDe,
+  type GammeVelo,
+} from "@/data/offres";
 import { CLE_CHOIX_PRODUIT } from "@/data/produits";
 import { formatDate, formatXof } from "@/lib/format";
 import type { CodeOffre } from "@/lib/types";
@@ -61,8 +69,10 @@ export function WidgetReservation({
    */
   const parametres = useSearchParams();
   const jourDemande = parametres.get("debut");
-  const [offre, setOffre] = useState<CodeOffre>("road-trip");
-  const [jour, setJour] = useState<DateISO | null>(jourDemande);
+  // La sortie encadrée de la gamme : le road trip, ou Gbashi bike seul le
+  // dimanche pour le Classique, qui ne roule pas le samedi.
+  const sortie = sortieEncadreeDe(gamme);
+  const horsGamme = noteDepartsHorsGamme(gamme);
   // Un jour demandé qui tombe sur un départ encadré le présélectionne :
   // `?debut=` d'un dimanche ouvre l'encart sur Gbashi bike. S'il n'est
   // plus proposé (complet, ou clos la veille à 22 h), c'est le même
@@ -72,6 +82,13 @@ export function WidgetReservation({
     ? (creneaux.find((item) => item.date === jourDemande) ??
         creneaux.find((item) => item.code === creneauDuJour(jourDemande)?.code))?.code
     : undefined;
+  // L'encart s'ouvre sur le road trip quand la gamme le roule. Le Classique,
+  // qui ne roule que Gbashi bike, s'ouvre sur la location libre, son usage
+  // ordinaire, sauf si l'adresse demande un départ qu'il roule.
+  const [offre, setOffre] = useState<CodeOffre>(
+    sortie && (sortie.nom === "Road trip" || codeDemande) ? "road-trip" : "location-libre",
+  );
+  const [jour, setJour] = useState<DateISO | null>(jourDemande);
   const [creneauChoisi, setCreneauChoisi] = useState<string>(
     codeDemande ?? premierDepart(creneaux)?.code ?? "",
   );
@@ -90,6 +107,7 @@ export function WidgetReservation({
       if (choix === "location-libre") setOffre("location-libre");
       else if (!codeDemande && choix && creneaux.some((item) => item.code === choix)) {
         setCreneauChoisi(choix);
+        setOffre("road-trip");
       }
     }, 0);
     return () => clearTimeout(lecture);
@@ -143,11 +161,16 @@ export function WidgetReservation({
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {(
                 [
-                  {
-                    code: "road-trip" as const,
-                    titre: "Road trip",
-                    detail: `dès ${formatXof(prixRoadTripMinimum(gamme))} / pers., encadré`,
-                  },
+                  ...(sortie
+                    ? [
+                        {
+                          code: "road-trip" as const,
+                          // « Road trip », ou « Gbashi bike » pour le Classique.
+                          titre: sortie.nom,
+                          detail: `${sortie.avantPrix} ${formatXof(sortie.prixMinimum)} / pers., encadré`,
+                        },
+                      ]
+                    : []),
                   {
                     code: "location-libre" as const,
                     titre: "Location libre",
@@ -181,6 +204,8 @@ export function WidgetReservation({
                 );
               })}
             </div>
+            {/* Le Classique : le road trip du samedi n'est pas pour lui. */}
+            {horsGamme && <p className="mt-2.5 text-[0.78rem] leading-relaxed text-gris-cadre">{horsGamme}</p>}
           </fieldset>
 
           {/* ------------------------------- Road trip : créneaux fixes */}
@@ -194,8 +219,8 @@ export function WidgetReservation({
                 {creneaux.length === 0 && (
                   <p className="rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed">
                     {complets.length > 0
-                      ? "Les prochains départs de road trip sont sold out. "
-                      : "Aucun départ de road trip n'est ouvert à la réservation en ce moment : les prochaines sorties sont complètes. "}
+                      ? `Les prochains départs de ${sortie?.nomDansLaPhrase ?? "road trip"} sont sold out. `
+                      : `Aucun départ de ${sortie?.nomDansLaPhrase ?? "road trip"} n'est ouvert à la réservation en ce moment : les prochaines sorties sont complètes. `}
                     La location libre reste possible, ou appelez-nous au {site.telephone}.
                   </p>
                 )}

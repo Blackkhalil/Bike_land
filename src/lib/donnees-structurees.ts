@@ -3,7 +3,7 @@ import {
   GRILLE_HORAIRE,
   PRIX_GBASHI_BIKE_XOF,
   PRIX_ROAD_TRIP_XOF,
-  prixRoadTripMinimum,
+  sortieEncadreeDe,
 } from "@/data/offres";
 import { formatXof } from "@/lib/format";
 import type { EtatSortieOctobreRose } from "@/lib/ouverture";
@@ -126,6 +126,7 @@ export function filDAriane(maillons: { nom: string; chemin: string }[]) {
  */
 export function veloALouer(velo: Velo) {
   const gamme = GAMMES.find((g) => g.code === velo.gamme);
+  const sortie = sortieEncadreeDe(velo.gamme);
   const url = adresseComplete(`/velos/${velo.slug}`);
   const disponible = velo.statut !== "MAINTENANCE" && velo.statut !== "RETIRE";
   const offre = (nom: string, prix: number, unite?: "HUR") => ({
@@ -159,7 +160,16 @@ export function veloALouer(velo: Velo) {
     url,
     offers: [
       offre("Location à l'heure", GRILLE_HORAIRE[velo.gamme][0].prixXof, "HUR"),
-      offre("Road trip encadré, par personne", prixRoadTripMinimum(velo.gamme)),
+      // Le road trip, ou Gbashi bike le dimanche pour un Classique, qui ne
+      // roule pas le samedi : jamais une offre que le vélo ne fait pas.
+      ...(sortie
+        ? [
+            offre(
+              sortie.nom === "Road trip" ? "Road trip encadré, par personne" : `${sortie.nom}, par personne`,
+              sortie.prixMinimum,
+            ),
+          ]
+        : []),
     ],
   };
 }

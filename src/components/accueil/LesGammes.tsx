@@ -6,7 +6,7 @@ import {
   GAMME_LA_PLUS_PRISE,
   GAMMES,
   GRILLE_HORAIRE,
-  prixRoadTripMinimum,
+  sortieEncadreeDe,
 } from "@/data/offres";
 import { formatNombre, formatXof } from "@/lib/format";
 import type { Velo } from "@/lib/types";
@@ -57,6 +57,9 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
           );
           // La gamme que les clients prennent le plus : le Premium.
           const misEnAvant = gamme.code === GAMME_LA_PLUS_PRISE;
+          // Le road trip du samedi, ou Gbashi bike le dimanche pour le
+          // Classique, qui ne roule pas le samedi.
+          const sortie = sortieEncadreeDe(gamme.code);
 
           return (
             <article
@@ -96,12 +99,14 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
                   <dt className="shrink-0 text-gris-cadre">Dans la gamme</dt>
                   <dd className="text-right font-medium">{auChoix(disponibles.length)}</dd>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="shrink-0 text-gris-cadre">Road trip</dt>
-                  <dd className="text-right font-medium tabular-nums">
-                    dès {formatXof(prixRoadTripMinimum(gamme.code))} / pers.
-                  </dd>
-                </div>
+                {sortie && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="shrink-0 text-gris-cadre">{sortie.nom}</dt>
+                    <dd className="text-right font-medium tabular-nums">
+                      {sortie.avantPrix} {formatXof(sortie.prixMinimum)} / pers.
+                    </dd>
+                  </div>
+                )}
                 <div className="flex justify-between gap-3">
                   <dt className="shrink-0 text-gris-cadre">Offert au retour</dt>
                   <dd className="text-right font-medium">

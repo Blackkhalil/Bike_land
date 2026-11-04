@@ -7,6 +7,12 @@ import { GAMMES, GRILLE_HORAIRE, PRIX_GBASHI_BIKE_XOF, PRIX_ROAD_TRIP_XOF, type 
 import { formatXof } from "@/lib/format";
 import type { StatutVelo, Velo } from "@/lib/types";
 
+/** « road trip 3 125 FCFA le samedi », ou « pas de road trip le samedi » : le Classique ne le roule pas. */
+function texteRoadTripSamedi(gamme: GammeVelo): string {
+  const prix = PRIX_ROAD_TRIP_XOF[gamme];
+  return prix === undefined ? "pas de road trip le samedi" : `road trip ${formatXof(prix)} le samedi`;
+}
+
 /**
  * Contrôles d'exploitation d'un vélo : sa disponibilité et sa gamme.
  *
@@ -110,9 +116,9 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
               type="button"
               onClick={() => !actif && envoyer({ gamme: gamme.code })}
               aria-pressed={actif}
-              title={`${formatXof(prixHeure)} l'heure, road trip ${formatXof(
-                PRIX_ROAD_TRIP_XOF[gamme.code],
-              )} et Gbashi bike ${formatXof(PRIX_GBASHI_BIKE_XOF[gamme.code])} par personne`}
+              title={`${formatXof(prixHeure)} l'heure, ${texteRoadTripSamedi(gamme.code)}, Gbashi bike ${formatXof(
+                PRIX_GBASHI_BIKE_XOF[gamme.code],
+              )} par personne`}
               className={`min-h-[40px] rounded-[var(--radius-bouton)] border px-3.5 text-[0.82rem] font-semibold transition-colors ${
                 actif
                   ? "border-orange-signal bg-orange-signal text-noir-piste"
@@ -126,9 +132,8 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
       </div>
 
       <p className="mt-2 text-[0.78rem] text-gris-cadre">
-        {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l&apos;heure, road trip{" "}
-        {formatXof(PRIX_ROAD_TRIP_XOF[velo.gamme])} le samedi, Gbashi bike{" "}
-        {formatXof(PRIX_GBASHI_BIKE_XOF[velo.gamme])} le dimanche, par personne. Les réservations déjà prises
+        {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l&apos;heure, {texteRoadTripSamedi(velo.gamme)}, Gbashi
+        bike {formatXof(PRIX_GBASHI_BIKE_XOF[velo.gamme])} le dimanche, par personne. Les réservations déjà prises
         gardent leur montant.
       </p>
 

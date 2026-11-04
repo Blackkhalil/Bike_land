@@ -31,6 +31,7 @@ import {
   FERMETURE_HEURE,
   motifHoraireLocation,
   OUVERTURE_HEURE,
+  roadTripPossible,
   roadTripsDuJour,
   type GammeVelo,
   type OuvertureCreneaux,
@@ -260,6 +261,10 @@ const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "s
  * aussi : pas pendant le road trip du week-end, pas dans le passé. La page
  * de réservation l'appelle sans durée, le tunnel recalculant les heures
  * proposées à chaque changement de durée.
+ *
+ * Elle ne connaît pas la gamme : qu'une gamme roule ou non ce départ (le
+ * Classique, pas le samedi) se vérifie à part, avec `motifRoadTripGamme`,
+ * une fois la gamme connue (routes de réservation et du comptoir).
  */
 export function motifDeRefus(
   ouverture: Ouverture,
@@ -331,16 +336,22 @@ export function personnesMaxPour(velo: Velo, parc: Velo[]): number {
 }
 
 /**
- * Les départs encadrés vus d'une gamme : un départ où plus aucun de ses
- * vélos n'est libre passe avec ceux que l'exploitant a fermés, et
- * s'affiche « Sold out » pour elle. Sans cela, l'encart de la gamme
- * proposait encore ce départ, et le client y revenait en boucle.
+ * Les départs encadrés vus d'une gamme.
+ *
+ * Un départ que la gamme ne roule pas n'apparaît pas du tout : le road trip
+ * du samedi n'est pas proposé au Classique, ni ouvert ni « Sold out ». Un
+ * départ où plus aucun de ses vélos n'est libre passe avec ceux que
+ * l'exploitant a fermés, et s'affiche « Sold out » pour elle. Sans cela,
+ * l'encart de la gamme proposait encore ce départ, et le client y revenait
+ * en boucle.
  */
 export async function departsDeLaGamme<T extends { date: DateISO; heureDebut: number; heureFin: number }>(
   gamme: GammeVelo,
-  creneaux: T[],
-  complets: T[],
+  tousLesCreneaux: T[],
+  tousLesComplets: T[],
 ): Promise<{ creneaux: T[]; complets: T[] }> {
+  const creneaux = tousLesCreneaux.filter((creneau) => roadTripPossible(gamme, creneau.date));
+  const complets = tousLesComplets.filter((creneau) => roadTripPossible(gamme, creneau.date));
   const pleins = await Promise.all(
     creneaux.map(
       async (creneau) =>

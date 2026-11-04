@@ -4,6 +4,7 @@ import { ArticleLegal, PageLegale } from "@/components/PageLegale";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   DUREE_MAX_LOCATION_LIBRE,
+  gammesDuDepart,
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
 } from "@/data/offres";
@@ -23,7 +24,7 @@ export default function PageCGV() {
   return (
     <PageLegale
       titre="Conditions générales de vente"
-      miseAJour="15 octobre 2026"
+      miseAJour="4 novembre 2026"
       sousTitre="Ce que nous nous engageons à faire, et ce que nous vous demandons en retour. Elles s'appliquent à toute réservation effectuée sur ce site."
     >
       <ArticleLegal titre="Article 1. Objet">
@@ -51,8 +52,9 @@ export default function PageCGV() {
           {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
           en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, au forfait par
           personne selon la gamme de vélo et le jour&nbsp;: dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} le
-          samedi, dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)} le dimanche (Gbashi bike, avec sa séance de
-          sport), eau et coco compris. La{" "}
+          samedi, en vélo {gammesDuDepart("samedi-matin")}&nbsp;; dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}{" "}
+          le dimanche (Gbashi bike, avec sa séance de sport), en vélo {gammesDuDepart("dimanche-matin")}&nbsp;;
+          eau et coco compris. La{" "}
           <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
           accompagnement, facturée à l&apos;heure selon la grille publiée sur le site, de une à{" "}
           {DUREE_MAX_LOCATION_LIBRE} heures.

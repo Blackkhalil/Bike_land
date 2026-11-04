@@ -22,12 +22,14 @@ import {
   FERMETURE_HEURE,
   formatHeure,
   GAMMES,
+  gammesDuDepart,
   GRILLE_HORAIRE,
   OFFRES,
   PRIX_MINIMUM_HEURE_XOF,
   PRIX_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
+  roadTripPossible,
 } from "@/data/offres";
 import {
   CRENEAU_GBASHI_BIKE,
@@ -470,6 +472,9 @@ export default async function PageProduits() {
                 </span>{" "}
                 par personne
               </Repere>
+              {/* Le samedi se roule en Premium ou Prestige : le Classique a
+                  la location libre, et Gbashi bike le dimanche. */}
+              <Repere terme="Vélos">{gammesDuDepart(CRENEAU_ROAD_TRIP)}</Repere>
               <Repere terme="Compris">Vélo, casque, antivol, kit, eau et coco frais</Repere>
             </dl>
             <ul className="mt-6 max-w-md space-y-2 text-[0.88rem] text-craie/75">
@@ -487,9 +492,20 @@ export default async function PageProduits() {
             </ul>
             <div className="mt-8 flex flex-wrap gap-3">
               {samedi ? (
-                <LienChoixProduit href="/velos" choix={CRENEAU_ROAD_TRIP} variante="primaire" taille="lg">
-                  Choisir ma gamme
-                </LienChoixProduit>
+                // Le samedi se roule en Premium ou Prestige : un bouton par
+                // gamme qui roule ce départ, plutôt que les trois gammes.
+                GAMMES.filter((gamme) => roadTripPossible(gamme.code, samedi.date)).map((gamme, index) => (
+                  <LienChoixProduit
+                    key={gamme.code}
+                    href={`/reserver/${gamme.code.toLowerCase()}`}
+                    choix={CRENEAU_ROAD_TRIP}
+                    variante={index === 0 ? "primaire" : "contour"}
+                    taille="lg"
+                    className={index === 0 ? undefined : "text-craie"}
+                  >
+                    Road trip en {gamme.nom}
+                  </LienChoixProduit>
+                ))
               ) : (
                 <BoutonLien
                   href={lienWhatsApp(MESSAGES_WHATSAPP.roadTrip)}

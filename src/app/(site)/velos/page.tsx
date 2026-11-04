@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { Section, TitreSection } from "@/components/ui";
-import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, prixRoadTripMinimum } from "@/data/offres";
+import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, sortieEncadreeDe } from "@/data/offres";
 import { depot } from "@/lib/db";
 import { filDAriane } from "@/lib/donnees-structurees";
 import { formatXof } from "@/lib/format";
@@ -49,6 +49,7 @@ export default async function PageCatalogue() {
       // La photo d'un vélo de la gamme, pour la reconnaître d'un coup d'œil.
       photo: deLaGamme.find((velo) => velo.photo)?.photo,
       lePlusPris: gamme.code === GAMME_LA_PLUS_PRISE,
+      sortie: sortieEncadreeDe(gamme.code),
     };
   }).filter((gamme) => gamme.nombre > 0);
 
@@ -120,9 +121,14 @@ export default async function PageCatalogue() {
                       </span>
                       <span className="mt-1 block text-[0.8rem] text-craie/60">
                         l&apos;heure ·{" "}
-                        <span className="whitespace-nowrap">
-                          road trip dès {formatXof(prixRoadTripMinimum(gamme.code))} / pers.
-                        </span>
+                        {/* Le road trip, ou Gbashi bike le dimanche pour le
+                            Classique, qui ne roule pas le samedi. */}
+                        {gamme.sortie && (
+                          <span className="inline-block">
+                            {gamme.sortie.nomDansLaPhrase} {gamme.sortie.avantPrix}{" "}
+                            <span className="whitespace-nowrap">{formatXof(gamme.sortie.prixMinimum)} / pers.</span>
+                          </span>
+                        )}
                       </span>
                     </span>
                     <span className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-craie/15 pt-4 text-[0.85rem]">

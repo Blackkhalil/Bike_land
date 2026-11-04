@@ -24,6 +24,7 @@ import {
   COCOS_ROAD_TRIP,
   FRAIS_PAIEMENT_EN_LIGNE_XOF,
   creneauDuJour,
+  motifRoadTripGamme,
   prixLocationLibre,
   prixRoadTripDu,
   type CodeOffre,
@@ -157,8 +158,15 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
     throw new TarifIntrouvableError("La gamme du vélo est nécessaire pour fixer ce prix.");
   } else if (offre === "road-trip") {
     // Le prix du jour du départ : Gbashi bike, le dimanche, a le sien. Sans
-    // jour, celui du road trip du samedi.
-    const prixUnitaire = prixRoadTripDu(gamme, parametres.date) - fraisRetires;
+    // jour, celui du road trip du samedi. Une gamme qui ne roule pas ce
+    // départ n'a pas de prix (le Classique, le samedi) : refusé, pas deviné.
+    const prixDuJour = prixRoadTripDu(gamme, parametres.date);
+    if (prixDuJour === null) {
+      throw new TarifIntrouvableError(
+        motifRoadTripGamme(gamme, parametres.date) ?? "Cette gamme ne roule pas ce road trip.",
+      );
+    }
+    const prixUnitaire = prixDuJour - fraisRetires;
     const cocos = COCOS_ROAD_TRIP[gamme];
     const nom = (parametres.date ? creneauDuJour(parametres.date)?.produit : null) ?? "Road trip";
     sousTotalXof = prixUnitaire * nombrePersonnes;

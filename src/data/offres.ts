@@ -84,13 +84,17 @@ export const GAMMES: {
 export const GAMME_LA_PLUS_PRISE: GammeVelo = "PREMIUM";
 
 /**
- * Tarif du road trip, par personne et par gamme, eau comprise.
+ * Tarif du road trip du samedi, par personne et par gamme, eau comprise.
+ *
+ * Il se roule en Premium ou en Prestige seulement : le Classique n'y a pas
+ * de prix, l'exploitant l'en a retiré (novembre 2026). Le Classique reste
+ * en location libre, et le dimanche en Gbashi bike. Une gamme sans prix ici
+ * ne se réserve pas sur ce départ, ni en ligne ni au comptoir.
  *
  * Les cocos suivent la gamme : une pour le Classique, deux au-dessus.
  * C'est la plaquette qui l'établit, pas une décision technique.
  */
-export const PRIX_ROAD_TRIP_XOF: Record<GammeVelo, number> = {
-  CLASSIQUE: 2625,
+export const PRIX_ROAD_TRIP_XOF: Partial<Record<GammeVelo, number>> = {
   PREMIUM: 3125,
   PRESTIGE: 3625,
 };
@@ -156,8 +160,9 @@ export const DUREE_MAX_LOCATION_LIBRE = 4;
 
 /** Le tarif d'entrée, toutes gammes confondues, « à partir de ». */
 export const PRIX_MINIMUM_HEURE_XOF = GRILLE_HORAIRE.CLASSIQUE[0].prixXof;
-export const PRIX_MINIMUM_ROAD_TRIP_XOF = PRIX_ROAD_TRIP_XOF.CLASSIQUE;
-export const PRIX_MINIMUM_GBASHI_BIKE_XOF = PRIX_GBASHI_BIKE_XOF.CLASSIQUE;
+/** Le road trip du samedi le moins cher : celui du Premium, le Classique n'y allant pas. */
+export const PRIX_MINIMUM_ROAD_TRIP_XOF = Math.min(...Object.values(PRIX_ROAD_TRIP_XOF));
+export const PRIX_MINIMUM_GBASHI_BIKE_XOF = Math.min(...Object.values(PRIX_GBASHI_BIKE_XOF));
 
 /** Prix d'une location libre pour une gamme et une durée, ou `null` hors grille. */
 export function prixLocationLibre(gamme: GammeVelo, heures: number): number | null {
@@ -168,9 +173,9 @@ export function prixLocationLibre(gamme: GammeVelo, heures: number): number | nu
  * Les frais du paiement en ligne, compris dans chaque tarif du site : par
  * location libre, et par personne en road trip.
  *
- * La plaquette annonce 1 000 F l'heure en Classique et 2 500 F le road
- * trip ; le site affiche 1 125 F et 2 625 F, ces 125 F couvrant les frais
- * de l'agrégateur Mobile Money. Une vente réglée en espèces au comptoir ne
+ * La plaquette annonce 1 000 F l'heure en Classique et 3 000 F le road
+ * trip en Premium ; le site affiche 1 125 F et 3 125 F, ces 125 F couvrant
+ * les frais de l'agrégateur Mobile Money. Une vente réglée en espèces au comptoir ne
  * passe pas par lui : elle se fait au prix de la plaquette, sans ces frais.
  * C'est ce que pratique l'exploitant au point de départ.
  */
@@ -270,6 +275,9 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  * la plage à l'arrivée (voir src/data/produits.ts). Même réservation que
  * le road trip, à son propre prix (`prix`) ; le nom s'affiche à côté du
  * jour.
+ * `prix` dit aussi quelles gammes roulent ce départ : une gamme sans prix
+ * n'y va pas. Le samedi se roule en Premium et en Prestige, le dimanche
+ * (Gbashi bike) dans les trois gammes.
  * `consigne` s'ajoute alors à ce qu'il faut prévoir, dans le formulaire
  * comme dans les emails.
  */
@@ -306,18 +314,128 @@ export function creneauDuJour(date: string) {
   return CRENEAUX_ROAD_TRIP.find((c) => c.jourSemaine === jourSemaine);
 }
 
+/** Le prix d'une gamme sur un créneau, `undefined` si elle ne roule pas ce départ. */
+function prixSurLeCreneau(creneau: (typeof CRENEAUX_ROAD_TRIP)[number], gamme: GammeVelo): number | undefined {
+  const prix: Partial<Record<GammeVelo, number>> = creneau.prix;
+  return prix[gamme];
+}
+
 /**
  * Le prix par personne d'un road trip, selon la gamme et le jour : Gbashi
  * bike, le dimanche, a le sien. Sans jour connu, celui du road trip du
+ * samedi. `null` quand la gamme ne roule pas ce départ : le Classique, le
  * samedi.
  */
-export function prixRoadTripDu(gamme: GammeVelo, date?: string): number {
-  return (date ? creneauDuJour(date)?.prix : undefined)?.[gamme] ?? PRIX_ROAD_TRIP_XOF[gamme];
+export function prixRoadTripDu(gamme: GammeVelo, date?: string): number | null {
+  const creneau = date ? creneauDuJour(date) : undefined;
+  return (creneau ? prixSurLeCreneau(creneau, gamme) : PRIX_ROAD_TRIP_XOF[gamme]) ?? null;
+}
+
+/**
+ * La gamme roule-t-elle le road trip de ce jour-là ? Sans jour, un départ
+ * au moins de la semaine. Le Classique : le dimanche (Gbashi bike) seulement.
+ */
+export function roadTripPossible(gamme: GammeVelo, date?: string): boolean {
+  if (date) return prixRoadTripDu(gamme, date) !== null;
+  return CRENEAUX_ROAD_TRIP.some((creneau) => prixSurLeCreneau(creneau, gamme) !== undefined);
+}
+
+/** « Classique », « Premium », « Prestige ». */
+export function nomDeGamme(gamme: GammeVelo): string {
+  return GAMMES.find((entree) => entree.code === gamme)?.nom ?? gamme;
+}
+
+/** « Premium ou Prestige », « Classique, Premium ou Prestige ». */
+function listeOu(noms: string[]): string {
+  return noms.length > 1 ? `${noms.slice(0, -1).join(", ")} ou ${noms[noms.length - 1]}` : (noms[0] ?? "");
+}
+
+/**
+ * Pourquoi cette gamme ne roule pas le road trip de ce jour-là, ou `null`
+ * si elle le roule : « Le road trip du samedi se fait en vélo Premium ou
+ * Prestige. En Classique, choisissez la location libre, ou Gbashi bike le
+ * dimanche. » Le même texte en ligne, au comptoir et dans le tunnel. Sans
+ * jour, comme pour le prix : le road trip du samedi.
+ */
+export function motifRoadTripGamme(gamme: GammeVelo, date?: string): string | null {
+  if (prixRoadTripDu(gamme, date) !== null) return null;
+  const creneau = (date ? creneauDuJour(date) : undefined) ?? CRENEAUX_ROAD_TRIP[0];
+  const roulent = GAMMES.filter((autre) => prixSurLeCreneau(creneau, autre.code) !== undefined).map(
+    (autre) => autre.nom,
+  );
+  const depart = creneau.produit ?? `Le road trip du ${creneau.libelle.toLowerCase()}`;
+  const ailleurs = CRENEAUX_ROAD_TRIP.filter(
+    (autre) => autre.code !== creneau.code && prixSurLeCreneau(autre, gamme) !== undefined,
+  ).map((autre) => `${autre.produit ?? "le road trip"} le ${autre.libelle.toLowerCase()}`);
+  return (
+    `${depart} se fait en vélo ${listeOu(roulent)}. En ${nomDeGamme(gamme)}, choisissez la location libre` +
+    `${ailleurs.length > 0 ? `, ou ${listeOu(ailleurs)}` : ""}.`
+  );
+}
+
+/** Les gammes qui roulent ce départ, pour les phrases : « Premium ou Prestige » le samedi. */
+export function gammesDuDepart(code: CodeCreneau): string {
+  const creneau = CRENEAUX_ROAD_TRIP.find((entree) => entree.code === code);
+  if (!creneau) return "";
+  return listeOu(GAMMES.filter((gamme) => prixSurLeCreneau(creneau, gamme.code) !== undefined).map((gamme) => gamme.nom));
+}
+
+/**
+ * Les départs qu'une gamme ne roule pas, dits en une phrase pour les pages
+ * de cette gamme : « Le road trip du samedi se fait en vélo Premium ou
+ * Prestige. » `null` quand elle les roule tous.
+ */
+export function noteDepartsHorsGamme(gamme: GammeVelo): string | null {
+  const phrases = CRENEAUX_ROAD_TRIP.filter((creneau) => prixSurLeCreneau(creneau, gamme) === undefined).map(
+    (creneau) => {
+      const roulent = GAMMES.filter((autre) => prixSurLeCreneau(creneau, autre.code) !== undefined).map(
+        (autre) => autre.nom,
+      );
+      return `${creneau.produit ?? `Le road trip du ${creneau.libelle.toLowerCase()}`} se fait en vélo ${listeOu(roulent)}.`;
+    },
+  );
+  return phrases.length > 0 ? phrases.join(" ") : null;
 }
 
 /** Le road trip le moins cher pour cette gamme, quel que soit le jour : « dès … ». */
-export function prixRoadTripMinimum(gamme: GammeVelo): number {
-  return Math.min(...CRENEAUX_ROAD_TRIP.map((creneau) => creneau.prix[gamme]));
+export function prixRoadTripMinimum(gamme: GammeVelo): number | null {
+  const prix = CRENEAUX_ROAD_TRIP.map((creneau) => prixSurLeCreneau(creneau, gamme)).filter(
+    (montant): montant is number => montant !== undefined,
+  );
+  return prix.length > 0 ? Math.min(...prix) : null;
+}
+
+/**
+ * La sortie encadrée d'une gamme, telle que les pages l'annoncent : le road
+ * trip quand elle roule celui du samedi (Premium, Prestige), sinon le seul
+ * départ qu'elle roule, sous son nom (Gbashi bike, le dimanche, pour le
+ * Classique). `null` si la gamme ne roule aucun départ.
+ *
+ *  - `nom` : en tête de ligne, « Road trip » ou « Gbashi bike » ;
+ *  - `nomDansLaPhrase` : « road trip » ou « Gbashi bike » ;
+ *  - `avantPrix` : « dès » quand plusieurs départs ont chacun leur prix,
+ *    « le dimanche à » quand un seul départ, à prix unique ;
+ *  - `prixMinimum` : le prix par personne le plus bas.
+ *
+ * Ainsi : « road trip dès 3 125 FCFA », « Gbashi bike le dimanche à 3 125 FCFA ».
+ */
+export function sortieEncadreeDe(gamme: GammeVelo): {
+  nom: string;
+  nomDansLaPhrase: string;
+  avantPrix: string;
+  prixMinimum: number;
+} | null {
+  const creneaux = CRENEAUX_ROAD_TRIP.filter((creneau) => prixSurLeCreneau(creneau, gamme) !== undefined);
+  const prixMinimum = prixRoadTripMinimum(gamme);
+  if (creneaux.length === 0 || prixMinimum === null) return null;
+  const roadTrip = creneaux.some((creneau) => !creneau.produit);
+  const nom = roadTrip ? "Road trip" : creneaux.map((creneau) => creneau.produit).join(" ou ");
+  return {
+    nom,
+    nomDansLaPhrase: roadTrip ? "road trip" : nom,
+    avantPrix: creneaux.length === 1 ? `le ${creneaux[0].libelle.toLowerCase()} à` : "dès",
+    prixMinimum,
+  };
 }
 
 /** Le créneau encadré d'un départ : le jour de la semaine et l'heure suffisent. */
@@ -416,7 +534,8 @@ export function motifHoraireLocation(
   if (roadTrip) {
     return (
       `Le ${roadTrip.libelle.toLowerCase()}, de ${formatHeure(roadTrip.heureDebut)} à ` +
-      `${formatHeure(roadTrip.heureFin)}, les vélos sont en road trip : la location libre ` +
+      // « l'heure du road trip » : les Classique, eux, ne le roulent pas le samedi.
+      `${formatHeure(roadTrip.heureFin)}, c'est l'heure du road trip : la location libre ` +
       `ne peut pas empiéter sur ces heures.`
     );
   }

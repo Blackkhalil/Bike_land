@@ -5,14 +5,14 @@
  * la ligne de Zayed (la seconde de `site.whatsapp`, celle de `lienWhatsApp`),
  * avec un message déjà écrit qui reprend toute sa réservation : il n'a qu'à
  * appuyer sur « Envoyer » pour l'avoir sous la main dans WhatsApp. La page
- * de suivi garde un bouton qui fait de même, et l'email de confirmation
- * porte le même lien, avec le même message.
+ * de suivi garde un bouton qui fait de même. L'email de confirmation, lui,
+ * ne porte plus ce lien : l'exploitant l'en a retiré (novembre 2026).
  *
  * C'est le client qui envoie : un message parti de Bike Land de lui-même
  * demanderait l'API WhatsApp Business.
  *
- * Rien ici ne dépend du serveur : la page de suivi, l'email et un composant
- * du navigateur construisent exactement le même message, à partir de la
+ * Rien ici ne dépend du serveur : la page de suivi et un composant du
+ * navigateur construisent exactement le même message, à partir de la
  * réservation et de son lien de suivi.
  */
 

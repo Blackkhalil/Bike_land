@@ -25,7 +25,6 @@ import {
 } from "./format";
 import { paiementPrincipal } from "./reservations";
 import type { Reservation } from "./types";
-import { estPayeeEnLigne, lienWhatsAppReservation } from "./whatsapp";
 
 /** Le rose d'Octobre rose, celui du site (--color-rose-octobre). */
 const ROSE = "#e8458b";
@@ -98,44 +97,6 @@ function detailsSortie(reservation: Reservation) {
         }
       : undefined,
   };
-}
-
-/** Le lien WhatsApp d'une réservation, et le numéro auquel il écrit. */
-interface WhatsAppReservation {
-  lien: string;
-  numero: string;
-}
-
-/**
- * La réservation à envoyer sur WhatsApp, à Zayed : le même message déjà
- * écrit que celui qu'ouvre la page de suivi juste après le paiement (voir
- * src/lib/whatsapp.ts). Le client n'a qu'à appuyer sur « Envoyer » pour
- * avoir sa réservation sous la main dans WhatsApp.
- *
- * Seulement pour une réservation payée en ligne : une vente au comptoir
- * s'est conclue devant l'équipe, en espèces.
- */
-function whatsappDe(reservation: Reservation, lienSuivi: string): WhatsAppReservation | null {
-  if (!estPayeeEnLigne(reservation)) return null;
-  return {
-    lien: lienWhatsAppReservation(reservation, lienSuivi),
-    // La ligne de Zayed : celle sur laquelle `lienWhatsApp` ouvre la conversation.
-    numero: site.whatsapp[1].numero,
-  };
-}
-
-/**
- * Le lien WhatsApp dans la version texte : l'adresse entière, longue
- * puisque le message y est écrit, seule sur sa ligne pour rester cliquable.
- */
-function texteWhatsApp(whatsapp: WhatsAppReservation): string[] {
-  return [
-    `Recevoir votre réservation sur WhatsApp${INSECABLE}: ce lien ouvre la conversation avec Zayed ` +
-      `(${whatsapp.numero}), le message déjà écrit avec toute votre réservation. ` +
-      `Appuyez sur «${INSECABLE}Envoyer${INSECABLE}»${INSECABLE}: vous l'aurez sous la main dans WhatsApp.`,
-    whatsapp.lien,
-    "",
-  ];
 }
 
 /**
@@ -412,7 +373,6 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
   const facture = numeroDeFacture(reservation);
   const paiement = paiementPrincipal(reservation);
   const reglement = paiement ? libelleReglement(paiement.moyen) : null;
-  const whatsapp = whatsappDe(reservation, lienSuivi);
 
   const lignesSortie: [string, string][] = sortie
     ? [
@@ -451,7 +411,6 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
     `  Total réglé : ${formatXof(reservation.totalXof)}${reglement ? `, ${reglement}` : ""}`,
     `  À télécharger depuis votre lien : ${lienSuivi}#facture`,
     "",
-    ...(whatsapp ? texteWhatsApp(whatsapp) : []),
     "Une question, un retard ? Écrivez-nous sur WhatsApp :",
     ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
     "",
@@ -479,7 +438,6 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
         ["Montant réglé", formatXof(reservation.totalXof)],
       ],
       action: { libelle: "Voir ma réservation", url: lienSuivi },
-      whatsapp: whatsapp ?? undefined,
       itineraire: sortie?.itineraire,
       rendezVous,
       facture: {
@@ -502,12 +460,18 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
   const velos = nomsDesVelos(reservation);
   const prevoir = aPrevoir(reservation);
   const rendezVous = rendezVousDe(reservation);
-  const whatsapp = whatsappDe(reservation, lienSuivi);
 
+  // Le lieu d'abord, juste après la salutation : le client le trouve sans
+  // chercher, et n'a plus à écrire pour le redemander.
   const texte = [
     `Bonjour ${reservation.client.prenom},`,
     "",
     `Votre paiement est reçu, votre réservation est confirmée.`,
+    "",
+    `Où nous trouver : ${rendezVous.lieu}.`,
+    rendezVous.indication,
+    `Carte : ${rendezVous.carte}`,
+    "",
     `Référence : ${reservation.reference}`,
     `${velos.libelle} : ${velos.noms}`,
     `Date : ${formatCreneau(reservation)}`,
@@ -516,11 +480,6 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
     "À prévoir au départ :",
     ...prevoir.map((ligne) => `  - ${ligne}`),
     "",
-    `Où nous trouver : ${rendezVous.lieu}.`,
-    rendezVous.indication,
-    `Carte : ${rendezVous.carte}`,
-    "",
-    ...(whatsapp ? texteWhatsApp(whatsapp) : []),
     "Une question, un retard ? Écrivez-nous sur WhatsApp :",
     ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
     "",
@@ -534,7 +493,8 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
 
   return envoyer({
     destinataire: reservation.client.email,
-    sujet: `Votre réservation ${reservation.reference} est confirmée`,
+    // Le lieu jusque dans l'objet : il se lit dans la liste des messages.
+    sujet: `Réservation ${reservation.reference} confirmée : rendez-vous à ${rendezVous.lieu}`,
     texte,
     html: gabarit({
       titre: "Réservation confirmée",
@@ -559,7 +519,6 @@ export async function envoyerConfirmation(reservation: Reservation, lienSuivi: s
       // réservation n'avait rien à cliquer. C'est pourtant l'email vers
       // lequel il revient, bien plus que vers celui de la demande.
       action: { libelle: "Voir ma réservation", url: lienSuivi },
-      whatsapp: whatsapp ?? undefined,
       rendezVous,
       pied: `À prévoir au départ : ${prevoir.join(" ")}`,
     }),
@@ -647,6 +606,11 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
     `Bonjour ${reservation.client.prenom},`,
     "",
     `Votre sortie ${site.nom}, c'est demain.`,
+    "",
+    `Où nous trouver : ${rendezVous.lieu}.`,
+    rendezVous.indication,
+    `Carte : ${rendezVous.carte}`,
+    "",
     `Référence : ${reservation.reference}`,
     `${velos.libelle} : ${velos.noms}`,
     `Date : ${formatCreneau(reservation)}`,
@@ -656,10 +620,6 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
     "",
     "À prévoir au départ :",
     ...prevoir.map((ligne) => `  - ${ligne}`),
-    "",
-    `Où nous trouver : ${rendezVous.lieu}.`,
-    rendezVous.indication,
-    `Carte : ${rendezVous.carte}`,
     "",
     "Un empêchement, un retard ? Écrivez-nous sur WhatsApp :",
     ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
@@ -673,7 +633,7 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
 
   return envoyer({
     destinataire: reservation.client.email,
-    sujet: `C'est demain : votre sortie ${site.nom} à ${reservation.heureDebut} h`,
+    sujet: `C'est demain : départ à ${reservation.heureDebut} h de ${rendezVous.lieu}`,
     texte,
     html: gabarit({
       titre: "C'est demain",
@@ -699,6 +659,9 @@ export async function envoyerFacture(reservation: Reservation, numeroFacture: st
   // comptoir doit pouvoir la produire comme reçu.
   const paiement = paiementPrincipal(reservation);
   const reglement = paiement ? libelleReglement(paiement.moyen) : null;
+  // Le lieu aussi, en tête : un client qui n'ouvre que la facture le trouve
+  // là, sans les numéros WhatsApp, que donne la confirmation.
+  const rendezVous = rendezVousDe(reservation);
   return envoyer({
     destinataire: reservation.client.email,
     sujet: `Facture ${numeroFacture}, ${site.nom}`,
@@ -707,10 +670,12 @@ export async function envoyerFacture(reservation: Reservation, numeroFacture: st
       `Voici votre facture ${numeroFacture} d'un montant de ${formatXof(reservation.totalXof)} ` +
       `pour la réservation ${reservation.reference}` +
       `${reglement ? `, réglée ${paiement?.moyen === "ESPECES" ? "en espèces" : `par ${reglement}`}` : ""}.\n\n` +
-      `Elle est téléchargeable à tout moment depuis ${lienSuivi}.\n`,
+      `Elle est téléchargeable à tout moment depuis ${lienSuivi}.\n\n` +
+      `Où nous trouver : ${rendezVous.lieu}.\n${rendezVous.indication}\nCarte : ${rendezVous.carte}\n`,
     html: gabarit({
       titre: `Facture ${numeroFacture}`,
       intro: `Réservation ${reservation.reference}`,
+      rendezVous: { ...rendezVous, whatsapp: [] },
       lignes: [
         ["Sous-total location", formatXof(reservation.sousTotalXof)],
         ...(reservation.remiseXof > 0
@@ -1043,14 +1008,16 @@ function echapper(texte: string): string {
  * `theme: "rose"` habille l'email aux couleurs d'Octobre rose : bandeau
  * rose en tête, nom et bouton en rose. `itineraire` et `facture` ajoutent
  * leur encadré, pour l'email qui doit tout dire d'un coup.
+ *
+ * `rendezVous` place le lieu tout en haut, sous la salutation, et dans la
+ * ligne d'aperçu de la boîte de réception ; ses numéros WhatsApp, s'il en
+ * porte, vont plus bas, pour une question ou un retard.
  */
 function gabarit(contenu: {
   titre: string;
   intro: string;
   lignes: [string, string][];
   action?: { libelle: string; url: string };
-  /** La réservation à recevoir sur WhatsApp, message déjà écrit (voir `whatsappDe`). */
-  whatsapp?: WhatsAppReservation;
   rendezVous?: RendezVous;
   itineraire?: { titre: string; detail: string; url: string };
   facture?: { numero: string; lignes: [string, string][]; url: string };
@@ -1077,18 +1044,6 @@ function gabarit(contenu: {
 
   const action = contenu.action
     ? `<a href="${echapper(contenu.action.url)}" style="display:inline-block;margin-top:28px;background:${accent};color:${texteBouton};text-decoration:none;padding:14px 28px;border-radius:999px;font-weight:600;font-size:15px">${echapper(contenu.action.libelle)}</a>`
-    : "";
-
-  // Le vert de WhatsApp, que le client reconnaît d'un coup d'œil ; le
-  // texte du bouton en noir, plus lisible que le blanc sur ce vert.
-  const whatsapp = contenu.whatsapp
-    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;border:2px solid #25d366;border-radius:14px">
-        <tr><td style="padding:22px 24px">
-          <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">Sur WhatsApp</p>
-          <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:#0e0e0e">Recevez votre réservation dans WhatsApp&nbsp;: le message est déjà écrit, vers Zayed, de l'équipe ${echapper(site.nom)} (${echapper(contenu.whatsapp.numero)}). Il ne vous reste qu'à appuyer sur «&nbsp;Envoyer&nbsp;».</p>
-          <a href="${echapper(contenu.whatsapp.lien)}" style="display:inline-block;margin-top:16px;background:#25d366;color:#0e0e0e;text-decoration:none;padding:12px 24px;border-radius:999px;font-weight:600;font-size:14px">Recevoir ma réservation sur WhatsApp</a>
-        </td></tr>
-      </table>`
     : "";
 
   const bandeau = rose
@@ -1119,17 +1074,30 @@ function gabarit(contenu: {
       </table>`
     : "";
 
-  // Les boutons sont en ligne : côte à côte sur un écran large, ils
-  // passent l'un sous l'autre sur un téléphone, sans règle CSS que
-  // certaines messageries ignoreraient.
-  const rendezVous = contenu.rendezVous
-    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;background:#f2efe9;border-radius:14px">
+  // Le lieu du rendez-vous, tout en haut, sous la salutation : le client le
+  // voit dès qu'il ouvre l'email, sans rien faire défiler, et n'a plus à
+  // écrire pour le redemander (demande du gérant, novembre 2026). Encadré
+  // à la couleur de la marque pour qu'on ne le manque pas.
+  const lieu = contenu.rendezVous
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;background:#f2efe9;border:2px solid ${accent};border-radius:14px">
+        <tr><td style="padding:20px 24px">
+          <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">&#128205; Où nous trouver</p>
+          <p style="margin:10px 0 0;font-size:18px;line-height:1.35;font-weight:700;color:#0e0e0e">${echapper(contenu.rendezVous.lieu)}</p>
+          <p style="margin:4px 0 0;font-size:15px;line-height:1.55;color:#0e0e0e">${echapper(contenu.rendezVous.indication)}</p>
+          <a href="${echapper(contenu.rendezVous.carte)}" style="display:inline-block;margin-top:16px;background:#0e0e0e;color:#f2efe9;text-decoration:none;padding:12px 24px;border-radius:999px;font-weight:600;font-size:15px">Voir sur la carte</a>
+        </td></tr>
+      </table>`
+    : "";
+
+  // Les numéros pour une question ou un retard, plus bas. Les boutons sont
+  // en ligne : côte à côte sur un écran large, ils passent l'un sous
+  // l'autre sur un téléphone, sans règle CSS que certaines messageries
+  // ignoreraient.
+  const contacts =
+    contenu.rendezVous && contenu.rendezVous.whatsapp.length > 0
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;background:#f2efe9;border-radius:14px">
         <tr><td style="padding:22px 24px">
-          <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">Où nous trouver</p>
-          <p style="margin:10px 0 0;font-size:16px;line-height:1.4;font-weight:700;color:#0e0e0e">${echapper(contenu.rendezVous.lieu)}</p>
-          <p style="margin:4px 0 0;font-size:14px;line-height:1.6;color:#6b6b6b">${echapper(contenu.rendezVous.indication)}</p>
-          <a href="${echapper(contenu.rendezVous.carte)}" style="display:inline-block;margin-top:16px;background:#0e0e0e;color:#f2efe9;text-decoration:none;padding:11px 22px;border-radius:999px;font-weight:600;font-size:14px">Voir sur la carte</a>
-          <p style="margin:22px 0 0;font-size:14px;line-height:1.6;color:#6b6b6b">Une question, un retard ? Écrivez-nous sur WhatsApp :</p>
+          <p style="margin:0;font-size:14px;line-height:1.6;color:#6b6b6b">Une question, un retard ? Écrivez-nous sur WhatsApp :</p>
           ${contenu.rendezVous.whatsapp
             .map(
               (ligne) =>
@@ -1138,6 +1106,12 @@ function gabarit(contenu: {
             .join("")}
         </td></tr>
       </table>`
+      : "";
+
+  // La ligne d'aperçu que Gmail et les téléphones montrent sous l'objet,
+  // dans la liste des messages : le lieu s'y lit avant même d'ouvrir.
+  const apercu = contenu.rendezVous
+    ? `Rendez-vous : ${contenu.rendezVous.lieu}. ${contenu.rendezVous.indication}`
     : "";
 
   // Le nom de la marque : orange d'ordinaire ; sur l'email rose, en noir
@@ -1146,6 +1120,7 @@ function gabarit(contenu: {
 
   return `<!doctype html>
 <html lang="fr"><body style="margin:0;background:${rose ? "#fbe3ee" : "#f2efe9"};font-family:Helvetica,Arial,sans-serif;color:#0e0e0e">
+  ${apercu ? `<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all">${echapper(apercu)}</div>` : ""}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:20px">
@@ -1154,11 +1129,11 @@ function gabarit(contenu: {
           <p style="margin:0;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:${couleurMarque};font-weight:700">${site.nom}</p>
           <h1 style="margin:14px 0 0;font-size:26px;line-height:1.15;text-transform:uppercase;letter-spacing:-0.5px">${echapper(contenu.titre)}</h1>
           <p style="margin:14px 0 26px;font-size:15px;line-height:1.6;color:#6b6b6b">${echapper(contenu.intro)}</p>
+          ${lieu}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${lignes}</table>
           ${action}
-          ${whatsapp}
           ${itineraire}
-          ${rendezVous}
+          ${contacts}
           ${facture}
           ${contenu.pied ? `<p style="margin:26px 0 0;font-size:12px;line-height:1.6;color:#6b6b6b">${echapper(contenu.pied)}</p>` : ""}
         </td></tr>

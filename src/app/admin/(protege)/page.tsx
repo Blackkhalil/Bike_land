@@ -20,7 +20,7 @@ import {
 } from "@/lib/statistiques";
 import { PilotageOuverture } from "@/components/admin/PilotageOuverture";
 import { clotureInscriptionsOctobreRose, formatHoraire } from "@/data/octobre-rose";
-import { CRENEAUX_ROAD_TRIP, creneauxDisponibles, heureAuBenin } from "@/data/offres";
+import { CRENEAUX_ROAD_TRIP, creneauxDisponibles, gammesDuDepart, heureAuBenin } from "@/data/offres";
 import { etatsSortiesOctobreRose, lireOuverture } from "@/lib/ouverture";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
@@ -248,7 +248,9 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
               code: c.code,
               // Le dimanche est Gbashi bike : l'ouvrir ici ouvre Gbashi bike.
               libelle: c.produit ? `${c.libelle} · ${c.produit}` : c.libelle,
-              horaire: `${c.heureDebut} h - ${c.heureFin} h`,
+              // Les gammes qui roulent ce départ : fermer le dimanche ferme
+              // la seule sortie encadrée du Classique.
+              horaire: `${c.heureDebut} h - ${c.heureFin} h · ${gammesDuDepart(c.code)}`,
               actif: ouverture.creneauxActifs.has(c.code),
               prochainDepart: departsProposes.find((d) => d.code === c.code)?.date,
             })),

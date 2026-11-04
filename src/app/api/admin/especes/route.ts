@@ -6,7 +6,7 @@ import {
   sortieOctobreRoseDu,
   sortieOctobreRosePartie,
 } from "@/data/octobre-rose";
-import { DUREE_ROAD_TRIP_HEURES, heureAuBenin } from "@/data/offres";
+import { DUREE_ROAD_TRIP_HEURES, heureAuBenin, motifRoadTripGamme, nomDeGamme } from "@/data/offres";
 import { dateAuBenin } from "@/lib/dates";
 import { sessionAdminValide } from "@/lib/admin";
 import { ConflitDisponibiliteError, depot, TransactionDejaUtiliseeError } from "@/lib/db";
@@ -26,7 +26,7 @@ import { MESSAGES_REFUS } from "@/lib/parrainage";
 import { rafraichirSitePublic } from "@/lib/rafraichir";
 import { estPayee, estVenteEspeces, montantARendre } from "@/lib/reservations";
 import { site } from "@/lib/site";
-import { calculerDevis, type Devis } from "@/lib/tarification";
+import { calculerDevis, TarifIntrouvableError, type Devis } from "@/lib/tarification";
 import type { Reservation, Velo } from "@/lib/types";
 import {
   erreursParChamp,
@@ -147,6 +147,18 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   }
 
   const roadTrip = donnees.offre === "road-trip";
+  // Le road trip du samedi se roule en Premium ou Prestige : un Classique
+  // n'y part pas, au comptoir pas plus qu'en ligne. Il garde la location
+  // libre, et Gbashi bike le dimanche.
+  const horsGamme = roadTrip ? motifRoadTripGamme(velo.gamme, donnees.date) : null;
+  if (horsGamme) {
+    return {
+      refus: NextResponse.json(
+        { erreur: `${horsGamme} Ce vélo (${velo.nom}) est un ${nomDeGamme(velo.gamme)}.`, code: "GAMME" },
+        { status: 409 },
+      ),
+    };
+  }
   // Un vélo par personne, en road trip comme en location libre : pas plus
   // que la gamme n'a de vélos en état. Ce qu'il en reste de libres à cette
   // heure se vérifie plus bas.
@@ -410,6 +422,12 @@ async function enregistrer(corps: Record<string, unknown>) {
           : { erreur: erreur.message, code: "PLACES" },
         { status: 409 },
       );
+    }
+    // Le vélo est passé dans une gamme qui ne roule pas ce départ (un
+    // Classique, le samedi) entre le devis et l'écriture : rien n'est écrit,
+    // et le commercial lit pourquoi, au lieu d'un « réessayez ».
+    if (erreur instanceof TarifIntrouvableError) {
+      return NextResponse.json({ erreur: erreur.message, code: "GAMME" }, { status: 409 });
     }
     console.error("[admin/especes] vente non enregistrée", erreur);
     return NextResponse.json(

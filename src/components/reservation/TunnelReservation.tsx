@@ -21,10 +21,12 @@ import {
   GRILLE_HORAIRE,
   heuresDepartPossibles,
   OFFRES,
+  noteDepartsHorsGamme,
   OUVERTURE_HEURE as ouvertureAtelier,
   prixRoadTripDu,
-  prixRoadTripMinimum,
+  roadTripPossible,
   roadTripsDuJour,
+  sortieEncadreeDe,
   type GammeVelo,
 } from "@/data/offres";
 
@@ -135,10 +137,20 @@ export function TunnelReservation({
   const routeur = useRouter();
   const [etape, setEtape] = useState<Etape>(1);
 
+  // La sortie encadrée de la gamme : le road trip, ou Gbashi bike seul pour
+  // le Classique, qui ne roule pas le samedi. Les départs reçus sont déjà
+  // ceux de la gamme (`departsDeLaGamme`) : sans aucun, la formule encadrée
+  // n'est pas proposée, faute de jour qui lui donne un prix.
+  const sortie = sortieEncadreeDe(gamme);
+  const roadTripOffert = sortie !== null && (creneaux.length > 0 || complets.length > 0);
+  const horsGamme = noteDepartsHorsGamme(gamme);
+
   // La formule se choisit ici, et non sur la fiche vélo : c'est elle qui
   // commande le prix, la caution et ce qu'il faudra présenter au départ.
   // La fiche vélo ne demande que la date.
-  const [offre, setOffre] = useState<CodeOffre>(offreInitiale);
+  const [offre, setOffre] = useState<CodeOffre>(
+    offreInitiale === "road-trip" && !roadTripOffert ? "location-libre" : offreInitiale,
+  );
   const [dureeHeures, setDureeHeures] = useState(dureeInitiale);
 
   // Le jour et l'heure vivent ici depuis que les deux formules ne se
@@ -160,13 +172,18 @@ export function TunnelReservation({
     creneauDuJour(dateInitiale) !== undefined &&
     creneauDemande !== undefined &&
     creneauDemande.date !== dateInitiale;
+  // Sans départ ouvert pour la gamme, la formule encadrée se pose sur son
+  // premier départ « Sold out » (le dimanche pour le Classique), et non sur
+  // le jour et l'heure de la location libre : le récapitulatif dit alors
+  // vrai, et rien ne se paie tant qu'aucun départ ouvert n'est choisi.
+  const departAffiche = creneauDemande ?? premierDepart(complets);
   const [dateDebut, setDateDebut] = useState<DateISO>(
     offreInitiale === "road-trip"
-      ? (creneauDemande?.date ?? dateInitiale)
+      ? (departAffiche?.date ?? dateInitiale)
       : dateInitiale,
   );
   const [heureDebut, setHeureDebut] = useState(
-    offreInitiale === "road-trip" && creneauDemande ? creneauDemande.heureDebut : heureInitiale,
+    offreInitiale === "road-trip" && departAffiche ? departAffiche.heureDebut : heureInitiale,
   );
   // Une sortie tient toujours dans la journée : la date de fin suit.
   const dateFin: DateISO = dateDebut;
@@ -321,6 +338,20 @@ export function TunnelReservation({
   // Le nombre choisi, ramené au plafond s'il a baissé entre-temps.
   const nombreEffectif = Math.min(nombrePersonnes, velosMax);
 
+  // Le jour qui fixe le prix du road trip affiché : celui choisi quand la
+  // gamme roule ce départ ; sinon un départ qu'elle roule (le dimanche pour
+  // le Classique), le temps que le client en choisisse un. Sans cela, un
+  // Classique passé en road trip sur un samedi n'aurait aucun prix.
+  const departHorsGamme = offre === "road-trip" && !roadTripPossible(gamme, dateDebut);
+  // En road trip, on ne continue que sur un départ ouvert de la gamme : ni un
+  // « Sold out », ni le jour d'une location libre resté en place.
+  const sansDepartOuvert =
+    offre === "road-trip" &&
+    !creneaux.some((creneau) => creneau.date === dateDebut && creneau.heureDebut === heureDebut);
+  const dateDuPrix = departHorsGamme
+    ? (creneauDemande?.date ?? premierDepart(complets)?.date ?? dateDebut)
+    : dateDebut;
+
   // Les devis se calculent à chaque rendu : c'est une fonction pure et
   // légère, et le compilateur de React s'occupe de la mémoïsation.
   const devis = calculerDevis({
@@ -329,7 +360,7 @@ export function TunnelReservation({
     // d'encaisser : ce qui est affiché ici n'engage rien.
     gamme,
     // Le jour aussi, en road trip : Gbashi bike, le dimanche, a son prix.
-    date: dateDebut,
+    date: dateDuPrix,
     nombrePersonnes: nombreEffectif,
     dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
     options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
@@ -341,7 +372,7 @@ export function TunnelReservation({
   const devisSansRemise = calculerDevis({
     offre,
     gamme,
-    date: dateDebut,
+    date: dateDuPrix,
     nombrePersonnes: nombreEffectif,
     dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
     options: optionsChoisies.map((code) => ({ code, quantite: 1 })),
@@ -357,7 +388,7 @@ export function TunnelReservation({
   const choisirOffre = (code: CodeOffre) => {
     setOffre(code);
     if (code === "road-trip") {
-      const creneau = creneauDemande;
+      const creneau = departAffiche;
       if (creneau) {
         setDateDebut(creneau.date);
         setHeureDebut(creneau.heureDebut);
@@ -621,8 +652,14 @@ export function TunnelReservation({
                 Votre formule
               </legend>
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                {OFFRES.map((item) => {
+                {OFFRES.filter((item) => item.code !== "road-trip" || roadTripOffert).map((item) => {
                   const actif = offre === item.code;
+                  // Le Classique ne roule que Gbashi bike, le dimanche : la
+                  // formule encadrée porte ce nom-là pour lui.
+                  const nomFormule =
+                    item.code === "road-trip" && sortie && sortie.nom !== "Road trip"
+                      ? `${sortie.nom}, ${sortie.avantPrix.replace(/ à$/, "")}`
+                      : item.nom;
                   return (
                     <label
                       key={item.code}
@@ -633,7 +670,7 @@ export function TunnelReservation({
                       }`}
                     >
                       <span className="flex items-baseline justify-between gap-3">
-                        <span className="font-semibold">{item.nom}</span>
+                        <span className="font-semibold">{nomFormule}</span>
                         <input
                           type="radio"
                           name="offre"
@@ -644,8 +681,10 @@ export function TunnelReservation({
                         <span className="shrink-0 font-display text-[1.1rem] text-orange-sourd">
                           {item.code === "road-trip"
                             ? offre === "road-trip"
-                              ? `${formatXof(prixRoadTripDu(gamme, dateDebut))} / pers.`
-                              : `dès ${formatXof(prixRoadTripMinimum(gamme))} / pers.`
+                              ? `${formatXof(prixRoadTripDu(gamme, dateDuPrix) ?? sortie?.prixMinimum ?? 0)} / pers.`
+                              : sortie && sortie.avantPrix === "dès"
+                                ? `dès ${formatXof(sortie.prixMinimum)} / pers.`
+                                : `${formatXof(sortie?.prixMinimum ?? 0)} / pers.`
                             : `dès ${formatXof(GRILLE_HORAIRE[gamme][0].prixXof)}`}
                         </span>
                       </span>
@@ -656,6 +695,10 @@ export function TunnelReservation({
                   );
                 })}
               </div>
+              {/* Le Classique : le road trip du samedi n'est pas pour lui. */}
+              {horsGamme && (
+                <p className="mt-3 text-[0.82rem] leading-relaxed text-gris-cadre">{horsGamme}</p>
+              )}
             </fieldset>
 
             {/* --------------------------------- Durée (location libre) */}
@@ -708,9 +751,11 @@ export function TunnelReservation({
                     key={creneau.code}
                     className="mt-2 text-[0.8rem] leading-relaxed text-gris-cadre"
                   >
+                    {/* « c'est l'heure du road trip » et non « les vélos partent » :
+                        les Classique ne roulent pas le samedi. */}
                     Le {creneau.libelle.toLowerCase()}, de{" "}
-                    {formatHeure(creneau.heureDebut)} à {formatHeure(creneau.heureFin)}, les
-                    vélos partent en road trip : la location libre commence à{" "}
+                    {formatHeure(creneau.heureDebut)} à {formatHeure(creneau.heureFin)}, c&apos;est
+                    l&apos;heure du road trip : la location libre commence à{" "}
                     {formatHeure(creneau.heureFin)} ce jour-là.
                   </p>
                 ))}
@@ -765,8 +810,8 @@ export function TunnelReservation({
                   <div className="mt-3">
                   <p className="rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.85rem] leading-relaxed">
                     {complets.length > 0
-                      ? "Les prochains départs de road trip sont sold out. "
-                      : "Aucun départ de road trip n'est ouvert à la réservation en ce moment : les prochaines sorties sont complètes. "}
+                      ? `Les prochains départs de ${sortie?.nomDansLaPhrase ?? "road trip"} sont sold out. `
+                      : `Aucun départ de ${sortie?.nomDansLaPhrase ?? "road trip"} n'est ouvert à la réservation en ce moment : les prochaines sorties sont complètes. `}
                     La location libre reste possible, ou appelez-nous au{" "}
                     <span className="whitespace-nowrap">{site.telephone}</span>.
                   </p>
@@ -814,9 +859,11 @@ export function TunnelReservation({
                           {creneau.produit && ` · ${creneau.produit}, sport devant la plage`}
                         </span>
                         {/* Le prix du jour : Gbashi bike, le dimanche, a le sien. */}
-                        <span className="mt-0.5 block text-[0.78rem] font-semibold">
-                          {formatXof(prixRoadTripDu(gamme, creneau.date))} / pers.
-                        </span>
+                        {prixRoadTripDu(gamme, creneau.date) !== null && (
+                          <span className="mt-0.5 block text-[0.78rem] font-semibold">
+                            {formatXof(prixRoadTripDu(gamme, creneau.date) ?? 0)} / pers.
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -831,7 +878,12 @@ export function TunnelReservation({
               <p className="mt-7 rounded-[var(--radius-carte)] border border-noir-piste/15 bg-white px-4 py-3 text-[0.86rem] leading-relaxed">
                 <span className="font-semibold">Une personne.</span> La gamme {nomGamme(gamme)} ne
                 compte qu&apos;un vélo : il se réserve pour une seule personne. Pour venir à
-                plusieurs, choisissez la gamme Classique ou Premium.
+                plusieurs, choisissez la gamme{" "}
+                {/* Celles qui roulent ce départ : le samedi, le Premium seul. */}
+                {GAMMES.filter((autre) => autre.code !== gamme && roadTripPossible(autre.code, dateDebut))
+                  .map((autre) => autre.nom)
+                  .join(" ou ")}
+                .
               </p>
             )}
 
@@ -963,7 +1015,7 @@ export function TunnelReservation({
 
             <Bouton
               onClick={() => setEtape(2)}
-              disabled={aucunDepart || gammeComplete}
+              disabled={aucunDepart || gammeComplete || sansDepartOuvert}
               taille="lg"
               className="mt-8"
             >
@@ -1282,7 +1334,7 @@ export function TunnelReservation({
               ) : (
                 <Bouton
                   onClick={envoyer}
-                  disabled={!cgv || envoiEnCours || fermeLaNuit || aucunDepart || gammeComplete}
+                  disabled={!cgv || envoiEnCours || fermeLaNuit || aucunDepart || gammeComplete || sansDepartOuvert}
                   taille="lg"
                 >
                   {envoiEnCours

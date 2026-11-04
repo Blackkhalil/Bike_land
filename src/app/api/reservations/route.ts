@@ -6,6 +6,7 @@ import {
   DUREE_ROAD_TRIP_HEURES,
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_RESERVATIONS_HEURE,
+  motifRoadTripGamme,
   OUVERTURE_RESERVATIONS_HEURE,
   reouvertureReservations,
   reservationsOuvertes,
@@ -24,6 +25,7 @@ import { formatDateAvecJour } from "@/lib/format";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
 import { estEnAttente } from "@/lib/reservations";
 import { site } from "@/lib/site";
+import { TarifIntrouvableError } from "@/lib/tarification";
 import {
   erreursParChamp,
   schemaInscriptionOctobreRose,
@@ -134,6 +136,14 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
     return { refus: NextResponse.json({ erreur: "Ce vélo n'existe pas." }, { status: 404 }) };
   }
   const gamme = velo ? velo.gamme : donnees.gamme!;
+
+  // Le road trip du samedi se roule en Premium ou Prestige : une page
+  // restée ouverte, un ancien lien ou un appel direct ne réservent pas un
+  // Classique sur ce départ. Gbashi bike, le dimanche, le prend toujours.
+  const horsGamme = donnees.offre === "road-trip" ? motifRoadTripGamme(gamme, donnees.dateDebut) : null;
+  if (horsGamme) {
+    return { refus: NextResponse.json({ erreur: horsGamme, code: "GAMME" }, { status: 409 }) };
+  }
 
   // La même personne a déjà une réservation qui attend son paiement pour ce
   // jour : une réponse perdue, un double clic, une page rechargée pendant
@@ -522,6 +532,14 @@ async function creerEtEncaisser(demande: DemandeReservation) {
           code: creneau || (plusieurs && places !== 0) ? "PLACES" : "INDISPONIBLE",
           places,
         },
+        { status: 409 },
+      );
+    }
+    // Un prix introuvable à l'écriture (une gamme qui ne roule pas ce
+    // départ, passée entre les contrôles) : le motif, pas une erreur muette.
+    if (erreur instanceof TarifIntrouvableError) {
+      return NextResponse.json(
+        { erreur: erreur.message, code: demande.offre === "road-trip" ? "GAMME" : "TARIF" },
         { status: 409 },
       );
     }

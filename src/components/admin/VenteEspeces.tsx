@@ -19,8 +19,11 @@ import {
   FERMETURE_COMPTOIR_HEURE,
   GAMMES,
   GRILLE_HORAIRE,
+  gammesDuDepart,
   heureAuBenin,
+  motifRoadTripGamme,
   OUVERTURE_COMPTOIR_HEURE,
+  roadTripPossible,
   roadTripsDuJour,
   type GammeVelo,
 } from "@/data/offres";
@@ -408,9 +411,12 @@ export function VenteEspeces({
   // sur Octobre rose : son prix est forfaitaire.
   const codeNormalise = octobreRose ? "" : code.trim().toUpperCase().replace(/\s+/g, "");
   const signature = JSON.stringify([offre, veloId, date, heure, encadree ? 0 : dureeHeures, personnes, codeNormalise]);
+  // Le road trip du samedi se roule en Premium ou Prestige : un Classique
+  // choisi pour ce départ n'a pas de prix, et ne se vend pas.
+  const veloHorsGamme = roadTrip && velo !== undefined && !roadTripPossible(velo.gamme, date);
   const devisLocal = octobreRose
     ? calculerDevis({ offre: "octobre-rose", date, nombrePersonnes: personnes, especes: true })
-    : velo
+    : velo && !veloHorsGamme
       ? calculerDevis({
           offre,
           gamme: velo.gamme,
@@ -466,6 +472,8 @@ export function VenteEspeces({
               ? "Ce vélo est déjà pris sur ce créneau."
               : roadTrip && !roadTripCeJour
                 ? "Le road trip part le samedi et le dimanche."
+                : veloHorsGamme
+                  ? (motifRoadTripGamme(velo.gamme, date) ?? "Ce vélo ne roule pas ce road trip.")
                 : !roadTrip && heureFin > FERMETURE_COMPTOIR_HEURE
                   ? `Le vélo rentrerait après ${FERMETURE_COMPTOIR_HEURE} h.`
                   : null;
@@ -620,6 +628,14 @@ export function VenteEspeces({
           veloPrisEntreTemps(donnees.erreur);
           return;
         }
+        if (donnees.code === "GAMME") {
+          // Ce vélo ne roule pas ce road trip (un Classique, le samedi) : on
+          // le désélectionne, et l'on relit le parc, sa gamme a pu changer.
+          setVeloId("");
+          setErreur(donnees.erreur);
+          demarrerTransition(() => routeur.refresh());
+          return;
+        }
         if (donnees.code === "PLACES") {
           // Octobre rose : des vélos viennent d'être pris. On relit le parc.
           setErreur(donnees.erreur);
@@ -677,7 +693,8 @@ export function VenteEspeces({
   const datesRoadTrip = joursDeRoadTrip(ici.date);
   const formules: (readonly [CodeOffre, string, string])[] = [
     ["location-libre", "Location libre", "À l'heure, avec caution"],
-    ["road-trip", "Road trip", "Samedi et dimanche, 8 h"],
+    // Le samedi en Premium ou Prestige ; le dimanche, Gbashi bike, toutes gammes.
+    ["road-trip", "Road trip", `8 h : samedi en ${gammesDuDepart("samedi-matin")}, dimanche Gbashi bike`],
     ...(sortiesRose.length > 0
       ? ([["octobre-rose", "Octobre rose", detailFormuleRose(sortiesRose)]] as const)
       : []),
@@ -971,17 +988,22 @@ export function VenteEspeces({
         <div className="mt-2 grid *:min-w-0 gap-2 sm:grid-cols-2">
           {velos.map((v) => {
             const pris = occupeSurCreneau(v.id);
+            // Le road trip du samedi ne se roule pas en Classique : ces
+            // vélos restent visibles, grisés, sans prix ce jour-là.
+            const horsGamme = roadTrip && !roadTripPossible(v.gamme, date);
             const horsService = !enEtat(v);
             const choisi = v.id === veloId;
             // Le prix au comptoir de ce vélo : par personne en road trip.
-            const prix = calculerDevis({
-              offre: roadTrip ? "road-trip" : "location-libre",
-              gamme: v.gamme,
-              date,
-              nombrePersonnes: 1,
-              dureeHeures: roadTrip ? undefined : dureeHeures,
-              especes: true,
-            }).sousTotalXof;
+            const prix = horsGamme
+              ? null
+              : calculerDevis({
+                  offre: roadTrip ? "road-trip" : "location-libre",
+                  gamme: v.gamme,
+                  date,
+                  nombrePersonnes: 1,
+                  dureeHeures: roadTrip ? undefined : dureeHeures,
+                  especes: true,
+                }).sousTotalXof;
             return (
               <label
                 key={v.id}
@@ -989,14 +1011,14 @@ export function VenteEspeces({
                   choisi
                     ? "border-orange-signal bg-orange-signal/10"
                     : "border-noir-piste/15 bg-craie hover:border-noir-piste/35"
-                } ${pris || horsService ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+                } ${pris || horsService || horsGamme ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
               >
                 <input
                   type="radio"
                   name="vente-velo"
                   value={v.id}
                   checked={choisi}
-                  disabled={pris || horsService}
+                  disabled={pris || horsService || horsGamme}
                   onChange={() => {
                     setVeloId(v.id);
                     setErreur(null);
@@ -1010,15 +1032,15 @@ export function VenteEspeces({
                   <span className="block truncate text-[0.9rem] font-semibold">{v.nom}</span>
                   <span className="block text-[0.76rem] text-gris-cadre">
                     {nomGamme(v.gamme)}
-                    {` · ${formatXof(prix)}${roadTrip ? " / pers." : ""}`}
+                    {prix === null ? " · pas ce road trip" : ` · ${formatXof(prix)}${roadTrip ? " / pers." : ""}`}
                   </span>
                 </span>
                 <span
                   className={`shrink-0 text-[0.75rem] font-semibold ${
-                    horsService || pris ? "text-orange-sourd" : "text-vert-lagune"
+                    horsService || pris || horsGamme ? "text-orange-sourd" : "text-vert-lagune"
                   }`}
                 >
-                  {horsService ? "Entretien" : pris ? "Pris" : "Libre"}
+                  {horsService ? "Entretien" : pris ? "Pris" : horsGamme ? "Non" : "Libre"}
                 </span>
               </label>
             );

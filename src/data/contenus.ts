@@ -4,7 +4,7 @@
  */
 
 import { OCTOBRE_ROSE } from "@/data/octobre-rose";
-import { CAUTION_LOCATION_LIBRE_XOF } from "@/data/offres";
+import { CAUTION_LOCATION_LIBRE_XOF, gammesDuDepart } from "@/data/offres";
 import type { Itineraire } from "@/lib/types";
 
 export const itineraires: Itineraire[] = [
@@ -106,7 +106,8 @@ export const etapesLocation = [
     numero: "02",
     titre: "Choisissez votre formule et votre jour",
     detail:
-      "Road trip encadré le week-end, ou location libre à l'heure. Le calendrier ne propose que les jours où il reste des vélos dans votre gamme. Pas de compte à créer, pas de mot de passe à retenir.",
+      `Road trip encadré le samedi (${gammesDuDepart("samedi-matin")}), Gbashi bike le dimanche (${gammesDuDepart("dimanche-matin")}), ou location libre à l'heure. ` +
+      "Le calendrier ne propose que les jours où il reste des vélos dans votre gamme. Pas de compte à créer, pas de mot de passe à retenir.",
   },
   {
     numero: "03",

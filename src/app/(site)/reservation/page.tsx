@@ -6,6 +6,7 @@ import { TunnelReservation } from "@/components/reservation/TunnelReservation";
 import { Section, TitreSection } from "@/components/ui";
 import { optionsLocation } from "@/data/catalogue";
 import {
+  creneauDuJour,
   CRENEAUX_ROAD_TRIP,
   creneauxDisponibles,
   departsComplets,
@@ -13,6 +14,8 @@ import {
   GAMMES,
   GRILLE_HORAIRE,
   heuresDepartPossibles,
+  motifRoadTripGamme,
+  roadTripPossible,
 } from "@/data/offres";
 import type { CodeOffre } from "@/lib/types";
 import { depot } from "@/lib/db";
@@ -119,7 +122,16 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   let heureRetenue = heureDebut;
   let dureeRetenue = dureeHeures;
   let disponible = false;
-  if (offre === "road-trip") {
+  // Le road trip du samedi se roule en Premium ou Prestige : un lien vers
+  // ce départ pour le Classique (page restée ouverte, ancien lien) mène à
+  // l'explication, pas au tunnel. Gbashi bike, le dimanche, le prend.
+  // Seulement un jour de départ : un autre jour (ancien lien sans formule),
+  // le tunnel propose lui-même les départs de la gamme.
+  const horsGamme =
+    offre === "road-trip" && creneauDuJour(debut) ? motifRoadTripGamme(gamme.code, debut) : null;
+  if (horsGamme) {
+    disponible = false;
+  } else if (offre === "road-trip") {
     disponible = await gammeLibreA(heureDebut, DUREE_ROAD_TRIP_HEURES);
   } else {
     const candidates = [heureDebut, ...departsPossibles.filter((heure) => heure !== heureDebut)];
@@ -176,6 +188,35 @@ export default async function PageReservation({ searchParams }: { searchParams: 
           >
             Choisir une autre date
           </Link>
+        </div>
+      ) : horsGamme ? (
+        <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
+          <p className="titre-editorial text-[1.4rem]">Pas de road trip en {gamme.nom} ce jour-là</p>
+          <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
+            {horsGamme} Aucun montant n&apos;a été prélevé.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            {/* Tout droit vers le tunnel de ce départ, dans une gamme qui le roule. */}
+            {GAMMES.filter((autre) => roadTripPossible(autre.code, debut)).map((autre, index) => (
+              <Link
+                key={autre.code}
+                href={`/reservation?gamme=${autre.code.toLowerCase()}&offre=road-trip&debut=${debut}&fin=${debut}&heure=${heureDebut}`}
+                className={
+                  index === 0
+                    ? "inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
+                    : "inline-flex rounded-full border border-noir-piste/30 px-6 py-3 text-sm font-semibold text-noir-piste"
+                }
+              >
+                Road trip en {autre.nom}
+              </Link>
+            ))}
+            <Link
+              href={`${lienGamme}?debut=${debut}`}
+              className="inline-flex rounded-full border border-noir-piste/30 px-6 py-3 text-sm font-semibold text-noir-piste"
+            >
+              Rester en {gamme.nom}
+            </Link>
+          </div>
         </div>
       ) : disponible ? (
         <div className="mt-12">
