@@ -21,7 +21,7 @@ import { depot } from "@/lib/db";
 import { occupationsDeLaGamme } from "@/lib/db/contrat";
 import { filDAriane } from "@/lib/donnees-structurees";
 import { formatXof } from "@/lib/format";
-import { joursFermesCommeOccupes, lireOuverture } from "@/lib/ouverture";
+import { departsDeLaGamme, joursFermesCommeOccupes, lireOuverture } from "@/lib/ouverture";
 import { DESCRIPTION_MAX, metadonneesPage, premierQuiTient } from "@/lib/seo";
 
 type Params = Promise<{ gamme: string }>;
@@ -86,6 +86,14 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
     ...occupationsDeLaGamme(creneauxParVelo, OUVERTURE_HEURE, FERMETURE_HEURE),
     ...joursFermesCommeOccupes(ouverture),
   ];
+
+  // Les départs encadrés : complets pour la gamme, ils s'affichent « Sold out ».
+  const maintenant = new Date();
+  const departs = await departsDeLaGamme(
+    gamme.code,
+    creneauxDisponibles(maintenant, ouverture),
+    departsComplets(maintenant, ouverture),
+  );
 
   const lePlusPris = gamme.code === GAMME_LA_PLUS_PRISE;
   const autres = GAMMES.filter((autre) => autre.code !== gamme.code);
@@ -171,8 +179,8 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
               <Suspense fallback={<SqueletteReservation />}>
                 <WidgetReservation
                   gamme={gamme.code}
-                  creneaux={creneauxDisponibles(new Date(), ouverture)}
-                  complets={departsComplets(new Date(), ouverture)}
+                  creneaux={departs.creneaux}
+                  complets={departs.complets}
                   periodesOccupees={periodesOccupees}
                   aucunVelo={enEtat.length === 0}
                 />

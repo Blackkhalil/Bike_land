@@ -32,6 +32,7 @@ import {
   motifHoraireLocation,
   OUVERTURE_HEURE,
   roadTripsDuJour,
+  type GammeVelo,
   type OuvertureCreneaux,
 } from "@/data/offres";
 import { depot } from "@/lib/db";
@@ -327,4 +328,29 @@ export function personnesMaxPour(velo: Velo, parc: Velo[]): number {
     (v) => v.gamme === velo.gamme && v.statut !== "RETIRE" && v.statut !== "MAINTENANCE",
   ).length;
   return Math.max(1, enEtat);
+}
+
+/**
+ * Les départs encadrés vus d'une gamme : un départ où plus aucun de ses
+ * vélos n'est libre passe avec ceux que l'exploitant a fermés, et
+ * s'affiche « Sold out » pour elle. Sans cela, l'encart de la gamme
+ * proposait encore ce départ, et le client y revenait en boucle.
+ */
+export async function departsDeLaGamme<T extends { date: DateISO; heureDebut: number; heureFin: number }>(
+  gamme: GammeVelo,
+  creneaux: T[],
+  complets: T[],
+): Promise<{ creneaux: T[]; complets: T[] }> {
+  const pleins = await Promise.all(
+    creneaux.map(
+      async (creneau) =>
+        !(await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin)).some(
+          (velo) => velo.gamme === gamme,
+        ),
+    ),
+  );
+  return {
+    creneaux: creneaux.filter((_, index) => !pleins[index]),
+    complets: [...complets, ...creneaux.filter((_, index) => pleins[index])],
+  };
 }

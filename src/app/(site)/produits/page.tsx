@@ -417,8 +417,8 @@ export default async function PageProduits() {
                     Réserver mon dimanche
                   </LienChoixProduit>
                   <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/85">
-                    Choisissez votre vélo&nbsp;: le départ du dimanche y sera déjà sélectionné. Le
-                    prix dépend de la gamme du vélo.
+                    Choisissez votre gamme&nbsp;: le départ du dimanche y sera déjà sélectionné. Le
+                    prix dépend de la gamme.
                   </p>
                 </>
               ) : (
@@ -488,7 +488,7 @@ export default async function PageProduits() {
             <div className="mt-8 flex flex-wrap gap-3">
               {samedi ? (
                 <LienChoixProduit href="/velos" choix={CRENEAU_ROAD_TRIP} variante="primaire" taille="lg">
-                  Choisir mon vélo
+                  Choisir ma gamme
                 </LienChoixProduit>
               ) : (
                 <BoutonLien
@@ -547,7 +547,7 @@ export default async function PageProduits() {
             </dl>
             <div className="mt-8">
               <LienChoixProduit href="/velos" choix="location-libre" variante="primaire" taille="lg">
-                Choisir mon vélo
+                Choisir ma gamme
               </LienChoixProduit>
             </div>
           </div>

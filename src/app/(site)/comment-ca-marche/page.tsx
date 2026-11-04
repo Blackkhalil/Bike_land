@@ -12,7 +12,7 @@ import { metadonneesPage } from "@/lib/seo";
 export const metadata: Metadata = metadonneesPage({
   titre: "Louer un vélo à Cotonou en cinq étapes",
   description:
-    "Choisissez votre vélo, réservez en ligne sans créer de compte, payez en Mobile Money et retrouvez " +
+    "Choisissez votre gamme, réservez en ligne sans créer de compte, payez en Mobile Money et retrouvez " +
     "le coordinateur au départ, à Cotonou.",
   chemin: "/comment-ca-marche",
 });
@@ -148,7 +148,7 @@ export default function PageCommentCaMarche() {
 
         <div className="mt-16 flex flex-wrap gap-3">
           <BoutonLien href="/velos" variante="primaire" taille="lg">
-            Choisir mon vélo
+            Choisir ma gamme
           </BoutonLien>
           <BoutonLien href="/contact" variante="contour" taille="lg" className="text-noir-piste">
             Poser une question

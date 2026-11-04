@@ -17,7 +17,7 @@ export const metadata: Metadata = metadonneesPage({
   titre: `Vélos à louer à Cotonou dès ${formatXof(PRIX_HEURE_MINIMUM)} l'heure`,
   description:
     "Trois gammes de vélos à louer sur la route des Pêches à Cotonou : Classique, Premium et Prestige. " +
-    "Choisissez votre gamme et votre jour, puis réservez en ligne.",
+    "Choisissez votre gamme et votre jour, réservez en ligne.",
   chemin: "/velos",
 });
 

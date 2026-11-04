@@ -11,12 +11,13 @@ import {
   departsComplets,
   DUREE_ROAD_TRIP_HEURES,
   GAMMES,
+  GRILLE_HORAIRE,
   heuresDepartPossibles,
 } from "@/data/offres";
 import type { CodeOffre } from "@/lib/types";
 import { depot } from "@/lib/db";
 import { aujourdhui, estDateISOValide } from "@/lib/dates";
-import { lireOuverture, motifDeRefus } from "@/lib/ouverture";
+import { departsDeLaGamme, lireOuverture, motifDeRefus } from "@/lib/ouverture";
 import { formatDate } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -96,7 +97,13 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   const gamme = GAMMES.find((entree) => entree.code === codeGamme);
   if (!gamme) redirect("/velos");
 
-  const [points, parc] = await Promise.all([depot.listerPointsDeRetrait(), depot.listerVelos()]);
+  const [points, parc, departs] = await Promise.all([
+    depot.listerPointsDeRetrait(),
+    depot.listerVelos(),
+    // Un départ encadré où tous les vélos de la gamme sont pris s'affiche
+    // « Sold out » dans le tunnel, comme un départ fermé depuis l'admin.
+    departsDeLaGamme(gamme.code, creneaux, complets),
+  ]);
 
   // Reste-t-il un vélo de la gamme sur ce créneau ? Le tunnel recompte
   // ensuite à chaque changement d'heure, et l'écriture tranche.
@@ -107,8 +114,10 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   // demandée si un vélo de la gamme y est libre, sinon la première heure
   // du jour où il en reste un : une gamme pleine à 8 h ne doit pas fermer
   // une journée encore libre l'après-midi. Le jour n'est complet que si
-  // aucune heure ne l'est.
+  // aucune heure ne l'est, pour la durée demandée comme pour la plus
+  // courte de la grille : le calendrier, lui, compte heure par heure.
   let heureRetenue = heureDebut;
+  let dureeRetenue = dureeHeures;
   let disponible = false;
   if (offre === "road-trip") {
     disponible = await gammeLibreA(heureDebut, DUREE_ROAD_TRIP_HEURES);
@@ -119,6 +128,17 @@ export default async function PageReservation({ searchParams }: { searchParams: 
         heureRetenue = heure;
         disponible = true;
         break;
+      }
+    }
+    const plusCourte = GRILLE_HORAIRE[gamme.code][0].heures;
+    if (!disponible && plusCourte < dureeHeures) {
+      for (const heure of heuresDepartPossibles(plusCourte, debut, maintenant)) {
+        if (await gammeLibreA(heure, plusCourte)) {
+          heureRetenue = heure;
+          dureeRetenue = plusCourte;
+          disponible = true;
+          break;
+        }
       }
     }
   }
@@ -164,14 +184,14 @@ export default async function PageReservation({ searchParams }: { searchParams: 
             apercu={apercu}
             point={points.find((point) => point.id === apercu?.pointDeRetraitId)}
             offre={offre}
-            dureeHeures={dureeHeures}
+            dureeHeures={dureeRetenue}
             nombrePersonnes={Math.min(nombrePersonnes, personnesMax)}
             personnesMax={personnesMax}
             dateDebut={debut}
             dateFin={fin}
             heureDebut={heureRetenue}
-            creneaux={creneaux}
-            complets={complets}
+            creneaux={departs.creneaux}
+            complets={departs.complets}
             instant={maintenant.getTime()}
             optionsInitiales={optionsDemandees}
           />
@@ -181,14 +201,15 @@ export default async function PageReservation({ searchParams }: { searchParams: 
           <p className="titre-editorial text-[1.4rem]">Plus de vélo {gamme.nom} libre</p>
           <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
             Tous les vélos {gamme.nom} sont pris {offre === "road-trip" ? "sur ce départ" : "ce jour-là"}.
-            Choisissez un autre jour, ou une autre gamme. Aucun montant n&apos;a été prélevé.
+            Choisissez {offre === "road-trip" ? "un autre départ" : "un autre jour"}, ou une autre gamme.
+            Aucun montant n&apos;a été prélevé.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
               href={lienGamme}
               className="inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
             >
-              Choisir un autre jour
+              {offre === "road-trip" ? "Choisir un autre départ" : "Choisir un autre jour"}
             </Link>
             <Link
               href="/velos"

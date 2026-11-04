@@ -98,15 +98,15 @@ export function itineraireOctobreRose(): Itineraire | null {
 export const etapesLocation = [
   {
     numero: "01",
-    titre: "Choisissez votre vélo",
+    titre: "Choisissez votre gamme",
     detail:
-      "Filtrez par type, par taille et par point de départ. Chaque fiche indique l'autonomie conseillée et l'équipement fourni.",
+      "Classique, Premium ou Prestige : c'est la gamme qui fixe le prix. Nous vous attribuons un vélo libre de la gamme, réglé à votre taille au départ.",
   },
   {
     numero: "02",
-    titre: "Réservez vos dates",
+    titre: "Choisissez votre formule et votre jour",
     detail:
-      "Le calendrier n'affiche que les jours réellement libres pour ce vélo précis. Pas de compte à créer, pas de mot de passe à retenir.",
+      "Road trip encadré le week-end, ou location libre à l'heure. Le calendrier ne propose que les jours où il reste des vélos dans votre gamme. Pas de compte à créer, pas de mot de passe à retenir.",
   },
   {
     numero: "03",
@@ -124,7 +124,7 @@ export const etapesLocation = [
     numero: "05",
     titre: "Roulez accompagné, repartez léger",
     detail:
-      "Le coordinateur roule avec le groupe et récupère les vélos et les kits à l'arrivée. Rien à rapporter, et aucune caution à récupérer : nous n'en demandons pas.",
+      "Le coordinateur roule avec le groupe et récupère les vélos et les kits à l'arrivée. Rien à rapporter, et aucune caution en road trip.",
   },
 ] as const;
 
@@ -135,12 +135,12 @@ export const faq = [
       {
         question: "Dois-je créer un compte pour réserver ?",
         reponse:
-          "Non. Vous choisissez votre vélo et vos dates, puis vous saisissez votre nom, votre email et votre moyen de paiement à la dernière étape. Un lien de suivi personnel vous est envoyé par email : il vous donne accès à votre réservation sans mot de passe.",
+          "Non. Vous choisissez votre gamme de vélo, votre formule et votre jour, puis vous saisissez votre nom, votre email et votre moyen de paiement à la dernière étape. Un lien de suivi personnel vous est envoyé par email : il vous donne accès à votre réservation sans mot de passe.",
       },
       {
-        question: "Comment savoir si un vélo est réellement libre ?",
+        question: "Comment savoir s'il reste des vélos ?",
         reponse:
-          "La disponibilité est calculée en temps réel sur le parc physique. Un vélo déjà loué sur vos dates n'apparaît pas comme réservable, et deux personnes ne peuvent pas réserver le même vélo aux mêmes dates.",
+          "La disponibilité est calculée en temps réel sur le parc : le calendrier ne propose que les jours où il reste des vélos dans la gamme choisie, le site vous prévient si une heure est complète, et deux réservations ne reçoivent jamais le même vélo au même moment.",
       },
       {
         question: "Puis-je modifier ou annuler ma réservation ?",

@@ -93,7 +93,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
                   <dd className="text-right font-medium">{gamme.machine}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="shrink-0 text-gris-cadre">Au choix</dt>
+                  <dt className="shrink-0 text-gris-cadre">Dans la gamme</dt>
                   <dd className="text-right font-medium">{auChoix(disponibles.length)}</dd>
                 </div>
                 <div className="flex justify-between gap-3">

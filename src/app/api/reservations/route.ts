@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { creneauOctobreRose, OCTOBRE_ROSE, sortieOctobreRoseDu } from "@/data/octobre-rose";
 import {
   DUREE_ROAD_TRIP_HEURES,
+  EXPIRATION_PANIER_MINUTES,
   FERMETURE_RESERVATIONS_HEURE,
   OUVERTURE_RESERVATIONS_HEURE,
   reouvertureReservations,
@@ -133,6 +134,42 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
     return { refus: NextResponse.json({ erreur: "Ce vélo n'existe pas." }, { status: 404 }) };
   }
   const gamme = velo ? velo.gamme : donnees.gamme!;
+
+  // La même personne a déjà une réservation qui attend son paiement pour ce
+  // jour : une réponse perdue, un double clic, une page rechargée pendant
+  // qu'elle valide sur son téléphone. Sans vélo précis, un second envoi
+  // trouverait d'autres vélos libres de la gamme et pousserait une seconde
+  // demande Mobile Money : on la renvoie vers la première. Payée, ou libérée
+  // au bout du délai du panier, elle laisse réserver de nouveau.
+  const email = donnees.client.email.trim().toLowerCase();
+  const numero = finDeNumero(donnees.client.telephone);
+  const enAttente = (
+    await depot.listerReservations({
+      statut: "EN_ATTENTE_PAIEMENT",
+      depuis: donnees.dateDebut,
+      jusqua: donnees.dateDebut,
+    })
+  ).find(
+    (r) =>
+      r.offre !== "octobre-rose" &&
+      r.dateDebut === donnees.dateDebut &&
+      estEnAttente(r) &&
+      (r.client.email.toLowerCase() === email || (numero.length === 8 && finDeNumero(r.client.telephone) === numero)),
+  );
+  if (enAttente) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur:
+            `Une réservation à votre nom attend déjà son paiement pour ce jour (${enAttente.reference}). ` +
+            "Validez la demande sur votre téléphone, ou relancez-la depuis le lien reçu par email. " +
+            `Sans paiement, elle se libère d'elle-même au bout de ${EXPIRATION_PANIER_MINUTES} minutes.`,
+          code: "EN_ATTENTE",
+        },
+        { status: 409 },
+      ),
+    };
+  }
 
   // L'heure de fin découle de la formule : le road trip dure le temps de
   // son créneau encadré, la location libre le nombre d'heures acheté.

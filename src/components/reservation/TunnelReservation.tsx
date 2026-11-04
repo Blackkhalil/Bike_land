@@ -434,6 +434,10 @@ export function TunnelReservation({
         } else if (reponse.status === 409 && donnees.code === "COMPLET") {
           // Jour ou départ fermé entre-temps depuis l'admin.
           setErreurGlobale(`${donnees.erreur} Aucun montant n'a été prélevé.`);
+        } else if (reponse.status === 409 && donnees.code === "EN_ATTENTE") {
+          // Une réservation à son nom attend déjà son paiement ce jour-là : le
+          // message dit laquelle, et comment la payer.
+          setErreurGlobale(donnees.erreur);
         } else if (reponse.status === 409 && donnees.code === "PLACES") {
           // Des vélos de la gamme viennent d'être pris : le compteur suit.
           if (typeof donnees.places === "number") setLibresGamme({ cle: cleCreneau, nombre: donnees.places });
