@@ -181,11 +181,14 @@ widget, le tunnel, l'API et l'admin lisent la même grille.
 
 ### Road trip encadré, par personne
 
-| Gamme | Samedi (road trip) | Dimanche (Gbashi bike) | Cocos offertes |
-|---|---|---|---|
-| Classique | pas de road trip | 3 125 | 1 |
-| Premium | 3 125 | 4 125 | 2 |
-| Prestige | 3 625 | 5 125 | 2 |
+| Gamme | Samedi (road trip) | Dimanche (Gbashi bike) |
+|---|---|---|
+| Classique | pas de road trip | 3 125 |
+| Premium | 3 125 | 4 125 |
+| Prestige | 3 625 | 5 125 |
+
+Eau et **deux cocos offertes par personne** au retour, quelle que soit la gamme
+(`COCOS_ROAD_TRIP`, décision du gérant de novembre 2026).
 
 **Le road trip du samedi se roule en Premium ou Prestige** (décision du gérant, novembre
 2026) : le Classique n'a pas de prix dans `PRIX_ROAD_TRIP_XOF`, et une gamme sans prix ne

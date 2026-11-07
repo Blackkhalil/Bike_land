@@ -167,7 +167,7 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
       );
     }
     const prixUnitaire = prixDuJour - fraisRetires;
-    const cocos = COCOS_ROAD_TRIP[gamme];
+    const cocos = COCOS_ROAD_TRIP;
     const nom = (parametres.date ? creneauDuJour(parametres.date)?.produit : null) ?? "Road trip";
     sousTotalXof = prixUnitaire * nombrePersonnes;
     cautionXof = 0;

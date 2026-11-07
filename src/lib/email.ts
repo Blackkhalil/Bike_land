@@ -23,7 +23,7 @@ import {
   nomDuRoadTrip,
   resumeOffre,
 } from "./format";
-import { paiementPrincipal } from "./reservations";
+import { cocosDe, paiementPrincipal } from "./reservations";
 import type { Reservation } from "./types";
 
 /** Le rose d'Octobre rose, celui du site (--color-rose-octobre). */
@@ -723,12 +723,14 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
     ? `Octobre rose, ${reservation.nombrePersonnes} place${reservation.nombrePersonnes > 1 ? "s" : ""}`
     : velos;
   const n = reservation.nombrePersonnes;
+  // Road trip : deux cocos par personne, comme le devis les promet au client.
+  const cocos = cocosDe(reservation);
   const aPreparer =
     reservation.cautionXof > 0
       ? `À réclamer au départ : pièce d'identité, engagement signé et caution de ${formatXof(reservation.cautionXof)} en espèces.`
       : enRose(reservation)
         ? `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}), ${n} casque${n > 1 ? "s" : ""}, et à offrir ${texteOffertOctobreRose(n)} pour la sortie Octobre rose.`
-        : `À prévoir : ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
+        : `À prévoir : ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
 
   return envoyer({
     destinataire,

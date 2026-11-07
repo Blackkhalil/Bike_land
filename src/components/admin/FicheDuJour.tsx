@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
 import { formatDate, formatXof, resumeOffre } from "@/lib/format";
+import { cocosDe } from "@/lib/reservations";
 import type { Reservation } from "@/lib/types";
 
 /**
@@ -32,9 +33,11 @@ function consignes(reservation: Reservation, sens: "depart" | "retour"): string[
   if (reservation.offre === "road-trip") {
     if (sens === "retour") return ["Récupérer le vélo, le casque et le kit."];
     const n = reservation.nombrePersonnes;
+    // Deux cocos par personne, comme le devis les promet au client.
+    const cocos = cocosDe(reservation);
     return [
       `Préparer ${n} vélo${n > 1 ? "s" : ""}, ${n} casque${n > 1 ? "s" : ""} et le kit de réparation.`,
-      `Prévoir ${n} coco${n > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`,
+      `Prévoir ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`,
       "Aucune caution : le matériel reste sous votre garde pendant la sortie.",
     ];
   }

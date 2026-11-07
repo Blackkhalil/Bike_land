@@ -90,9 +90,6 @@ export const GAMME_LA_PLUS_PRISE: GammeVelo = "PREMIUM";
  * de prix, l'exploitant l'en a retiré (novembre 2026). Le Classique reste
  * en location libre, et le dimanche en Gbashi bike. Une gamme sans prix ici
  * ne se réserve pas sur ce départ, ni en ligne ni au comptoir.
- *
- * Les cocos suivent la gamme : une pour le Classique, deux au-dessus.
- * C'est la plaquette qui l'établit, pas une décision technique.
  */
 export const PRIX_ROAD_TRIP_XOF: Partial<Record<GammeVelo, number>> = {
   PREMIUM: 3125,
@@ -111,12 +108,14 @@ export const PRIX_GBASHI_BIKE_XOF: Record<GammeVelo, number> = {
   PRESTIGE: 5125,
 };
 
-/** Nombre de cocos offertes au retour, par gamme. */
-export const COCOS_ROAD_TRIP: Record<GammeVelo, number> = {
-  CLASSIQUE: 1,
-  PREMIUM: 2,
-  PRESTIGE: 2,
-};
+/**
+ * Cocos offertes au retour d'un road trip, par personne : deux, quelle que
+ * soit la gamme et le jour (Gbashi bike compris). Décision de l'exploitant
+ * (novembre 2026) : le Classique, à une coco, ne roule plus le samedi. Le
+ * devis, les pages, la fiche du jour et l'email de l'équipe lisent ce
+ * nombre.
+ */
+export const COCOS_ROAD_TRIP = 2;
 
 /** Caution de la location libre, rendue à la restitution du vélo. */
 export const CAUTION_LOCATION_LIBRE_XOF = 5000;

@@ -22,7 +22,7 @@
  *    reparti à la vente, et cette ligne ne redeviendra jamais rien.
  */
 
-import { EXPIRATION_PANIER_MINUTES, panierExpire } from "@/data/offres";
+import { COCOS_ROAD_TRIP, EXPIRATION_PANIER_MINUTES, panierExpire } from "@/data/offres";
 import { ajouterJours, type DateISO } from "@/lib/dates";
 import type { Paiement, Reservation, StatutReservation } from "@/lib/types";
 
@@ -136,6 +136,15 @@ export function aEncaisse(reservation: Reservation): boolean {
 /** Le règlement de la réservation, caution exclue. */
 export function paiementPrincipal(reservation: Reservation): Paiement | undefined {
   return reservation.paiements.find((paiement) => !paiement.estCaution);
+}
+
+/**
+ * Les cocos à offrir au retour d'un road trip : deux par personne, quelle
+ * que soit la gamme (`COCOS_ROAD_TRIP`), comme le devis les promet au
+ * client. Zéro hors road trip : Octobre rose a son propre compte.
+ */
+export function cocosDe(reservation: Pick<Reservation, "offre" | "nombrePersonnes">): number {
+  return reservation.offre === "road-trip" ? reservation.nombrePersonnes * COCOS_ROAD_TRIP : 0;
 }
 
 /**

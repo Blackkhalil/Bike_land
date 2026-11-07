@@ -14,7 +14,7 @@
 import { OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
 import { aujourdhui } from "@/lib/dates";
 import { libelleCommission, libelleReduction, type CodeParrainage } from "@/lib/parrainage";
-import { estEnAttente, estPayee, seulementPayees } from "@/lib/reservations";
+import { cocosDe, estEnAttente, estPayee, seulementPayees } from "@/lib/reservations";
 import {
   calculerStatistiques,
   construirePeriode,
@@ -38,9 +38,9 @@ import type { Client, Reservation, StatistiquesPartenaire, Velo } from "@/lib/ty
  *
  * `participants` compte les participants des sorties encadrées (road trip
  * et Octobre rose). `aPrevoir` dit ce qu'il faut leur préparer : au road
- * trip, un coco et une eau par participant ; à Octobre rose, ce que la
- * campagne offre à chacun (`OCTOBRE_ROSE.offertParPersonne`, deux cocos,
- * deux gâteaux et deux bouteilles d'eau).
+ * trip, deux cocos et une eau par participant (`cocosDe`) ; à Octobre
+ * rose, ce que la campagne offre à chacun (`OCTOBRE_ROSE.offertParPersonne`,
+ * deux cocos, deux gâteaux et deux bouteilles d'eau).
  */
 export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui()) {
   const actives = seulementPayees(reservations);
@@ -53,8 +53,9 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
   const participantsOctobreRose = participantsDe("octobre-rose");
   const participants = participantsRoadTrip + participantsOctobreRose;
   const offert = OCTOBRE_ROSE.offertParPersonne;
+  const cocosRoadTrip = departs.reduce((total, r) => total + cocosDe(r), 0);
   const aPrevoir = {
-    cocos: participantsRoadTrip + participantsOctobreRose * offert.cocos,
+    cocos: cocosRoadTrip + participantsOctobreRose * offert.cocos,
     gateaux: participantsOctobreRose * offert.gateaux,
     eaux: participantsRoadTrip + participantsOctobreRose * offert.eaux,
   };
@@ -78,7 +79,7 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
  * indicateurs : l'écran et les exports disent la même chose.
  */
 export const AIDE_A_PREVOIR =
-  `Un coco et une eau par participant au road trip${String.fromCharCode(0xa0)}; ` +
+  `Deux cocos et une eau par participant au road trip${String.fromCharCode(0xa0)}; ` +
   `${texteOffertOctobreRose()} par participant à Octobre rose.`;
 
 /* ---------------------------------------------------- La structure */

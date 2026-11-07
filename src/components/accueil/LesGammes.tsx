@@ -110,10 +110,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
                 <div className="flex justify-between gap-3">
                   <dt className="shrink-0 text-gris-cadre">Offert au retour</dt>
                   <dd className="text-right font-medium">
-                    Eau +{" "}
-                    {COCOS_ROAD_TRIP[gamme.code] > 1
-                      ? `${COCOS_ROAD_TRIP[gamme.code]} cocos`
-                      : "1 coco"}
+                    Eau + {COCOS_ROAD_TRIP} cocos
                   </dd>
                 </div>
               </dl>
