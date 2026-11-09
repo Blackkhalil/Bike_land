@@ -6,7 +6,7 @@
  */
 
 import { formatHoraire, sortieDeLaReservation } from "@/data/octobre-rose";
-import { creneauDuDepart } from "@/data/offres";
+import { creneauDuDepart, DERNIER_GBASHI_DU_DIMANCHE } from "@/data/offres";
 
 import type { CodeOffre, MoyenPaiement } from "./types";
 
@@ -241,5 +241,9 @@ export function resumeOffre(reservation: {
  */
 export function nomDuRoadTrip(reservation: { dateDebut?: string; heureDebut?: number }): string {
   if (reservation.dateDebut === undefined || reservation.heureDebut === undefined) return "Road trip";
-  return creneauDuDepart(reservation.dateDebut, reservation.heureDebut)?.produit ?? "Road trip";
+  const creneau = creneauDuDepart(reservation.dateDebut, reservation.heureDebut);
+  // Jusqu'au 8 novembre 2026, le road trip du dimanche était Gbashi bike :
+  // ces réservations gardent leur nom.
+  if (creneau?.code === "dimanche-matin" && reservation.dateDebut <= DERNIER_GBASHI_DU_DIMANCHE) return "Gbashi bike";
+  return creneau?.produit ?? "Road trip";
 }

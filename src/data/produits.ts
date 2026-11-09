@@ -4,15 +4,15 @@
  *
  * Quatre sont permanents, un est de saison :
  *
- *  - **Gbashi bike** : le road trip du dimanche, version sport ; à
- *    l'arrivée, séance de sport devant la plage. C'est le créneau
- *    « dimanche-matin » de CRENEAUX_ROAD_TRIP. Sur commande depuis novembre
- *    2026 : il ne se réserve plus en ligne, on le commande sur WhatsApp, et
- *    le comptoir l'enregistre.
+ *  - **Gbashi bike** : le road trip version sport ; à l'arrivée, séance
+ *    de sport devant la plage. Sur commande depuis novembre 2026 : il ne se
+ *    réserve plus en ligne et ne part plus le dimanche (le road trip y part),
+ *    on le commande sur WhatsApp pour le jour qui convient.
  *  - **Padel bike** : à vélo jusqu'au terrain de padel, puis trois heures
  *    de padel. Sur commande, sur WhatsApp, depuis son lancement (novembre
  *    2026) : ses jours et ses heures ne sont pas fixés.
- *  - **Road trip** : la sortie encadrée du samedi, créneau « samedi-matin ».
+ *  - **Road trip** : la sortie encadrée du week-end, créneaux « samedi-matin »
+ *    et « dimanche-matin », en groupe de dix au moins.
  *  - **Location libre** : le vélo pour soi, à l'heure.
  *  - **Octobre rose** : des sorties aux couleurs d'Octobre rose, le mois de
  *    sensibilisation au cancer du sein, fixées dans src/data/octobre-rose.ts.
@@ -40,9 +40,9 @@ import type { CodeCreneau } from "@/data/offres";
 import type { DateISO } from "@/lib/dates";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
 
-/** Le créneau qui porte Gbashi bike, et celui du road trip du samedi. */
-export const CRENEAU_GBASHI_BIKE: CodeCreneau = "dimanche-matin";
+/** Les deux départs du road trip : le samedi et le dimanche matin. */
 export const CRENEAU_ROAD_TRIP: CodeCreneau = "samedi-matin";
+export const CRENEAU_ROAD_TRIP_DIMANCHE: CodeCreneau = "dimanche-matin";
 
 /**
  * Ce que le visiteur a choisi sur la page Nos produits, retenu le temps de
@@ -157,8 +157,8 @@ export function placesRestantes(places: number): string {
 /** Les messages WhatsApp déjà écrits des boutons de la page. */
 export const MESSAGES_WHATSAPP = {
   octobreRose: "Bonjour Bike Land, je souhaite participer à la sortie Octobre rose.",
-  gbashiBike: "Bonjour Bike Land, je souhaite commander Gbashi bike, le road trip sport du dimanche.",
+  gbashiBike: "Bonjour Bike Land, je souhaite commander Gbashi bike, le road trip version sport.",
   padelBike: "Bonjour Bike Land, je souhaite commander Padel bike, le vélo jusqu'au padel puis 3 h de padel.",
-  roadTrip: "Bonjour Bike Land, je souhaite réserver le road trip du samedi.",
+  roadTrip: "Bonjour Bike Land, je souhaite réserver le road trip du week-end.",
   question: "Bonjour Bike Land, j'ai une question.",
 } as const;

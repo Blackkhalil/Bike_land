@@ -39,7 +39,7 @@ En ligne : <https://bike-land.vercel.app>
 | Page | Route | Contenu |
 |---|---|---|
 | Accueil | `/` | Vélo en vedette en 3D, les trois gammes, le parc, carrousel de photos, avis |
-| Nos produits | `/produits` | Padel bike et Gbashi bike (sur commande, sur WhatsApp), road trip du samedi, location libre, avec leurs affiches ; Octobre rose en octobre |
+| Nos produits | `/produits` | Padel bike et Gbashi bike (sur commande, sur WhatsApp), road trip du week-end, location libre, avec leurs affiches ; Octobre rose en octobre |
 | Octobre rose | `/octobre-rose` | La sortie de saison, réservée et payée en ligne sans choix de vélo |
 | Catalogue | `/velos` | Les trois gammes en cadres (le Premium « le plus pris ») ; un cadre touché affiche les vélos de sa gamme, et d'elle seule |
 | Fiche vélo | `/velos/[slug]` | Gamme et tarif, caractéristiques, disponibilité à l'heure, avis |
@@ -95,14 +95,14 @@ réservation (`src/data/produits.ts`, prix dans `src/data/offres.ts`) :
   trois heures de padel, 3 500 F par personne (`PRIX_PADEL_BIKE_XOF`). Il se commande
   sur WhatsApp, sans réservation en ligne : ses jours et ses heures ne sont pas fixés.
   Ses images sont tirées des vidéos de l'exploitant (`AFFICHES_PADEL`).
-- **Gbashi bike** est le road trip du dimanche, avec une séance de sport devant la
+- **Gbashi bike** est le road trip version sport, avec une séance de sport devant la
   plage à l'arrivée, dans les trois gammes, à son propre prix. **Sur commande depuis
-  novembre 2026** : c'est le créneau « Dimanche », marqué `enLigne: false` dans
-  `CRENEAUX_ROAD_TRIP`. Il ne se propose ni ne s'accepte en ligne, quel que soit le
-  réglage en base ; le tableau de bord l'affiche « Sur commande », sans bouton. Les
-  clients écrivent sur WhatsApp et le comptoir enregistre la commande. Le formulaire du
-  comptoir, les emails et l'admin le nomment, et demandent de venir en tenue de sport.
-- **Road trip** est la sortie du samedi, en Premium ou Prestige seulement ;
+  novembre 2026** : il ne se réserve plus en ligne et ne part plus le dimanche ; les
+  clients écrivent sur WhatsApp pour le jour qui leur convient. Jusqu'au 8 novembre 2026,
+  le road trip du dimanche se vendait sous ce nom (`DERNIER_GBASHI_DU_DIMANCHE`) : ces
+  réservations le gardent dans l'admin et les emails.
+- **Road trip** est la sortie du samedi et du dimanche matin, en Premium ou Prestige
+  seulement ;
   **location libre** le vélo à l'heure, dans les trois gammes.
 - **Octobre rose** n'existe qu'en octobre de l'année de la campagne. Tout se règle
   dans `src/data/octobre-rose.ts` : la date, le rassemblement, le départ et le
@@ -189,7 +189,7 @@ widget, le tunnel, l'API et l'admin lisent la même grille.
 
 ### Road trip encadré, par personne
 
-| Gamme | Samedi (road trip, en ligne) | Dimanche (Gbashi bike, sur commande) |
+| Gamme | Road trip, samedi et dimanche (en ligne) | Gbashi bike (sur commande) |
 |---|---|---|
 | Classique | pas de road trip | 3 500 |
 | Premium | 3 125 | 4 000 |
@@ -204,8 +204,8 @@ Eau et **deux cocos offertes par personne** au retour, quelle que soit la gamme
 2026) : le Classique n'a pas de prix dans `PRIX_ROAD_TRIP_XOF`, et une gamme sans prix ne
 roule pas ce départ (`roadTripPossible`, `motifRoadTripGamme`). Le site ne le lui propose
 pas, le tunnel, l'API et le comptoir le refusent avec le motif, et les réservations déjà
-prises gardent leur montant. Le Classique garde la location libre, et Gbashi bike sur
-commande.
+prises gardent leur montant. Le Classique garde la location libre. Le dimanche matin
+suit les mêmes règles que le samedi depuis le 9 novembre 2026.
 
 **Le road trip du samedi se fait en groupe de 10 personnes au moins** (décision du gérant,
 novembre 2026, `PERSONNES_MIN_ROAD_TRIP` et `personnesMin` sur le créneau). Une
@@ -222,9 +222,8 @@ le prix de la plaquette**, ces 125 F en moins : 1 000 F l'heure en Classique, 3 
 road trip Premium. Seule une vente saisie dans l'administration y a droit. Gbashi bike,
 vendu sur commande, ne porte pas ces frais : le comptoir l'enregistre à son prix.
 
-Le road trip part sur un créneau fixe, le samedi et le dimanche de 8 h à 11 h. Le samedi
-se réserve en ligne et s'ouvre ou se ferme depuis le tableau de bord ; le dimanche, Gbashi
-bike, se commande sur WhatsApp (voir [Nos produits](#nos-produits-et-octobre-rose)). **Un départ fermé
+Le road trip part sur un créneau fixe, le samedi et le dimanche de 8 h à 11 h ; chaque
+créneau s'ouvre et se ferme depuis le tableau de bord. **Un départ fermé
 reste affiché, « Sold out »** : le créneau entier ou ce jour seulement, il paraît à sa date
 dans la fiche vélo, le formulaire et la page Nos produits, sans pouvoir être choisi, et le
 départ ouvert suivant reste proposé (`departsComplets`).
@@ -235,8 +234,7 @@ pas non plus en ligne entre 22 h et 8 h. Le site le signale et le serveur refuse
 réservation ; un paiement déjà commencé, lui, peut se terminer.
 
 **La location libre se réserve à toute heure**, la nuit comprise. Le samedi et le
-dimanche, elle commence à 11 h, après le road trip (Gbashi bike le dimanche) de 8 h à
-11 h, et le jour
+dimanche, elle commence à 11 h, après le road trip de 8 h à 11 h, et le jour
 même seules les heures à venir sont proposées. Toutes les règles horaires sont lues à
 l'heure de Cotonou (UTC+1), pas sur l'horloge du serveur.
 

@@ -54,8 +54,8 @@ export default function PageCGV() {
         <p>
           {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
           en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, au forfait par
-          personne selon la gamme de vélo&nbsp;: dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} le samedi, en
-          vélo {gammesDuDepart("samedi-matin")}, eau et coco compris. Une réservation de road trip
+          personne selon la gamme de vélo&nbsp;: dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} le samedi et le
+          dimanche matin, en vélo {gammesDuDepart("samedi-matin")}, eau et coco compris. Une réservation de road trip
           compte {PERSONNES_MIN_ROAD_TRIP} personnes au moins, un vélo de la gamme choisie par
           personne. La{" "}
           <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
@@ -64,7 +64,7 @@ export default function PageCGV() {
         </p>
         <p>
           Deux produits se commandent sur WhatsApp, hors réservation en ligne&nbsp;:{" "}
-          <strong>Gbashi bike</strong>, le road trip du dimanche avec sa séance de sport, dès{" "}
+          <strong>Gbashi bike</strong>, le road trip version sport avec sa séance de sport, dès{" "}
           {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)} par personne selon la gamme, et{" "}
           <strong>Padel bike</strong>, à vélo jusqu&apos;au terrain de padel puis {DUREE_PADEL_HEURES} heures
           de padel, à {formatXof(PRIX_PADEL_BIKE_XOF)} par personne. Le jour, le nombre de participants

@@ -37,8 +37,8 @@ import {
   velosEnEtatDe,
 } from "@/data/offres";
 import {
-  CRENEAU_GBASHI_BIKE,
   CRENEAU_ROAD_TRIP,
+  CRENEAU_ROAD_TRIP_DIMANCHE,
   inscriptionsOctobreRoseOuvertes,
   jourDeLaSortie,
   jourOctobreRose,
@@ -61,7 +61,7 @@ const PRIX_HEURE_MINIMUM = Math.min(...Object.values(GRILLE_HORAIRE).map((grille
 export const metadata: Metadata = metadonneesPage({
   titre: "Road trip, Padel bike, Gbashi bike et location",
   description:
-    `Road trip le samedi dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} et location à l'heure dès ` +
+    `Road trip le week-end dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} et location à l'heure dès ` +
     `${formatXof(PRIX_HEURE_MINIMUM)} à Cotonou. Sur commande : Padel bike à ${formatXof(PRIX_PADEL_BIKE_XOF)}, ` +
     `Gbashi bike dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}.`,
   chemin: "/produits",
@@ -103,14 +103,17 @@ function SoldOut({ className = "" }: { className?: string }) {
 function ReperesDepart({
   complet,
   ouvert,
+  terme = "Prochain départ",
 }: {
   complet?: { date: string };
   ouvert?: { date: string };
+  /** « Prochain samedi », « Prochain dimanche » : un repère par jour de départ. */
+  terme?: string;
 }) {
   if (complet) {
     return (
       <>
-        <Repere terme="Prochain départ">
+        <Repere terme={terme}>
           {majuscule(formatDateAvecJour(complet.date))} <SoldOut className="ml-1" />
         </Repere>
         {ouvert && <Repere terme="Places disponibles">{majuscule(formatDateAvecJour(ouvert.date))}</Repere>}
@@ -118,7 +121,7 @@ function ReperesDepart({
     );
   }
   return (
-    <Repere terme="Prochain départ">
+    <Repere terme={terme}>
       {ouvert ? majuscule(formatDateAvecJour(ouvert.date)) : "Pas ouvert en ligne en ce moment"}
     </Repere>
   );
@@ -201,7 +204,7 @@ function PhotoProduit({
  */
 export default async function PageProduits() {
   const [ouverture, parc] = await Promise.all([lireOuverture(), depot.listerVelos()]);
-  // Le road trip du samedi se fait en groupe de dix au moins, un vélo par
+  // Le road trip du week-end se fait en groupe de dix au moins, un vélo par
   // personne, tous de la gamme choisie : seules les gammes qui ont ce prix
   // et assez de vélos en état le proposent (le Premium ; le Prestige n'a
   // qu'un vélo).
@@ -210,10 +213,17 @@ export default async function PageProduits() {
   );
   const maintenant = new Date();
   const departs = creneauxDisponibles(maintenant, ouverture);
+  // Le road trip part le samedi et le dimanche matin : un repère par jour.
   const samedi = departs.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
+  const dimanche = departs.find((depart) => depart.code === CRENEAU_ROAD_TRIP_DIMANCHE);
   // Un départ fermé dans le tableau de bord reste affiché, « Sold out ».
   const complets = departsComplets(maintenant, ouverture);
   const samediComplet = complets.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
+  const dimancheComplet = complets.find((depart) => depart.code === CRENEAU_ROAD_TRIP_DIMANCHE);
+  // Le premier départ ouvert du week-end, où mènent les boutons.
+  const prochainDepart = [samedi, dimanche]
+    .filter((depart) => depart !== undefined)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
   const avecOctobreRose = octobreRoseEnCours(maintenant);
   // Octobre rose se réserve sur sa propre page. Ici, on dit seulement s'il
   // reste des places, jour par jour : quand plus aucun jour à venir n'en a,
@@ -258,8 +268,8 @@ export default async function PageProduits() {
           plusieurs envies
         </TitreSection>
         <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-craie/70">
-          À vélo jusqu&apos;au padel, en groupe le samedi, version sport le dimanche, ou en solo à
-          l&apos;heure&nbsp;: tout part de la route des Pêches, à Fidjrossè.
+          À vélo jusqu&apos;au padel, en groupe le week-end, en version sport sur commande, ou en
+          solo à l&apos;heure&nbsp;: tout part de la route des Pêches, à Fidjrossè.
           <EnSaisonOctobreRose enSaisonAuServeur={avecOctobreRose}>
             {" Et ce mois-ci, des sorties aux couleurs d'Octobre rose."}
           </EnSaisonOctobreRose>
@@ -481,20 +491,19 @@ export default async function PageProduits() {
           <GalerieAffiches affiches={AFFICHES_GBASHI} titre="Les affiches de Gbashi bike" />
           <div>
             <div className="flex flex-wrap gap-2">
-              <Pastille ton="sombre">Le dimanche</Pastille>
               <Pastille ton="neutre">Sur commande</Pastille>
             </div>
             <TitreSection className="mt-5">Gbashi bike</TitreSection>
-            <p className="mt-3 font-display text-[1.4rem] leading-tight">
-              Le road trip du dimanche, version sport
-            </p>
+            <p className="mt-3 font-display text-[1.4rem] leading-tight">Le road trip version sport</p>
             <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-craie/85">
               On roule ensemble jusqu&apos;à la plage, un coordinateur en tête. À l&apos;arrivée,
               place au sport&nbsp;: des exercices et des poids, comme à la salle, mais devant la plage.
               Puis eau et coco frais pour tout le monde, et retour en groupe.
             </p>
             <dl className="mt-8 max-w-md">
-              <Repere terme="Départ">Le dimanche à {heureDuCreneau(CRENEAU_GBASHI_BIKE)}, en groupe</Repere>
+              {/* Plus de départ fixe le dimanche (le road trip y part) : le
+                  jour se convient à la commande. */}
+              <Repere terme="Quand">Le jour qui vous arrange, en groupe</Repere>
               <Repere terme="Réservation">Sur commande, sur WhatsApp</Repere>
               <Repere terme="Tarif">
                 <span className="font-display text-[1.2rem]">dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}</span>{" "}
@@ -528,7 +537,7 @@ export default async function PageProduits() {
                 Commander sur WhatsApp
               </BoutonLien>
               <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/85">
-                Gbashi bike ne se réserve plus en ligne&nbsp;: dites-nous le dimanche choisi et le
+                Gbashi bike ne se réserve plus en ligne&nbsp;: dites-nous le jour choisi et le
                 nombre de personnes, nous organisons la sortie. Le prix dépend de la gamme.
               </p>
             </div>
@@ -544,8 +553,8 @@ export default async function PageProduits() {
           </div>
           <div>
             <div className="flex flex-wrap gap-2">
-              <Pastille ton="succes">Le samedi</Pastille>
-              {samediComplet && <Pastille ton="neutre">Sold out</Pastille>}
+              <Pastille ton="succes">Samedi et dimanche</Pastille>
+              {!prochainDepart && (samediComplet || dimancheComplet) && <Pastille ton="neutre">Sold out</Pastille>}
             </div>
             <TitreSection className="mt-5">Road trip</TitreSection>
             <p className="mt-3 font-display text-[1.4rem] leading-tight">{roadTrip?.accroche}</p>
@@ -555,19 +564,19 @@ export default async function PageProduits() {
               n&apos;est demandée.
             </p>
             <dl className="mt-8 max-w-md">
-              <Repere terme="Départ">Le samedi à {heureDuCreneau(CRENEAU_ROAD_TRIP)}, en groupe</Repere>
+              <Repere terme="Départ">Le samedi et le dimanche à {heureDuCreneau(CRENEAU_ROAD_TRIP)}, en groupe</Repere>
               <Repere terme="Groupe">{PERSONNES_MIN_ROAD_TRIP} personnes minimum</Repere>
-              <ReperesDepart complet={samediComplet} ouvert={samedi} />
+              <ReperesDepart terme="Prochain samedi" complet={samediComplet} ouvert={samedi} />
+              <ReperesDepart terme="Prochain dimanche" complet={dimancheComplet} ouvert={dimanche} />
               <Repere terme="Tarif">
                 <span className="font-display text-[1.2rem] text-orange-signal">
                   dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}
                 </span>{" "}
                 par personne
               </Repere>
-              {/* Le samedi se roule en Premium ou Prestige, un vélo par
+              {/* Le week-end se roule en Premium ou Prestige, un vélo par
                   personne : seules les gammes qui ont assez de vélos pour un
-                  groupe sont nommées. Le Classique a la location libre, et
-                  Gbashi bike le dimanche, sur commande. */}
+                  groupe sont nommées. Le Classique a la location libre. */}
               <Repere terme="Vélos">
                 {gammesDuGroupe.length > 0
                   ? gammesDuGroupe.map((gamme) => gamme.nom).join(" ou ")
@@ -590,14 +599,14 @@ export default async function PageProduits() {
               ))}
             </ul>
             <div className="mt-8 flex flex-wrap gap-3">
-              {samedi && gammesDuGroupe.some((gamme) => roadTripPossible(gamme.code, samedi.date)) ? (
-                // Un bouton par gamme qui peut emmener un groupe ce samedi,
+              {prochainDepart && gammesDuGroupe.some((gamme) => roadTripPossible(gamme.code, prochainDepart.date)) ? (
+                // Un bouton par gamme qui peut emmener un groupe ce week-end,
                 // plutôt que les trois gammes.
-                gammesDuGroupe.filter((gamme) => roadTripPossible(gamme.code, samedi.date)).map((gamme, index) => (
+                gammesDuGroupe.filter((gamme) => roadTripPossible(gamme.code, prochainDepart.date)).map((gamme, index) => (
                   <LienChoixProduit
                     key={gamme.code}
                     href={`/reserver/${gamme.code.toLowerCase()}`}
-                    choix={CRENEAU_ROAD_TRIP}
+                    choix={prochainDepart.code}
                     variante={index === 0 ? "primaire" : "contour"}
                     taille="lg"
                     className={index === 0 ? undefined : "text-craie"}
@@ -620,11 +629,11 @@ export default async function PageProduits() {
                 Voir les circuits
               </BoutonLien>
             </div>
-            {!samedi && (
+            {!prochainDepart && (
               <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/75">
-                {samediComplet
-                  ? "Le prochain samedi est sold out : écrivez-nous pour les suivants."
-                  : "Le départ du samedi ne se réserve pas en ligne en ce moment : écrivez-nous."}
+                {samediComplet || dimancheComplet
+                  ? "Le prochain week-end est sold out : écrivez-nous pour les suivants."
+                  : "Le road trip ne se réserve pas en ligne en ce moment : écrivez-nous."}
               </p>
             )}
           </div>

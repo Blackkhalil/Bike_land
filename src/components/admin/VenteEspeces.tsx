@@ -702,9 +702,8 @@ export function VenteEspeces({
   const datesRoadTrip = joursDeRoadTrip(ici.date);
   const formules: (readonly [CodeOffre, string, string])[] = [
     ["location-libre", "Location libre", "À l'heure, avec caution"],
-    // Le samedi en Premium ou Prestige ; le dimanche, Gbashi bike, toutes
-    // gammes : commandé sur WhatsApp, il s'enregistre ici.
-    ["road-trip", "Road trip", `8 h : samedi en ${gammesDuDepart("samedi-matin")}, ${CRENEAUX_ROAD_TRIP[0].personnesMin} personnes min. ; dimanche Gbashi bike (sur commande)`],
+    // Le samedi et le dimanche, en Premium ou Prestige, dix personnes au moins.
+    ["road-trip", "Road trip", `8 h, samedi et dimanche : ${gammesDuDepart("samedi-matin")}, ${CRENEAUX_ROAD_TRIP[0].personnesMin} personnes min.`],
     ...(sortiesRose.length > 0
       ? ([["octobre-rose", "Octobre rose", detailFormuleRose(sortiesRose)]] as const)
       : []),

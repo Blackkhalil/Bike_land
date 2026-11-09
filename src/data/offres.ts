@@ -85,12 +85,12 @@ export const GAMMES: {
 export const GAMME_LA_PLUS_PRISE: GammeVelo = "PREMIUM";
 
 /**
- * Tarif du road trip du samedi, par personne et par gamme, eau comprise.
+ * Tarif du road trip du samedi et du dimanche, par personne et par gamme, eau comprise.
  *
  * Il se roule en Premium ou en Prestige seulement : le Classique n'y a pas
  * de prix, l'exploitant l'en a retiré (novembre 2026). Le Classique reste
- * en location libre, et le dimanche en Gbashi bike, sur commande. Une gamme
- * sans prix ici ne se réserve pas sur ce départ, ni en ligne ni au comptoir.
+ * en location libre. Le dimanche matin a le même tarif (novembre 2026). Une
+ * gamme sans prix ici ne se réserve pas sur ce départ, ni en ligne ni au comptoir.
  */
 export const PRIX_ROAD_TRIP_XOF: Partial<Record<GammeVelo, number>> = {
   PREMIUM: 3125,
@@ -98,12 +98,12 @@ export const PRIX_ROAD_TRIP_XOF: Partial<Record<GammeVelo, number>> = {
 };
 
 /**
- * Tarif de Gbashi bike, le road trip sport du dimanche, par personne et par
+ * Tarif de Gbashi bike, le road trip version sport, par personne et par
  * gamme : la séance de sport devant la plage en plus du road trip.
  *
  * Gbashi bike se vend sur commande depuis novembre 2026 (décision de
- * l'exploitant) : il ne se réserve plus en ligne, on le commande sur
- * WhatsApp (voir CRENEAUX_ROAD_TRIP, `enLigne`). Ces prix sont donc ceux
+ * l'exploitant) : il ne se réserve plus en ligne et ne part plus le
+ * dimanche, on le commande sur WhatsApp pour le jour qui convient. Ces prix sont donc ceux
  * que l'exploitant annonce, sans frais du paiement en ligne : le comptoir
  * les enregistre tels quels, sans rien en retirer.
  */
@@ -286,9 +286,9 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  * touché. L'exploitant ouvre et ferme ensuite chaque créneau depuis le
  * tableau de bord, sans passer par le code.
  *
- * `enLigne` dit si le créneau se réserve en ligne. Il est faux pour un
- * départ sur commande : Gbashi bike, le dimanche, depuis novembre 2026
- * (décision de l'exploitant). Un tel départ ne se propose ni ne s'accepte
+ * `enLigne` dit si le créneau se réserve en ligne. Il serait faux pour un
+ * départ sur commande (Gbashi bike l'a été le dimanche, du 9 novembre 2026
+ * jusqu'au retour du road trip ce jour-là). Un tel départ ne se propose ni ne s'accepte
  * en ligne, quel que soit son réglage dans le tableau de bord, et ne paraît
  * jamais « Sold out » : on le commande sur WhatsApp, et le comptoir
  * l'enregistre, à son prix (sans frais du paiement en ligne). Il part
@@ -301,18 +301,15 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  *
  * `jourSemaine` suit la convention de JavaScript : 0 = dimanche, 6 = samedi.
  *
- * `produit` nomme le créneau quand il est vendu sous son propre nom : le
- * road trip du dimanche est Gbashi bike, avec une séance de sport devant
- * la plage à l'arrivée (voir src/data/produits.ts). Il s'enregistre au
- * comptoir comme un road trip, à son propre prix (`prix`) ; le nom
- * s'affiche à côté du jour, dans l'admin et les emails.
+ * `produit` nomme le créneau quand il est vendu sous son propre nom (le
+ * dimanche a été Gbashi bike jusqu'au 8 novembre 2026) ; le nom s'affiche à
+ * côté du jour, dans l'admin et les emails. Aucun ne l'est aujourd'hui.
  * `prix` dit aussi quelles gammes roulent ce départ : une gamme sans prix
- * n'y va pas. Le samedi se roule en Premium et en Prestige, le dimanche
- * (Gbashi bike) dans les trois gammes.
+ * n'y va pas. Le samedi et le dimanche se roulent en Premium et en Prestige.
  * `consigne` s'ajoute alors à ce qu'il faut prévoir, dans le formulaire
  * comme dans les emails.
  * `personnesMin` est le plus petit groupe qu'une réservation peut emmener
- * sur ce départ : dix le samedi (PERSONNES_MIN_ROAD_TRIP), une le dimanche.
+ * sur ce départ : dix le samedi comme le dimanche (PERSONNES_MIN_ROAD_TRIP).
  */
 export const CRENEAUX_ROAD_TRIP = [
   {
@@ -329,22 +326,32 @@ export const CRENEAUX_ROAD_TRIP = [
     personnesMin: PERSONNES_MIN_ROAD_TRIP,
   },
   {
+    // Le road trip du dimanche, comme celui du samedi, depuis que Gbashi
+    // bike ne part plus le dimanche (décision de l'exploitant, 9 novembre
+    // 2026). Jusqu'au 8 novembre, ce créneau était Gbashi bike
+    // (DERNIER_GBASHI_DU_DIMANCHE).
     code: "dimanche-matin",
     jourSemaine: 0,
     libelle: "Dimanche",
-    produit: "Gbashi bike",
-    consigne: "Venir en tenue de sport : à l'arrivée, séance d'exercices et de poids devant la plage.",
-    prix: PRIX_GBASHI_BIKE_XOF,
+    produit: null,
+    consigne: null,
+    prix: PRIX_ROAD_TRIP_XOF,
     heureDebut: 8,
     heureFin: 11,
-    actifParDefaut: false,
-    // Sur commande, sur WhatsApp : plus de réservation en ligne.
-    enLigne: false,
-    personnesMin: 1,
+    actifParDefaut: true,
+    enLigne: true,
+    personnesMin: PERSONNES_MIN_ROAD_TRIP,
   },
 ] as const;
 
-/** Le plus petit groupe accepté sur le road trip de ce jour : 10 le samedi, 1 un autre jour. */
+/**
+ * Le dernier dimanche où le road trip du dimanche se vendait sous le nom de
+ * Gbashi bike : les réservations de ces dimanches-là gardent ce nom dans
+ * l'admin, les emails et les exports (`nomDuRoadTrip`).
+ */
+export const DERNIER_GBASHI_DU_DIMANCHE = "2026-11-08";
+
+/** Le plus petit groupe accepté sur le road trip de ce jour : 10 le samedi et le dimanche. */
 export function personnesMinRoadTrip(date: string): number {
   return creneauDuJour(date)?.personnesMin ?? 1;
 }
@@ -392,10 +399,9 @@ function prixSurLeCreneau(creneau: (typeof CRENEAUX_ROAD_TRIP)[number], gamme: G
 }
 
 /**
- * Le prix par personne d'un road trip, selon la gamme et le jour : Gbashi
- * bike, le dimanche, a le sien. Sans jour connu, celui du road trip du
- * samedi. `null` quand la gamme ne roule pas ce départ : le Classique, le
- * samedi.
+ * Le prix par personne d'un road trip, selon la gamme et le jour : chaque
+ * départ peut avoir le sien. Sans jour connu, celui du road trip du
+ * samedi. `null` quand la gamme ne roule pas ce départ : le Classique.
  */
 export function prixRoadTripDu(gamme: GammeVelo, date?: string): number | null {
   const creneau = date ? creneauDuJour(date) : undefined;
@@ -404,7 +410,7 @@ export function prixRoadTripDu(gamme: GammeVelo, date?: string): number | null {
 
 /**
  * La gamme roule-t-elle le road trip de ce jour-là ? Sans jour, un départ
- * au moins de la semaine. Le Classique : le dimanche (Gbashi bike) seulement.
+ * au moins de la semaine. Le Classique : aucun.
  */
 export function roadTripPossible(gamme: GammeVelo, date?: string): boolean {
   if (date) return prixRoadTripDu(gamme, date) !== null;
@@ -424,8 +430,8 @@ function listeOu(noms: string[]): string {
 /**
  * Pourquoi cette gamme ne roule pas le road trip de ce jour-là, ou `null`
  * si elle le roule : « Le road trip du samedi se fait en vélo Premium ou
- * Prestige. En Classique, choisissez la location libre, ou Gbashi bike le
- * dimanche, sur commande. » Le même texte en ligne, au comptoir et dans le
+ * Prestige. En Classique, choisissez la location libre. » Le même texte en
+ * ligne, au comptoir et dans le
  * tunnel. Sans jour, comme pour le prix : le road trip du samedi.
  */
 export function motifRoadTripGamme(gamme: GammeVelo, date?: string): string | null {
@@ -458,16 +464,17 @@ export function gammesDuDepart(code: CodeCreneau): string {
 
 /**
  * Les départs en ligne qu'une gamme ne roule pas, dits en une phrase pour
- * les pages de cette gamme : « Le road trip du samedi se fait en vélo
- * Premium ou Prestige. » Une gamme qui a le prix mais trop peu de vélos
- * en état pour le groupe minimum (le Prestige, un seul vélo) : « Le road
- * trip du samedi se fait en groupe de 10 personnes au moins, un vélo par
- * personne : la gamme Prestige n'en compte qu'un. » `null` quand elle les
- * roule tous.
+ * les pages de cette gamme : « Le road trip se fait en vélo Premium ou
+ * Prestige. » Une gamme qui a le prix mais trop peu de vélos en état pour
+ * le groupe minimum (le Prestige) : « Le road trip se fait en groupe de 10
+ * personnes au moins, un vélo par personne : la gamme Prestige n'en compte
+ * que 2. » `null` quand elle les roule tous.
  */
 export function noteDepartsHorsGamme(gamme: GammeVelo, velosEnEtat: number): string | null {
   const phrases = CRENEAUX_ROAD_TRIP.filter((creneau) => creneau.enLigne).flatMap((creneau) => {
-    const nom = creneau.produit ?? `Le road trip du ${creneau.libelle.toLowerCase()}`;
+    // Sans nom propre, « Le road trip » : la même phrase vaut pour le samedi
+    // et le dimanche, et n'est dite qu'une fois.
+    const nom = creneau.produit ?? "Le road trip";
     if (prixSurLeCreneau(creneau, gamme) === undefined) {
       const roulent = GAMMES.filter((autre) => prixSurLeCreneau(creneau, autre.code) !== undefined).map(
         (autre) => autre.nom,
@@ -483,13 +490,13 @@ export function noteDepartsHorsGamme(gamme: GammeVelo, velosEnEtat: number): str
     }
     return [];
   });
-  return phrases.length > 0 ? phrases.join(" ") : null;
+  return phrases.length > 0 ? [...new Set(phrases)].join(" ") : null;
 }
 
 /**
  * Les départs en ligne qu'une gamme peut proposer : elle y a un prix, et
  * assez de vélos en état pour le groupe minimum du départ. Un départ sur
- * commande (Gbashi bike) n'y figure pas.
+ * commande (`enLigne` faux) n'y figure pas.
  */
 function creneauxEnLigneDe(gamme: GammeVelo, velosEnEtat: number) {
   return CRENEAUX_ROAD_TRIP.filter(
@@ -500,7 +507,7 @@ function creneauxEnLigneDe(gamme: GammeVelo, velosEnEtat: number) {
 
 /**
  * Le road trip en ligne le moins cher pour cette gamme, quel que soit le
- * jour : « dès … ». Un départ sur commande (Gbashi bike) n'y compte pas,
+ * jour : « dès … ». Un départ sur commande (`enLigne` faux) n'y compte pas,
  * ni un départ dont la gamme n'a pas assez de vélos pour le groupe minimum.
  */
 export function prixRoadTripMinimum(gamme: GammeVelo, velosEnEtat: number): number | null {
@@ -514,9 +521,9 @@ export function prixRoadTripMinimum(gamme: GammeVelo, velosEnEtat: number): numb
  * La sortie encadrée qu'une gamme réserve en ligne, telle que les pages
  * l'annoncent : le road trip quand elle roule celui du samedi, sinon le
  * seul départ en ligne qu'elle roule, sous son nom. `null` si elle n'en
- * roule aucun : le Classique, depuis que Gbashi bike se commande sur
- * WhatsApp ; le Prestige, un seul vélo pour un groupe de dix au moins. Ils
- * gardent la location libre.
+ * roule aucun : le Classique, qui n'a pas le prix du road trip ; le
+ * Prestige, deux vélos pour un groupe de dix au moins. Ils gardent la
+ * location libre.
  *
  * `velosEnEtat` : les vélos de la gamme en état de rouler. Une personne,
  * un vélo : il en faut au moins autant que le groupe minimum du départ.
@@ -618,8 +625,7 @@ export function heuresDepartPossibles(
  *
  * Ils comptent que leur créneau soit ouvert ou non à la réservation en
  * ligne : un samedi fermé parce que complet, ses places vendues en
- * espèces, part quand même, et les vélos avec lui. Gbashi bike aussi, le
- * dimanche : il se commande sur WhatsApp, mais il part.
+ * espèces, part quand même, et les vélos avec lui.
  */
 export function roadTripsDuJour(date: string) {
   const jourSemaine = new Date(`${date}T12:00:00Z`).getUTCDay();
@@ -653,8 +659,7 @@ export function motifHoraireLocation(
   if (roadTrip) {
     return (
       `Le ${roadTrip.libelle.toLowerCase()}, de ${formatHeure(roadTrip.heureDebut)} à ` +
-      // « l'heure du road trip » : les Classique, eux, ne le roulent pas le
-      // samedi. Le dimanche, c'est l'heure de Gbashi bike, sur commande.
+      // « l'heure du road trip » : les Classique, eux, ne le roulent pas.
       `${formatHeure(roadTrip.heureFin)}, c'est l'heure ${roadTrip.produit ? `de ${roadTrip.produit}` : "du road trip"} : ` +
       `la location libre ne peut pas empiéter sur ces heures.`
     );
@@ -825,7 +830,7 @@ export function estJourFerme(
  * propose le samedi suivant. On cherche jusqu'à douze semaines, au-delà
  * de quoi le créneau n'est simplement pas proposé.
  *
- * Un départ sur commande (Gbashi bike) n'est jamais proposé, même si un
+ * Un départ sur commande (`enLigne` faux) n'est jamais proposé, même si un
  * réglage l'ouvrait : il ne se réserve pas en ligne.
  */
 export function creneauxDisponibles(
@@ -863,7 +868,7 @@ export function creneauxDisponibles(
  *
  * Un départ dont la réservation est close (la veille 22 h passée) n'y
  * figure pas : il n'est pas complet, il est parti. Un départ sur commande
- * (Gbashi bike) non plus : il n'est pas complet, il se commande sur
+ * (`enLigne` faux) non plus : il n'est pas complet, il se commande sur
  * WhatsApp.
  */
 export function departsComplets(
