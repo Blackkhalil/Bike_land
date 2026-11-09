@@ -30,6 +30,9 @@ verifier("décision 4 : Gbashi 3 500 / 4 000 / 4 500 F + 125 F", [D.gbashi.prixX
 verifier("horaires : road trip samedi et dimanche 8 h - 12 h, Gbashi dimanche 7 h - 11 h", [D.roadTrip.jours, D.roadTrip.depart, D.roadTrip.retour, D.gbashi.jours, D.gbashi.depart, D.gbashi.retour], [[6, 0], "08:00", "12:00", [0], "07:00", "11:00"]);
 verifier("minimums : 10, 10, 5 personnes", [D.bikeForAll.personnesMin, D.roadTrip.personnesMin, D.gbashi.personnesMin], [10, 10, 5]);
 verifier("vendredi 19 h ; retard 7 min puis 1 000 F/min", [D.dateLimiteWeekend.jour, D.dateLimiteWeekend.heure, D.retard.toleranceMinutes, D.retard.penaliteParMinuteXof], [5, "19:00", 7, 1000]);
+verifier("accompagnateur : 5 personnes comprises dans le minimum (tableur B23)", D.accompagnateur.personnesIncluses, 5);
+verifier("Gbashi : un coco et une eau par personne (carte du cahier)", [D.gbashi.cocosGrandsParPersonne, D.gbashi.eauxParPersonne], [1, 1]);
+verifier("en ligne : réservation au moins 2 h avant le départ", D.delaiMinimumMinutes, 120);
 
 console.log("\n— Lecture");
 const rien = await m.lireReglagesOffresAvec(async () => null);
@@ -41,6 +44,14 @@ verifier("valeur impossible : « illisible », la vente sera refusée", [faux.so
 const casse = await m.lireReglagesOffresAvec(async () => "{oups");
 verifier("JSON cassé : « illisible »", casse.source, "illisible");
 verifier("pas de durée minimale hors pas", m.schemaReglagesOffres.safeParse({ ...D, bikeForAll: { ...D.bikeForAll, dureeMinMinutes: 40 } }).success, false);
+const ancien = await m.lireReglagesOffresAvec(async () =>
+  JSON.stringify({ gbashi: { prixXof: { CLASSIQUE: 3600, PREMIUM: 4100, PRESTIGE: 4600 } } }),
+);
+verifier(
+  "réglages enregistrés avant l'ajout d'un champ : le nouveau champ prend sa valeur de départ",
+  [ancien.source, ancien.reglages.gbashi.prixXof.CLASSIQUE, ancien.reglages.gbashi.cocosGrandsParPersonne, ancien.reglages.delaiMinimumMinutes],
+  ["enregistre", 3600, 1, 120],
+);
 
 console.log(echecs ? `\n${echecs} échec(s).` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);
