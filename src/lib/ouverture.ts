@@ -8,7 +8,9 @@
  * dans CRENEAUX_ROAD_TRIP). La réservation en ligne de Padel bike s'ouvre
  * et se ferme de même, sous son propre code (`CODE_PADEL_BIKE`). Des jours
  * précis se ferment quand ils sont complets, pour une formule ou pour
- * toutes.
+ * toutes. L'interrupteur « Offres de groupe » (`CODE_INTERRUPTEUR_OFFRES`)
+ * se règle de la même façon, mais il est désactivé tant que personne ne l'a
+ * ouvert (`offresGroupeActives`).
  *
  * Tout ce qui propose ou accepte une réservation passe par ce module : le
  * widget de la fiche vélo, le tunnel, et surtout le serveur, qui refuse
@@ -44,6 +46,7 @@ import {
   type OuvertureCreneaux,
 } from "@/data/offres";
 import { CODE_PADEL_BIKE } from "@/data/padel-bike";
+import { CODE_INTERRUPTEUR_OFFRES } from "@/data/reglages-offres";
 import { depot } from "@/lib/db";
 import { listerJours, type DateISO } from "@/lib/dates";
 import { formatDate, formatDateAvecJour } from "@/lib/format";
@@ -79,7 +82,22 @@ export async function lireOuverture(): Promise<Ouverture> {
   }
   // Padel bike, ouvert tant que l'exploitant ne l'a pas fermé.
   if (brut.creneaux[CODE_PADEL_BIKE] ?? true) actifs.push(CODE_PADEL_BIKE);
+  // Les offres de groupe, au contraire, fermées tant que l'exploitant ne les
+  // a pas ouvertes : seule une ligne « actif » en base les montre.
+  if (brut.creneaux[CODE_INTERRUPTEUR_OFFRES] === true) actifs.push(CODE_INTERRUPTEUR_OFFRES);
   return { creneauxActifs: new Set(actifs), joursFermes: brut.joursFermes };
+}
+
+/**
+ * L'interrupteur « Offres de groupe » est-il ouvert ? Désactivé par défaut :
+ * tant que l'exploitant ne l'a pas ouvert depuis le tableau de bord, rien
+ * des trois offres de groupe (Bike for All, Road trip en groupe, Gbashi Bike
+ * sur réservation) n'apparaît aux clients, et le serveur refuse de les
+ * vendre. Ouvert, elles remplacent le road trip actuel du week-end
+ * (décision du responsable n° 1).
+ */
+export function offresGroupeActives(ouverture: OuvertureCreneaux): boolean {
+  return ouverture.creneauxActifs.has(CODE_INTERRUPTEUR_OFFRES);
 }
 
 /**
