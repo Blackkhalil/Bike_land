@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { codeOctobreRose, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import { CRENEAUX_ROAD_TRIP, heureAuBenin } from "@/data/offres";
+import { CODE_PADEL_BIKE } from "@/data/padel-bike";
 import { sessionAdminValide } from "@/lib/admin";
 import { estDateISOValide } from "@/lib/dates";
 import { depot } from "@/lib/db";
@@ -13,8 +14,8 @@ import { rafraichirSitePublic } from "@/lib/rafraichir";
  *
  * Trois gestes : ouvrir ou fermer un créneau de road trip pour toutes les
  * semaines (ou l'inscription en ligne à une sortie Octobre rose, chacune
- * sous son propre code, daté), fermer un jour précis quand il est complet,
- * et le rouvrir.
+ * sous son propre code, daté, ou la réservation en ligne de Padel bike),
+ * fermer un jour précis quand il est complet, et le rouvrir.
  *
  * Les fiches des vélos sont mises en cache. Après chaque changement, on
  * demande à Next de les reconstruire à la prochaine visite : sans cela,
@@ -25,11 +26,13 @@ const schema = z.discriminatedUnion("action", [
     action: z.literal("creneau"),
     // Chaque sortie Octobre rose se règle sous son propre code : fermer un
     // jour laisse les autres ouverts. Un départ sur commande (Gbashi bike)
-    // ne se règle pas : il ne se réserve jamais en ligne.
+    // ne se règle pas : il ne se réserve jamais en ligne. Padel bike se
+    // règle sous son propre code.
     code: z.enum([
+      CODE_PADEL_BIKE,
       ...CRENEAUX_ROAD_TRIP.filter((c) => c.enLigne).map((c) => c.code),
       ...OCTOBRE_ROSE.sorties.map((sortie) => codeOctobreRose(sortie)),
-    ] as [string, ...string[]]),
+    ]),
     actif: z.boolean(),
   }),
   z.object({

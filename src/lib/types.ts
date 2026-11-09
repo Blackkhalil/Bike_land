@@ -18,7 +18,12 @@ import type { GammeVelo } from "@/data/offres";
  * reservation. Un prix par personne quel que soit le velo, et des velos
  * attribues d'office, un par participant.
  */
-export type CodeOffre = "road-trip" | "location-libre" | "octobre-rose";
+/**
+ * Les formules. Gbashi bike et Padel bike sont des sorties sur commande
+ * (novembre 2026) : elles ne se réservent pas en ligne, le comptoir les
+ * enregistre au jour et à l'heure convenus avec le client.
+ */
+export type CodeOffre = "road-trip" | "location-libre" | "octobre-rose" | "gbashi-bike" | "padel-bike";
 
 export type { GammeVelo };
 
@@ -171,6 +176,12 @@ export interface Reservation {
   /** Heures de la sortie. 8 h-11 h pour un road trip, variables sinon. */
   heureDebut: number;
   heureFin: number;
+  /**
+   * L'horaire exact d'une sortie réglée à la minute (Padel bike), tel que
+   * réservé : départ « 18:30 », retour « 22:30 ». Les heures pleines
+   * ci-dessus restent celles pendant lesquelles les vélos sont pris.
+   */
+  horaire?: { depart: string; retour: string };
   jours: number;
   lignes: LigneReservation[];
   options: OptionReservee[];

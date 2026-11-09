@@ -4,12 +4,10 @@ import { ArticleLegal, PageLegale } from "@/components/PageLegale";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   DUREE_MAX_LOCATION_LIBRE,
-  DUREE_PADEL_HEURES,
   gammesDuDepart,
   PERSONNES_MIN_ROAD_TRIP,
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
-  PRIX_PADEL_BIKE_XOF,
 } from "@/data/offres";
 import { formatXof } from "@/lib/format";
 import { site } from "@/lib/site";
@@ -63,12 +61,18 @@ export default function PageCGV() {
           {DUREE_MAX_LOCATION_LIBRE} heures.
         </p>
         <p>
-          Deux produits se commandent sur WhatsApp, hors réservation en ligne&nbsp;:{" "}
-          <strong>Gbashi bike</strong>, le road trip version sport avec sa séance de sport, dès{" "}
-          {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)} par personne selon la gamme, et{" "}
-          <strong>Padel bike</strong>, à vélo jusqu&apos;au terrain de padel puis {DUREE_PADEL_HEURES} heures
-          de padel, à {formatXof(PRIX_PADEL_BIKE_XOF)} par personne. Le jour, le nombre de participants
-          et le règlement sont convenus avec {site.nom} au moment de la commande.
+          <strong>Padel bike</strong> est une sortie en groupe, à vélo jusqu&apos;au terrain de padel
+          puis une session de padel, au prix unique par personne annoncé sur sa page, quel que soit
+          le vélo. Elle se réserve et se paie en ligne sur sa page, aux jours et à l&apos;heure qui y
+          sont annoncés, pour le nombre de participants et dans le délai avant le départ qui y sont
+          indiqués ; elle se vend aussi au comptoir. Le vélo de chaque participant est attribué par{" "}
+          {site.nom} parmi les vélos disponibles ; il n&apos;est pas choisi.
+        </p>
+        <p>
+          <strong>Gbashi bike</strong>, le road trip version sport avec sa séance de sport, se commande
+          sur WhatsApp, hors réservation en ligne, dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)} par
+          personne selon la gamme. Le jour, le nombre de participants et le règlement sont convenus
+          avec {site.nom} au moment de la commande.
         </p>
         <p>
           {site.nom} organise aussi des <strong>sorties de saison</strong>, comme Octobre rose :

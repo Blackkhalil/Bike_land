@@ -31,9 +31,9 @@ export const AFFICHES_GBASHI: Affiche[] = [
 }));
 
 /**
- * Padel bike : en tête, une vidéo du terrain de padel en journée (demande
- * de l'exploitant), puis des images tirées de ses autres vidéos
- * (public/images/Padel Bike, non publié).
+ * Padel bike : quatre vidéos de l'exploitant (public/images/Padel Bike, non
+ * publié), en tête le terrain de padel en journée. Chacune a pour affiche
+ * une image tirée d'elle, montrée tant qu'elle ne joue pas.
  */
 export const AFFICHES_PADEL: Affiche[] = [
   {
@@ -41,10 +41,21 @@ export const AFFICHES_PADEL: Affiche[] = [
     video: "/images/produits/padel/terrain.mp4",
     alt: "Vidéo du terrain de padel en journée, vu depuis la terrasse en bois : les pistes rouges et vertes, sous le soleil.",
   },
-  { src: "/images/produits/padel/02.jpg", alt: "Un joueur sert sur la piste rouge, près du filet." },
-  { src: "/images/produits/padel/03.jpg", alt: "Deux raquettes de padel et un tube de balles sur le gazon vert." },
-  { src: "/images/produits/padel/04.jpg", alt: "Un échange de padel sur la piste rouge, la balle en jeu." },
-  { src: "/images/produits/padel/05.jpg", alt: "Une piste de padel verte, entourée de vitres et de grillage." },
+  {
+    src: "/images/produits/padel/02.jpg",
+    video: "/images/produits/padel/02.mp4",
+    alt: "Vidéo : le service sur la piste rouge, près du filet, puis l'échange sous le soleil.",
+  },
+  {
+    src: "/images/produits/padel/03.jpg",
+    video: "/images/produits/padel/03.mp4",
+    alt: "Vidéo : deux raquettes de padel et un tube de balles sur le gazon, puis la piste verte entourée de vitres.",
+  },
+  {
+    src: "/images/produits/padel/04.jpg",
+    video: "/images/produits/padel/04.mp4",
+    alt: "Vidéo : un échange de padel sur la piste rouge, la balle en jeu.",
+  },
 ];
 
 /** Le road trip : la sortie encadrée sur la route des Pêches. */

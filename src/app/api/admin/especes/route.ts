@@ -8,11 +8,13 @@ import {
 } from "@/data/octobre-rose";
 import {
   DUREE_ROAD_TRIP_HEURES,
+  estSurCommande,
   heureAuBenin,
   motifGroupeRoadTrip,
   motifRoadTripGamme,
   nomDeGamme,
   personnesMinRoadTrip,
+  SORTIES_SUR_COMMANDE,
 } from "@/data/offres";
 import { dateAuBenin } from "@/lib/dates";
 import { sessionAdminValide } from "@/lib/admin";
@@ -31,6 +33,8 @@ import { lienDeSuivi } from "@/lib/lien-suivi";
 import { personnesMaxPour } from "@/lib/ouverture";
 import { MESSAGES_REFUS } from "@/lib/parrainage";
 import { rafraichirSitePublic } from "@/lib/rafraichir";
+import { blocPadel } from "@/data/reglages";
+import { lireReglages } from "@/lib/reglages";
 import { estPayee, estVenteEspeces, montantARendre } from "@/lib/reservations";
 import { site } from "@/lib/site";
 import { calculerDevis, TarifIntrouvableError, type Devis } from "@/lib/tarification";
@@ -139,6 +143,7 @@ type Preparation =
  */
 async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   if (donnees.offre === "octobre-rose") return preparerOctobreRose(donnees);
+  if (donnees.offre === "padel-bike") return preparerPadel(donnees);
 
   const velo = donnees.veloId ? await depot.trouverVeloParId(donnees.veloId) : null;
   if (!velo) {
@@ -154,6 +159,9 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   }
 
   const roadTrip = donnees.offre === "road-trip";
+  // Par personne, un vélo chacune : le road trip et Gbashi bike ; par vélo
+  // loué : la location libre.
+  const parPersonne = roadTrip || donnees.offre === "gbashi-bike";
   // Le road trip du samedi se roule en Premium ou Prestige : un Classique
   // n'y part pas, au comptoir pas plus qu'en ligne. Il garde la location
   // libre, et Gbashi bike le dimanche : commandé sur WhatsApp, le comptoir
@@ -187,13 +195,13 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   // heure se vérifie plus bas.
   const personnesMax = personnesMaxPour(velo, await depot.listerVelos());
   if (donnees.nombrePersonnes > personnesMax) {
-    const quoi = roadTrip ? "personnes" : "vélos";
+    const quoi = parPersonne ? "personnes" : "vélos";
     return {
       refus: NextResponse.json(
         {
           erreur:
             personnesMax === 1
-              ? `Le ${velo.nom} est un exemplaire unique : ${roadTrip ? "une seule personne" : "un seul vélo"}.`
+              ? `Le ${velo.nom} est un exemplaire unique : ${parPersonne ? "une seule personne" : "un seul vélo"}.`
               : `Cette gamme compte ${personnesMax} vélos en état : ${personnesMax} ${quoi} au plus.`,
           champs: { nombrePersonnes: `Trop de ${quoi} pour cette gamme.` },
         },
@@ -208,7 +216,7 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
     offre: donnees.offre,
     gamme: velo.gamme,
     nombrePersonnes: donnees.nombrePersonnes,
-    dureeHeures: roadTrip ? undefined : donnees.dureeHeures,
+    dureeHeures: donnees.offre === "location-libre" ? donnees.dureeHeures : undefined,
     // Le jour fixe le prix du road trip : Gbashi bike, le dimanche, a le sien.
     date: donnees.date,
     especes: true,
@@ -228,9 +236,11 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
     }
   }
 
-  const heureFin = roadTrip
-    ? donnees.heureDebut + DUREE_ROAD_TRIP_HEURES
-    : donnees.heureDebut + (donnees.dureeHeures ?? 1);
+  const heureFin = estSurCommande(donnees.offre)
+    ? donnees.heureDebut + SORTIES_SUR_COMMANDE[donnees.offre].dureeHeures
+    : roadTrip
+      ? donnees.heureDebut + DUREE_ROAD_TRIP_HEURES
+      : donnees.heureDebut + (donnees.dureeHeures ?? 1);
   const libreChoisi = await depot.estDisponible(velo.id, donnees.date, donnees.date, donnees.heureDebut, heureFin);
   // Un vélo par personne : à plusieurs, road trip ou location libre, il faut
   // d'autres vélos de la gamme, libres eux aussi à cette heure.
@@ -295,6 +305,28 @@ async function preparerOctobreRose(donnees: EntreeDevisComptoir): Promise<Prepar
   };
 }
 
+/**
+ * Une vente Padel bike au comptoir : au prix et à l'heure réglés dans
+ * l'administration (Réglages des produits), sans code de parrainage, le
+ * jour convenu avec le client. Les vélos sont attribués d'office à
+ * l'enregistrement, toutes gammes confondues, comme pour Octobre rose ; ils
+ * sont pris de l'heure pleine du départ à celle qui suit le retour.
+ * « libre » dit qu'il en reste assez sur ce créneau pour ces personnes.
+ */
+async function preparerPadel(donnees: EntreeDevisComptoir): Promise<Preparation> {
+  const reglages = await lireReglages();
+  const { heureDebut, heureFin } = blocPadel(reglages.padel);
+  const devisFinal = calculerDevis({ offre: "padel-bike", nombrePersonnes: donnees.nombrePersonnes, especes: true }, reglages);
+  const places = (await depot.velosLibres(donnees.date, heureDebut, heureFin)).length;
+  return {
+    velo: null,
+    devis: devisFinal,
+    heureFin,
+    libre: places >= devisFinal.nombrePersonnes,
+    places,
+  };
+}
+
 /** Le devis tel que l'écran l'affiche. */
 function resume(preparation: Extract<Preparation, { devis: Devis }>) {
   return {
@@ -350,7 +382,7 @@ async function enregistrer(corps: Record<string, unknown>) {
     // vente enregistrée restant celle du premier envoi.
     // Octobre rose n'a pas de vélo choisi : ses vélos sont attribués.
     const memeSaisie =
-      (donnees.offre === "octobre-rose" || enregistree.lignes[0]?.veloId === donnees.veloId) &&
+      (donnees.offre === "octobre-rose" || donnees.offre === "padel-bike" || enregistree.lignes[0]?.veloId === donnees.veloId) &&
       enregistree.offre === donnees.offre &&
       enregistree.dateDebut === donnees.date &&
       enregistree.heureDebut === donnees.heureDebut &&
@@ -520,6 +552,7 @@ function reponseVente(
       dateDebut: reservation.dateDebut,
       heureDebut: reservation.heureDebut,
       heureFin: reservation.heureFin,
+      horaire: reservation.horaire,
       emailEnvoye,
       deja: emailEnvoye === null,
       // Une remise retenue à l'affichage mais refusée dans la transaction

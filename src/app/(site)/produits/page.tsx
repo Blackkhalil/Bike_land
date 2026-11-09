@@ -12,13 +12,15 @@ import { Pastille, Section, TitreSection } from "@/components/ui";
 import { AFFICHES_GBASHI, AFFICHES_PADEL, AFFICHES_ROAD_TRIP } from "@/data/affiches";
 import { itineraireOctobreRose, itineraires } from "@/data/contenus";
 import { formatHoraire, OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
+import { delaiPadelEnClair, jourOuverturePadel, padelBikeOuvert, quandPadel } from "@/data/padel-bike";
+import { formatDureeHeures, REGLAGES_PADEL_PAR_DEFAUT } from "@/data/reglages";
+import { lireReglages } from "@/lib/reglages";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   CRENEAUX_ROAD_TRIP,
   creneauxDisponibles,
   departsComplets,
   DUREE_MAX_LOCATION_LIBRE,
-  DUREE_PADEL_HEURES,
   DERNIER_DEPART_HEURE,
   FERMETURE_HEURE,
   formatHeure,
@@ -31,7 +33,6 @@ import {
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
   PERSONNES_MIN_ROAD_TRIP,
-  PRIX_PADEL_BIKE_XOF,
   PRIX_ROAD_TRIP_XOF,
   roadTripPossible,
   velosEnEtatDe,
@@ -58,14 +59,20 @@ import { metadonneesPage } from "@/lib/seo";
 /** L'heure de vélo la moins chère, toutes gammes confondues. */
 const PRIX_HEURE_MINIMUM = Math.min(...Object.values(GRILLE_HORAIRE).map((grille) => grille[0].prixXof));
 
-export const metadata: Metadata = metadonneesPage({
-  titre: "Road trip, Padel bike, Gbashi bike et location",
-  description:
-    `Road trip le week-end dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} et location à l'heure dès ` +
-    `${formatXof(PRIX_HEURE_MINIMUM)} à Cotonou. Sur commande : Padel bike à ${formatXof(PRIX_PADEL_BIKE_XOF)}, ` +
-    `Gbashi bike dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}.`,
-  chemin: "/produits",
-});
+/** Le prix de Padel bike du moment, réglé dans l'administration. */
+export async function generateMetadata(): Promise<Metadata> {
+  const padel = await lireReglages()
+    .then((reglages) => reglages.padel)
+    .catch(() => REGLAGES_PADEL_PAR_DEFAUT);
+  return metadonneesPage({
+    titre: "Road trip, Padel bike, Gbashi bike et location",
+    description:
+      `Road trip le week-end dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}, location à l'heure dès ` +
+      `${formatXof(PRIX_HEURE_MINIMUM)}, Padel bike à ${formatXof(padel.prixXof)} à Cotonou. ` +
+      `Sur commande : Gbashi bike dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}.`,
+    chemin: "/produits",
+  });
+}
 
 /**
  * Régénérée au plus une fois par minute, à la demande, comme les fiches
@@ -199,11 +206,13 @@ function PhotoProduit({
  * tableau de bord. Fermé, son prochain départ reste affiché, « Sold out »,
  * avec la date suivante encore ouverte s'il y en a une ; sinon son bouton
  * passe à WhatsApp plutôt que de mener à un départ introuvable. Padel bike
- * et Gbashi bike se commandent sur WhatsApp : bouton et numéro en clair.
+ * se réserve sur sa propre page (/padel-bike), Gbashi bike se commande sur
+ * WhatsApp : bouton et numéro en clair.
  * Octobre rose ne paraît qu'en octobre, en tête de page.
  */
 export default async function PageProduits() {
-  const [ouverture, parc] = await Promise.all([lireOuverture(), depot.listerVelos()]);
+  const [ouverture, parc, reglages] = await Promise.all([lireOuverture(), depot.listerVelos(), lireReglages()]);
+  const padel = reglages.padel;
   // Le road trip du week-end se fait en groupe de dix au moins, un vélo par
   // personne, tous de la gamme choisie : seules les gammes qui ont ce prix
   // et assez de vélos en état le proposent (le Premium ; le Prestige n'a
@@ -225,6 +234,8 @@ export default async function PageProduits() {
     .filter((depart) => depart !== undefined)
     .sort((a, b) => a.date.localeCompare(b.date))[0];
   const avecOctobreRose = octobreRoseEnCours(maintenant);
+  // Padel bike se réserve en ligne à partir du 20 novembre 2026, sur sa page.
+  const padelLance = padelBikeOuvert(padel, maintenant);
   // Octobre rose se réserve sur sa propre page. Ici, on dit seulement s'il
   // reste des places, jour par jour : quand plus aucun jour à venir n'en a,
   // complets ou fermés depuis le tableau de bord, la carte affiche « Sold
@@ -424,21 +435,21 @@ export default async function PageProduits() {
       </EnSaisonOctobreRose>
 
       {/* -------------------------------------------------- Padel bike */}
-      {/* Le nouveau produit, en tête : sur commande, sur WhatsApp, tant que
-          ses jours et ses heures ne sont pas fixés. */}
+      {/* Le nouveau produit, en tête : il se réserve sur sa propre page,
+          en ligne à partir du 20 novembre. */}
       <Section id="padel-bike" fond="craie" className="scroll-mt-[72px] py-20 sm:py-24">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
           <div className="min-w-0 lg:order-last">
             <GalerieAffiches
               affiches={AFFICHES_PADEL}
-              titre="Les images de Padel bike"
-              nom={{ singulier: "image", pluriel: "images" }}
+              titre="Les vidéos de Padel bike"
+              nom={{ singulier: "vidéo", pluriel: "vidéos" }}
             />
           </div>
           <div>
             <div className="flex flex-wrap gap-2">
               <Pastille ton="succes">Nouveau</Pastille>
-              <Pastille ton="neutre">Sur commande</Pastille>
+              {!padelLance && <Pastille ton="neutre">En ligne dès le {jourOuverturePadel(padel)}</Pastille>}
             </div>
             <TitreSection className="mt-5">Padel bike</TitreSection>
             <p className="mt-3 font-display text-[1.4rem] leading-tight">
@@ -446,37 +457,37 @@ export default async function PageProduits() {
             </p>
             <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-gris-cadre">
               Le concept est simple&nbsp;: on démarre à vélo pour s&apos;échauffer, tous ensemble et
-              dans la bonne humeur, jusqu&apos;au terrain de padel. Sur place, {DUREE_PADEL_HEURES}{" "}
-              heures de padel entre amis.
+              dans la bonne humeur, jusqu&apos;au terrain de padel. Sur place,{" "}
+              {formatDureeHeures(padel.dureePadelHeures)} de padel entre amis.
             </p>
             <dl className="mt-8 max-w-md">
+              <Repere terme="Quand">
+                {quandPadel(padel, maintenant)}
+              </Repere>
               <Repere terme="Programme">
-                À vélo, puis {DUREE_PADEL_HEURES}&nbsp;h de padel
+                À vélo, puis {formatDureeHeures(padel.dureePadelHeures)} de padel
               </Repere>
               <Repere terme="Tarif">
                 <span className="font-display text-[1.2rem] text-orange-sourd">
-                  {formatXof(PRIX_PADEL_BIKE_XOF)}
+                  {formatXof(padel.prixXof)}
                 </span>{" "}
                 par personne
               </Repere>
-              <Repere terme="Réservation">Sur commande, sur WhatsApp</Repere>
+              <Repere terme="Réservation">
+                {padelLance ? `En ligne, ${delaiPadelEnClair(padel)}` : `En ligne dès le ${jourOuverturePadel(padel)}`}
+              </Repere>
               <Repere terme="WhatsApp">
                 <NumeroWhatsApp message={MESSAGES_WHATSAPP.padelBike} />
               </Repere>
             </dl>
             <div className="mt-8">
-              <BoutonLien
-                href={lienWhatsApp(MESSAGES_WHATSAPP.padelBike)}
-                target="_blank"
-                rel="noreferrer noopener"
-                variante="primaire"
-                taille="lg"
-              >
-                Commander sur WhatsApp
+              <BoutonLien href="/padel-bike" variante="primaire" taille="lg">
+                {padelLance ? "Réserver Padel bike" : "Découvrir Padel bike"}
               </BoutonLien>
               <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-gris-cadre">
-                Dites-nous le jour qui vous arrange et le nombre de personnes&nbsp;: nous organisons
-                la sortie.
+                {padelLance
+                  ? "Choisissez votre jour et le nombre de personnes, et payez en Mobile Money : un vélo est attribué à chacun."
+                  : `Réservation en ligne sur sa page dès le ${jourOuverturePadel(padel)}. D'ici là, écrivez-nous sur WhatsApp : nous organisons la sortie.`}
               </p>
             </div>
           </div>
@@ -706,7 +717,7 @@ export default async function PageProduits() {
           </div>
           <p className="mt-10 text-[0.8rem] leading-relaxed text-craie/60">
             Tarifs de la réservation en ligne&nbsp;: le montant exact à régler s&apos;affiche avant le
-            paiement. Padel bike et Gbashi bike se commandent sur WhatsApp, au{" "}
+            paiement. Padel bike se réserve sur sa page&nbsp;; Gbashi bike se commande sur WhatsApp, au{" "}
             <span className="whitespace-nowrap">{site.whatsapp[1].numero}</span>.
           </p>
         </div>

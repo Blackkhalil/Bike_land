@@ -106,7 +106,7 @@ export const etapesLocation = [
     numero: "02",
     titre: "Choisissez votre formule et votre jour",
     detail:
-      `Road trip encadré le samedi ou le dimanche matin (${gammesDuDepart("samedi-matin")}, en groupe de ${PERSONNES_MIN_ROAD_TRIP} personnes au moins) ou location libre à l'heure ; Gbashi bike et Padel bike se commandent sur WhatsApp. ` +
+      `Road trip encadré le samedi ou le dimanche matin (${gammesDuDepart("samedi-matin")}, en groupe de ${PERSONNES_MIN_ROAD_TRIP} personnes au moins) ou location libre à l'heure ; Padel bike se réserve sur sa propre page, Gbashi bike sur WhatsApp. ` +
       "Le calendrier ne propose que les jours où il reste des vélos dans votre gamme. Pas de compte à créer, pas de mot de passe à retenir.",
   },
   {

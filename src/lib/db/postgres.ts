@@ -26,12 +26,15 @@ import type {
 import { nombreDeJours, versISO, type DateISO } from "../dates";
 import {
   DUREE_ROAD_TRIP_HEURES,
+  estSurCommande,
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_HEURE,
   OUVERTURE_HEURE,
   panierExpire,
+  SORTIES_SUR_COMMANDE,
   type GammeVelo,
 } from "@/data/offres";
+import { blocPadel, lireReglagesAvec } from "@/data/reglages";
 import { calculerDevis } from "../tarification";
 import {
   genererReference,
@@ -80,11 +83,15 @@ const OFFRE_EN_BASE: Record<CodeOffre, BookingOffer> = {
   "road-trip": "ROAD_TRIP",
   "location-libre": "LOCATION_LIBRE",
   "octobre-rose": "OCTOBRE_ROSE",
+  "gbashi-bike": "GBASHI_BIKE",
+  "padel-bike": "PADEL_BIKE",
 };
 const OFFRE_DU_DOMAINE: Record<BookingOffer, CodeOffre> = {
   ROAD_TRIP: "road-trip",
   LOCATION_LIBRE: "location-libre",
   OCTOBRE_ROSE: "octobre-rose",
+  GBASHI_BIKE: "gbashi-bike",
+  PADEL_BIKE: "padel-bike",
 };
 
 /**
@@ -285,6 +292,7 @@ function versReservation(booking: BookingComplet): Reservation {
     dateFin: versISO(booking.endDate),
     heureDebut: booking.startHour,
     heureFin: booking.endHour,
+    ...(booking.startTime && booking.endTime ? { horaire: { depart: booking.startTime, retour: booking.endTime } } : {}),
     jours: booking.days,
     lignes: booking.items.map((item) => ({
       veloId: item.bikeId,
@@ -607,18 +615,29 @@ const depotDirect: Depot = {
     // attribués plus bas, dans la transaction, un par participant, parmi
     // ceux libres sur la sortie du jour demandé.
     const octobreRose = demande.offre === "octobre-rose";
+    // Padel bike, sur commande, comme Octobre rose : des vélos attribués
+    // d'office, toutes gammes confondues, un par participant.
+    const attribueDOffice = octobreRose || demande.offre === "padel-bike";
     const creneauSortie = octobreRose ? creneauOctobreRoseDemande(demande) : null;
+    // Les réglages des produits, lus ici même : le prix et les heures d'une
+    // sortie réglée dans l'administration (Padel bike) ne viennent jamais
+    // de l'appelant. Padel bike part à l'heure réglée, quelle que soit
+    // celle demandée, et ses vélos sont pris de l'heure pleine du départ à
+    // celle qui suit le retour.
+    const reglages = await lireReglagesAvec(lireParametre);
+    const sortiePadel = demande.offre === "padel-bike" ? reglages.padel : null;
+    const heureDebut = sortiePadel ? blocPadel(sortiePadel).heureDebut : demande.heureDebut;
     const bike =
-      octobreRose || !demande.veloId
+      attribueDOffice || !demande.veloId
         ? null
         : await client().bike.findUnique({ where: { id: demande.veloId } });
-    if (!octobreRose && demande.veloId && !bike) throw new Error("Vélo introuvable.");
+    if (!attribueDOffice && demande.veloId && !bike) throw new Error("Vélo introuvable.");
     // La gamme qui fixe le prix : celle du vélo précis s'il y en a un (le
     // comptoir), lue en base et jamais chez l'appelant ; sinon celle que le
     // client a choisie sur le site, dont les vélos lui sont attribués plus
     // bas. Octobre rose n'en a pas : le jour de sa sortie fixe son prix.
-    const gamme = octobreRose ? undefined : (bike?.tier ?? demande.gamme);
-    if (!octobreRose && !gamme) throw new Error("Gamme manquante.");
+    const gamme = attribueDOffice ? undefined : (bike?.tier ?? demande.gamme);
+    if (!attribueDOffice && !gamme) throw new Error("Gamme manquante.");
 
     // Une vente au comptoir ne se règle qu'en espèces : sans ce contrôle,
     // une réservation pourrait naître payée par un Mobile Money qui n'a
@@ -642,11 +661,11 @@ const depotDirect: Depot = {
       // Le prix de la plaquette ne vaut que pour une vente encaissée au
       // comptoir, que seule l'administration peut saisir.
       especes: Boolean(encaissement),
-    });
+    }, reglages);
 
     // Pas de code de parrainage sur Octobre rose : son prix est forfaitaire.
     const codeSaisi =
-      demande.codeParrainage && !octobreRose
+      demande.codeParrainage && !octobreRose && !estSurCommande(demande.offre)
         ? normaliserCode(demande.codeParrainage)
         : null;
 
@@ -660,6 +679,10 @@ const depotDirect: Depot = {
     // libre le nombre d'heures choisi.
     const heureFin = creneauSortie
       ? creneauSortie.heureFin
+      : sortiePadel
+        ? blocPadel(sortiePadel).heureFin
+      : estSurCommande(demande.offre)
+        ? demande.heureDebut + SORTIES_SUR_COMMANDE[demande.offre].dureeHeures
       : demande.offre === "road-trip"
         ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
         : demande.heureDebut + (devisBrut.dureeHeures ?? 1);
@@ -677,7 +700,7 @@ const depotDirect: Depot = {
           // lignes : PostgreSQL en annule une (P2034), qui, rejouée, voit
           // les vélos pris par l'autre.
           let velosAttribues: { id: string; pickupPointId: string | null }[];
-          if (octobreRose) {
+          if (attribueDOffice) {
             const enEtat = await tx.bike.findMany({
               where: { status: { notIn: ["RETIRE", "MAINTENANCE"] } },
               select: { id: true, name: true, tier: true, pickupPointId: true },
@@ -688,7 +711,7 @@ const depotDirect: Depot = {
                 startDate: { lte: fin },
                 endDate: { gte: debut },
                 startHour: { lt: heureFin },
-                endHour: { gt: demande.heureDebut },
+                endHour: { gt: heureDebut },
               },
               select: { bikeId: true },
             });
@@ -710,7 +733,7 @@ const depotDirect: Depot = {
                 bike!.id,
                 demande.dateDebut,
                 demande.dateFin,
-                demande.heureDebut,
+                heureDebut,
                 heureFin,
               ),
               select: { id: true },
@@ -732,7 +755,7 @@ const depotDirect: Depot = {
                   startDate: { lte: fin },
                   endDate: { gte: debut },
                   startHour: { lt: heureFin },
-                  endHour: { gt: demande.heureDebut },
+                  endHour: { gt: heureDebut },
                 },
                 select: { bikeId: true },
               });
@@ -767,7 +790,7 @@ const depotDirect: Depot = {
                 startDate: { lte: fin },
                 endDate: { gte: debut },
                 startHour: { lt: heureFin },
-                endHour: { gt: demande.heureDebut },
+                endHour: { gt: heureDebut },
               },
               select: { bikeId: true },
             });
@@ -830,7 +853,7 @@ const depotDirect: Depot = {
                 options: demande.options,
                 especes: Boolean(encaissement),
                 remise,
-              })
+              }, reglages)
             : devisBrut;
 
           // Le client est créé au fil de l'eau, sans compte (§2.2). Une
@@ -870,8 +893,12 @@ const depotDirect: Depot = {
               pickupPointId: velosAttribues[0].pickupPointId,
               startDate: debut,
               endDate: fin,
-              startHour: demande.heureDebut,
+              startHour: heureDebut,
               endHour: heureFin,
+              // L'horaire exact d'une sortie réglée à la minute : le client garde
+              // celui qu'il a payé, même si le réglage change ensuite.
+              startTime: sortiePadel?.depart,
+              endTime: sortiePadel?.retour,
               days: nombreDeJours(demande.dateDebut, demande.dateFin),
               subtotalXof: devis.sousTotalXof,
               optionsXof: devis.optionsXof,
@@ -893,7 +920,7 @@ const depotDirect: Depot = {
                     bikeId: velo.id,
                     startDate: debut,
                     endDate: fin,
-                    startHour: demande.heureDebut,
+                    startHour: heureDebut,
                     endHour: heureFin,
                     unitPriceXof: prixLigne,
                     lineTotalXof: prixLigne,
@@ -1869,6 +1896,12 @@ const depotDirect: Depot = {
  * L'envelopper ici règle le problème pour toute méthode présente comme
  * pour toute méthode ajoutée plus tard, sans qu'il faille y penser.
  */
+/** Une clé de ParametreAdmin, pour les réglages des produits. */
+async function lireParametre(cle: string): Promise<string | null> {
+  const ligne = await client().parametreAdmin.findUnique({ where: { cle } });
+  return ligne?.valeur ?? null;
+}
+
 export const depotPostgres: Depot = Object.fromEntries(
   Object.entries(depotDirect).map(([nom, valeur]) => [
     nom,

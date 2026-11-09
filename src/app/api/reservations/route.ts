@@ -4,15 +4,22 @@ import { NextResponse } from "next/server";
 import { creneauOctobreRose, OCTOBRE_ROSE, sortieOctobreRoseDu } from "@/data/octobre-rose";
 import {
   DUREE_ROAD_TRIP_HEURES,
+  estSurCommande,
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_RESERVATIONS_HEURE,
+  heureAuBenin,
   motifGroupeRoadTrip,
   motifRoadTripGamme,
   OUVERTURE_RESERVATIONS_HEURE,
   personnesMinRoadTrip,
   reouvertureReservations,
   reservationsOuvertes,
+  SORTIES_SUR_COMMANDE,
 } from "@/data/offres";
+import { JOURS_RESERVABLES_PADEL, motifRefusPadel } from "@/data/padel-bike";
+import { blocPadel, REGLAGES_PADEL_PAR_DEFAUT } from "@/data/reglages";
+import { ajouterJours } from "@/lib/dates";
+import { lireReglages } from "@/lib/reglages";
 import { identifiantAppelant } from "@/lib/anti-force-brute";
 import { ConflitDisponibiliteError, depot } from "@/lib/db";
 import { messagePlacesManquantes, messageVelosManquants, type DemandeReservation } from "@/lib/db/contrat";
@@ -32,10 +39,12 @@ import {
   erreursParChamp,
   schemaInscriptionOctobreRose,
   schemaReservation,
+  schemaReservationPadel,
 } from "@/lib/validation";
 import {
   lireOuverture,
   motifDeRefus,
+  padelBikeOuvertEnLigne,
   refusInscriptionOctobreRose,
 } from "@/lib/ouverture";
 
@@ -50,17 +59,21 @@ import {
  * 409 et son paiement est à rembourser, cas signalé explicitement plutôt
  * que masqué.
  *
- * Deux portes d'entrée, une seule suite : le tunnel, pour un vélo choisi
- * (road trip ou location libre), et l'inscription à Octobre rose, sans
- * vélo, que le dépôt attribue lui-même. Une fois la demande vérifiée,
- * l'écriture, l'encaissement et les emails sont les mêmes.
+ * Trois portes d'entrée, une seule suite : le tunnel, pour une gamme
+ * (road trip ou location libre), l'inscription à Octobre rose et la
+ * réservation de Padel bike, sans vélo, que le dépôt attribue lui-même.
+ * Une fois la demande vérifiée, l'écriture, l'encaissement et les emails
+ * sont les mêmes.
  */
 export async function POST(requete: Request) {
   const corps: unknown = await requete.json().catch(() => null);
+  const offre = corps && typeof corps === "object" ? (corps as { offre?: unknown }).offre : undefined;
   const preparation =
-    corps && typeof corps === "object" && (corps as { offre?: unknown }).offre === "octobre-rose"
+    offre === "octobre-rose"
       ? await preparerOctobreRose(corps, requete)
-      : await preparerReservation(corps);
+      : offre === "padel-bike"
+        ? await preparerPadelBike(corps, requete)
+        : await preparerReservation(corps);
   if ("refus" in preparation) return preparation.refus;
   return creerEtEncaisser(preparation.demande);
 }
@@ -182,7 +195,9 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
     })
   ).find(
     (r) =>
+      // Octobre rose et Padel bike ont leur propre contrôle, plus bas.
       r.offre !== "octobre-rose" &&
+      r.offre !== "padel-bike" &&
       r.dateDebut === donnees.dateDebut &&
       estEnAttente(r) &&
       (r.client.email.toLowerCase() === email || (numero.length === 8 && finDeNumero(r.client.telephone) === numero)),
@@ -436,6 +451,181 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
   };
 }
 
+/* ------------------------------------------------------- Padel bike */
+
+/**
+ * La réservation en ligne de Padel bike : le client choisit son jour et le
+ * nombre de personnes ; la sortie part à l'heure réglée dans
+ * l'administration, et le dépôt attribue un vélo libre à chacun, toutes
+ * gammes confondues, de l'heure pleine du départ à celle qui suit le retour.
+ *
+ * Tout se vérifie sur les réglages du moment (src/data/reglages.ts) :
+ * refusée avant l'ouverture, un jour sans départ, passé le délai de
+ * réservation, hors du nombre de personnes réglé (src/data/padel-bike.ts).
+ * Fermée aussi depuis le tableau de bord, ou le jour fermé pour toutes les
+ * formules. Les mêmes garde-fous qu'Octobre rose contre qui retiendrait les
+ * vélos sans payer : une seule réservation en attente par email et par
+ * numéro, et un plafond par adresse.
+ */
+async function preparerPadelBike(corps: unknown, requete: Request): Promise<Preparation> {
+  const analyse = schemaReservationPadel.safeParse(corps);
+  if (!analyse.success) {
+    return {
+      refus: NextResponse.json(
+        { erreur: "Formulaire incomplet.", champs: erreursParChamp(analyse.error) },
+        { status: 422 },
+      ),
+    };
+  }
+  const donnees = analyse.data;
+
+  // Avant l'ouverture, rien ne se réserve en ligne : une page restée
+  // ouverte ou un appel direct non plus. Ensuite, le jour.
+  const { padel } = await lireReglages();
+  const refusDepart = motifRefusPadel(padel, donnees.date);
+  if (refusDepart) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur: refusDepart.message,
+          code: refusDepart.code,
+          ...(refusDepart.code === "DATE" ? { champs: { date: refusDepart.message } } : {}),
+        },
+        { status: refusDepart.code === "FERME" ? 403 : 422 },
+      ),
+    };
+  }
+  // Le nombre de personnes réglé : une page ouverte avant un changement de
+  // réglage peut encore proposer l'ancien.
+  if (donnees.nombrePersonnes < padel.personnesMin || donnees.nombrePersonnes > padel.personnesMax) {
+    const plage =
+      padel.personnesMin === padel.personnesMax
+        ? `${padel.personnesMin} personnes`
+        : `de ${padel.personnesMin} à ${padel.personnesMax} personnes`;
+    return {
+      refus: NextResponse.json(
+        {
+          erreur: `Padel bike se réserve pour ${plage}.`,
+          code: "GROUPE",
+          champs: { nombrePersonnes: `Padel bike se réserve pour ${plage}.` },
+        },
+        { status: 422 },
+      ),
+    };
+  }
+  const bloc = blocPadel(padel);
+
+  const indisponible = paiementIndisponible();
+  if (indisponible) return { refus: indisponible };
+
+  // Fermée depuis le tableau de bord, pour tous les jours ou pour ce jour-là.
+  if (!padelBikeOuvertEnLigne(await lireOuverture(), donnees.date)) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur:
+            "Padel bike est complet en ligne pour ce jour. Écrivez-nous sur WhatsApp : nous trouvons un autre créneau avec vous.",
+          code: "COMPLET",
+        },
+        { status: 409 },
+      ),
+    };
+  }
+
+  let essais = 0;
+  try {
+    essais = await depot.compterEssai(`padel-bike:${identifiantAppelant(requete)}`, 60 * 60);
+  } catch (erreur) {
+    // Compteur injoignable : on n'empêche pas une réservation pour autant.
+    console.error("[reservations] compteur Padel bike injoignable", erreur);
+  }
+  if (essais > INSCRIPTIONS_PAR_HEURE) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur:
+            "Trop de réservations depuis cette connexion en une heure. Réessayez plus tard, " +
+            "ou écrivez-nous sur WhatsApp : nous réservons pour vous.",
+          code: "TROP",
+        },
+        { status: 429 },
+      ),
+    };
+  }
+
+  // La même personne a déjà une réservation Padel bike qui attend son
+  // paiement, quel qu'en soit le jour : elle retient déjà des vélos. On la
+  // renvoie vers elle au lieu d'en ouvrir une seconde.
+  const email = donnees.client.email.trim().toLowerCase();
+  const numero = finDeNumero(donnees.client.telephone);
+  const enAttente = (
+    await depot.listerReservations({
+      statut: "EN_ATTENTE_PAIEMENT",
+      depuis: heureAuBenin().date,
+      jusqua: ajouterJours(heureAuBenin().date, JOURS_RESERVABLES_PADEL),
+    })
+  ).find(
+    (r) =>
+      r.offre === "padel-bike" &&
+      estEnAttente(r) &&
+      (r.client.email.toLowerCase() === email || (numero.length === 8 && finDeNumero(r.client.telephone) === numero)),
+  );
+  if (enAttente) {
+    const autreJour =
+      enAttente.dateDebut !== donnees.date ? `, pour le ${formatDateAvecJour(enAttente.dateDebut)},` : "";
+    return {
+      refus: NextResponse.json(
+        {
+          erreur:
+            `Une réservation à votre nom${autreJour} attend déjà son paiement (${enAttente.reference}). ` +
+            "Validez la demande sur votre téléphone, ou relancez-la depuis le lien reçu par email. " +
+            `Sans paiement, elle se libère d'elle-même au bout de ${EXPIRATION_PANIER_MINUTES} minutes.`,
+          code: "EN_ATTENTE",
+        },
+        { status: 409 },
+      ),
+    };
+  }
+
+  // Contrôle en amont : un vélo libre par personne sur les heures de la
+  // sortie, toutes gammes. La transaction qui écrit attribue les vélos et
+  // refait le compte.
+  const libres = await depot.velosLibres(donnees.date, bloc.heureDebut, bloc.heureFin);
+  if (libres.length < donnees.nombrePersonnes) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur: messagePlacesManquantes(donnees.nombrePersonnes, libres.length),
+          code: libres.length === 0 ? "COMPLET" : "PLACES",
+          places: libres.length,
+        },
+        { status: 409 },
+      ),
+    };
+  }
+
+  return {
+    demande: {
+      offre: "padel-bike",
+      nombrePersonnes: donnees.nombrePersonnes,
+      dateDebut: donnees.date,
+      dateFin: donnees.date,
+      // L'heure réglée : le dépôt la relit lui-même au moment d'écrire.
+      heureDebut: bloc.heureDebut,
+      options: [],
+      client: {
+        prenom: donnees.client.prenom,
+        nom: donnees.client.nom,
+        email: donnees.client.email,
+        telephone: donnees.client.telephone,
+      },
+      moyenPaiement: donnees.moyenPaiement,
+      message: donnees.message,
+      cgvAcceptees: donnees.cgvAcceptees,
+    },
+  };
+}
+
 /* --------------------------------------------- Écriture et encaissement */
 
 async function creerEtEncaisser(demande: DemandeReservation) {
@@ -535,22 +725,31 @@ async function creerEtEncaisser(demande: DemandeReservation) {
       const creneau = sortie ? creneauOctobreRose(sortie) : null;
       // Réservation par gamme : ce qu'il reste de la gamme sur ce créneau,
       // pour que le tunnel ramène son compteur à ce qui est encore possible.
+      // Padel bike : tous les vélos libres sur les heures de la sortie.
+      const blocDuPadel = demande.offre === "padel-bike" ? blocPadel((await lireReglages().catch(() => null))?.padel ?? REGLAGES_PADEL_PAR_DEFAUT) : null;
       const heureFin =
         demande.offre === "road-trip"
           ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
-          : demande.heureDebut + (demande.dureeHeures ?? 1);
+          : blocDuPadel
+            ? blocDuPadel.heureFin
+            : estSurCommande(demande.offre)
+              ? demande.heureDebut + SORTIES_SUR_COMMANDE[demande.offre].dureeHeures
+              : demande.heureDebut + (demande.dureeHeures ?? 1);
       const places = creneau
         ? (await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin).catch(() => null))?.length
-        : demande.gamme
+        : demande.offre === "padel-bike"
+          ? (await depot.velosLibres(demande.dateDebut, demande.heureDebut, heureFin).catch(() => null))?.length
+          : demande.gamme
           ? (await depot.velosLibres(demande.dateDebut, demande.heureDebut, heureFin).catch(() => null))?.filter(
               (velo) => velo.gamme === demande.gamme,
             ).length
           : undefined;
       const plusieurs = !creneau && (demande.nombrePersonnes ?? 1) > 1;
+      const parPlaces = Boolean(creneau) || demande.offre === "padel-bike";
       return NextResponse.json(
         {
           erreur: erreur.message,
-          code: creneau || (plusieurs && places !== 0) ? "PLACES" : "INDISPONIBLE",
+          code: parPlaces || (plusieurs && places !== 0) ? "PLACES" : "INDISPONIBLE",
           places,
         },
         { status: 409 },

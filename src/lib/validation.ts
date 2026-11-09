@@ -12,12 +12,14 @@ import { optionsLocation } from "@/data/catalogue";
 import { creneauOctobreRose, PLACES_MAX_PAR_INSCRIPTION, sortieOctobreRoseDu } from "@/data/octobre-rose";
 import {
   CRENEAUX_ROAD_TRIP,
+  estSurCommande,
   FERMETURE_COMPTOIR_HEURE,
   FERMETURE_HEURE,
   GRILLE_HORAIRE,
   heuresDepartPossibles,
   OUVERTURE_COMPTOIR_HEURE,
   OUVERTURE_HEURE,
+  SORTIES_SUR_COMMANDE,
 } from "@/data/offres";
 import { ajouterJours, aujourdhui, estDateISOValide } from "./dates";
 
@@ -53,18 +55,23 @@ export const schemaDisponibilite = z
     // un vélo précis reste accepté pour une page ouverte avant ce changement.
     veloId: z.string().min(1).optional(),
     gamme: gammeVelo.optional(),
+    // Toutes gammes confondues : Padel bike, dont les vélos sont attribués
+    // d'office, compte tous les vélos libres.
+    toutes: z.literal(true).optional(),
     dateDebut: dateISO,
     dateFin: dateISO,
     // Depuis que la disponibilité se compte à l'heure, une période seule
     // ne suffit plus à répondre : deux sorties peuvent partager la journée.
-    heureDebut: heureOuvrable,
-    heureFin: heureOuvrable,
+    // Toute heure de la journée : une sortie réglée dans l'administration
+    // (Padel bike, le soir) peut rentrer après 22 h.
+    heureDebut: z.number().int().min(0).max(23),
+    heureFin: z.number().int().min(1).max(24),
   })
   .refine((valeurs) => valeurs.heureDebut < valeurs.heureFin, {
     message: "L'heure de retour doit suivre l'heure de départ.",
     path: ["heureFin"],
   })
-  .refine((valeurs) => Boolean(valeurs.veloId || valeurs.gamme), {
+  .refine((valeurs) => Boolean(valeurs.veloId || valeurs.gamme || valeurs.toutes), {
     message: "Gamme manquante.",
     path: ["gamme"],
   });
@@ -112,6 +119,23 @@ export const schemaInscriptionOctobreRose = z.object({
     .int()
     .min(1)
     .max(PLACES_MAX_PAR_INSCRIPTION, `${PLACES_MAX_PAR_INSCRIPTION} personnes au plus par inscription.`),
+  client: clientEnLigne,
+  moyenPaiement: moyenEnLigne,
+  message: z.string().trim().max(1000).optional(),
+  cgvAcceptees: cgvEnLigne,
+});
+
+/**
+ * La réservation en ligne de Padel bike (/padel-bike) : le jour, combien de
+ * personnes, et qui paie. Ni heure, ni vélo, ni gamme : la sortie part à
+ * l'heure réglée dans l'administration, et le serveur attribue un vélo
+ * libre à chacun. L'ouverture, le jour, le délai et le nombre de personnes
+ * réglés se vérifient ensuite (src/data/padel-bike.ts).
+ */
+export const schemaReservationPadel = z.object({
+  offre: z.literal("padel-bike"),
+  date: dateISO,
+  nombrePersonnes: z.number().int().min(1).max(12, "12 personnes au plus par réservation."),
   client: clientEnLigne,
   moyenPaiement: moyenEnLigne,
   message: z.string().trim().max(1000).optional(),
@@ -287,10 +311,16 @@ export type EntreeContact = z.infer<typeof schemaContact>;
  * un par participant, comme en ligne. `date` est le jour de la sortie
  * choisie, `heureDebut` l'heure pleine de son rassemblement
  * (`creneauOctobreRose(sortie).heureDebut`).
+ *
+ * Gbashi bike et Padel bike, sorties sur commande, partent au jour et à
+ * l'heure pleine convenus avec le client, et rentrent avant 22 h
+ * (SORTIES_SUR_COMMANDE). Gbashi bike se vend sur un vélo choisi, dont la
+ * gamme fixe le prix ; Padel bike sans vélo choisi, ses vélos attribués
+ * d'office. Pas de code de parrainage sur ces prix annoncés.
  */
 const champsComptoir = z.object({
   veloId: z.string().optional(),
-  offre: z.enum(["road-trip", "location-libre", "octobre-rose"]),
+  offre: z.enum(["road-trip", "location-libre", "octobre-rose", "gbashi-bike", "padel-bike"]),
   nombrePersonnes: z.number().int().min(1).max(12).default(1),
   dureeHeures: z
     .number()
@@ -314,8 +344,11 @@ function reglesComptoir(valeurs: z.infer<typeof champsComptoir>, contexte: z.Ref
   if (locationLibre ? valeurs.dureeHeures === undefined : valeurs.dureeHeures !== undefined) {
     signaler("dureeHeures", "La location libre exige une durée ; les sorties encadrées n'en prennent pas.");
   }
-  if (valeurs.offre !== "octobre-rose" && !valeurs.veloId) {
+  if (valeurs.offre !== "octobre-rose" && valeurs.offre !== "padel-bike" && !valeurs.veloId) {
     signaler("veloId", "Choisissez un vélo.");
+  }
+  if (estSurCommande(valeurs.offre) && valeurs.codeParrainage) {
+    signaler("codeParrainage", "Pas de code de parrainage sur une sortie sur commande : son prix est celui annoncé.");
   }
   if (valeurs.offre === "road-trip") {
     const jourSemaine = new Date(`${valeurs.date}T12:00:00Z`).getUTCDay();
@@ -329,6 +362,18 @@ function reglesComptoir(valeurs: z.infer<typeof champsComptoir>, contexte: z.Ref
     if (!sortie) signaler("date", "Choisissez l'un des jours de la sortie Octobre rose.");
     else if (valeurs.heureDebut !== creneauOctobreRose(sortie).heureDebut) {
       signaler("heureDebut", "Octobre rose se vend pour l'heure de la sortie de ce jour.");
+    }
+  } else if (valeurs.offre === "padel-bike") {
+    // Padel bike part à l'heure réglée dans l'administration, que le
+    // serveur lit lui-même : rien à vérifier de l'heure saisie.
+  } else if (estSurCommande(valeurs.offre)) {
+    // Partie à l'heure convenue, la sortie rentre avant la fermeture.
+    const duree = SORTIES_SUR_COMMANDE[valeurs.offre].dureeHeures;
+    if (valeurs.heureDebut + duree > FERMETURE_COMPTOIR_HEURE) {
+      signaler(
+        "heureDebut",
+        `La sortie dure ${duree} h et rentrerait après ${FERMETURE_COMPTOIR_HEURE} h : partez au plus tard à ${FERMETURE_COMPTOIR_HEURE - duree} h.`,
+      );
     }
   } else if (
     valeurs.dureeHeures !== undefined &&

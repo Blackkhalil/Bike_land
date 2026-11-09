@@ -39,7 +39,8 @@ En ligne : <https://bike-land.vercel.app>
 | Page | Route | Contenu |
 |---|---|---|
 | Accueil | `/` | Vélo en vedette en 3D, les trois gammes, le parc, carrousel de photos, avis |
-| Nos produits | `/produits` | Padel bike et Gbashi bike (sur commande, sur WhatsApp), road trip du week-end, location libre, avec leurs affiches ; Octobre rose en octobre |
+| Nos produits | `/produits` | Padel bike (vers sa page), Gbashi bike (sur commande, sur WhatsApp), road trip du week-end, location libre, avec leurs affiches ; Octobre rose en octobre |
+| Padel bike | `/padel-bike` | La sortie vélo + padel, réservée et payée en ligne les jours programmés dans l'administration, sans choix de vélo |
 | Octobre rose | `/octobre-rose` | La sortie de saison, réservée et payée en ligne sans choix de vélo |
 | Catalogue | `/velos` | Les trois gammes en cadres (le Premium « le plus pris ») ; un cadre touché affiche les vélos de sa gamme, et d'elle seule |
 | Fiche vélo | `/velos/[slug]` | Gamme et tarif, caractéristiques, disponibilité à l'heure, avis |
@@ -62,7 +63,9 @@ serveur.
 `/admin`, protégé par mot de passe. Tableau de bord, sortie du jour, ventes en
 espèces, réservations, parc, clients, avis à modérer, partenaires et codes de
 parrainage. Le parc s'édite depuis l'interface : ajouter un vélo, le mettre en
-entretien, le retirer, changer sa gamme.
+entretien, le retirer, changer sa gamme. Les réglages des produits (heures, jours,
+prix, nombre de personnes, dates) se changent sur `/admin/reglages`, voir
+[Réglages des produits](#réglages-des-produits).
 
 ### Ventes en espèces
 
@@ -71,7 +74,9 @@ formule, le créneau et le vélo, saisit le client et son nom à lui, et encaiss
 montant affiché. La location libre y part à l'heure que tape le commercial (une heure
 pleine), et rentre à 22 h au plus tard (`OUVERTURE_COMPTOIR_HEURE`, `FERMETURE_COMPTOIR_HEURE`) ; en
 ligne, elle garde les horaires de l'atelier. Octobre rose s'y vend aussi, à la
-personne, sans vélo à choisir. Ce montant vient de `calculerDevis`, comme en ligne, au prix de la
+personne, sans vélo à choisir, comme Padel bike, à l'heure et au prix de ses
+réglages. Gbashi bike, sur commande, ne se vend qu'ici, sur un vélo choisi dont la
+gamme fixe le prix ; pas de code de parrainage sur ces deux sorties. Ce montant vient de `calculerDevis`, comme en ligne, au prix de la
 plaquette (sans les 125 F de frais du paiement en ligne, voir
 [Tarification](#tarification)) : il n'est jamais saisi, et le serveur refuse d'en
 enregistrer un autre. La réservation naît
@@ -92,9 +97,16 @@ sur place. La colonne `collectedBy` est ajoutée par `prisma/especes.sql`.
 réservation (`src/data/produits.ts`, prix dans `src/data/offres.ts`) :
 
 - **Padel bike** (lancé en novembre 2026) : à vélo jusqu'au terrain de padel, puis
-  trois heures de padel, 3 500 F par personne (`PRIX_PADEL_BIKE_XOF`). Il se commande
-  sur WhatsApp, sans réservation en ligne : ses jours et ses heures ne sont pas fixés.
-  Ses images sont tirées des vidéos de l'exploitant (`AFFICHES_PADEL`).
+  trois heures de padel, le soir. Il a sa propre page, `/padel-bike`, où l'on choisit
+  son jour et le nombre de personnes, puis l'on paie en Mobile Money ; un vélo libre
+  est attribué à chacun, toutes gammes confondues, dans la transaction qui écrit.
+  La réservation en ligne s'ouvre d'elle-même le vendredi 20 novembre 2026 à minuit,
+  heure du Bénin ; avant, la page annonce la date et renvoie vers WhatsApp. Il ne
+  part que les jours que l'équipe programme dans l'administration. Tout ce qui le
+  règle (heure, jours, prix, durée, nombre de personnes, ouverture, délai) se change
+  sur `/admin/reglages` ; un interrupteur du tableau de bord (code `padel-bike`) le
+  ferme en ligne. Sa galerie est faite de quatre vidéos de l'exploitant
+  (`AFFICHES_PADEL`), qui ne se chargent qu'à l'écran.
 - **Gbashi bike** est le road trip version sport, avec une séance de sport devant la
   plage à l'arrivée, dans les trois gammes, à son propre prix. **Sur commande depuis
   novembre 2026** : il ne se réserve plus en ligne et ne part plus le dimanche ; les
@@ -195,7 +207,8 @@ widget, le tunnel, l'API et l'admin lisent la même grille.
 | Premium | 3 125 | 4 000 |
 | Prestige | 3 625 | 4 500 |
 
-Padel bike, sur commande : 3 500 F par personne, quel que soit le vélo.
+Padel bike : un prix par personne, quel que soit le vélo, le même en ligne et au
+comptoir, réglé sur `/admin/reglages` (3 500 F au lancement).
 
 Eau et **deux cocos offertes par personne** au retour, quelle que soit la gamme
 (`COCOS_ROAD_TRIP`, décision du gérant de novembre 2026).
@@ -426,9 +439,31 @@ le code de parrainage et les références de transaction. Le formulaire de conta
 
 ---
 
+### Réglages des produits
+
+Ce que l'exploitant change lui-même, sans passer par le code, est décrit dans
+[`src/data/reglages.ts`](src/data/reglages.ts) : pour chaque produit, une interface,
+les valeurs par défaut, un schéma de validation et une clé. Les réglages enregistrés
+sont rangés en JSON dans la table `ParametreAdmin` (clé `reglages:padel-bike`), sur
+les valeurs par défaut : sans ligne, rien ne change. La page `/admin/reglages` les
+enregistre (`/api/admin/reglages`, session d'administration exigée), puis demande au
+site public de se régénérer.
+
+Le prix et les heures ne viennent jamais de l'appelant : la couche de données relit
+les réglages au moment d'écrire la réservation. Chaque réservation garde ce qu'on lui
+a vendu : son prix, et pour une sortie réglée à la minute, son horaire exact
+(`Booking.startTime`, `endTime`). Changer un réglage ne touche donc aucune
+réservation déjà prise. Padel bike a ses réglages ; les autres produits suivront le
+même modèle.
+
 ## Déploiement
 
 **Vercel** pour le site et les routes d'API, **Supabase** pour PostgreSQL.
+
+Une modification de la base s'applique en production **avant** le déploiement du
+code qui s'en sert, par son fichier SQL purement additif dans `prisma/` : par
+exemple `prisma/sorties-sur-commande.sql` (offres Gbashi bike et Padel bike, horaire
+exact des réservations), sans lequel Prisma ne pourrait plus lire les réservations.
 
 Deux réglages comptent, et ils ont chacun coûté une panne :
 

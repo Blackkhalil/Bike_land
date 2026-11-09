@@ -24,7 +24,7 @@ import {
   type Statistiques,
   dateEncaissement,
 } from "@/lib/statistiques";
-import type { Client, Reservation, StatistiquesPartenaire, Velo } from "@/lib/types";
+import type { Client, CodeOffre, Reservation, StatistiquesPartenaire, Velo } from "@/lib/types";
 
 /* ------------------------------------------------------- La journée */
 
@@ -47,17 +47,20 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
   const departs = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retours = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
   const aPayer = reservations.filter(estEnAttente);
-  const participantsDe = (offre: "road-trip" | "octobre-rose") =>
+  const participantsDe = (offre: CodeOffre) =>
     departs.filter((r) => r.offre === offre).reduce((total, r) => total + r.nombrePersonnes, 0);
   const participantsRoadTrip = participantsDe("road-trip");
   const participantsOctobreRose = participantsDe("octobre-rose");
-  const participants = participantsRoadTrip + participantsOctobreRose;
+  // Les sorties sur commande : Gbashi bike a les cocos et l'eau du road trip.
+  const participantsGbashi = participantsDe("gbashi-bike");
+  const participantsPadel = participantsDe("padel-bike");
+  const participants = participantsRoadTrip + participantsOctobreRose + participantsGbashi + participantsPadel;
   const offert = OCTOBRE_ROSE.offertParPersonne;
   const cocosRoadTrip = departs.reduce((total, r) => total + cocosDe(r), 0);
   const aPrevoir = {
     cocos: cocosRoadTrip + participantsOctobreRose * offert.cocos,
     gateaux: participantsOctobreRose * offert.gateaux,
-    eaux: participantsRoadTrip + participantsOctobreRose * offert.eaux,
+    eaux: participantsRoadTrip + participantsGbashi + participantsOctobreRose * offert.eaux,
   };
   const cautions = departs
     .filter((r) => r.offre === "location-libre")
@@ -79,7 +82,7 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
  * indicateurs : l'écran et les exports disent la même chose.
  */
 export const AIDE_A_PREVOIR =
-  `Deux cocos et une eau par participant au road trip${String.fromCharCode(0xa0)}; ` +
+  `Deux cocos et une eau par participant au road trip et à Gbashi bike${String.fromCharCode(0xa0)}; ` +
   `${texteOffertOctobreRose()} par participant à Octobre rose.`;
 
 /* ---------------------------------------------------- La structure */

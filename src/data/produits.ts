@@ -9,8 +9,9 @@
  *    réserve plus en ligne et ne part plus le dimanche (le road trip y part),
  *    on le commande sur WhatsApp pour le jour qui convient.
  *  - **Padel bike** : à vélo jusqu'au terrain de padel, puis trois heures
- *    de padel. Sur commande, sur WhatsApp, depuis son lancement (novembre
- *    2026) : ses jours et ses heures ne sont pas fixés.
+ *    de padel. Il se réserve et se paie en ligne sur sa propre page,
+ *    /padel-bike, à partir du 20 novembre 2026 (src/data/padel-bike.ts) ;
+ *    avant, sur WhatsApp et au comptoir.
  *  - **Road trip** : la sortie encadrée du week-end, créneaux « samedi-matin »
  *    et « dimanche-matin », en groupe de dix au moins.
  *  - **Location libre** : le vélo pour soi, à l'heure.
@@ -158,7 +159,7 @@ export function placesRestantes(places: number): string {
 export const MESSAGES_WHATSAPP = {
   octobreRose: "Bonjour Bike Land, je souhaite participer à la sortie Octobre rose.",
   gbashiBike: "Bonjour Bike Land, je souhaite commander Gbashi bike, le road trip version sport.",
-  padelBike: "Bonjour Bike Land, je souhaite commander Padel bike, le vélo jusqu'au padel puis 3 h de padel.",
+  padelBike: "Bonjour Bike Land, je souhaite réserver Padel bike, le vélo jusqu'au terrain de padel puis le padel.",
   roadTrip: "Bonjour Bike Land, je souhaite réserver le road trip du week-end.",
   question: "Bonjour Bike Land, j'ai une question.",
 } as const;

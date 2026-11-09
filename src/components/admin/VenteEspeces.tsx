@@ -16,6 +16,7 @@ import {
   CRENEAUX_ROAD_TRIP,
   creneauDuJour,
   DUREE_ROAD_TRIP_HEURES,
+  estSurCommande,
   FERMETURE_COMPTOIR_HEURE,
   GAMMES,
   GRILLE_HORAIRE,
@@ -24,10 +25,20 @@ import {
   motifRoadTripGamme,
   OUVERTURE_COMPTOIR_HEURE,
   personnesMinRoadTrip,
+  PRIX_GBASHI_BIKE_XOF,
   roadTripPossible,
   roadTripsDuJour,
+  SORTIES_SUR_COMMANDE,
   type GammeVelo,
 } from "@/data/offres";
+import {
+  blocPadel,
+  formatHeureMinute,
+  programmeEnClair,
+  minutesDe as minutesDuReglage,
+  type ReglagesProduits,
+} from "@/data/reglages";
+import { jourProgrammePadel } from "@/data/padel-bike";
 import { ajouterJours } from "@/lib/dates";
 import { creneauxSeChevauchent, type CreneauOccupe } from "@/lib/db/contrat";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
@@ -70,6 +81,8 @@ interface VenteEnregistree {
   dateDebut: string;
   heureDebut: number;
   heureFin: number;
+  /** L'horaire exact d'une sortie réglée à la minute (Padel bike). */
+  horaire?: { depart: string; retour: string };
   /** `null` quand un envoi précédent avait déjà enregistré la vente. */
   emailEnvoye: boolean | null;
   /** La même saisie était déjà enregistrée : rien n'a été compté deux fois. */
@@ -293,12 +306,15 @@ export function VenteEspeces({
   velos,
   occupes,
   instant,
+  reglages,
 }: {
   velos: VeloComptoir[];
   /** Créneaux déjà pris, par vélo. Le serveur revérifie à l'enregistrement. */
   occupes: Record<string, CreneauOccupe[]>;
   /** L'instant du rendu serveur : l'horloge du comptoir part de là. */
   instant: number;
+  /** Les réglages des produits (Padel bike : son heure, son prix), lus par le serveur. */
+  reglages: ReglagesProduits;
 }) {
   const routeur = useRouter();
   const [, demarrerTransition] = useTransition();
@@ -368,14 +384,35 @@ export function VenteEspeces({
   const roadTrip = offre === "road-trip";
   // Les deux sorties encadrées se vendent à la personne, sans durée.
   const encadree = roadTrip || octobreRose;
+  // Gbashi bike et Padel bike, sur commande : au jour et à l'heure tapés,
+  // pour une durée fixe, à la personne (SORTIES_SUR_COMMANDE).
+  const surCommande = estSurCommande(offre);
+  const padel = offre === "padel-bike";
+  // Pas de durée à choisir : les sorties encadrées et sur commande.
+  const sansDuree = encadree || surCommande;
+  // Vélos attribués d'office, sans vélo à choisir : Octobre rose et Padel bike.
+  const attribueDOffice = octobreRose || padel;
+  // Padel bike part à l'heure réglée dans l'administration : rien à taper.
+  const sortiePadel = reglages.padel;
+  const blocDuPadel = blocPadel(sortiePadel);
   const date = octobreRose ? sortieRose.date : roadTrip ? dateRoadTrip : dateLocation;
-  const heure = octobreRose ? sortieRose.heureDebut : roadTrip ? HEURE_ROAD_TRIP : heureDebut;
+  const heure = octobreRose
+    ? sortieRose.heureDebut
+    : roadTrip
+      ? HEURE_ROAD_TRIP
+      : padel
+        ? blocDuPadel.heureDebut
+        : heureDebut;
   const heureFin = octobreRose
     ? sortieRose.heureFin
     : roadTrip
       ? heure + DUREE_ROAD_TRIP_HEURES
-      : heure + dureeHeures;
-  const velo = octobreRose ? undefined : velos.find((v) => v.id === veloId);
+      : padel
+        ? blocDuPadel.heureFin
+      : estSurCommande(offre)
+        ? heure + SORTIES_SUR_COMMANDE[offre].dureeHeures
+        : heure + dureeHeures;
+  const velo = attribueDOffice ? undefined : velos.find((v) => v.id === veloId);
 
   const occupeSurCreneau = (id: string) =>
     (occupes[id] ?? []).some((pris) =>
@@ -384,7 +421,8 @@ export function VenteEspeces({
 
   // Octobre rose : autant de places que de vélos en état et libres sur la
   // sortie. Le serveur refait le compte à l'enregistrement.
-  const placesRose = octobreRose ? velos.filter((v) => enEtat(v) && !occupeSurCreneau(v.id)).length : 0;
+  // Padel bike de même : ses vélos sont attribués d'office, toutes gammes.
+  const placesRose = attribueDOffice ? velos.filter((v) => enEtat(v) && !occupeSurCreneau(v.id)).length : 0;
   // Les places d'un jour de sortie, pour le sélecteur.
   const placesLe = (sortie: SortieOctobreRose) => {
     const c = creneauOctobreRose(sortie);
@@ -403,7 +441,7 @@ export function VenteEspeces({
   const libresDeLaGamme = velo
     ? velos.filter((v) => v.gamme === velo.gamme && enEtat(v) && !occupeSurCreneau(v.id)).length
     : 0;
-  const personnesMax = octobreRose ? Math.max(1, placesRose) : Math.max(1, libresDeLaGamme);
+  const personnesMax = attribueDOffice ? Math.max(1, placesRose) : Math.max(1, libresDeLaGamme);
   // Le road trip du samedi se fait en groupe de dix au moins, comme en
   // ligne ; Gbashi bike, le dimanche, n'a pas ce minimum.
   const minimumGroupe = roadTrip ? personnesMinRoadTrip(date) : 1;
@@ -416,24 +454,27 @@ export function VenteEspeces({
   // fonction que le serveur, au prix de la plaquette (sans les frais du
   // paiement en ligne). Avec un code, seul le serveur fait foi. Pas de code
   // sur Octobre rose : son prix est forfaitaire.
-  const codeNormalise = octobreRose ? "" : code.trim().toUpperCase().replace(/\s+/g, "");
-  const signature = JSON.stringify([offre, veloId, date, heure, encadree ? 0 : dureeHeures, personnes, codeNormalise]);
+  // Pas de code non plus sur une sortie sur commande : son prix est annoncé.
+  const codeNormalise = octobreRose || surCommande ? "" : code.trim().toUpperCase().replace(/\s+/g, "");
+  const signature = JSON.stringify([offre, veloId, date, heure, sansDuree ? 0 : dureeHeures, personnes, codeNormalise]);
   // Le road trip du samedi se roule en Premium ou Prestige : un Classique
   // choisi pour ce départ n'a pas de prix, et ne se vend pas.
   const veloHorsGamme = roadTrip && velo !== undefined && !roadTripPossible(velo.gamme, date);
   const devisLocal = octobreRose
     ? calculerDevis({ offre: "octobre-rose", date, nombrePersonnes: personnes, especes: true })
-    : velo && !veloHorsGamme
-      ? calculerDevis({
-          offre,
-          gamme: velo.gamme,
-          // Le jour fixe le prix du road trip : Gbashi bike, le dimanche, a le sien.
-          date,
-          nombrePersonnes: personnes,
-          dureeHeures: roadTrip ? undefined : dureeHeures,
-          especes: true,
-        })
-      : null;
+    : padel
+      ? calculerDevis({ offre: "padel-bike", nombrePersonnes: personnes, especes: true }, reglages)
+      : velo && !veloHorsGamme
+        ? calculerDevis({
+            offre,
+            gamme: velo.gamme,
+            // Le jour fixe le prix du road trip ; Gbashi bike a celui de la gamme.
+            date,
+            nombrePersonnes: personnes,
+            dureeHeures: offre === "location-libre" ? dureeHeures : undefined,
+            especes: true,
+          })
+        : null;
   const apercuValable = apercu && apercu.signature === signature ? apercu : null;
   const montant = apercuValable
     ? apercuValable.totalXof
@@ -443,9 +484,16 @@ export function VenteEspeces({
 
   // Ce qui empêche encore d'encaisser, dit en clair.
   const roadTripCeJour = roadTripsDuJour(date).length > 0;
-  const dejaPasse = date === ici.date && !encadree && heure < ici.heure;
-  // Plus aucun départ de cette durée ne rentre avant 22 h.
-  const tropTard = date === ici.date && !encadree && ici.heure > FERMETURE_COMPTOIR_HEURE - dureeHeures;
+  // Padel bike un jour qui n'est pas programmé : le comptoir vend quand même
+  // (une sortie convenue avec le client), en le disant.
+  const padelHorsProgramme = padel && !jourProgrammePadel(sortiePadel, date);
+  // Padel bike : son départ du jour, à la minute, est-il passé ?
+  const padelParti = padel && date === ici.date && ici.heure * 60 + ici.minute >= minutesDuReglage(sortiePadel.depart);
+  const dejaPasse = date === ici.date && !encadree && !padel && heure < ici.heure;
+  // Plus aucun départ de cette durée ne rentre avant 22 h. Padel bike rentre
+  // à l'heure réglée, la fermeture ne le concerne pas.
+  const tropTard =
+    date === ici.date && !encadree && !padel && ici.heure > FERMETURE_COMPTOIR_HEURE - (heureFin - heure);
   const roadTripParti = roadTrip && date === ici.date && ici.heure >= HEURE_ROAD_TRIP;
   const pendantRoadTrip =
     !encadree &&
@@ -461,7 +509,7 @@ export function VenteEspeces({
   const obstacleCreneau =
     offre === "octobre-rose" && !sortieRose
       ? "Les sorties Octobre rose sont passées : choisissez une autre formule."
-      : octobreRose
+      : attribueDOffice
         ? placesRose < personnes
           ? placesRose === 0
             ? "Plus aucun vélo libre pour la sortie Octobre rose de ce jour."
@@ -532,7 +580,7 @@ export function VenteEspeces({
           veloId,
           offre,
           nombrePersonnes: personnes,
-          dureeHeures: roadTrip ? undefined : dureeHeures,
+          dureeHeures: sansDuree ? undefined : dureeHeures,
           date,
           heureDebut: heure,
           codeParrainage: codeNormalise,
@@ -587,7 +635,7 @@ export function VenteEspeces({
   };
 
   const enregistrer = async () => {
-    if (obstacle || montant === null || (!velo && !octobreRose)) return;
+    if (obstacle || montant === null || (!velo && !attribueDOffice)) return;
     setEnvoi(true);
     setErreur(null);
     setErreurs({});
@@ -599,11 +647,11 @@ export function VenteEspeces({
         body: JSON.stringify({
           action: "enregistrer",
           cleVente: cleVente.current,
-          // Octobre rose : les vélos sont attribués par le serveur.
-          veloId: octobreRose ? undefined : veloId,
+          // Octobre rose et Padel bike : les vélos sont attribués par le serveur.
+          veloId: attribueDOffice ? undefined : veloId,
           offre,
           nombrePersonnes: personnes,
-          dureeHeures: encadree ? undefined : dureeHeures,
+          dureeHeures: sansDuree ? undefined : dureeHeures,
           date,
           heureDebut: heure,
           // Un code que le serveur vient de refuser n'est pas transmis : le
@@ -667,7 +715,7 @@ export function VenteEspeces({
       cleVente.current = null;
       setVente({
         reference: donnees.reference,
-        offre: (["road-trip", "location-libre", "octobre-rose"] as const).find((o) => o === donnees.offre) ?? offre,
+        offre: (["road-trip", "location-libre", "octobre-rose", "gbashi-bike", "padel-bike"] as const).find((o) => o === donnees.offre) ?? offre,
         facture: donnees.facture,
         totalXof: donnees.totalXof,
         cautionXof: donnees.cautionXof,
@@ -678,6 +726,7 @@ export function VenteEspeces({
         dateDebut: donnees.dateDebut,
         heureDebut: donnees.heureDebut,
         heureFin: donnees.heureFin,
+        horaire: donnees.horaire ?? undefined,
         emailEnvoye: typeof donnees.emailEnvoye === "boolean" ? donnees.emailEnvoye : null,
         deja: Boolean(donnees.deja),
         saisieDifferente: Boolean(donnees.saisieDifferente),
@@ -704,6 +753,17 @@ export function VenteEspeces({
     ["location-libre", "Location libre", "À l'heure, avec caution"],
     // Le samedi et le dimanche, en Premium ou Prestige, dix personnes au moins.
     ["road-trip", "Road trip", `8 h, samedi et dimanche : ${gammesDuDepart("samedi-matin")}, ${CRENEAUX_ROAD_TRIP[0].personnesMin} personnes min.`],
+    // Les sorties sur commande : au jour et à l'heure convenus avec le client.
+    [
+      "gbashi-bike",
+      "Gbashi bike",
+      `Sur commande, ${SORTIES_SUR_COMMANDE["gbashi-bike"].dureeHeures} h : ${GAMMES.map((g) => formatXof(PRIX_GBASHI_BIKE_XOF[g.code])).join(" / ")} par personne`,
+    ],
+    [
+      "padel-bike",
+      "Padel bike",
+      `${formatHeureMinute(sortiePadel.depart)}, ${programmeEnClair(sortiePadel)} : ${formatXof(sortiePadel.prixXof)} par personne, vélos attribués`,
+    ],
     ...(sortiesRose.length > 0
       ? ([["octobre-rose", "Octobre rose", detailFormuleRose(sortiesRose)]] as const)
       : []),
@@ -892,6 +952,28 @@ export function VenteEspeces({
                 className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem]"
               />
             </div>
+            {padel ? (
+              // Padel bike part à l'heure réglée dans Réglages des produits.
+              <div>
+                <p className="text-[0.8rem] text-gris-cadre">Horaire</p>
+                <p className="mt-2 rounded-[var(--radius-bouton)] bg-craie px-4 py-2.5 text-[0.92rem]">
+                  {formatHeureMinute(sortiePadel.depart)} - {formatHeureMinute(sortiePadel.retour)}
+                </p>
+                <p className={`mt-1.5 text-[0.76rem] ${padelHorsProgramme ? "text-orange-sourd" : "text-gris-cadre"}`}>
+                  {padelHorsProgramme
+                    ? "Ce jour n'est pas programmé pour Padel bike : la vente reste possible, pour une sortie convenue avec le client."
+                    : `Départ ${programmeEnClair(sortiePadel)}, réglé dans Réglages des produits.`}
+                </p>
+              </div>
+            ) : estSurCommande(offre) ? (
+              // Une sortie sur commande a sa durée : rien à choisir.
+              <div>
+                <p className="text-[0.8rem] text-gris-cadre">Durée</p>
+                <p className="mt-2 rounded-[var(--radius-bouton)] bg-craie px-4 py-2.5 text-[0.92rem]">
+                  {SORTIES_SUR_COMMANDE[offre].dureeHeures} h, fixée
+                </p>
+              </div>
+            ) : (
             <div>
               <label htmlFor="vente-duree" className="text-[0.8rem] text-gris-cadre">
                 Durée
@@ -909,6 +991,8 @@ export function VenteEspeces({
                 ))}
               </select>
             </div>
+            )}
+            {!padel && (
             <div>
               <label htmlFor="vente-heure" className="text-[0.8rem] text-gris-cadre">
                 Départ, à l&apos;heure
@@ -946,6 +1030,36 @@ export function VenteEspeces({
                     : `Retour du vélo à ${heureFin} h.`}
               </p>
             </div>
+            )}
+            {surCommande && (
+              <div>
+                <label htmlFor="vente-personnes-commande" className="text-[0.8rem] text-gris-cadre">
+                  Nombre de personnes
+                </label>
+                <select
+                  id="vente-personnes-commande"
+                  value={personnes}
+                  onChange={(evenement) => setNombrePersonnes(Number(evenement.target.value))}
+                  className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem]"
+                >
+                  {Array.from({ length: personnesMax }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {n} personne{n > 1 ? "s" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-[0.76rem] text-gris-cadre">
+                  {padel
+                    ? `${placesRose} vélo${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""} sur ce créneau.`
+                    : velo
+                      ? `Un vélo ${nomGamme(velo.gamme)} par personne.`
+                      : "Le maximum dépend de la gamme du vélo choisi."}
+                </p>
+                {erreurs.nombrePersonnes && (
+                  <p className="mt-1.5 text-[0.78rem] text-orange-sourd">{erreurs.nombrePersonnes}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
         {erreurs.date && <p className="mt-2 text-[0.78rem] text-orange-sourd">{erreurs.date}</p>}
@@ -953,9 +1067,14 @@ export function VenteEspeces({
         {erreurs.heureDebut && <p className="mt-2 text-[0.78rem] text-orange-sourd">{erreurs.heureDebut}</p>}
         {tropTard ? (
           <p className="mt-2 rounded-[var(--radius-bouton)] border-l-4 border-orange-signal bg-orange-signal/10 px-3 py-2 text-[0.8rem] leading-relaxed">
-            Il est {ici.heure} h : une location de {dureeHeures} h ne rentre plus avant{" "}
+            Il est {ici.heure} h : {surCommande ? `une sortie de ${heureFin - heure} h` : `une location de ${dureeHeures} h`} ne rentre plus avant{" "}
             {FERMETURE_COMPTOIR_HEURE} h aujourd&apos;hui. Réduisez la durée, ou choisissez un autre
             jour ; sinon la vente sera enregistrée après coup, à l&apos;heure choisie.
+          </p>
+        ) : padelParti ? (
+          <p className="mt-2 rounded-[var(--radius-bouton)] border-l-4 border-orange-signal bg-orange-signal/10 px-3 py-2 text-[0.8rem] leading-relaxed">
+            Le départ de Padel bike de {formatHeureMinute(sortiePadel.depart)} est passé aujourd&apos;hui : la vente
+            sera enregistrée après coup, pour ce départ. Pour le prochain, choisissez une autre date.
           </p>
         ) : (
           dejaPasse && (
@@ -989,13 +1108,13 @@ export function VenteEspeces({
       </fieldset>
 
       {/* 3. Le vélo */}
-      {octobreRose ? (
+      {attribueDOffice ? (
         <div className="mt-6">
           <p className="etiquette opacity-75">3. Les vélos</p>
           <p className="mt-2 rounded-[var(--radius-bouton)] bg-craie px-4 py-3 text-[0.84rem] leading-relaxed">
             Rien à choisir : un vélo libre est attribué à chaque personne à l&apos;enregistrement,
             le Classique d&apos;abord. Les vélos attribués s&apos;affichent ensuite, à remettre au
-            rassemblement.
+            {octobreRose ? " rassemblement." : " départ."}
           </p>
         </div>
       ) : (
@@ -1016,11 +1135,11 @@ export function VenteEspeces({
             const prix = horsGamme
               ? null
               : calculerDevis({
-                  offre: roadTrip ? "road-trip" : "location-libre",
+                  offre: roadTrip ? "road-trip" : offre === "gbashi-bike" ? "gbashi-bike" : "location-libre",
                   gamme: v.gamme,
                   date,
                   nombrePersonnes: 1,
-                  dureeHeures: roadTrip ? undefined : dureeHeures,
+                  dureeHeures: roadTrip || offre === "gbashi-bike" ? undefined : dureeHeures,
                   especes: true,
                 }).sousTotalXof;
             return (
@@ -1055,7 +1174,7 @@ export function VenteEspeces({
                       ? roadTripPossible(v.gamme, date)
                         ? ` · moins de ${minimumGroupe} vélos libres`
                         : " · pas ce road trip"
-                      : ` · ${formatXof(prix)}${roadTrip ? " / pers." : ""}`}
+                      : ` · ${formatXof(prix)}${roadTrip || offre === "gbashi-bike" ? " / pers." : ""}`}
                   </span>
                 </span>
                 <span
@@ -1148,10 +1267,11 @@ export function VenteEspeces({
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">5. L&apos;encaissement</legend>
         <div className="mt-2 grid *:min-w-0 gap-4 sm:grid-cols-2">
-          {/* Pas de code sur Octobre rose : son prix est forfaitaire. */}
-          {octobreRose ? (
+          {/* Pas de code sur Octobre rose, ni sur une sortie sur commande : leur prix est annoncé. */}
+          {octobreRose || surCommande ? (
             <p className="self-center text-[0.8rem] leading-relaxed text-gris-cadre">
-              Octobre rose a un prix forfaitaire, le même pour tous&nbsp;: pas de code de parrainage.
+              {octobreRose ? "Octobre rose" : padel ? "Padel bike" : "Gbashi bike"} a un prix annoncé, le même
+              pour tous&nbsp;: pas de code de parrainage.
             </p>
           ) : (
           <div>
@@ -1350,7 +1470,9 @@ function VenteTerminee({ vente, onNouvelle }: { vente: VenteEnregistree; onNouve
         <span className="block text-gris-cadre">
           {vente.offre === "octobre-rose" && sortieVente
             ? `${jourLisible(vente.dateDebut)}, rassemblement à ${formatHoraire(sortieVente.rassemblement)} : vélos à remettre au rassemblement`
-            : `${jourLisible(vente.dateDebut)}, de ${vente.heureDebut} h à ${vente.heureFin} h`}
+            : vente.horaire
+              ? `${jourLisible(vente.dateDebut)}, de ${formatHeureMinute(vente.horaire.depart)} à ${formatHeureMinute(vente.horaire.retour)}`
+              : `${jourLisible(vente.dateDebut)}, de ${vente.heureDebut} h à ${vente.heureFin} h`}
         </span>
       </p>
 

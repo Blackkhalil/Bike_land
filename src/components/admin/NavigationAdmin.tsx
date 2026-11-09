@@ -22,6 +22,7 @@ const liens = [
   { href: "/admin/bilan", libelle: "Bilan des semaines" },
   { href: "/admin/reservations", libelle: "Réservations" },
   { href: "/admin/velos", libelle: "Parc de vélos" },
+  { href: "/admin/reglages", libelle: "Réglages des produits" },
   { href: "/admin/clients", libelle: "Clients" },
   { href: "/admin/avis", libelle: "Avis clients" },
   { href: "/admin/messages", libelle: "Messages reçus" },

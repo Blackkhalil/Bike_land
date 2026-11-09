@@ -26,10 +26,12 @@ import {
   creneauDuJour,
   motifRoadTripGamme,
   prixLocationLibre,
+  PRIX_GBASHI_BIKE_XOF,
   prixRoadTripDu,
   type CodeOffre,
   type GammeVelo,
 } from "@/data/offres";
+import { formatDureeHeures, REGLAGES_PAR_DEFAUT, type ReglagesProduits } from "@/data/reglages";
 import type { DateISO } from "./dates";
 import { formatXof } from "./format";
 import type { OptionLocation } from "./types";
@@ -127,7 +129,13 @@ export class TarifIntrouvableError extends Error {
   }
 }
 
-export function calculerDevis(parametres: ParametresDevis): Devis {
+/**
+ * Le devis d'une demande. `reglages` porte ce que l'exploitant règle dans
+ * l'administration (le prix de Padel bike) : le serveur passe ceux qu'il a
+ * lus en base, les formulaires ceux que la page a reçus du serveur. Sans
+ * eux, les valeurs par défaut.
+ */
+export function calculerDevis(parametres: ParametresDevis, reglages: ReglagesProduits = REGLAGES_PAR_DEFAUT): Devis {
   const { offre } = parametres;
   const gamme = parametres.gamme ?? null;
   const nombrePersonnes = Math.max(1, Math.min(parametres.nombrePersonnes ?? 1, 12));
@@ -140,7 +148,18 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
   // paiement en ligne que portent les tarifs du site.
   const fraisRetires = parametres.especes ? FRAIS_PAIEMENT_EN_LIGNE_XOF : 0;
 
-  if (offre === "octobre-rose") {
+  if (offre === "padel-bike") {
+    // Padel bike : le prix par personne réglé dans l'administration, quel que
+    // soit le vélo, le même en ligne et au comptoir.
+    const { prixXof, dureePadelHeures } = reglages.padel;
+    sousTotalXof = prixXof * nombrePersonnes;
+    cautionXof = 0;
+    lignes.push({
+      libelle: nombrePersonnes > 1 ? `Padel bike, ${nombrePersonnes} personnes` : "Padel bike, 1 personne",
+      detail: `${formatXof(prixXof)} par personne, le vélo et ${formatDureeHeures(dureePadelHeures)} de padel`,
+      montantXof: sousTotalXof,
+    });
+  } else if (offre === "octobre-rose") {
     const sortie = parametres.date ? sortieOctobreRoseDu(parametres.date) : null;
     if (!sortie) throw new TarifIntrouvableError("Aucune sortie Octobre rose ce jour-là.");
     // Un prix par personne, quel que soit le vélo attribué. Au comptoir, le
@@ -157,6 +176,17 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
     });
   } else if (!gamme) {
     throw new TarifIntrouvableError("La gamme du vélo est nécessaire pour fixer ce prix.");
+  } else if (offre === "gbashi-bike") {
+    // Gbashi bike, sur commande : le prix de la gamme, par personne, le même
+    // au comptoir (il ne se paie jamais en ligne). Eau et cocos compris.
+    const prixUnitaire = PRIX_GBASHI_BIKE_XOF[gamme];
+    sousTotalXof = prixUnitaire * nombrePersonnes;
+    cautionXof = 0;
+    lignes.push({
+      libelle: nombrePersonnes > 1 ? `Gbashi bike, ${nombrePersonnes} personnes` : "Gbashi bike, 1 personne",
+      detail: `${formatXof(prixUnitaire)} par personne, séance de sport, eau et ${COCOS_ROAD_TRIP} cocos compris`,
+      montantXof: sousTotalXof,
+    });
   } else if (offre === "road-trip") {
     // Le prix du jour du départ : Gbashi bike, le dimanche, a le sien. Sans
     // jour, celui du road trip du samedi. Une gamme qui ne roule pas ce

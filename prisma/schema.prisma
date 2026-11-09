@@ -165,6 +165,8 @@ enum BookingOffer {
   ROAD_TRIP       // sortie encadree, forfait par personne, sans caution
   LOCATION_LIBRE  // velo sans accompagnement, grille horaire, caution
   OCTOBRE_ROSE    // sortie de saison, prix unique, un velo attribue par participant
+  GBASHI_BIKE     // sortie sur commande, au comptoir : prix de la gamme par personne
+  PADEL_BIKE      // sortie sur commande, au comptoir : prix unique, velos attribues d office
 }
 
 enum BookingStatus {
@@ -210,6 +212,12 @@ model Booking {
   /// Les valeurs par défaut correspondent au créneau encadré historique.
   startHour Int @default(8)
   endHour   Int @default(11)
+  /// L'horaire exact, « 18:30 » et « 22:30 », d'une sortie réglée à la
+  /// minute dans l'administration (Padel bike) : le client garde celui
+  /// qu'il a payé, même si le réglage change ensuite. Vides ailleurs, les
+  /// heures pleines suffisent.
+  startTime String?
+  endTime   String?
 
   subtotalXof Int
   optionsXof  Int @default(0)

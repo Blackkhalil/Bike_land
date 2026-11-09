@@ -30,6 +30,19 @@ function consignes(reservation: Reservation, sens: "depart" | "retour"): string[
       "Aucune caution : la sortie est encadrée.",
     ];
   }
+  if (reservation.offre === "gbashi-bike" || reservation.offre === "padel-bike") {
+    const n = reservation.nombrePersonnes;
+    if (sens === "retour") return [`Récupérer ${n > 1 ? `les ${n} vélos et casques` : "le vélo et le casque"}.`];
+    const gbashi = reservation.offre === "gbashi-bike";
+    const cocos = cocosDe(reservation);
+    return [
+      `Préparer ${n} vélo${n > 1 ? "s" : ""} et ${n} casque${n > 1 ? "s" : ""} : ${gbashi ? "Gbashi bike" : "Padel bike"}, sur commande.`,
+      gbashi
+        ? `Prévoir ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}, et le matériel de la séance de sport.`
+        : "Le groupe roule jusqu'au terrain de padel, puis le padel.",
+      "Aucune caution : la sortie est encadrée.",
+    ];
+  }
   if (reservation.offre === "road-trip") {
     if (sens === "retour") return ["Récupérer le vélo, le casque et le kit."];
     const n = reservation.nombrePersonnes;

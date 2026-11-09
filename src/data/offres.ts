@@ -114,16 +114,40 @@ export const PRIX_GBASHI_BIKE_XOF: Record<GammeVelo, number> = {
 };
 
 /**
- * Padel bike, produit sur commande depuis novembre 2026 : on pédale
- * ensemble jusqu'au terrain de padel, puis on joue au padel pendant trois
- * heures. Un prix par personne, quel que soit le vélo.
+ * Padel bike, lancé en novembre 2026 : on pédale ensemble jusqu'au
+ * terrain de padel, puis on joue au padel pendant trois heures. Un prix
+ * par personne, quel que soit le vélo, le même en ligne et au comptoir.
  *
- * Il se commande sur WhatsApp et ne se réserve pas en ligne : ses jours et
- * ses heures ne sont pas fixés. Il est présenté sur la page Nos produits
- * (voir src/data/produits.ts).
+ * Il se vend au comptoir, et se réserve en ligne sur sa propre page,
+ * /padel-bike, à partir du 20 novembre 2026 (src/data/padel-bike.ts).
  */
 export const PRIX_PADEL_BIKE_XOF = 3500;
 export const DUREE_PADEL_HEURES = 3;
+
+/**
+ * Combien de temps les vélos d'une sortie sur commande sont pris, à partir
+ * de l'heure de départ convenue : trois heures pour Gbashi bike (le road
+ * trip et la séance de sport) ; quatre pour Padel bike (l'aller, les trois
+ * heures de padel, le retour). Le comptoir bloque les vélos sur ce créneau.
+ */
+export const DUREE_GBASHI_HEURES = 3;
+export const DUREE_SORTIE_PADEL_HEURES = 4;
+
+/**
+ * Les sorties au jour et à l'heure que choisit le client, pour une durée
+ * fixe, à la personne : Gbashi bike, sur commande au comptoir seulement ;
+ * Padel bike, au comptoir et en ligne sur sa page (src/data/padel-bike.ts).
+ */
+export const SORTIES_SUR_COMMANDE = {
+  "gbashi-bike": { nom: "Gbashi bike", dureeHeures: DUREE_GBASHI_HEURES, veloChoisi: true },
+  "padel-bike": { nom: "Padel bike", dureeHeures: DUREE_SORTIE_PADEL_HEURES, veloChoisi: false },
+} as const;
+export type CodeSortieSurCommande = keyof typeof SORTIES_SUR_COMMANDE;
+
+/** Cette formule est-elle une sortie au jour et à l'heure choisis (Gbashi bike, Padel bike) ? */
+export function estSurCommande(offre: CodeOffre): offre is CodeSortieSurCommande {
+  return offre === "gbashi-bike" || offre === "padel-bike";
+}
 
 /**
  * Le road trip du samedi se fait en groupe : dix personnes au moins par
@@ -220,6 +244,14 @@ export const EXIGENCES: Record<CodeOffre, string[]> = {
   // Ce qui vaut pour toutes les sorties de la campagne. Une sortie connue
   // donne en plus ses heures : `exigencesOctobreRose(sortie)`.
   "octobre-rose": exigencesOctobreRose(null),
+  "gbashi-bike": [
+    "Venir en tenue de sport : à l'arrivée, séance d'exercices et de poids devant la plage.",
+    "Être présent au point de départ quinze minutes avant l'heure convenue.",
+  ],
+  "padel-bike": [
+    "Venir en tenue de sport, prêt à pédaler puis à jouer au padel.",
+    "Être présent au point de départ quinze minutes avant l'heure convenue.",
+  ],
 };
 
 /**

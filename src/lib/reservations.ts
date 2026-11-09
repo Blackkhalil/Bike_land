@@ -139,12 +139,15 @@ export function paiementPrincipal(reservation: Reservation): Paiement | undefine
 }
 
 /**
- * Les cocos à offrir au retour d'un road trip : deux par personne, quelle
- * que soit la gamme (`COCOS_ROAD_TRIP`), comme le devis les promet au
- * client. Zéro hors road trip : Octobre rose a son propre compte.
+ * Les cocos à offrir au retour d'un road trip, et de Gbashi bike : deux
+ * par personne, quelle que soit la gamme (`COCOS_ROAD_TRIP`), comme le
+ * devis les promet au client. Zéro ailleurs : Octobre rose a son propre
+ * compte, Padel bike n'en promet pas.
  */
 export function cocosDe(reservation: Pick<Reservation, "offre" | "nombrePersonnes">): number {
-  return reservation.offre === "road-trip" ? reservation.nombrePersonnes * COCOS_ROAD_TRIP : 0;
+  return reservation.offre === "road-trip" || reservation.offre === "gbashi-bike"
+    ? reservation.nombrePersonnes * COCOS_ROAD_TRIP
+    : 0;
 }
 
 /**

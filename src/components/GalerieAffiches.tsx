@@ -17,28 +17,50 @@ export interface Affiche {
 
 /**
  * Une vidéo de la galerie : muette et en boucle, comme une image qui
- * bouge. Elle ne part d'elle-même que si le visiteur n'a demandé ni moins
- * d'animations ni d'économiser ses données ; sinon son affiche reste, et
- * le bouton la lance. Le même bouton la met en pause : rien ne bouge sous
- * les yeux du visiteur sans qu'il puisse l'arrêter.
+ * bouge. Elle ne part d'elle-même qu'à l'écran, et seulement si le
+ * visiteur n'a demandé ni moins d'animations ni d'économiser ses données ;
+ * sinon son affiche reste, et le bouton la lance. Sortie de l'écran (on a
+ * fait défiler la galerie ou la page), elle se met en pause. Le même
+ * bouton la met en pause : rien ne bouge sous les yeux du visiteur sans
+ * qu'il puisse l'arrêter, et ce qu'il a arrêté ne repart pas tout seul.
  */
 function VideoDeGalerie({ affiche, video }: { affiche: Affiche; video: string }) {
   const reference = useRef<HTMLVideoElement>(null);
-  // Sans source tant que la lecture n'est pas décidée : le fichier ne
-  // part pas pour qui ne la verra pas.
+  // Sans source tant que la vidéo n'a pas paru à l'écran : avec quatre
+  // vidéos dans la galerie, seules celles qu'on regarde se téléchargent.
   const [source, setSource] = useState<string | undefined>(undefined);
   const [enLecture, setEnLecture] = useState(false);
+  // Mise en pause par le visiteur : elle ne repart plus d'elle-même.
+  const arreteeParLeVisiteur = useRef(false);
 
   useEffect(() => {
-    const calme = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (calme || economieDeDonnees()) return;
-    const depart = setTimeout(() => setSource(video), 0);
-    return () => clearTimeout(depart);
+    const element = reference.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const seule = !window.matchMedia("(prefers-reduced-motion: reduce)").matches && !economieDeDonnees();
+    // À moitié visible au moins : la vidéo voisine, qui dépasse à peine
+    // au bord de la galerie, attend son tour.
+    const observateur = new IntersectionObserver(
+      ([entree]) => {
+        if (!entree) return;
+        if (!entree.isIntersecting) {
+          element.pause();
+          return;
+        }
+        if (!seule || arreteeParLeVisiteur.current) return;
+        // La première fois, donner la source suffit : `autoPlay` lance la lecture.
+        if (!element.getAttribute("src")) setSource(video);
+        else void element.play().catch(() => undefined);
+      },
+      { threshold: 0.5 },
+    );
+    observateur.observe(element);
+    return () => observateur.disconnect();
   }, [video]);
 
   const basculer = () => {
     const element = reference.current;
     if (!element) return;
+    arreteeParLeVisiteur.current = Boolean(source) && !element.paused;
     // Pas encore de source : la donner suffit, `autoPlay` lance la lecture.
     if (!source) setSource(video);
     else if (element.paused) void element.play().catch(() => undefined);
@@ -55,7 +77,7 @@ function VideoDeGalerie({ affiche, video }: { affiche: Affiche; video: string })
         muted
         loop
         playsInline
-        preload="metadata"
+        preload="none"
         aria-label={affiche.alt}
         onPlay={() => setEnLecture(true)}
         onPause={() => setEnLecture(false)}
@@ -98,18 +120,20 @@ export function GalerieAffiches({
 }: {
   affiches: Affiche[];
   titre: string;
-  /** Ce que la galerie montre, au féminin : des affiches, ou des images (Padel bike). */
+  /** Ce que la galerie montre, au féminin : des affiches, des images ou des vidéos (Padel bike). */
   nom?: { singulier: string; pluriel: string };
 }) {
   const Nom = nom.singulier.charAt(0).toUpperCase() + nom.singulier.slice(1);
   const piste = useRef<HTMLUListElement>(null);
-  // « 5 affiches », ou « 1 vidéo et 4 images » quand une vidéo en fait partie.
+  // « 5 affiches », « 4 vidéos », ou « 1 vidéo et 4 images » quand les deux s'y mêlent.
   const videos = affiches.filter((affiche) => affiche.video).length;
   const images = affiches.length - videos;
   const compte =
-    videos > 0
-      ? `${videos} vidéo${videos > 1 ? "s" : ""} et ${images} ${images > 1 ? nom.pluriel : nom.singulier}`
-      : `${affiches.length} ${nom.pluriel}`;
+    videos === 0
+      ? `${affiches.length} ${nom.pluriel}`
+      : images === 0
+        ? `${videos} vidéo${videos > 1 ? "s" : ""}`
+        : `${videos} vidéo${videos > 1 ? "s" : ""} et ${images} ${images > 1 ? nom.pluriel : nom.singulier}`;
 
   const defiler = (sens: 1 | -1) => {
     const element = piste.current;

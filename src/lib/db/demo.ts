@@ -13,11 +13,14 @@ import { optionsLocation, pointsDeRetrait, velos } from "@/data/catalogue";
 import { aujourdhui, nombreDeJours, type DateISO } from "../dates";
 import {
   DUREE_ROAD_TRIP_HEURES,
+  estSurCommande,
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_HEURE,
   OUVERTURE_HEURE,
   panierExpire,
+  SORTIES_SUR_COMMANDE,
 } from "@/data/offres";
+import { blocPadel, lireReglagesAvec } from "@/data/reglages";
 import { calculerDevis } from "../tarification";
 import { genererReference, genererToken, hacherToken, lireToken } from "../tokens";
 import {
@@ -86,6 +89,8 @@ interface EtatDemo {
    */
   reglagesCreneaux: Map<string, boolean>;
   joursFermes: JourFerme[];
+  /** Réglages de l'administration (double authentification, réglages des produits). */
+  parametresAdmin: Map<string, string>;
 }
 
 // L'état vit sur `globalThis` : en développement, le rechargement à chaud
@@ -95,8 +100,6 @@ const cle = Symbol.for("bikeland.demo.etat");
 
 /** Identifiants des réservations dont le rappel de la veille est parti. */
 const rappelsEnvoyes = new Set<string>();
-/** Réglages sensibles de l'administration, en mémoire en démonstration. */
-const parametresAdmin = new Map<string, string>();
 /** Compteurs d'essais, en mémoire en démonstration. */
 const compteursDemo = new Map<string, { nombre: number; expireLe: number }>();
 type PorteurGlobal = typeof globalThis & { [cle]?: EtatDemo };
@@ -116,11 +119,13 @@ function etat(): EtatDemo {
       tokens: new Map(),
       reglagesCreneaux: new Map(),
       joursFermes: [],
+      parametresAdmin: new Map(),
     };
   }
   // Un état créé avant l'ajout de ces réglages, gardé par le rechargement à chaud.
   porteur[cle].reglagesCreneaux ??= new Map();
   porteur[cle].joursFermes ??= [];
+  porteur[cle].parametresAdmin ??= new Map();
   return porteur[cle]!;
 }
 
@@ -259,13 +264,20 @@ export const depotDemo: Depot = {
     // choisi, les vélos sont attribués plus bas, un par participant, parmi
     // ceux libres sur la sortie du jour demandé.
     const octobreRose = demande.offre === "octobre-rose";
+    // Padel bike, comme Octobre rose et comme en base : vélos attribués d'office.
+    const attribueDOffice = octobreRose || demande.offre === "padel-bike";
     const creneauSortie = octobreRose ? creneauOctobreRoseDemande(demande) : null;
-    const velo = octobreRose || !demande.veloId ? undefined : velos.find((v) => v.id === demande.veloId);
-    if (!octobreRose && demande.veloId && !velo) throw new Error("Vélo introuvable.");
+    // Comme en base : les réglages des produits, lus ici même. Padel bike
+    // part à l'heure réglée, au prix réglé.
+    const reglages = await lireReglagesAvec(async (cleReglage) => etat().parametresAdmin.get(cleReglage) ?? null);
+    const sortiePadel = demande.offre === "padel-bike" ? reglages.padel : null;
+    const heureDebut = sortiePadel ? blocPadel(sortiePadel).heureDebut : demande.heureDebut;
+    const velo = attribueDOffice || !demande.veloId ? undefined : velos.find((v) => v.id === demande.veloId);
+    if (!attribueDOffice && demande.veloId && !velo) throw new Error("Vélo introuvable.");
     // Même règle qu'en base : la gamme du vélo précis (le comptoir), sinon
     // celle que le client a choisie sur le site.
-    const gamme = octobreRose ? undefined : (velo?.gamme ?? demande.gamme);
-    if (!octobreRose && !gamme) throw new Error("Gamme manquante.");
+    const gamme = attribueDOffice ? undefined : (velo?.gamme ?? demande.gamme);
+    if (!attribueDOffice && !gamme) throw new Error("Gamme manquante.");
 
     // Même règle qu'en base : une vente au comptoir se règle en espèces.
     const encaissement = demande.encaissement;
@@ -286,16 +298,20 @@ export const depotDemo: Depot = {
       options: demande.options,
       // Prix de la plaquette pour une vente encaissée au comptoir, comme en base.
       especes: Boolean(encaissement),
-    });
+    }, reglages);
 
     // L'heure de fin découle de la formule : le road trip dure le temps
     // de son créneau, Octobre rose jusqu'au retour des vélos, la location
     // libre le nombre d'heures choisi.
     const heureFin = creneauSortie
       ? creneauSortie.heureFin
-      : demande.offre === "road-trip"
-        ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
-        : demande.heureDebut + (devisBrut.dureeHeures ?? 1);
+      : sortiePadel
+        ? blocPadel(sortiePadel).heureFin
+      : estSurCommande(demande.offre)
+        ? demande.heureDebut + SORTIES_SUR_COMMANDE[demande.offre].dureeHeures
+        : demande.offre === "road-trip"
+          ? demande.heureDebut + DUREE_ROAD_TRIP_HEURES
+          : demande.heureDebut + (devisBrut.dureeHeures ?? 1);
 
     // Dernières vérifications, puis l'écriture, sans aucune attente d'ici à
     // l'enregistrement (voir `creneauxBloquants`) : c'est ici que se joue
@@ -309,9 +325,9 @@ export const depotDemo: Depot = {
       throw new TransactionDejaUtiliseeError("Cette vente est déjà enregistrée.");
     }
     let velosAttribues: Velo[];
-    if (octobreRose) {
+    if (attribueDOffice) {
       const libres = ordreAttribution(
-        velos.filter((v) => veloLibre(v.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin)),
+        velos.filter((v) => veloLibre(v.id, demande.dateDebut, demande.dateFin, heureDebut, heureFin)),
       );
       if (libres.length < devisBrut.nombrePersonnes) {
         throw new ConflitDisponibiliteError(
@@ -326,7 +342,7 @@ export const depotDemo: Depot = {
         (v) =>
           v.statut !== "MAINTENANCE" &&
           v.statut !== "RETIRE" &&
-          veloLibre(v.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin),
+          veloLibre(v.id, demande.dateDebut, demande.dateFin, heureDebut, heureFin),
       );
       const choisis = velosLibresDeLaGamme(gamme!, libres, devisBrut.nombrePersonnes);
       if (!choisis) {
@@ -336,12 +352,12 @@ export const depotDemo: Depot = {
       }
       velosAttribues = choisis;
     } else {
-      if (!veloLibre(velo!.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin)) {
+      if (!veloLibre(velo!.id, demande.dateDebut, demande.dateFin, heureDebut, heureFin)) {
         throw new ConflitDisponibiliteError();
       }
       // Un vélo par personne, comme en base : le vélo choisi, puis d'autres
       // de sa gamme, libres sur le créneau.
-      const libres = velos.filter((v) => veloLibre(v.id, demande.dateDebut, demande.dateFin, demande.heureDebut, heureFin));
+      const libres = velos.filter((v) => veloLibre(v.id, demande.dateDebut, demande.dateFin, heureDebut, heureFin));
       const choisis = velosDeLaGamme(velo!, libres, devisBrut.nombrePersonnes);
       if (!choisis) {
         throw new ConflitDisponibiliteError(
@@ -355,7 +371,7 @@ export const depotDemo: Depot = {
     // qu'en production, sans quoi les deux modes ne répondraient pas pareil.
     // Pas de code sur Octobre rose : son prix est forfaitaire.
     let remise: { code: string; montantXof: number } | undefined;
-    if (demande.codeParrainage && !octobreRose) {
+    if (demande.codeParrainage && !octobreRose && !estSurCommande(demande.offre)) {
       const controle = controleCode(demande.codeParrainage, devisBrut.totalXof);
       if (controle.valide && controle.remiseXof > 0) {
         const ligne = etat().codesPromo.find((c) => c.code === controle.code.code);
@@ -376,7 +392,7 @@ export const depotDemo: Depot = {
           options: demande.options,
           especes: Boolean(encaissement),
           remise,
-        })
+        }, reglages)
       : devisBrut;
     const donnees = etat();
 
@@ -424,8 +440,9 @@ export const depotDemo: Depot = {
       pointDeRetraitId: velosAttribues[0].pointDeRetraitId,
       dateDebut: demande.dateDebut,
       dateFin: demande.dateFin,
-      heureDebut: demande.heureDebut,
+      heureDebut,
       heureFin,
+      ...(sortiePadel ? { horaire: { depart: sortiePadel.depart, retour: sortiePadel.retour } } : {}),
       jours: nombreDeJours(demande.dateDebut, demande.dateFin),
       // Comme en base : un vélo par participant pour Octobre rose, chacun
       // au prix d'une place ; ailleurs, le vélo choisi porte la location.
@@ -751,21 +768,21 @@ export const depotDemo: Depot = {
   },
 
   async lireParametreAdmin(cle: string) {
-    return parametresAdmin.get(cle) ?? null;
+    return etat().parametresAdmin.get(cle) ?? null;
   },
 
   async ecrireParametreAdmin(cle: string, valeur: string) {
-    parametresAdmin.set(cle, valeur);
+    etat().parametresAdmin.set(cle, valeur);
   },
 
   async effacerParametreAdmin(cle: string) {
-    parametresAdmin.delete(cle);
+    etat().parametresAdmin.delete(cle);
   },
 
   async avancerParametreAdmin(cle: string, valeur: number) {
-    const actuelle = Number(parametresAdmin.get(cle) ?? Number.NEGATIVE_INFINITY);
+    const actuelle = Number(etat().parametresAdmin.get(cle) ?? Number.NEGATIVE_INFINITY);
     if (!(valeur > actuelle)) return false;
-    parametresAdmin.set(cle, String(valeur));
+    etat().parametresAdmin.set(cle, String(valeur));
     return true;
   },
 

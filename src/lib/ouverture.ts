@@ -5,8 +5,10 @@
  * trip s'ouvrent et se ferment pour toutes les semaines : le samedi fermé
  * parce que complet se rouvre d'un clic. Gbashi bike, le dimanche, n'a pas
  * ce réglage : il se commande sur WhatsApp, jamais en ligne (`enLigne`
- * dans CRENEAUX_ROAD_TRIP). Des jours précis se ferment quand ils sont
- * complets, pour une formule ou pour les deux.
+ * dans CRENEAUX_ROAD_TRIP). La réservation en ligne de Padel bike s'ouvre
+ * et se ferme de même, sous son propre code (`CODE_PADEL_BIKE`). Des jours
+ * précis se ferment quand ils sont complets, pour une formule ou pour
+ * toutes.
  *
  * Tout ce qui propose ou accepte une réservation passe par ce module : le
  * widget de la fiche vélo, le tunnel, et surtout le serveur, qui refuse
@@ -41,6 +43,7 @@ import {
   type GammeVelo,
   type OuvertureCreneaux,
 } from "@/data/offres";
+import { CODE_PADEL_BIKE } from "@/data/padel-bike";
 import { depot } from "@/lib/db";
 import { listerJours, type DateISO } from "@/lib/dates";
 import { formatDate, formatDateAvecJour } from "@/lib/format";
@@ -74,7 +77,21 @@ export async function lireOuverture(): Promise<Ouverture> {
     const code = codeOctobreRose(sortie);
     if (brut.creneaux[code] ?? true) actifs.push(code);
   }
+  // Padel bike, ouvert tant que l'exploitant ne l'a pas fermé.
+  if (brut.creneaux[CODE_PADEL_BIKE] ?? true) actifs.push(CODE_PADEL_BIKE);
   return { creneauxActifs: new Set(actifs), joursFermes: brut.joursFermes };
+}
+
+/**
+ * La réservation en ligne de Padel bike est-elle ouverte depuis le tableau
+ * de bord ce jour-là ? Fermée sous son code (complet, terrain indisponible),
+ * ou le jour fermé pour toutes les formules : le site dit « Complet » et
+ * renvoie vers WhatsApp. L'ouverture du 20 novembre se vérifie à part
+ * (`motifRefusPadel`).
+ */
+export function padelBikeOuvertEnLigne(ouverture: OuvertureCreneaux, date?: DateISO): boolean {
+  if (!ouverture.creneauxActifs.has(CODE_PADEL_BIKE)) return false;
+  return !date || !ouverture.joursFermes.some((j) => j.date === date && j.formule === "toutes");
 }
 
 /**

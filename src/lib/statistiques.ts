@@ -246,7 +246,7 @@ export function calculerStatistiques(
   //     on les garde donc côte à côte avec leur unité.
   // Au participant : le road trip par défaut, partout où l'écran dit
   // « road trip » ; Octobre rose pour sa propre ligne.
-  const participantsDe = (liste: Reservation[], offre: "road-trip" | "octobre-rose" = "road-trip") =>
+  const participantsDe = (liste: Reservation[], offre: CodeOffre = "road-trip") =>
     somme(liste.filter((r) => r.offre === offre).map((r) => r.nombrePersonnes));
   const heuresDe = (liste: Reservation[]) =>
     somme(liste.filter((r) => r.offre === "location-libre").map((r) => r.dureeHeures ?? 0));
@@ -254,8 +254,12 @@ export function calculerStatistiques(
   // Octobre rose ne s'ajoute que sur une période où il a été vendu : le
   // reste de l'année, la ligne serait vide.
   const avecOctobreRose = facturees.some((r) => r.offre === "octobre-rose");
+  // Les sorties sur commande de même, seulement quand elles ont été vendues.
+  const vendue = (code: CodeOffre) => facturees.some((r) => r.offre === code);
   const parOffre = [
     ...OFFRES,
+    ...(vendue("padel-bike") ? [{ code: "padel-bike" as const, nom: "Padel bike" }] : []),
+    ...(vendue("gbashi-bike") ? [{ code: "gbashi-bike" as const, nom: "Gbashi bike" }] : []),
     ...(avecOctobreRose ? [{ code: "octobre-rose" as const, nom: "Octobre rose" }] : []),
   ].map((offre) => {
     const lignes = facturees.filter((r) => r.offre === offre.code);
@@ -268,7 +272,7 @@ export function calculerStatistiques(
       volume:
         offre.code === "location-libre"
           ? heuresDe(lignes)
-          : participantsDe(lignes, offre.code === "octobre-rose" ? "octobre-rose" : "road-trip"),
+          : participantsDe(lignes, offre.code),
       uniteVolume: auParticipant ? "participants" : "heures",
     };
   });

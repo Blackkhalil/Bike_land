@@ -6,6 +6,7 @@
  */
 
 import { formatHoraire, sortieDeLaReservation } from "@/data/octobre-rose";
+import { formatHeureMinute } from "@/data/reglages";
 import { creneauDuDepart, DERNIER_GBASHI_DU_DIMANCHE } from "@/data/offres";
 
 import type { CodeOffre, MoyenPaiement } from "./types";
@@ -145,12 +146,16 @@ export function formatPeriode(debut: string | Date, fin: string | Date): string 
  * son rendez-vous et son départ, à la minute près, plutôt que par les
  * heures pleines qu'elle retient sur les vélos (voir `sortieDe`) :
  * « samedi 24 octobre 2026, rassemblement à 16 h, départ 16 h 30 ».
+ *
+ * Une sortie réglée à la minute (Padel bike) s'annonce par l'horaire
+ * retenu à la réservation : « 21 novembre 2026, de 18 h 30 à 22 h 30 ».
  */
 export function formatCreneau(reservation: {
   dateDebut: string | Date;
   heureDebut: number;
   heureFin: number;
   offre?: CodeOffre;
+  horaire?: { depart: string; retour: string };
 }): string {
   const sortie = sortieDe(reservation);
   if (sortie) {
@@ -158,6 +163,9 @@ export function formatCreneau(reservation: {
       `${formatDateComplete(reservation.dateDebut)}, rassemblement à ${formatHoraire(sortie.rassemblement)}, ` +
       `départ ${formatHoraire(sortie.depart)}`
     );
+  }
+  if (reservation.horaire) {
+    return `${formatDate(reservation.dateDebut)}, de ${formatHeureMinute(reservation.horaire.depart)} à ${formatHeureMinute(reservation.horaire.retour)}`;
   }
   return `${formatDate(reservation.dateDebut)}, de ${reservation.heureDebut}${INSECABLE}h à ${reservation.heureFin}${INSECABLE}h`;
 }
@@ -178,19 +186,23 @@ function sortieDe(reservation: { offre?: CodeOffre; dateDebut: string | Date }) 
 }
 
 /**
- * L'horaire d'une réservation, sans le jour : « 8 h - 11 h », et pour
- * Octobre rose, du rassemblement au retour, « 16 h - 17 h 30 ».
+ * L'horaire d'une réservation, sans le jour : « 8 h - 11 h » ; pour
+ * Octobre rose, du rassemblement au retour, « 16 h - 17 h 30 » ; pour une
+ * sortie réglée à la minute, l'horaire retenu, « 18 h 30 - 22 h 30 ».
  */
 export function formatPlageReservation(reservation: {
   offre?: CodeOffre;
   dateDebut: string | Date;
   heureDebut: number;
   heureFin: number;
+  horaire?: { depart: string; retour: string };
 }): string {
   const sortie = sortieDe(reservation);
   return sortie
     ? `${formatHoraire(sortie.rassemblement)} - ${formatHoraire(sortie.retour)}`
-    : formatPlageHoraire(reservation.heureDebut, reservation.heureFin);
+    : reservation.horaire
+      ? `${formatHeureMinute(reservation.horaire.depart)} - ${formatHeureMinute(reservation.horaire.retour)}`
+      : formatPlageHoraire(reservation.heureDebut, reservation.heureFin);
 }
 
 export function formatNombre(valeur: number, decimales = 0): string {
@@ -229,6 +241,11 @@ export function resumeOffre(reservation: {
   }
   if (reservation.offre === "octobre-rose") {
     return `Octobre rose · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;
+  }
+  // Les sorties sur commande, à la personne.
+  if (reservation.offre === "gbashi-bike" || reservation.offre === "padel-bike") {
+    const nom = reservation.offre === "gbashi-bike" ? "Gbashi bike" : "Padel bike";
+    return `${nom} · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;
   }
   const velos = n > 1 ? ` · ${n}${INSECABLE}vélos` : "";
   return `Location libre · ${reservation.dureeHeures ?? "?"}${INSECABLE}h${velos}`;

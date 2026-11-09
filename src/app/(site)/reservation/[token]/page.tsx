@@ -13,6 +13,7 @@ import { Etiquette, Pastille, Section, TitreSection } from "@/components/ui";
 import { velos as catalogue, optionsLocation } from "@/data/catalogue";
 import { itineraireOctobreRose } from "@/data/contenus";
 import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
+import { formatHeureMinute } from "@/data/reglages";
 import { depot } from "@/lib/db";
 import { ajouterJours, aujourdhui } from "@/lib/dates";
 import { motifDepuisCode } from "@/lib/echecs-paiement";
@@ -143,7 +144,7 @@ export default async function PageSuiviReservation({
           }
           telephoneInitial={reservation.client.telephone}
           diagnostic={diagnostic}
-          places={reservation.offre === "octobre-rose"}
+          places={reservation.offre === "octobre-rose" || reservation.offre === "padel-bike"}
         />
       )}
 
@@ -152,7 +153,9 @@ export default async function PageSuiviReservation({
           <p className="font-display text-[1.1rem] font-bold uppercase">Délai de paiement dépassé</p>
           <p className="mt-2 text-[0.92rem] leading-relaxed">
             Cette réservation n&apos;a pas été réglée dans les {EXPIRATION_PANIER_MINUTES} minutes :
-            {reservation.offre === "octobre-rose"
+            {reservation.offre === "padel-bike"
+              ? " les places sont reparties à la réservation. Réservez de nouveau sur la page Padel bike, ou "
+              : reservation.offre === "octobre-rose"
               ? " les places sont reparties à l'inscription. Inscrivez-vous de nouveau sur la page Octobre rose, ou "
               : " le vélo est reparti à la réservation. Reprenez une réservation depuis le catalogue, ou "}
             appelez-nous au <span className="whitespace-nowrap">{site.telephone}</span>.
@@ -249,7 +252,11 @@ export default async function PageSuiviReservation({
                 {formatDateAvecJour(reservation.dateDebut)}
               </p>
               <p className="mt-2 font-display text-[1.35rem] font-extrabold tabular-nums text-orange-sourd">
-                {sortie ? formatHoraire(sortie.rassemblement) : formatHeure(reservation.heureDebut)}
+                {sortie
+                  ? formatHoraire(sortie.rassemblement)
+                  : reservation.horaire
+                    ? formatHeureMinute(reservation.horaire.depart)
+                    : formatHeure(reservation.heureDebut)}
               </p>
               {sortie ? (
                 <p className="mt-2 text-[0.85rem] text-gris-cadre">
@@ -265,7 +272,11 @@ export default async function PageSuiviReservation({
                 {formatDateAvecJour(reservation.dateFin)}
               </p>
               <p className="mt-2 font-display text-[1.35rem] font-extrabold tabular-nums text-orange-sourd">
-                {sortie ? `vers ${formatHoraire(sortie.retour)}` : formatHeure(reservation.heureFin)}
+                {sortie
+                  ? `vers ${formatHoraire(sortie.retour)}`
+                  : reservation.horaire
+                    ? `vers ${formatHeureMinute(reservation.horaire.retour)}`
+                    : formatHeure(reservation.heureFin)}
               </p>
               <p className="mt-2 text-[0.85rem] text-gris-cadre">
                 {sortie

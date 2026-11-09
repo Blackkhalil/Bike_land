@@ -9,7 +9,8 @@
 
 import { itineraires } from "@/data/contenus";
 import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
-import { creneauDuDepart, exigencesOctobreRose } from "@/data/offres";
+import { formatHeureMinute } from "@/data/reglages";
+import { creneauDuDepart, EXIGENCES, exigencesOctobreRose } from "@/data/offres";
 
 import { site } from "./site";
 import { numeroDeFacture } from "./facture";
@@ -250,6 +251,12 @@ function detailsOffre(reservation: Reservation): [string, string][] {
       ["Participants", personnes(reservation.nombrePersonnes)],
     ];
   }
+  if (reservation.offre === "gbashi-bike" || reservation.offre === "padel-bike") {
+    return [
+      ["Formule", reservation.offre === "gbashi-bike" ? "Gbashi bike, sortie sur commande" : "Padel bike : à vélo jusqu'au terrain de padel, puis le padel"],
+      ["Participants", personnes(reservation.nombrePersonnes)],
+    ];
+  }
   const nom = nomDuRoadTrip(reservation);
   return [
     ["Formule", nom === "Road trip" ? "Road trip encadré" : `${nom}, road trip encadré`],
@@ -274,7 +281,10 @@ function aPrevoir(reservation: Reservation): string[] {
   }
   // Les consignes avec les heures de la sortie de ce jour-là.
   if (reservation.offre === "octobre-rose") return exigencesOctobreRose(sortieDeLaReservation(reservation));
-  // Gbashi bike, le dimanche : la séance de sport demande une tenue.
+  if (reservation.offre === "gbashi-bike" || reservation.offre === "padel-bike") {
+    return [...EXIGENCES[reservation.offre], "Aucune caution n'est demandée : la sortie est encadrée."];
+  }
+  // Un départ qui demande une tenue (sa consigne) la dit d'abord.
   const consigne = creneauDuDepart(reservation.dateDebut, reservation.heureDebut)?.consigne;
   return [
     ...(consigne ? [consigne] : []),
@@ -633,7 +643,7 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
 
   return envoyer({
     destinataire: reservation.client.email,
-    sujet: `C'est demain : départ à ${reservation.heureDebut} h de ${rendezVous.lieu}`,
+    sujet: `C'est demain : départ à ${reservation.horaire ? formatHeureMinute(reservation.horaire.depart) : `${reservation.heureDebut} h`} de ${rendezVous.lieu}`,
     texte,
     html: gabarit({
       titre: "C'est demain",
@@ -730,7 +740,10 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
       ? `À réclamer au départ : pièce d'identité, engagement signé et caution de ${formatXof(reservation.cautionXof)} en espèces.`
       : enRose(reservation)
         ? `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}), ${n} casque${n > 1 ? "s" : ""}, et à offrir ${texteOffertOctobreRose(n)} pour la sortie Octobre rose.`
-        : `À prévoir : ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
+        : reservation.offre === "padel-bike"
+          ? // Padel bike ne promet ni eau ni coco : les vélos et les casques.
+            `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}) et ${n} casque${n > 1 ? "s" : ""}, pour Padel bike.`
+          : `À prévoir : ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
 
   return envoyer({
     destinataire,

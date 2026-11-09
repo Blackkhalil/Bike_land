@@ -13,6 +13,9 @@ import { schemaDisponibilite } from "@/lib/validation";
  * gamme envoie encore un vélo précis : on répond alors pour lui et sa
  * gamme. La garantie réelle contre la double réservation reste côté
  * écriture.
+ *
+ * La page Padel bike demande, elle, tous les vélos libres, toutes gammes
+ * confondues (`toutes`) : un vélo est attribué à chaque personne.
  */
 export async function POST(requete: Request) {
   const corps = await requete.json().catch(() => null);
@@ -34,6 +37,9 @@ export async function POST(requete: Request) {
       velo ? depot.estDisponible(velo.id, dateDebut, dateFin, heureDebut, heureFin) : Promise.resolve(true),
       depot.velosLibres(dateDebut, heureDebut, heureFin),
     ]);
+    if (analyse.data.toutes && !veloId && !analyse.data.gamme) {
+      return NextResponse.json({ disponible: libres.length > 0, libres: libres.length });
+    }
     const libresGamme = gamme ? libres.filter((autre) => autre.gamme === gamme).length : 0;
     return NextResponse.json({ disponible: velo ? veloLibre : libresGamme > 0, libresGamme });
   } catch (erreur) {

@@ -20,6 +20,7 @@ const PAGES = [
   "/reserver/prestige",
   "/produits",
   "/octobre-rose",
+  "/padel-bike",
   "/itineraires",
   "/comment-ca-marche",
   "/contact",

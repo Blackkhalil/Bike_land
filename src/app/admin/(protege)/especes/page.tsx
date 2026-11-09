@@ -23,6 +23,7 @@ import {
   formatXof,
   resumeOffre,
 } from "@/lib/format";
+import { lireReglages } from "@/lib/reglages";
 import { estEnAttente, estPayee, estVenteEspeces, montantARendre, paiementPrincipal } from "@/lib/reservations";
 import { construirePeriode, dateEncaissement } from "@/lib/statistiques";
 import type { Reservation, StatutReservation } from "@/lib/types";
@@ -61,7 +62,11 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
   const demande = typeof parametres.jour === "string" ? parametres.jour : "";
   const jour = estDateISOValide(demande) && demande <= ajd ? demande : ajd;
 
-  const [parc, reservations] = await Promise.all([depot.listerVelos(), depot.listerReservations()]);
+  const [parc, reservations, reglages] = await Promise.all([
+    depot.listerVelos(),
+    depot.listerReservations(),
+    lireReglages(),
+  ]);
 
   const velos: VeloComptoir[] = parc.map((velo) => ({
     id: velo.id,
@@ -149,7 +154,7 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
       </header>
 
       <div className="mt-8 max-w-3xl">
-        <VenteEspeces velos={velos} occupes={occupes} instant={maintenant.getTime()} />
+        <VenteEspeces velos={velos} occupes={occupes} instant={maintenant.getTime()} reglages={reglages} />
       </div>
 
       <section aria-labelledby="titre-suivi" className="mt-12">

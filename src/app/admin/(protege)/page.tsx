@@ -21,7 +21,17 @@ import {
 import { PilotageOuverture } from "@/components/admin/PilotageOuverture";
 import { clotureInscriptionsOctobreRose, formatHoraire } from "@/data/octobre-rose";
 import { CRENEAUX_ROAD_TRIP, creneauxDisponibles, gammesDuDepart, heureAuBenin } from "@/data/offres";
-import { etatsSortiesOctobreRose, lireOuverture } from "@/lib/ouverture";
+import {
+  CODE_PADEL_BIKE,
+  delaiPadelEnClair,
+  jourOuverturePadel,
+  joursPadelReservables,
+  padelBikeOuvert,
+  plageHorairePadel,
+} from "@/data/padel-bike";
+import { programmeEnClair } from "@/data/reglages";
+import { etatsSortiesOctobreRose, lireOuverture, padelBikeOuvertEnLigne } from "@/lib/ouverture";
+import { lireReglages } from "@/lib/reglages";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
 
@@ -115,6 +125,11 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   // par jour, tant que la sortie de ce jour est à venir.
   const instantRose = new Date();
   const joursRose = (await etatsSortiesOctobreRose(instantRose, ouverture)).filter((etat) => !etat.partie);
+  // Padel bike en ligne : réglé sous son propre code, ouvert au public le 20 novembre.
+  const { padel } = await lireReglages();
+  const padelEnLigne = padelBikeOuvertEnLigne(ouverture);
+  const padelLance = padelBikeOuvert(padel);
+  const premierJourPadel = joursPadelReservables(padel)[0];
 
   const totalClients = stats.nouveauxClients + stats.clientsRecurrents;
   const joursCompares = nombreDeJours(stats.fenetreCourante.debut, stats.fenetreCourante.fin);
@@ -246,7 +261,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           creneaux={[
             ...CRENEAUX_ROAD_TRIP.map((c) => ({
               code: c.code,
-              // Le dimanche est Gbashi bike, nommé ici.
+              // Un départ qui porte le nom d'un produit le dit ici.
               libelle: c.produit ? `${c.libelle} · ${c.produit}` : c.libelle,
               // Les gammes qui roulent ce départ.
               horaire: `${c.heureDebut} h - ${c.heureFin} h · ${gammesDuDepart(c.code)}`,
@@ -262,6 +277,26 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
                       "Sur commande\u00a0: ne se réserve plus en ligne. Les clients écrivent sur WhatsApp, et la commande s'enregistre au comptoir.",
                   }),
             })),
+            // Padel bike, réservé en ligne sur sa page : il se ferme d'un clic
+            // quand le terrain n'est pas disponible, et se rouvre de même.
+            {
+              code: CODE_PADEL_BIKE,
+              libelle: "Padel bike",
+              horaire: `${programmeEnClair(padel)}, ${plageHorairePadel(padel)}`,
+              actif: padelEnLigne,
+              prochainDepart: padelEnLigne && padelLance ? premierJourPadel : undefined,
+              // L'heure, les jours, le prix et le reste se règlent dans
+              // Réglages des produits ; ici, seulement ouvrir ou fermer.
+              remarque: padelLance
+                ? padelEnLigne
+                  ? premierJourPadel
+                    ? `Ouvert : réservable ${delaiPadelEnClair(padel)}. Prochain départ proposé : ${formatDate(premierJourPadel)}.`
+                    : "Ouvert, mais aucun départ programmé : ajoutez des jours ou des dates dans Réglages des produits."
+                  : undefined
+                : padelEnLigne
+                  ? `Réservation en ligne à partir du ${jourOuverturePadel(padel)}, d'elle-même, pour les jours programmés dans Réglages des produits. D'ici là, la vente se fait au comptoir.`
+                  : `Fermé : ne s'ouvrira pas en ligne le ${jourOuverturePadel(padel)} tant que vous ne l'aurez pas rouvert.`,
+            },
             // Une ligne par jour de sortie Octobre rose : chacun s'ouvre et se
             // ferme seul.
             ...joursRose.map((etat) => ({
