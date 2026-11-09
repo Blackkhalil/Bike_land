@@ -14,7 +14,7 @@ import {
 } from "@/data/libelles-reglages-offres";
 import { NOMS_JOURS } from "@/data/reglages";
 import type { ReglagesOffres, SourceReglagesOffres } from "@/data/reglages-offres";
-import { formatDureeMinutes } from "@/lib/format";
+import { formatDureeMinutes, formatNombre } from "@/lib/format";
 import { penaliteRetardXof } from "@/lib/offres/retard";
 
 /** Les jours dans l'ordre de la semaine, lundi d'abord. */
@@ -239,7 +239,10 @@ export function ReglagesOffresGroupe({
       {source === "defaut" && (
         <p className="mt-4 rounded-[var(--radius-bouton)] bg-craie px-4 py-3 text-[0.82rem] leading-relaxed">
           Rien n&apos;est encore enregistré : ce sont les valeurs du tableur, avec vos décisions du
-          9 novembre (road trip à 3 000 F + 125 F, Gbashi à 3 500, 4 000 et 4 500 F + 125 F).
+          9 novembre (road trip à {montantF(parDefaut.roadTrip.prixPersonneXof)} +{" "}
+          {montantF(parDefaut.paiement.fraisParPersonneXof)}, Gbashi à{" "}
+          {formatNombre(parDefaut.gbashi.prixXof.CLASSIQUE)}, {formatNombre(parDefaut.gbashi.prixXof.PREMIUM)} et{" "}
+          {montantF(parDefaut.gbashi.prixXof.PRESTIGE)} + {montantF(parDefaut.paiement.fraisParPersonneXof)}).
         </p>
       )}
 
