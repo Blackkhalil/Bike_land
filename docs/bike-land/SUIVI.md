@@ -12,7 +12,7 @@ responsable notée ici.
 |---|---|
 | 0. Audit et plan | Terminée le 9 novembre 2026 |
 | Feu vert 1 | Donné le 9 novembre 2026 |
-| 1. Construction | En cours : lot 0 terminé, lots 1 et 2 en construction |
+| 1. Construction | En cours : lots 0, 1 (calculatrice), 2 (administration) et 5a (agent IA, inactif) fusionnés ; lots 3 (disponibilité), 4 (chatbot) et 5b (réservation et paiement) en construction |
 | 2. Tests | À venir |
 | 3. Démo, feu vert 2 | À venir |
 | 4. Mise en ligne | À venir |
@@ -52,8 +52,10 @@ responsable notée ici.
 | 17 | Infrastructure | Accord pour un projet Supabase de test gratuit ; secrets Vercel saisis par le responsable, guidé ; nettoyage des anciens secrets locaux. SasPay : pas de clé de test, la clé actuelle sert aussi aux essais (message du 9 novembre : « utilise la même clé SasPay qu'on a ici »), avec les précautions ci-dessous. Le 10 novembre, le responsable a laissé le chef de projet donner lui-même la base de test aux aperçus de la branche (mot de passe passé du fichier local à Vercel sans être affiché). |
 | 18 | Gbashi | Un coco et une eau par personne (10 novembre : « 1 coco »). |
 | 19 | Compte TikTok | @bikelandbj, reconnu pour la réduction comme Instagram @bikeland_bj. |
-| 20 | Chatbot | Pas dans cette mission : d'abord le formulaire et l'agent IA en coulisse (récapitulatif, captures). Une bulle « Discuter avec Bike Land » viendra juste après la mise en ligne, sur la même calculatrice (choix du 10 novembre). |
+| 20 | Chatbot | Remplacée par la décision 22 (le responsable a précisé le but le 10 novembre). |
 | 21 | Agent IA au lancement | Pas activé (10 novembre, pour ne rien dépenser) : le récapitulatif est le texte fixe du tableur, et chaque capture de réduction est vérifiée à la main dans l'administration. Le code de l'agent reste prêt : il s'active plus tard en ajoutant une clé (le modèle le moins cher, Claude Haiku, est conseillé). Avant d'activer : appliquer les points de la relecture du lot 5a (unités et rôles des montants dans le contrôle du texte, dates en lettres, lieu de traitement). Les pages CGV et données personnelles ne parlent de l'IA que si elle est activée. |
+| 22 | Le but : un chatbot | Précisé le 10 novembre : pas de nouveau site ni de pages de formulaire, mais une nouvelle fonctionnalité du site existant, développée en local sur la branche `feature/offres-groupe` : un chatbot qui se sert du tableur et du cahier pour calculer et négocier les offres de groupe. Il pose ses questions une par une avec des boutons (sans IA, gratuit), calcule avec la calculatrice identique au tableur, et négocie : le client donne son budget, le chatbot dit ce qu'il peut avoir et propose d'autres choix quand c'est trop juste (durée plus courte, sans accompagnateur, autre horaire, autre jour). |
+| 23 | Fin de la discussion | Le client réserve et paie par Mobile Money directement dans le chat (choix du 10 novembre). |
 
 ## Cas de test de référence (après décisions)
 
