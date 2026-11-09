@@ -49,7 +49,10 @@ responsable notée ici.
 | 14 | Email | Obligatoire dans les formulaires (récapitulatif, facture, lien de suivi). |
 | 15 | Couleurs | Identité actuelle du site (orange sur noir et crème), pas de terracotta. |
 | 16 | Points 8.1 à 8.5 du brief | Refus sous 30 minutes, budget minimum calculé (1 000 F + 400 F par personne aujourd'hui) ; seuil de 15 000 F gardé tel quel (budget en mode budget, temps de vélo en mode durée) ; quart d'heure ; exemple à 20 personnes ignoré ; hypothèses du tableur confirmées et modifiables. |
-| 17 | Infrastructure | Accord pour un projet Supabase de test gratuit ; secrets Vercel saisis par le responsable, guidé ; nettoyage des anciens secrets locaux. SasPay : pas de clé de test, la clé actuelle sert aussi aux essais (message du 9 novembre : « utilise la même clé SasPay qu'on a ici »), avec les précautions ci-dessous. |
+| 17 | Infrastructure | Accord pour un projet Supabase de test gratuit ; secrets Vercel saisis par le responsable, guidé ; nettoyage des anciens secrets locaux. SasPay : pas de clé de test, la clé actuelle sert aussi aux essais (message du 9 novembre : « utilise la même clé SasPay qu'on a ici »), avec les précautions ci-dessous. Le 10 novembre, le responsable a laissé le chef de projet donner lui-même la base de test aux aperçus de la branche (mot de passe passé du fichier local à Vercel sans être affiché). |
+| 18 | Gbashi | Un coco et une eau par personne (10 novembre : « 1 coco »). |
+| 19 | Compte TikTok | @bikelandbj, reconnu pour la réduction comme Instagram @bikeland_bj. |
+| 20 | Chatbot | Pas dans cette mission : d'abord le formulaire et l'agent IA en coulisse (récapitulatif, captures). Une bulle « Discuter avec Bike Land » viendra juste après la mise en ligne, sur la même calculatrice (choix du 10 novembre). |
 
 ## Cas de test de référence (après décisions)
 
@@ -163,9 +166,9 @@ avant le suivant.
 | Action | Quand | État |
 |---|---|---|
 | Clé SasPay de test | Remplacée par la clé actuelle (décision 17) | Sans objet |
-| Saisir le mot de passe de la base de test dans `.env.staging` (guidé) | Avant les tests sur la base de test | À faire |
-| Donner aux aperçus Vercel de la branche la base de test (guidé ; la clé SasPay y est déjà) | Avant la démo (Phase 3) | À faire |
-| Créer la clé Anthropic (agent IA) | Avant le lot 5 | À faire |
+| Saisir le mot de passe de la base de test dans `.env.staging` (guidé) | Avant les tests sur la base de test | Fait le 10 novembre (nouveau mot de passe, connexion vérifiée) |
+| Donner aux aperçus Vercel de la branche la base de test (la clé SasPay y est déjà) | Avant la démo (Phase 3) | Fait le 10 novembre par le chef de projet, avec l'accord du responsable : DATABASE_URL de test sur les deux projets, aperçus de la branche seulement |
+| Créer la clé Anthropic (agent IA) et ajouter un peu de crédit, puis la coller dans `.env.staging` | Avant les essais de l'agent IA | À faire |
 | Révoquer l'ancien jeton Vercel (Compte, Tokens) : il a été retiré du PC | Quand possible | À faire |
 | Programmer les jours de Padel bike dans l'administration | Avant le 20 novembre | À faire |
 
