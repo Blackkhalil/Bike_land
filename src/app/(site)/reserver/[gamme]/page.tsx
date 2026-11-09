@@ -18,6 +18,7 @@ import {
   noteDepartsHorsGamme,
   OUVERTURE_HEURE,
   sortieEncadreeDe,
+  velosEnEtatDe,
 } from "@/data/offres";
 import { depot } from "@/lib/db";
 import { occupationsDeLaGamme } from "@/lib/db/contrat";
@@ -48,10 +49,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const gamme = gammeDeLAdresse((await params).gamme);
   if (!gamme) return { title: "Gamme introuvable" };
   const heure = formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof);
-  // Le road trip encadré du samedi, pour le Premium et le Prestige. Le
-  // Classique n'a pas de sortie encadrée en ligne (Gbashi bike se commande
-  // sur WhatsApp) : sa description dit plutôt la durée et la machine.
-  const sortie = sortieEncadreeDe(gamme.code);
+  // Le road trip encadré du samedi, en groupe de dix au moins : pour une
+  // gamme qui a ce prix et assez de vélos en état (le Premium). Sinon (le
+  // Classique, le Prestige), la description dit la durée et la machine.
+  const sortie = sortieEncadreeDe(gamme.code, velosEnEtatDe(gamme.code, await depot.listerVelos()));
   const prixSortie = sortie ? formatXof(sortie.prixMinimum) : "";
   const quoi = sortie ? (sortie.nom === "Road trip" ? "road trip encadré" : sortie.nom) : "";
   const machine = gamme.machine.charAt(0).toLowerCase() + gamme.machine.slice(1);
@@ -110,10 +111,11 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
   const lePlusPris = gamme.code === GAMME_LA_PLUS_PRISE;
   const autres = GAMMES.filter((autre) => autre.code !== gamme.code);
   const nombre = deLaGamme.length;
-  const sortie = sortieEncadreeDe(gamme.code);
+  const sortie = sortieEncadreeDe(gamme.code, enEtat.length);
   // « Le road trip du samedi se fait en vélo Premium ou Prestige » : sur la
-  // page Classique, sous le prix.
-  const horsGamme = noteDepartsHorsGamme(gamme.code);
+  // page Classique, sous le prix. Sur celle du Prestige : le groupe de dix
+  // ne tient pas sur son seul vélo.
+  const horsGamme = noteDepartsHorsGamme(gamme.code, enEtat.length);
 
   return (
     <>
@@ -160,7 +162,7 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
                     <strong className="whitespace-nowrap font-semibold tabular-nums text-craie">
                       {formatXof(sortie.prixMinimum)}
                     </strong>{" "}
-                    par personne
+                    par personne{sortie.groupeMin > 1 && `, en groupe de ${sortie.groupeMin} au moins`}
                   </span>
                 </>
               )}
@@ -204,6 +206,7 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
               <Suspense fallback={<SqueletteReservation />}>
                 <WidgetReservation
                   gamme={gamme.code}
+                  velosEnEtat={enEtat.length}
                   creneaux={departs.creneaux}
                   complets={departs.complets}
                   periodesOccupees={periodesOccupees}

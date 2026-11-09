@@ -259,7 +259,7 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
                 : {
                     surCommande: true,
                     remarque:
-                      "Sur commande : ne se réserve plus en ligne. Les clients écrivent sur WhatsApp, et la commande s'enregistre au comptoir.",
+                      "Sur commande\u00a0: ne se réserve plus en ligne. Les clients écrivent sur WhatsApp, et la commande s'enregistre au comptoir.",
                   }),
             })),
             // Une ligne par jour de sortie Octobre rose : chacun s'ouvre et se

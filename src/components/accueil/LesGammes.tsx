@@ -7,6 +7,7 @@ import {
   GAMMES,
   GRILLE_HORAIRE,
   sortieEncadreeDe,
+  velosEnEtatDe,
 } from "@/data/offres";
 import { formatNombre, formatXof } from "@/lib/format";
 import type { Velo } from "@/lib/types";
@@ -60,7 +61,7 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
           // Le road trip du samedi, pour le Premium et le Prestige. Le
           // Classique n'a pas de sortie encadrée en ligne (Gbashi bike se
           // commande sur WhatsApp) : ni ligne de sortie, ni cocos offertes.
-          const sortie = sortieEncadreeDe(gamme.code);
+          const sortie = sortieEncadreeDe(gamme.code, velosEnEtatDe(gamme.code, velos));
 
           return (
             <article
@@ -106,6 +107,12 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
                     <dd className="text-right font-medium tabular-nums">
                       {sortie.avantPrix} {formatXof(sortie.prixMinimum)} / pers.
                     </dd>
+                  </div>
+                )}
+                {sortie && sortie.groupeMin > 1 && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="shrink-0 text-gris-cadre">En groupe</dt>
+                    <dd className="text-right font-medium">{sortie.groupeMin} personnes min.</dd>
                   </div>
                 )}
                 {sortie && (

@@ -44,6 +44,7 @@ export function WidgetReservation({
   periodesOccupees,
   creneaux,
   complets,
+  velosEnEtat,
   aucunVelo = false,
 }: {
   gamme: GammeVelo;
@@ -53,6 +54,8 @@ export function WidgetReservation({
   creneaux: CreneauProposable[];
   /** Les départs fermés par l'exploitant, montrés « Sold out » (voir `departsComplets`). */
   complets: CreneauProposable[];
+  /** Les vélos de la gamme en état : le road trip demande un groupe de dix, un vélo par personne. */
+  velosEnEtat: number;
   /** Tous les vélos de la gamme sont à l'atelier : rien à réserver. */
   aucunVelo?: boolean;
 }) {
@@ -71,8 +74,8 @@ export function WidgetReservation({
   const jourDemande = parametres.get("debut");
   // La sortie encadrée que la gamme réserve en ligne : le road trip du
   // samedi ; aucune pour le Classique (Gbashi bike se commande sur WhatsApp).
-  const sortie = sortieEncadreeDe(gamme);
-  const horsGamme = noteDepartsHorsGamme(gamme);
+  const sortie = sortieEncadreeDe(gamme, velosEnEtat);
+  const horsGamme = noteDepartsHorsGamme(gamme, velosEnEtat);
   // Un jour demandé qui tombe sur un départ encadré en ligne le
   // présélectionne. S'il n'est plus proposé (complet, ou clos la veille à
   // 22 h), c'est le même créneau la semaine suivante, et non le premier de

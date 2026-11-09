@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { Section, TitreSection } from "@/components/ui";
-import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, sortieEncadreeDe } from "@/data/offres";
+import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, sortieEncadreeDe, velosEnEtatDe } from "@/data/offres";
 import { depot } from "@/lib/db";
 import { filDAriane } from "@/lib/donnees-structurees";
 import { formatXof } from "@/lib/format";
@@ -49,7 +49,9 @@ export default async function PageCatalogue() {
       // La photo d'un vélo de la gamme, pour la reconnaître d'un coup d'œil.
       photo: deLaGamme.find((velo) => velo.photo)?.photo,
       lePlusPris: gamme.code === GAMME_LA_PLUS_PRISE,
-      sortie: sortieEncadreeDe(gamme.code),
+      // Le road trip du samedi, en groupe de dix : seulement pour une gamme
+      // qui a assez de vélos en état (velosEnEtatDe).
+      sortie: sortieEncadreeDe(gamme.code, velosEnEtatDe(gamme.code, velos)),
     };
   }).filter((gamme) => gamme.nombre > 0);
 
@@ -130,6 +132,9 @@ export default async function PageCatalogue() {
                             <span className="inline-block">
                               {gamme.sortie.nomDansLaPhrase} {gamme.sortie.avantPrix}{" "}
                               <span className="whitespace-nowrap">{formatXof(gamme.sortie.prixMinimum)} / pers.</span>
+                              {gamme.sortie.groupeMin > 1 && (
+                                <span className="whitespace-nowrap">, {gamme.sortie.groupeMin} pers. min.</span>
+                              )}
                             </span>
                           </>
                         )}

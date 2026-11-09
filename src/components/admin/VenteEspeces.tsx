@@ -23,6 +23,7 @@ import {
   heureAuBenin,
   motifRoadTripGamme,
   OUVERTURE_COMPTOIR_HEURE,
+  personnesMinRoadTrip,
   roadTripPossible,
   roadTripsDuJour,
   type GammeVelo,
@@ -403,7 +404,13 @@ export function VenteEspeces({
     ? velos.filter((v) => v.gamme === velo.gamme && enEtat(v) && !occupeSurCreneau(v.id)).length
     : 0;
   const personnesMax = octobreRose ? Math.max(1, placesRose) : Math.max(1, libresDeLaGamme);
-  const personnes = Math.min(nombrePersonnes, personnesMax);
+  // Le road trip du samedi se fait en groupe de dix au moins, comme en
+  // ligne ; Gbashi bike, le dimanche, n'a pas ce minimum.
+  const minimumGroupe = roadTrip ? personnesMinRoadTrip(date) : 1;
+  const personnes = Math.max(minimumGroupe, Math.min(nombrePersonnes, personnesMax));
+  // Les vélos libres d'une gamme sur ce créneau : il en faut dix pour un groupe du samedi.
+  const libresDe = (gamme: GammeVelo) =>
+    velos.filter((v) => v.gamme === gamme && enEtat(v) && !occupeSurCreneau(v.id)).length;
 
   // Le devis : calculé ici pour s'afficher tout de suite, avec la même
   // fonction que le serveur, au prix de la plaquette (sans les frais du
@@ -474,6 +481,8 @@ export function VenteEspeces({
                 ? "Le road trip part le samedi et le dimanche."
                 : veloHorsGamme
                   ? (motifRoadTripGamme(velo.gamme, date) ?? "Ce vélo ne roule pas ce road trip.")
+                : roadTrip && libresDeLaGamme < minimumGroupe
+                  ? `Le road trip du samedi se fait en groupe de ${minimumGroupe} personnes au moins : il ne reste que ${libresDeLaGamme} vélo${libresDeLaGamme > 1 ? "s" : ""} ${nomGamme(velo.gamme)} libre${libresDeLaGamme > 1 ? "s" : ""} sur ce départ.`
                 : !roadTrip && heureFin > FERMETURE_COMPTOIR_HEURE
                   ? `Le vélo rentrerait après ${FERMETURE_COMPTOIR_HEURE} h.`
                   : null;
@@ -695,7 +704,7 @@ export function VenteEspeces({
     ["location-libre", "Location libre", "À l'heure, avec caution"],
     // Le samedi en Premium ou Prestige ; le dimanche, Gbashi bike, toutes
     // gammes : commandé sur WhatsApp, il s'enregistre ici.
-    ["road-trip", "Road trip", `8 h : samedi en ${gammesDuDepart("samedi-matin")}, dimanche Gbashi bike (sur commande)`],
+    ["road-trip", "Road trip", `8 h : samedi en ${gammesDuDepart("samedi-matin")}, ${CRENEAUX_ROAD_TRIP[0].personnesMin} personnes min. ; dimanche Gbashi bike (sur commande)`],
     ...(sortiesRose.length > 0
       ? ([["octobre-rose", "Octobre rose", detailFormuleRose(sortiesRose)]] as const)
       : []),
@@ -845,12 +854,19 @@ export function VenteEspeces({
                 onChange={(evenement) => setNombrePersonnes(Number(evenement.target.value))}
                 className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem]"
               >
-                {Array.from({ length: personnesMax }, (_, i) => i + 1).map((n) => (
-                  <option key={n} value={n}>
-                    {n} personne{n > 1 ? "s" : ""}
-                  </option>
-                ))}
+                {Array.from({ length: Math.max(1, personnesMax - minimumGroupe + 1) }, (_, i) => minimumGroupe + i).map(
+                  (n) => (
+                    <option key={n} value={n}>
+                      {n} personne{n > 1 ? "s" : ""}
+                    </option>
+                  ),
+                )}
               </select>
+              {minimumGroupe > 1 && (
+                <p className="mt-1.5 text-[0.76rem] text-gris-cadre">
+                  Groupe de {minimumGroupe} personnes au moins, le samedi.
+                </p>
+              )}
               {!velo && (
                 <p className="mt-1.5 text-[0.76rem] text-gris-cadre">
                   Le maximum dépend de la gamme du vélo choisi.
@@ -991,7 +1007,10 @@ export function VenteEspeces({
             const pris = occupeSurCreneau(v.id);
             // Le road trip du samedi ne se roule pas en Classique : ces
             // vélos restent visibles, grisés, sans prix ce jour-là.
-            const horsGamme = roadTrip && !roadTripPossible(v.gamme, date);
+            // Le samedi, une gamme qui n'a plus dix vélos libres ne porte pas
+            // un groupe : ses vélos sont grisés aussi.
+            const horsGamme =
+              roadTrip && (!roadTripPossible(v.gamme, date) || libresDe(v.gamme) < minimumGroupe);
             const horsService = !enEtat(v);
             const choisi = v.id === veloId;
             // Le prix au comptoir de ce vélo : par personne en road trip.
@@ -1033,7 +1052,11 @@ export function VenteEspeces({
                   <span className="block truncate text-[0.9rem] font-semibold">{v.nom}</span>
                   <span className="block text-[0.76rem] text-gris-cadre">
                     {nomGamme(v.gamme)}
-                    {prix === null ? " · pas ce road trip" : ` · ${formatXof(prix)}${roadTrip ? " / pers." : ""}`}
+                    {prix === null
+                      ? roadTripPossible(v.gamme, date)
+                        ? ` · moins de ${minimumGroupe} vélos libres`
+                        : " · pas ce road trip"
+                      : ` · ${formatXof(prix)}${roadTrip ? " / pers." : ""}`}
                   </span>
                 </span>
                 <span

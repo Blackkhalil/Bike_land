@@ -6,6 +6,7 @@ import {
   DUREE_MAX_LOCATION_LIBRE,
   DUREE_PADEL_HEURES,
   gammesDuDepart,
+  PERSONNES_MIN_ROAD_TRIP,
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
   PRIX_PADEL_BIKE_XOF,
@@ -54,7 +55,9 @@ export default function PageCGV() {
           {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
           en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, au forfait par
           personne selon la gamme de vélo&nbsp;: dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} le samedi, en
-          vélo {gammesDuDepart("samedi-matin")}, eau et coco compris. La{" "}
+          vélo {gammesDuDepart("samedi-matin")}, eau et coco compris. Une réservation de road trip
+          compte {PERSONNES_MIN_ROAD_TRIP} personnes au moins, un vélo de la gamme choisie par
+          personne. La{" "}
           <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
           accompagnement, facturée à l&apos;heure selon la grille publiée sur le site, de une à{" "}
           {DUREE_MAX_LOCATION_LIBRE} heures.

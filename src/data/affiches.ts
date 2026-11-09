@@ -31,17 +31,15 @@ export const AFFICHES_GBASHI: Affiche[] = [
 }));
 
 /**
- * Padel bike : l'affiche du concept, puis le terrain de padel. Des images
- * tirées des vidéos de l'exploitant (public/images/Padel Bike, non
- * publié) : seule la première porte du texte.
+ * Padel bike : en tête, une vidéo du terrain de padel en journée (demande
+ * de l'exploitant), puis des images tirées de ses autres vidéos
+ * (public/images/Padel Bike, non publié).
  */
 export const AFFICHES_PADEL: Affiche[] = [
   {
-    src: "/images/produits/padel/01.jpg",
-    alt:
-      "Affiche Padel bike, devant le terrain de padel. Le concept est simple : on démarre à vélo pour " +
-      "s'échauffer, on arrive au lieu de padel et on joue pendant 3 heures. Participation : 3 500 F par " +
-      "personne. Vous pouvez commencer vos réservations.",
+    src: "/images/produits/padel/terrain.jpg",
+    video: "/images/produits/padel/terrain.mp4",
+    alt: "Vidéo du terrain de padel en journée, vu depuis la terrasse en bois : les pistes rouges et vertes, sous le soleil.",
   },
   { src: "/images/produits/padel/02.jpg", alt: "Un joueur sert sur la piste rouge, près du filet." },
   { src: "/images/produits/padel/03.jpg", alt: "Deux raquettes de padel et un tube de balles sur le gazon vert." },

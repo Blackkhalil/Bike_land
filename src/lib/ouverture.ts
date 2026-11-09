@@ -34,8 +34,10 @@ import {
   motifDepartSurCommande,
   motifHoraireLocation,
   OUVERTURE_HEURE,
+  personnesMinRoadTrip,
   roadTripPossible,
   roadTripsDuJour,
+  velosEnEtatDe,
   type GammeVelo,
   type OuvertureCreneaux,
 } from "@/data/offres";
@@ -347,25 +349,30 @@ export function personnesMaxPour(velo: Velo, parc: Velo[]): number {
  * Les départs encadrés vus d'une gamme.
  *
  * Un départ que la gamme ne roule pas n'apparaît pas du tout : le road trip
- * du samedi n'est pas proposé au Classique, ni ouvert ni « Sold out ». Un
- * départ où plus aucun de ses vélos n'est libre passe avec ceux que
- * l'exploitant a fermés, et s'affiche « Sold out » pour elle. Sans cela,
- * l'encart de la gamme proposait encore ce départ, et le client y revenait
- * en boucle.
+ * du samedi n'est pas proposé au Classique, ni ouvert ni « Sold out ». Pas
+ * davantage à une gamme qui n'a pas assez de vélos en état pour son groupe
+ * minimum (dix le samedi, un vélo par personne : le Prestige n'en a qu'un).
+ * Un départ où il ne reste plus assez de ses vélos libres pour ce groupe
+ * passe avec ceux que l'exploitant a fermés, et s'affiche « Sold out » pour
+ * elle. Sans cela, l'encart de la gamme proposait encore ce départ, et le
+ * client y revenait en boucle.
  */
 export async function departsDeLaGamme<T extends { date: DateISO; heureDebut: number; heureFin: number }>(
   gamme: GammeVelo,
   tousLesCreneaux: T[],
   tousLesComplets: T[],
 ): Promise<{ creneaux: T[]; complets: T[] }> {
-  const creneaux = tousLesCreneaux.filter((creneau) => roadTripPossible(gamme, creneau.date));
-  const complets = tousLesComplets.filter((creneau) => roadTripPossible(gamme, creneau.date));
+  const enEtat = velosEnEtatDe(gamme, await depot.listerVelos());
+  const roule = (creneau: T) =>
+    roadTripPossible(gamme, creneau.date) && enEtat >= personnesMinRoadTrip(creneau.date);
+  const creneaux = tousLesCreneaux.filter(roule);
+  const complets = tousLesComplets.filter(roule);
   const pleins = await Promise.all(
     creneaux.map(
       async (creneau) =>
-        !(await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin)).some(
+        (await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin)).filter(
           (velo) => velo.gamme === gamme,
-        ),
+        ).length < personnesMinRoadTrip(creneau.date),
     ),
   );
   return {

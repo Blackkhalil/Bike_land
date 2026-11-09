@@ -30,8 +30,11 @@ import {
   PRIX_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
+  PERSONNES_MIN_ROAD_TRIP,
   PRIX_PADEL_BIKE_XOF,
+  PRIX_ROAD_TRIP_XOF,
   roadTripPossible,
+  velosEnEtatDe,
 } from "@/data/offres";
 import {
   CRENEAU_GBASHI_BIKE,
@@ -44,6 +47,7 @@ import {
   placesRestantes,
   tarifOctobreRose,
 } from "@/data/produits";
+import { depot } from "@/lib/db";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
 import { etatsSortiesOctobreRose, lireOuverture } from "@/lib/ouverture";
 import { lienWhatsApp, site } from "@/lib/site";
@@ -196,7 +200,14 @@ function PhotoProduit({
  * Octobre rose ne paraît qu'en octobre, en tête de page.
  */
 export default async function PageProduits() {
-  const ouverture = await lireOuverture();
+  const [ouverture, parc] = await Promise.all([lireOuverture(), depot.listerVelos()]);
+  // Le road trip du samedi se fait en groupe de dix au moins, un vélo par
+  // personne, tous de la gamme choisie : seules les gammes qui ont ce prix
+  // et assez de vélos en état le proposent (le Premium ; le Prestige n'a
+  // qu'un vélo).
+  const gammesDuGroupe = GAMMES.filter(
+    (gamme) => PRIX_ROAD_TRIP_XOF[gamme.code] !== undefined && velosEnEtatDe(gamme.code, parc) >= PERSONNES_MIN_ROAD_TRIP,
+  );
   const maintenant = new Date();
   const departs = creneauxDisponibles(maintenant, ouverture);
   const samedi = departs.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
@@ -540,10 +551,12 @@ export default async function PageProduits() {
             <p className="mt-3 font-display text-[1.4rem] leading-tight">{roadTrip?.accroche}</p>
             <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-craie/75">
               Un de nos deux circuits, roulé ensemble avec un coordinateur qui ouvre la route, au
-              rythme du groupe. Aucune caution n&apos;est demandée.
+              rythme du groupe&nbsp;: {PERSONNES_MIN_ROAD_TRIP} personnes au moins. Aucune caution
+              n&apos;est demandée.
             </p>
             <dl className="mt-8 max-w-md">
               <Repere terme="Départ">Le samedi à {heureDuCreneau(CRENEAU_ROAD_TRIP)}, en groupe</Repere>
+              <Repere terme="Groupe">{PERSONNES_MIN_ROAD_TRIP} personnes minimum</Repere>
               <ReperesDepart complet={samediComplet} ouvert={samedi} />
               <Repere terme="Tarif">
                 <span className="font-display text-[1.2rem] text-orange-signal">
@@ -551,9 +564,16 @@ export default async function PageProduits() {
                 </span>{" "}
                 par personne
               </Repere>
-              {/* Le samedi se roule en Premium ou Prestige : le Classique a
-                  la location libre, et Gbashi bike le dimanche, sur commande. */}
-              <Repere terme="Vélos">{gammesDuDepart(CRENEAU_ROAD_TRIP)}</Repere>
+              {/* Le samedi se roule en Premium ou Prestige, un vélo par
+                  personne : seules les gammes qui ont assez de vélos pour un
+                  groupe sont nommées. Le Classique a la location libre, et
+                  Gbashi bike le dimanche, sur commande. */}
+              <Repere terme="Vélos">
+                {gammesDuGroupe.length > 0
+                  ? gammesDuGroupe.map((gamme) => gamme.nom).join(" ou ")
+                  : gammesDuDepart(CRENEAU_ROAD_TRIP)}
+                , un par personne
+              </Repere>
               <Repere terme="Compris">Vélo, casque, antivol, kit, eau et coco frais</Repere>
             </dl>
             <ul className="mt-6 max-w-md space-y-2 text-[0.88rem] text-craie/75">
@@ -570,10 +590,10 @@ export default async function PageProduits() {
               ))}
             </ul>
             <div className="mt-8 flex flex-wrap gap-3">
-              {samedi ? (
-                // Le samedi se roule en Premium ou Prestige : un bouton par
-                // gamme qui roule ce départ, plutôt que les trois gammes.
-                GAMMES.filter((gamme) => roadTripPossible(gamme.code, samedi.date)).map((gamme, index) => (
+              {samedi && gammesDuGroupe.some((gamme) => roadTripPossible(gamme.code, samedi.date)) ? (
+                // Un bouton par gamme qui peut emmener un groupe ce samedi,
+                // plutôt que les trois gammes.
+                gammesDuGroupe.filter((gamme) => roadTripPossible(gamme.code, samedi.date)).map((gamme, index) => (
                   <LienChoixProduit
                     key={gamme.code}
                     href={`/reserver/${gamme.code.toLowerCase()}`}
@@ -614,9 +634,11 @@ export default async function PageProduits() {
       {/* ----------------------------------------------- Location libre */}
       <Section id="location-libre" fond="craie" className="scroll-mt-[72px] py-20 sm:py-24">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+          {/* Un vélo Premium du parc, la gamme la plus prise (choix de
+              l'exploitant, novembre 2026) : le Muddyfox, tiré de sa fiche. */}
           <PhotoProduit
-            src="/images/produits/location-libre.jpg"
-            alt="Un VTT tout-suspendu rouge et jaune du parc Bike Land"
+            src="/images/produits/location-libre-premium.jpg"
+            alt="Le Muddyfox noir et bleu, VTT tout-suspendu de la gamme Premium du parc Bike Land"
             format="aspect-[4/3]"
             entiere
           />

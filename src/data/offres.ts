@@ -126,6 +126,15 @@ export const PRIX_PADEL_BIKE_XOF = 3500;
 export const DUREE_PADEL_HEURES = 3;
 
 /**
+ * Le road trip du samedi se fait en groupe : dix personnes au moins par
+ * réservation (décision de l'exploitant, novembre 2026), en ligne comme au
+ * comptoir. Une personne, un vélo, tous de la gamme choisie : une gamme qui
+ * compte moins de dix vélos en état ne le propose donc pas (le Prestige,
+ * exemplaire unique). Gbashi bike, sur commande, n'a pas ce minimum.
+ */
+export const PERSONNES_MIN_ROAD_TRIP = 10;
+
+/**
  * Cocos offertes au retour d'un road trip, par personne : deux, quelle que
  * soit la gamme et le jour (Gbashi bike compris). Décision de l'exploitant
  * (novembre 2026) : le Classique, à une coco, ne roule plus le samedi. Le
@@ -302,6 +311,8 @@ export const EXPIRATION_PANIER_MINUTES = 30;
  * (Gbashi bike) dans les trois gammes.
  * `consigne` s'ajoute alors à ce qu'il faut prévoir, dans le formulaire
  * comme dans les emails.
+ * `personnesMin` est le plus petit groupe qu'une réservation peut emmener
+ * sur ce départ : dix le samedi (PERSONNES_MIN_ROAD_TRIP), une le dimanche.
  */
 export const CRENEAUX_ROAD_TRIP = [
   {
@@ -315,6 +326,7 @@ export const CRENEAUX_ROAD_TRIP = [
     heureFin: 11,
     actifParDefaut: true,
     enLigne: true,
+    personnesMin: PERSONNES_MIN_ROAD_TRIP,
   },
   {
     code: "dimanche-matin",
@@ -328,8 +340,28 @@ export const CRENEAUX_ROAD_TRIP = [
     actifParDefaut: false,
     // Sur commande, sur WhatsApp : plus de réservation en ligne.
     enLigne: false,
+    personnesMin: 1,
   },
 ] as const;
+
+/** Le plus petit groupe accepté sur le road trip de ce jour : 10 le samedi, 1 un autre jour. */
+export function personnesMinRoadTrip(date: string): number {
+  return creneauDuJour(date)?.personnesMin ?? 1;
+}
+
+/**
+ * Pourquoi ce groupe est trop petit pour le road trip de ce jour, ou
+ * `null` s'il convient. Le même texte en ligne, au comptoir et dans le
+ * tunnel.
+ */
+export function motifGroupeRoadTrip(date: string, nombrePersonnes: number): string | null {
+  const minimum = personnesMinRoadTrip(date);
+  if (nombrePersonnes >= minimum) return null;
+  return (
+    `Le road trip se fait en groupe de ${minimum} personnes au moins, un vélo par personne. ` +
+    `À moins de ${minimum}, choisissez la location libre.`
+  );
+}
 
 /**
  * Ce que le site répond à qui demande en ligne un départ sur commande :
@@ -427,28 +459,52 @@ export function gammesDuDepart(code: CodeCreneau): string {
 /**
  * Les départs en ligne qu'une gamme ne roule pas, dits en une phrase pour
  * les pages de cette gamme : « Le road trip du samedi se fait en vélo
- * Premium ou Prestige. » `null` quand elle les roule tous.
+ * Premium ou Prestige. » Une gamme qui a le prix mais trop peu de vélos
+ * en état pour le groupe minimum (le Prestige, un seul vélo) : « Le road
+ * trip du samedi se fait en groupe de 10 personnes au moins, un vélo par
+ * personne : la gamme Prestige n'en compte qu'un. » `null` quand elle les
+ * roule tous.
  */
-export function noteDepartsHorsGamme(gamme: GammeVelo): string | null {
-  const phrases = CRENEAUX_ROAD_TRIP.filter(
-    (creneau) => creneau.enLigne && prixSurLeCreneau(creneau, gamme) === undefined,
-  ).map(
-    (creneau) => {
+export function noteDepartsHorsGamme(gamme: GammeVelo, velosEnEtat: number): string | null {
+  const phrases = CRENEAUX_ROAD_TRIP.filter((creneau) => creneau.enLigne).flatMap((creneau) => {
+    const nom = creneau.produit ?? `Le road trip du ${creneau.libelle.toLowerCase()}`;
+    if (prixSurLeCreneau(creneau, gamme) === undefined) {
       const roulent = GAMMES.filter((autre) => prixSurLeCreneau(creneau, autre.code) !== undefined).map(
         (autre) => autre.nom,
       );
-      return `${creneau.produit ?? `Le road trip du ${creneau.libelle.toLowerCase()}`} se fait en vélo ${listeOu(roulent)}.`;
-    },
-  );
+      return [`${nom} se fait en vélo ${listeOu(roulent)}.`];
+    }
+    if (velosEnEtat < creneau.personnesMin) {
+      const compte = velosEnEtat > 1 ? `n'en compte que ${velosEnEtat}` : velosEnEtat === 1 ? "n'en compte qu'un" : "n'en a aucun en état";
+      return [
+        `${nom} se fait en groupe de ${creneau.personnesMin} personnes au moins, un vélo par personne : ` +
+          `la gamme ${nomDeGamme(gamme)} ${compte}.`,
+      ];
+    }
+    return [];
+  });
   return phrases.length > 0 ? phrases.join(" ") : null;
 }
 
 /**
- * Le road trip en ligne le moins cher pour cette gamme, quel que soit le
- * jour : « dès … ». Un départ sur commande (Gbashi bike) n'y compte pas.
+ * Les départs en ligne qu'une gamme peut proposer : elle y a un prix, et
+ * assez de vélos en état pour le groupe minimum du départ. Un départ sur
+ * commande (Gbashi bike) n'y figure pas.
  */
-export function prixRoadTripMinimum(gamme: GammeVelo): number | null {
-  const prix = CRENEAUX_ROAD_TRIP.filter((creneau) => creneau.enLigne)
+function creneauxEnLigneDe(gamme: GammeVelo, velosEnEtat: number) {
+  return CRENEAUX_ROAD_TRIP.filter(
+    (creneau) =>
+      creneau.enLigne && prixSurLeCreneau(creneau, gamme) !== undefined && velosEnEtat >= creneau.personnesMin,
+  );
+}
+
+/**
+ * Le road trip en ligne le moins cher pour cette gamme, quel que soit le
+ * jour : « dès … ». Un départ sur commande (Gbashi bike) n'y compte pas,
+ * ni un départ dont la gamme n'a pas assez de vélos pour le groupe minimum.
+ */
+export function prixRoadTripMinimum(gamme: GammeVelo, velosEnEtat: number): number | null {
+  const prix = creneauxEnLigneDe(gamme, velosEnEtat)
     .map((creneau) => prixSurLeCreneau(creneau, gamme))
     .filter((montant): montant is number => montant !== undefined);
   return prix.length > 0 ? Math.min(...prix) : null;
@@ -456,29 +512,33 @@ export function prixRoadTripMinimum(gamme: GammeVelo): number | null {
 
 /**
  * La sortie encadrée qu'une gamme réserve en ligne, telle que les pages
- * l'annoncent : le road trip quand elle roule celui du samedi (Premium,
- * Prestige), sinon le seul départ en ligne qu'elle roule, sous son nom.
- * `null` si elle n'en roule aucun : le Classique, depuis que Gbashi bike
- * se commande sur WhatsApp (novembre 2026). Il garde la location libre.
+ * l'annoncent : le road trip quand elle roule celui du samedi, sinon le
+ * seul départ en ligne qu'elle roule, sous son nom. `null` si elle n'en
+ * roule aucun : le Classique, depuis que Gbashi bike se commande sur
+ * WhatsApp ; le Prestige, un seul vélo pour un groupe de dix au moins. Ils
+ * gardent la location libre.
+ *
+ * `velosEnEtat` : les vélos de la gamme en état de rouler. Une personne,
+ * un vélo : il en faut au moins autant que le groupe minimum du départ.
  *
  *  - `nom` : en tête de ligne, « Road trip » ;
  *  - `nomDansLaPhrase` : « road trip » ;
  *  - `avantPrix` : « dès » quand plusieurs départs ont chacun leur prix,
  *    « le samedi à » quand un seul départ, à prix unique ;
- *  - `prixMinimum` : le prix par personne le plus bas.
+ *  - `prixMinimum` : le prix par personne le plus bas ;
+ *  - `groupeMin` : le plus petit groupe accepté, 10 le samedi.
  *
- * Ainsi : « road trip le samedi à 3 125 FCFA ».
+ * Ainsi : « road trip le samedi à 3 125 FCFA », en groupe de 10 au moins.
  */
-export function sortieEncadreeDe(gamme: GammeVelo): {
+export function sortieEncadreeDe(gamme: GammeVelo, velosEnEtat: number): {
   nom: string;
   nomDansLaPhrase: string;
   avantPrix: string;
   prixMinimum: number;
+  groupeMin: number;
 } | null {
-  const creneaux = CRENEAUX_ROAD_TRIP.filter(
-    (creneau) => creneau.enLigne && prixSurLeCreneau(creneau, gamme) !== undefined,
-  );
-  const prixMinimum = prixRoadTripMinimum(gamme);
+  const creneaux = creneauxEnLigneDe(gamme, velosEnEtat);
+  const prixMinimum = prixRoadTripMinimum(gamme, velosEnEtat);
   if (creneaux.length === 0 || prixMinimum === null) return null;
   const roadTrip = creneaux.some((creneau) => !creneau.produit);
   const nom = roadTrip ? "Road trip" : creneaux.map((creneau) => creneau.produit).join(" ou ");
@@ -487,7 +547,13 @@ export function sortieEncadreeDe(gamme: GammeVelo): {
     nomDansLaPhrase: roadTrip ? "road trip" : nom,
     avantPrix: creneaux.length === 1 ? `le ${creneaux[0].libelle.toLowerCase()} à` : "dès",
     prixMinimum,
+    groupeMin: Math.min(...creneaux.map((creneau) => creneau.personnesMin)),
   };
+}
+
+/** Les vélos d'une gamme en état de rouler : ni retirés, ni à l'atelier. */
+export function velosEnEtatDe<T extends { gamme: GammeVelo; statut: string }>(gamme: GammeVelo, parc: T[]): number {
+  return parc.filter((velo) => velo.gamme === gamme && velo.statut !== "RETIRE" && velo.statut !== "MAINTENANCE").length;
 }
 
 /** Le créneau encadré d'un départ : le jour de la semaine et l'heure suffisent. */

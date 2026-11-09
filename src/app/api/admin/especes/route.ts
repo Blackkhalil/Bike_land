@@ -6,7 +6,14 @@ import {
   sortieOctobreRoseDu,
   sortieOctobreRosePartie,
 } from "@/data/octobre-rose";
-import { DUREE_ROAD_TRIP_HEURES, heureAuBenin, motifRoadTripGamme, nomDeGamme } from "@/data/offres";
+import {
+  DUREE_ROAD_TRIP_HEURES,
+  heureAuBenin,
+  motifGroupeRoadTrip,
+  motifRoadTripGamme,
+  nomDeGamme,
+  personnesMinRoadTrip,
+} from "@/data/offres";
 import { dateAuBenin } from "@/lib/dates";
 import { sessionAdminValide } from "@/lib/admin";
 import { ConflitDisponibiliteError, depot, TransactionDejaUtiliseeError } from "@/lib/db";
@@ -157,6 +164,21 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
       refus: NextResponse.json(
         { erreur: `${horsGamme} Ce vélo (${velo.nom}) est un ${nomDeGamme(velo.gamme)}.`, code: "GAMME" },
         { status: 409 },
+      ),
+    };
+  }
+  // Le road trip du samedi : dix personnes au moins, au comptoir comme en
+  // ligne. Gbashi bike, le dimanche, n'a pas ce minimum.
+  const groupeTropPetit = roadTrip ? motifGroupeRoadTrip(donnees.date, donnees.nombrePersonnes) : null;
+  if (groupeTropPetit) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur: groupeTropPetit,
+          code: "GROUPE",
+          champs: { nombrePersonnes: `${personnesMinRoadTrip(donnees.date)} personnes au moins.` },
+        },
+        { status: 422 },
       ),
     };
   }

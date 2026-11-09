@@ -124,9 +124,9 @@ export function filDAriane(maillons: { nom: string; chemin: string }[]) {
  * Un vélo du parc, proposé à la location : à l'heure (prix de la première
  * heure) et en road trip (prix par personne du jour le moins cher).
  */
-export function veloALouer(velo: Velo) {
+export function veloALouer(velo: Velo, velosEnEtatDeLaGamme: number) {
   const gamme = GAMMES.find((g) => g.code === velo.gamme);
-  const sortie = sortieEncadreeDe(velo.gamme);
+  const sortie = sortieEncadreeDe(velo.gamme, velosEnEtatDeLaGamme);
   const url = adresseComplete(`/velos/${velo.slug}`);
   const disponible = velo.statut !== "MAINTENANCE" && velo.statut !== "RETIRE";
   const offre = (nom: string, prix: number, unite?: "HUR") => ({

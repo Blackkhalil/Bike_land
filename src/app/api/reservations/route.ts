@@ -6,8 +6,10 @@ import {
   DUREE_ROAD_TRIP_HEURES,
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_RESERVATIONS_HEURE,
+  motifGroupeRoadTrip,
   motifRoadTripGamme,
   OUVERTURE_RESERVATIONS_HEURE,
+  personnesMinRoadTrip,
   reouvertureReservations,
   reservationsOuvertes,
 } from "@/data/offres";
@@ -145,6 +147,23 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
   const horsGamme = donnees.offre === "road-trip" ? motifRoadTripGamme(gamme, donnees.dateDebut) : null;
   if (horsGamme) {
     return { refus: NextResponse.json({ erreur: horsGamme, code: "GAMME" }, { status: 409 }) };
+  }
+
+  // Le road trip du samedi se fait en groupe de dix au moins : une page
+  // restée ouverte ou un appel direct ne réservent pas pour moins.
+  const groupeTropPetit =
+    donnees.offre === "road-trip" ? motifGroupeRoadTrip(donnees.dateDebut, donnees.nombrePersonnes) : null;
+  if (groupeTropPetit) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur: groupeTropPetit,
+          code: "GROUPE",
+          champs: { nombrePersonnes: `${personnesMinRoadTrip(donnees.dateDebut)} personnes au moins.` },
+        },
+        { status: 422 },
+      ),
+    };
   }
 
   // La même personne a déjà une réservation qui attend son paiement pour ce

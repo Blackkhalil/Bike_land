@@ -207,6 +207,15 @@ pas, le tunnel, l'API et le comptoir le refusent avec le motif, et les réservat
 prises gardent leur montant. Le Classique garde la location libre, et Gbashi bike sur
 commande.
 
+**Le road trip du samedi se fait en groupe de 10 personnes au moins** (décision du gérant,
+novembre 2026, `PERSONNES_MIN_ROAD_TRIP` et `personnesMin` sur le créneau). Une
+réservation, en ligne comme au comptoir, compte 10 personnes au moins, un vélo de la gamme
+choisie par personne (`motifGroupeRoadTrip`, code `GROUPE`). Une gamme qui a moins de 10
+vélos en état ne propose pas le road trip (`sortieEncadreeDe(gamme, velosEnEtat)`) : avec
+un seul vélo, le Prestige ne le propose plus. Un départ où il reste moins de 10 vélos
+libres de la gamme s'affiche « Sold out » pour elle (`departsDeLaGamme`). Gbashi bike,
+sur commande, n'a pas ce minimum.
+
 Ces tarifs comprennent 125 F de frais du paiement en ligne, par location libre et par
 personne en road trip (`FRAIS_PAIEMENT_EN_LIGNE_XOF`). **Au comptoir, en espèces, on paie
 le prix de la plaquette**, ces 125 F en moins : 1 000 F l'heure en Classique, 3 000 F le

@@ -23,6 +23,7 @@ import {
   OFFRES,
   noteDepartsHorsGamme,
   OUVERTURE_HEURE as ouvertureAtelier,
+  personnesMinRoadTrip,
   prixRoadTripDu,
   roadTripPossible,
   roadTripsDuJour,
@@ -142,9 +143,9 @@ export function TunnelReservation({
   // WhatsApp). Les départs reçus sont déjà
   // ceux de la gamme (`departsDeLaGamme`) : sans aucun, la formule encadrée
   // n'est pas proposée, faute de jour qui lui donne un prix.
-  const sortie = sortieEncadreeDe(gamme);
+  const sortie = sortieEncadreeDe(gamme, personnesMax);
   const roadTripOffert = sortie !== null && (creneaux.length > 0 || complets.length > 0);
-  const horsGamme = noteDepartsHorsGamme(gamme);
+  const horsGamme = noteDepartsHorsGamme(gamme, personnesMax);
 
   // La formule se choisit ici, et non sur la fiche vélo : c'est elle qui
   // commande le prix, la caution et ce qu'il faudra présenter au départ.
@@ -336,8 +337,14 @@ export function TunnelReservation({
   const velosMax =
     libresGamme?.cle === cleCreneau ? Math.max(1, Math.min(personnesMax, libresGamme.nombre)) : personnesMax;
   const gammeComplete = libresGamme?.cle === cleCreneau && libresGamme.nombre === 0;
-  // Le nombre choisi, ramené au plafond s'il a baissé entre-temps.
-  const nombreEffectif = Math.min(nombrePersonnes, velosMax);
+  // Le road trip du samedi se fait en groupe de dix au moins : le compteur
+  // part de dix et n'en descend pas. S'il reste moins de vélos libres que
+  // ce minimum, le groupe ne tient pas sur ce départ, et rien ne se paie.
+  const minimumPersonnes = offre === "road-trip" ? personnesMinRoadTrip(dateDebut) : 1;
+  const groupeImpossible = offre === "road-trip" && velosMax < minimumPersonnes;
+  // Le nombre choisi, ramené au plafond s'il a baissé entre-temps, et au
+  // minimum du départ.
+  const nombreEffectif = Math.max(minimumPersonnes, Math.min(nombrePersonnes, velosMax));
 
   // Le jour qui fixe le prix du road trip affiché : celui choisi quand la
   // gamme roule ce départ ; sinon un départ qu'elle roule, le temps que le
@@ -890,21 +897,31 @@ export function TunnelReservation({
 
             {/* Un vélo par personne, de la gamme choisie : autant qu'il en
                 reste à cette heure. */}
-            {velosMax > 1 && (
+            {groupeImpossible && (
+              <p role="alert" className="mt-7 rounded-[var(--radius-carte)] border border-orange-signal/40 bg-orange-signal/10 px-4 py-3 text-[0.86rem] leading-relaxed">
+                <span className="font-semibold">Groupe de {minimumPersonnes} personnes au moins.</span> Il ne reste que{" "}
+                {velosMax} vélo{velosMax > 1 ? "s" : ""} {nomGamme(gamme)} libre{velosMax > 1 ? "s" : ""} sur ce départ, un par
+                personne&nbsp;: choisissez un autre samedi, ou la location libre.
+              </p>
+            )}
+
+            {velosMax > 1 && !groupeImpossible && (
               <fieldset className="mt-7">
                 <legend className="text-[0.9rem] font-semibold">
                   {offre === "road-trip" ? "Combien de personnes ?" : "Combien de vélos ?"}
                 </legend>
                 <p className="mt-1.5 text-[0.8rem] text-gris-cadre">
                   {offre === "road-trip"
-                    ? `Jusqu'à ${velosMax}\u00a0: un vélo ${nomGamme(gamme)} par personne, autant qu'il en reste à cette heure.`
+                    ? minimumPersonnes > 1
+                      ? `De ${minimumPersonnes} à ${velosMax}\u00a0: le road trip se fait en groupe de ${minimumPersonnes} personnes au moins, un vélo ${nomGamme(gamme)} par personne.`
+                      : `Jusqu'à ${velosMax}\u00a0: un vélo ${nomGamme(gamme)} par personne, autant qu'il en reste à cette heure.`
                     : `Jusqu'à ${velosMax} vélos ${nomGamme(gamme)} libres à cette heure, au même prix chacun.`}
                 </p>
                 <div className="mt-3 flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setNombrePersonnes(Math.max(1, nombreEffectif - 1))}
-                    disabled={nombreEffectif <= 1}
+                    onClick={() => setNombrePersonnes(Math.max(minimumPersonnes, nombreEffectif - 1))}
+                    disabled={nombreEffectif <= minimumPersonnes}
                     aria-label={offre === "road-trip" ? "Retirer une personne" : "Retirer un vélo"}
                     className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white text-[1.2rem] disabled:opacity-35"
                   >
@@ -1016,7 +1033,7 @@ export function TunnelReservation({
 
             <Bouton
               onClick={() => setEtape(2)}
-              disabled={aucunDepart || gammeComplete || sansDepartOuvert}
+              disabled={aucunDepart || gammeComplete || sansDepartOuvert || groupeImpossible}
               taille="lg"
               className="mt-8"
             >
@@ -1335,7 +1352,7 @@ export function TunnelReservation({
               ) : (
                 <Bouton
                   onClick={envoyer}
-                  disabled={!cgv || envoiEnCours || fermeLaNuit || aucunDepart || gammeComplete || sansDepartOuvert}
+                  disabled={!cgv || envoiEnCours || fermeLaNuit || aucunDepart || gammeComplete || sansDepartOuvert || groupeImpossible}
                   taille="lg"
                 >
                   {envoiEnCours
