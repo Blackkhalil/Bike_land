@@ -21,12 +21,14 @@ const liens = [
   { href: "/admin", libelle: "Tableau de bord", exact: true },
   { href: "/admin/bilan", libelle: "Bilan des semaines" },
   { href: "/admin/reservations", libelle: "Réservations" },
+  { href: "/admin/remboursements", libelle: "Remboursements" },
   { href: "/admin/velos", libelle: "Parc de vélos" },
   { href: "/admin/reglages", libelle: "Réglages des produits" },
   { href: "/admin/clients", libelle: "Clients" },
   { href: "/admin/avis", libelle: "Avis clients" },
   { href: "/admin/messages", libelle: "Messages reçus" },
   { href: "/admin/parrainage", libelle: "Parrainage" },
+  { href: "/admin/journal", libelle: "Journal" },
 ];
 
 export function NavigationAdmin({

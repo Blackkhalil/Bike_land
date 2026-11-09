@@ -21,7 +21,7 @@ const { lireReglagesOffres } = await charger("src/lib/reglages-offres.ts");
 const contrat = await charger("src/data/reglages-offres.ts");
 const libelles = await charger("src/data/libelles-reglages-offres.ts");
 const journal = await charger("src/lib/journal.ts");
-const { resumeOffre } = await charger("src/lib/format.ts");
+const { formatCreneau, formatPlageReservation, resumeOffre } = await charger("src/lib/format.ts");
 const { cocosDe } = await charger("src/lib/reservations.ts");
 const { ajouterJours } = await charger("src/lib/dates.ts");
 const { heureAuBenin } = await charger("src/data/offres.ts");
@@ -72,8 +72,9 @@ verifier("ouvert ensuite", offresGroupeActives(await lireOuverture()), true);
 verifier("les départs du road trip actuel ne bougent pas", (await lireOuverture()).creneauxActifs.has("samedi-matin"), true);
 const [basculeOn] = await depot.listerJournal({ type: "interrupteur-offres" });
 verifier("écrit au journal : activées, par « admin »", [basculeOn?.details.actif, basculeOn?.auteur], [true, "admin"]);
-await appeler(routeOuverture, "/api/admin/ouverture", { action: "creneau", code: contrat.CODE_INTERRUPTEUR_OFFRES, actif: false });
+await appeler(routeOuverture, "/api/admin/ouverture", { action: "creneau", code: contrat.CODE_INTERRUPTEUR_OFFRES, actif: false, prenom: "Koffi" });
 verifier("refermé : de nouveau caché", offresGroupeActives(await lireOuverture()), false);
+verifier("le prénom retenu signe le journal", (await depot.listerJournal({ type: "interrupteur-offres" }))[0]?.auteur, "admin (Koffi)");
 verifier(
   "le journal le raconte",
   espaces(journal.resumeEvenement((await depot.listerJournal({ type: "interrupteur-offres" }))[0]).titre),
@@ -296,6 +297,15 @@ verifier(
     resumeOffre({ offre: "gbashi-groupe", nombrePersonnes: 5 }),
   ].map(espaces),
   ["Bike for All · 10 personnes · 45 min", "Bike for All · 12 personnes · 1 h 30", "Road trip en groupe · 10 personnes", "Gbashi Bike sur réservation · 5 personnes"],
+);
+verifier(
+  "l'horaire au quart d'heure, tiré des minutes",
+  [
+    formatPlageReservation({ dateDebut: "2026-11-14", heureDebut: 8, heureFin: 9, minuteDebut: 480, minuteFin: 525 }),
+    formatCreneau({ dateDebut: "2026-11-14", heureDebut: 8, heureFin: 9, minuteDebut: 480, minuteFin: 525 }),
+    formatPlageReservation({ dateDebut: "2026-11-14", heureDebut: 8, heureFin: 11 }),
+  ].map(espaces),
+  ["8 h - 8 h 45", "14 novembre 2026, de 8 h à 8 h 45", "8 h - 11 h"],
 );
 verifier(
   "cocos : ceux que le calcul a prévus, sinon zéro",

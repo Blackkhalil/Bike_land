@@ -10,6 +10,7 @@ import { estDateISOValide } from "@/lib/dates";
 import { depot } from "@/lib/db";
 import { auteurAdmin } from "@/lib/journal";
 import { rafraichirSitePublic } from "@/lib/rafraichir";
+import { schemaPrenom } from "@/lib/saisie-admin";
 
 /**
  * Ouvrir ou fermer la réservation, depuis le tableau de bord.
@@ -39,6 +40,9 @@ const schema = z.discriminatedUnion("action", [
       ...OCTOBRE_ROSE.sorties.map((sortie) => codeOctobreRose(sortie)),
     ]),
     actif: z.boolean(),
+    // Le prénom retenu sur ce téléphone, s'il y en a un : il signe la ligne
+    // du journal de l'interrupteur. Facultatif, ignoré s'il ne se lit pas.
+    prenom: z.string().max(80).optional(),
   }),
   z.object({
     action: z.literal("fermer"),
@@ -71,8 +75,13 @@ export async function POST(requete: Request) {
       await depot.reglerCreneau(demande.code, demande.actif);
       // Montrer ou cacher les offres de groupe aux clients se trace au journal.
       if (demande.code === CODE_INTERRUPTEUR_OFFRES) {
+        const prenom = schemaPrenom.safeParse(demande.prenom);
         await depot
-          .journaliser({ type: "interrupteur-offres", details: { actif: demande.actif }, auteur: auteurAdmin() })
+          .journaliser({
+            type: "interrupteur-offres",
+            details: { actif: demande.actif },
+            auteur: auteurAdmin(prenom.success ? prenom.data : undefined),
+          })
           .catch((erreur) => console.error("[ouverture] interrupteur réglé, journal non écrit", erreur));
       }
     } else if (demande.action === "fermer") {

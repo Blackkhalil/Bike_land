@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { ControlesVelo } from "@/components/admin/ControlesVelo";
 import { FormulaireNouveauVelo } from "@/components/admin/FormulaireNouveauVelo";
+import { IndisponibilitesVelos } from "@/components/admin/IndisponibilitesVelos";
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Pastille } from "@/components/ui";
 import { libellesStatut } from "@/data/catalogue";
@@ -28,7 +29,8 @@ const tons: Record<StatutVelo, "succes" | "info" | "alerte" | "neutre"> = {
  *
  * Une fiche par machine : où elle est, ce qu'elle fait en ce moment, ce
  * qu'elle a rapporté, et le seul réglage qui se change en exploitation,
- * son statut.
+ * son statut. En tête, les vélos indisponibles un jour précis (en
+ * réparation samedi), qui ne sortent du parc que ce jour-là.
  *
  * Trois choix méritent d'être expliqués :
  *
@@ -53,13 +55,15 @@ const tons: Record<StatutVelo, "succes" | "info" | "alerte" | "neutre"> = {
  */
 export default async function PageParcAdmin() {
   await exigerSessionAdmin();
-  const [velos, reservations, points] = await Promise.all([
+  const jour = aujourdhui();
+  const [velos, reservations, points, indisponibilites] = await Promise.all([
     depot.listerVelos({ inclureRetires: true }),
     depot.listerReservations(),
     depot.listerPointsDeRetrait(),
+    // Les vélos indisponibles d'aujourd'hui et des jours à venir.
+    depot.listerIndisponibilites({ depuis: jour }),
   ]);
 
-  const jour = aujourdhui();
   // Les revenus et sorties par vélo ne comptent que le payé.
   const actives = seulementPayees(reservations);
 
@@ -127,6 +131,14 @@ export default async function PageParcAdmin() {
           </p>
         </div>
       </header>
+
+      {/* Les vélos qui manquent un jour précis : en tête, c'est ce qu'on
+          déclare le plus souvent en arrivant à l'atelier. */}
+      <IndisponibilitesVelos
+        velos={velos.map((velo) => ({ id: velo.id, nom: velo.nom, gamme: velo.gamme, statut: velo.statut }))}
+        indisponibilites={indisponibilites}
+        aujourdhui={jour}
+      />
 
       <div className="mt-8 space-y-4">
         {fiches.map(({ velo, sorties, enCours, prochaine, revenus, participants, heures }) => {

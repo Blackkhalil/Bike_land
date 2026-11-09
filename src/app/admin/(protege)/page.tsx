@@ -30,8 +30,11 @@ import {
   plageHorairePadel,
 } from "@/data/padel-bike";
 import { programmeEnClair } from "@/data/reglages";
-import { etatsSortiesOctobreRose, lireOuverture, padelBikeOuvertEnLigne } from "@/lib/ouverture";
+import { CODE_INTERRUPTEUR_OFFRES } from "@/data/reglages-offres";
+import { AlerteParc } from "@/components/admin/AlerteParc";
+import { etatsSortiesOctobreRose, lireOuverture, offresGroupeActives, padelBikeOuvertEnLigne } from "@/lib/ouverture";
 import { lireReglages } from "@/lib/reglages";
+import { lireReglagesOffres } from "@/lib/reglages-offres";
 
 export const metadata: Metadata = { title: "Tableau de bord" };
 
@@ -131,6 +134,26 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   const padelLance = padelBikeOuvert(padel);
   const premierJourPadel = joursPadelReservables(padel)[0];
 
+  // Les offres de groupe : l'interrupteur, leurs réglages (illisibles, la
+  // vente est bloquée), les réservations payées dont un vélo n'est plus là,
+  // et l'argent à rendre. Une lecture qui échoue ne fait pas tomber la page.
+  const offresGroupe = offresGroupeActives(ouverture);
+  const [lectureOffres, touchees, remboursementsAFaire] = await Promise.all([
+    lireReglagesOffres().catch((erreur) => {
+      console.error("[tableau de bord] réglages des offres illisibles", erreur);
+      return null;
+    }),
+    depot.reservationsTouchees(aujourdhuiBenin).catch((erreur) => {
+      console.error("[tableau de bord] alerte du parc impossible", erreur);
+      return null;
+    }),
+    depot.listerRemboursements({ statut: "a_faire" }).catch((erreur) => {
+      console.error("[tableau de bord] remboursements illisibles", erreur);
+      return [];
+    }),
+  ]);
+  const reglagesOffresIllisibles = lectureOffres?.source === "illisible";
+
   const totalClients = stats.nouveauxClients + stats.clientsRecurrents;
   const joursCompares = nombreDeJours(stats.fenetreCourante.debut, stats.fenetreCourante.fin);
 
@@ -186,6 +209,29 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           </a>
         </div>
       </header>
+
+      {/* ---------------------------------------------- Ce qui ne peut attendre */}
+      {reglagesOffresIllisibles && (
+        <p className="mt-8 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-4 py-3 text-[0.86rem] leading-relaxed">
+          <strong className="font-semibold">Les réglages des offres de groupe ne se lisent plus.</strong> La vente de
+          ces offres est bloquée tant qu&apos;ils ne sont pas corrigés.{" "}
+          <Link href="/admin/reglages#reglages-offres" className="lien-souligne font-semibold">
+            Corriger les réglages
+          </Link>
+        </p>
+      )}
+      <AlerteParc touchees={touchees} />
+      {remboursementsAFaire.length > 0 && (
+        <p className="mt-8 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-4 py-3 text-[0.86rem] leading-relaxed">
+          <strong className="font-semibold">
+            {remboursementsAFaire.length} remboursement{remboursementsAFaire.length > 1 ? "s" : ""} à faire
+          </strong>
+          , sous 48 heures, sur SasPay ou en Mobile Money.{" "}
+          <Link href="/admin/remboursements" className="lien-souligne font-semibold">
+            Voir les remboursements
+          </Link>
+        </p>
+      )}
 
       {/* ------------------------------------------------------ Aujourd'hui */}
       <section className="mt-12" aria-labelledby="titre-aujourdhui">
@@ -255,10 +301,26 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
         <TitreBloc
           id="titre-ouverture"
           titre="Ouverture des réservations"
-          question="Fermer un départ ou un jour complet, et le rouvrir quand il y a de la place."
+          question="Montrer ou cacher les offres de groupe, fermer un départ ou un jour complet, et le rouvrir quand il y a de la place."
         />
         <PilotageOuverture
           creneaux={[
+            // L'interrupteur des offres de groupe, en premier : désactivé par
+            // défaut, il montre ou cache aux clients les trois offres d'un coup.
+            {
+              code: CODE_INTERRUPTEUR_OFFRES,
+              libelle: "Offres de groupe",
+              horaire: "Bike for All, Road trip en groupe, Gbashi Bike",
+              actif: offresGroupe,
+              mots: { actif: "Activées", inactif: "Désactivées", ouvrir: "Activer", fermer: "Désactiver" },
+              confirmationOuverture:
+                "Les trois offres de groupe vont apparaître sur le site et remplacer le road trip actuel du week-end. Les activer maintenant ?",
+              remarque:
+                (offresGroupe
+                  ? "Activées : les clients voient Bike for All, le Road trip en groupe et Gbashi Bike, et les réservent en ligne. Elles remplacent le road trip actuel du week-end."
+                  : "Désactivées : les trois offres de groupe sont cachées aux clients. Les activer les montre sur le site, à la place du road trip actuel du week-end.") +
+                (reglagesOffresIllisibles ? " Attention : leurs réglages ne se lisent plus, la vente est bloquée." : ""),
+            },
             ...CRENEAUX_ROAD_TRIP.map((c) => ({
               code: c.code,
               // Un départ qui porte le nom d'un produit le dit ici.
