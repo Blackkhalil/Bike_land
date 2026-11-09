@@ -49,7 +49,7 @@ responsable notée ici.
 | 14 | Email | Obligatoire dans les formulaires (récapitulatif, facture, lien de suivi). |
 | 15 | Couleurs | Identité actuelle du site (orange sur noir et crème), pas de terracotta. |
 | 16 | Points 8.1 à 8.5 du brief | Refus sous 30 minutes, budget minimum calculé (1 000 F + 400 F par personne aujourd'hui) ; seuil de 15 000 F gardé tel quel (budget en mode budget, temps de vélo en mode durée) ; quart d'heure ; exemple à 20 personnes ignoré ; hypothèses du tableur confirmées et modifiables. |
-| 17 | Infrastructure | Accord pour un projet Supabase de test gratuit ; clé SasPay de test demandée par le responsable ; secrets Vercel saisis par le responsable, guidé ; nettoyage des anciens secrets locaux. |
+| 17 | Infrastructure | Accord pour un projet Supabase de test gratuit ; secrets Vercel saisis par le responsable, guidé ; nettoyage des anciens secrets locaux. SasPay : pas de clé de test, la clé actuelle sert aussi aux essais (message du 9 novembre : « utilise la même clé SasPay qu'on a ici »), avec les précautions ci-dessous. |
 
 ## Cas de test de référence (après décisions)
 
@@ -97,6 +97,14 @@ demande après le vendredi 19 h pour le week-end, refusée.
   lancé est toujours confirmé par SasPay et une réservation payée reste honorée.
 - Réglages des offres illisibles (valeur impossible en base) : vente refusée et
   alerte dans l'administration, jamais de vente aux valeurs par défaut.
+- Essais de paiement avec la clé SasPay réelle (décision 17) : les tests
+  automatiques restent en mode démonstration, sans argent ; les quelques vrais
+  paiements de contrôle se font sur la base de test, avec le numéro du
+  responsable et des prix de test minuscules (200 F, minimum SasPay) réglés
+  dans les réglages de la base de test seulement. SasPay envoie ses
+  notifications au site de production : les références de test portent une
+  marque distincte pour que la production ne les confonde jamais avec une vraie
+  réservation (elle les ignore déjà, référence inconnue et montant contrôlé).
 
 ## Environnements
 
@@ -104,7 +112,7 @@ demande après le vendredi 19 h pour le week-end, refusée.
 |---|---|
 | Production | Branche `Projet-Bikeland`, projets Vercel `bike-land` (site) et `bikeland-gestion-rsfaj` (gestion), base Supabase de production. |
 | Test | Projet Supabase `bike-land-staging` (id `ypyiwoppmjfrmicaqazo`, Londres) : schéma de production, protection RLS sur toutes les tables, 18 vélos fictifs. |
-| Branche de travail | `feature/offres-groupe`, locale seulement. Pas de push tant que les aperçus Vercel reçoivent la base et la clé SasPay de production : il faut d'abord leur donner la base de test, sans clé SasPay. |
+| Branche de travail | `feature/offres-groupe`, locale seulement. Pas de push tant que les aperçus Vercel reçoivent la base de production : il faut d'abord donner aux aperçus de cette branche la base de test (la clé SasPay reste la même, décision 17). |
 
 ## Plan de retour arrière
 
@@ -140,9 +148,9 @@ avant le suivant.
 
 | Action | Quand | État |
 |---|---|---|
-| Créer une clé SasPay de test (bac à sable) | Avant les tests de paiement (lot 5) | À faire |
+| Clé SasPay de test | Remplacée par la clé actuelle (décision 17) | Sans objet |
 | Saisir le mot de passe de la base de test dans `.env.staging` (guidé) | Avant les tests sur la base de test | À faire |
-| Donner aux aperçus Vercel la base de test, sans clé SasPay (guidé) | Avant la démo (Phase 3) | À faire |
+| Donner aux aperçus Vercel de la branche la base de test (guidé ; la clé SasPay y est déjà) | Avant la démo (Phase 3) | À faire |
 | Créer la clé Anthropic (agent IA) | Avant le lot 5 | À faire |
 | Révoquer l'ancien jeton Vercel (Compte, Tokens) : il a été retiré du PC | Quand possible | À faire |
 | Programmer les jours de Padel bike dans l'administration | Avant le 20 novembre | À faire |
