@@ -105,11 +105,12 @@ demande après le vendredi 19 h pour le week-end, refusée.
   `delaiMinimumMinutes`, modifiable) : le temps de préparer vélos, cocos et
   gâteaux.
 - Gbashi : un coco (grand format) et une eau par personne, d'après la carte du
-  cahier (« vélo, eau, un coco »), modifiables. À confirmer par le responsable :
-  le site actuel en annonce deux depuis la consigne du 7 novembre.
-- Réduction : comptes reconnus = Instagram @bikeland_bj (site) et le compte
-  TikTok « Bike Land » cité par le cahier, dont l'identifiant reste à donner ;
-  d'ici là, une capture TikTok passe en validation manuelle.
+  cahier (« vélo, eau, un coco »), modifiables. Confirmé par le responsable le
+  9 novembre (« 1 coco »).
+- Réduction : comptes reconnus = Instagram @bikeland_bj (site) et TikTok
+  @bikelandbj (confirmé par le responsable le 9 novembre ; si un nom est faux,
+  la capture passe simplement en validation manuelle, jamais de réduction à
+  tort).
 - Essais de paiement avec la clé SasPay réelle (décision 17) : les tests
   automatiques restent en mode démonstration, sans argent ; les quelques vrais
   paiements de contrôle se font sur la base de test, avec le numéro du
