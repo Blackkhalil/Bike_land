@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { Bouton, BoutonLien } from "@/components/Bouton";
 import { EXPIRATION_PANIER_MINUTES } from "@/data/offres";
@@ -91,7 +91,7 @@ function etatHorloge(reglages: ReglagesPadel, maintenant: number): string {
  * contrôles.
  */
 export function ReservationPadelBike({
-  reglages,
+  reglages: reglagesDuServeur,
   ouvertEnLigne,
   joursFermes,
   velosEnEtat,
@@ -109,7 +109,11 @@ export function ReservationPadelBike({
   maintenantAuServeur: number;
 }) {
   const routeur = useRouter();
-  const [abonnement] = useState(() => abonnementHorloge(reglages));
+  // Les réglages affichés : ceux du serveur au rendu, remplacés par les
+  // nouveaux si le serveur répond qu'ils ont changé entre-temps (prix ou
+  // horaire modifiés dans l'administration pendant que la page était ouverte).
+  const [reglages, setReglages] = useState(reglagesDuServeur);
+  const abonnement = useMemo(() => abonnementHorloge(reglages), [reglages]);
   const [etat, ...jours] = useSyncExternalStore(
     abonnement,
     () => etatHorloge(reglages, new Date().getTime()),
@@ -138,6 +142,8 @@ export function ReservationPadelBike({
     moyen: MoyenPaiement;
     telephone: string;
     urlCheckout?: string;
+    /** Le montant demandé, figé à l'envoi : celui de la réservation enregistrée. */
+    montantXof: number;
   } | null>(null);
 
   // Le jour choisi, s'il se réserve encore (une clôture a pu passer
@@ -257,11 +263,17 @@ export function ReservationPadelBike({
           client: { prenom, nom, email, telephone },
           moyenPaiement: moyen,
           cgvAcceptees: cgv,
+          // Le prix et l'horaire que la page a montrés : le serveur refuse si
+          // les réglages ont changé depuis, avant toute demande de paiement.
+          attendu: { prixXof: reglages.prixXof, depart: reglages.depart, retour: reglages.retour },
         }),
       });
       const donnees = await reponse.json().catch(() => ({}));
 
       if (!reponse.ok) {
+        // Le prix ou l'horaire a changé : la page prend les nouveaux réglages,
+        // le client voit le nouveau montant avant de payer de nouveau.
+        if (donnees.code === "REGLAGES" && donnees.reglages) setReglages(donnees.reglages as ReglagesPadel);
         // Des vélos viennent d'être pris : le serveur dit combien il en
         // reste ce jour-là.
         if (typeof donnees.places === "number") setLibres({ date, nombre: donnees.places });
@@ -292,6 +304,10 @@ export function ReservationPadelBike({
         moyen: donnees.paiement.suivi.moyen,
         telephone: donnees.paiement.suivi.telephone,
         urlCheckout: donnees.paiement.suivi.urlCheckout,
+        // Le total enregistré par le serveur, frais de l'opérateur compris :
+        // l'écran d'attente ne bouge plus, même si l'horloge de la page avance.
+        montantXof:
+          typeof donnees.totalXof === "number" ? donnees.totalXof + fraisEncaissement(donnees.totalXof) : debite,
       });
     } catch {
       setErreur("Connexion interrompue. Vérifiez votre réseau et réessayez.");
@@ -318,7 +334,7 @@ export function ReservationPadelBike({
             paiementId={attente.paiementId}
             moyen={attente.moyen}
             telephone={attente.telephone}
-            montantXof={debite}
+            montantXof={attente.montantXof}
             expiration="La demande de paiement a expiré et les vélos ne sont plus retenus. Rechargez cette page pour réserver de nouveau."
             urlCheckout={attente.urlCheckout}
             onConfirme={() => routeur.push(`/reservation/${attente.token}?nouvelle=1`)}

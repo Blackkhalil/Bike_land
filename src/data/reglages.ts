@@ -181,6 +181,12 @@ export const schemaReglagesPadel = z
     message: "Les vélos rentrent à 23 h au plus tard.",
     path: ["retour"],
   })
+  // Le comptoir n'enregistre pas de départ à 22 h ou plus tard : un départ
+  // réglé plus tard ne pourrait plus s'y vendre.
+  .refine((r) => minutesDe(r.depart) < 22 * 60, {
+    message: "Départ avant 22 h.",
+    path: ["depart"],
+  })
   .refine((r) => r.personnesMin <= r.personnesMax, {
     message: "Le minimum dépasse le maximum.",
     path: ["personnesMin"],

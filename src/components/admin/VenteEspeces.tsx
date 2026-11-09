@@ -441,7 +441,9 @@ export function VenteEspeces({
   const libresDeLaGamme = velo
     ? velos.filter((v) => v.gamme === velo.gamme && enEtat(v) && !occupeSurCreneau(v.id)).length
     : 0;
-  const personnesMax = attribueDOffice ? Math.max(1, placesRose) : Math.max(1, libresDeLaGamme);
+  // Douze personnes au plus par vente : le devis s'arrête là (calculerDevis),
+  // la liste aussi, même quand plus de vélos sont libres.
+  const personnesMax = attribueDOffice ? Math.max(1, Math.min(12, placesRose)) : Math.max(1, libresDeLaGamme);
   // Le road trip du samedi se fait en groupe de dix au moins, comme en
   // ligne ; Gbashi bike, le dimanche, n'a pas ce minimum.
   const minimumGroupe = roadTrip ? personnesMinRoadTrip(date) : 1;
@@ -512,7 +514,9 @@ export function VenteEspeces({
       : attribueDOffice
         ? placesRose < personnes
           ? placesRose === 0
-            ? "Plus aucun vélo libre pour la sortie Octobre rose de ce jour."
+            ? padel
+              ? "Plus aucun vélo libre pour Padel bike ce jour-là."
+              : "Plus aucun vélo libre pour la sortie Octobre rose de ce jour."
             : `Il ne reste que ${placesRose} vélo${placesRose > 1 ? "s" : ""} libre${placesRose > 1 ? "s" : ""} pour la sortie.`
           : null
         : !encadree && heureTapee === null

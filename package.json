@@ -21,7 +21,8 @@
     "db:migrate": "prisma migrate dev",
     "db:sauvegarde": "tsx outils/sauvegarde-bdd.ts",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test": "node tests/lancer.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

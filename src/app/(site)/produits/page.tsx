@@ -12,7 +12,13 @@ import { Pastille, Section, TitreSection } from "@/components/ui";
 import { AFFICHES_GBASHI, AFFICHES_PADEL, AFFICHES_ROAD_TRIP } from "@/data/affiches";
 import { itineraireOctobreRose, itineraires } from "@/data/contenus";
 import { formatHoraire, OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
-import { delaiPadelEnClair, jourOuverturePadel, padelBikeOuvert, quandPadel } from "@/data/padel-bike";
+import {
+  delaiPadelEnClair,
+  jourOuverturePadel,
+  joursPadelReservables,
+  padelBikeOuvert,
+  quandPadel,
+} from "@/data/padel-bike";
 import { formatDureeHeures, REGLAGES_PADEL_PAR_DEFAUT } from "@/data/reglages";
 import { lireReglages } from "@/lib/reglages";
 import {
@@ -50,7 +56,7 @@ import {
 } from "@/data/produits";
 import { depot } from "@/lib/db";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
-import { etatsSortiesOctobreRose, lireOuverture } from "@/lib/ouverture";
+import { etatsSortiesOctobreRose, lireOuverture, padelBikeOuvertEnLigne } from "@/lib/ouverture";
 import { lienWhatsApp, site } from "@/lib/site";
 import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { filDAriane } from "@/lib/donnees-structurees";
@@ -236,6 +242,10 @@ export default async function PageProduits() {
   const avecOctobreRose = octobreRoseEnCours(maintenant);
   // Padel bike se réserve en ligne à partir du 20 novembre 2026, sur sa page.
   const padelLance = padelBikeOuvert(padel, maintenant);
+  // Réservable en ligne pour de vrai : ouvert, pas fermé depuis le tableau de
+  // bord, et au moins un jour programmé qui se réserve encore.
+  const padelReservable =
+    padelLance && padelBikeOuvertEnLigne(ouverture) && joursPadelReservables(padel, maintenant).length > 0;
   // Octobre rose se réserve sur sa propre page. Ici, on dit seulement s'il
   // reste des places, jour par jour : quand plus aucun jour à venir n'en a,
   // complets ou fermés depuis le tableau de bord, la carte affiche « Sold
@@ -474,7 +484,11 @@ export default async function PageProduits() {
                 par personne
               </Repere>
               <Repere terme="Réservation">
-                {padelLance ? `En ligne, ${delaiPadelEnClair(padel)}` : `En ligne dès le ${jourOuverturePadel(padel)}`}
+                {padelReservable
+                  ? `En ligne, ${delaiPadelEnClair(padel)}`
+                  : padelLance
+                    ? "Dates bientôt annoncées"
+                    : `En ligne dès le ${jourOuverturePadel(padel)}`}
               </Repere>
               <Repere terme="WhatsApp">
                 <NumeroWhatsApp message={MESSAGES_WHATSAPP.padelBike} />
@@ -482,12 +496,14 @@ export default async function PageProduits() {
             </dl>
             <div className="mt-8">
               <BoutonLien href="/padel-bike" variante="primaire" taille="lg">
-                {padelLance ? "Réserver Padel bike" : "Découvrir Padel bike"}
+                {padelReservable ? "Réserver Padel bike" : "Découvrir Padel bike"}
               </BoutonLien>
               <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-gris-cadre">
-                {padelLance
+                {padelReservable
                   ? "Choisissez votre jour et le nombre de personnes, et payez en Mobile Money : un vélo est attribué à chacun."
-                  : `Réservation en ligne sur sa page dès le ${jourOuverturePadel(padel)}. D'ici là, écrivez-nous sur WhatsApp : nous organisons la sortie.`}
+                  : padelLance
+                    ? "Les prochaines dates arrivent bientôt. Écrivez-nous sur WhatsApp : nous vous disons quand part la prochaine sortie."
+                    : `Réservation en ligne sur sa page dès le ${jourOuverturePadel(padel)}. D'ici là, écrivez-nous sur WhatsApp : nous organisons la sortie.`}
               </p>
             </div>
           </div>

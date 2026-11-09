@@ -192,6 +192,9 @@ function CartePadel({
           if (modifie && !envoi) void enregistrer();
         }}
       >
+        {/* Rien ne se modifie pendant l'enregistrement : la réponse du serveur
+            remplace le formulaire, un changement fait entre-temps serait perdu. */}
+        <fieldset disabled={envoi} className="m-0 min-w-0 border-0 p-0">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Champ
             id="padel-prix"
@@ -425,6 +428,7 @@ function CartePadel({
             Revenir aux valeurs de départ
           </button>
         </div>
+        </fieldset>
       </form>
     </section>
   );

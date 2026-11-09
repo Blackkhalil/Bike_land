@@ -482,6 +482,27 @@ async function preparerPadelBike(corps: unknown, requete: Request): Promise<Prep
   // Avant l'ouverture, rien ne se réserve en ligne : une page restée
   // ouverte ou un appel direct non plus. Ensuite, le jour.
   const { padel } = await lireReglages();
+  // Le prix ou l'horaire a changé dans l'administration depuis que la page
+  // l'a affiché : on ne fait payer ni un autre montant ni une autre heure.
+  // La page reçoit les réglages du moment et les montre avant un nouvel essai.
+  if (
+    donnees.attendu &&
+    (donnees.attendu.prixXof !== padel.prixXof ||
+      donnees.attendu.depart !== padel.depart ||
+      donnees.attendu.retour !== padel.retour)
+  ) {
+    return {
+      refus: NextResponse.json(
+        {
+          erreur:
+            "Le prix ou l'horaire de Padel bike vient de changer : vérifiez le nouveau montant, puis payez de nouveau.",
+          code: "REGLAGES",
+          reglages: padel,
+        },
+        { status: 409 },
+      ),
+    };
+  }
   const refusDepart = motifRefusPadel(padel, donnees.date);
   if (refusDepart) {
     return {
@@ -701,6 +722,8 @@ async function creerEtEncaisser(demande: DemandeReservation) {
         token,
         lienSuivi,
         facture,
+        // Le total enregistré, que l'écran d'attente affiche tel quel.
+        totalXof: reservation.totalXof,
         confirmee,
         paiement: {
           statut: paiement.statut,

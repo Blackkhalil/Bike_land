@@ -12,6 +12,7 @@ import {
   delaiPadelEnClair,
   horairePadel,
   jourOuverturePadel,
+  joursPadelReservables,
   padelBikeOuvert,
   quandPadel,
 } from "@/data/padel-bike";
@@ -71,6 +72,9 @@ export default async function PagePadelBike() {
   const padel = reglages.padel;
   const maintenant = new Date();
   const lance = padelBikeOuvert(padel, maintenant);
+  // Réservable en ligne pour de vrai : ouvert, pas fermé depuis le tableau de
+  // bord, et au moins un jour programmé qui se réserve encore.
+  const reservable = lance && padelBikeOuvertEnLigne(ouverture) && joursPadelReservables(padel, maintenant).length > 0;
   const aujourdhui = heureAuBenin(maintenant).date;
   // Les jours fermés à toutes les formules depuis le tableau de bord.
   const joursFermes = ouverture.joursFermes
@@ -132,11 +136,15 @@ export default async function PagePadelBike() {
                   : `De ${padel.personnesMin} à ${padel.personnesMax} personnes`}
               </Repere>
               <Repere terme="Réservation">
-                {lance ? `En ligne, ${delaiPadelEnClair(padel)}` : `En ligne dès le ${jourOuverturePadel(padel)}`}
+                {reservable
+                  ? `En ligne, ${delaiPadelEnClair(padel)}`
+                  : lance
+                    ? "Dates bientôt annoncées"
+                    : `En ligne dès le ${jourOuverturePadel(padel)}`}
               </Repere>
             </dl>
             <BoutonLien href="#reservation" variante="primaire" taille="lg" className="mt-8">
-              {lance ? "Réserver ma sortie" : "Voir la réservation"}
+              {reservable ? "Réserver ma sortie" : "Voir la réservation"}
             </BoutonLien>
           </div>
           <div className="min-w-0">

@@ -136,6 +136,12 @@ export const schemaReservationPadel = z.object({
   offre: z.literal("padel-bike"),
   date: dateISO,
   nombrePersonnes: z.number().int().min(1).max(12, "12 personnes au plus par réservation."),
+  // Le prix et l'horaire que la page a montrés au client : le serveur les
+  // compare aux réglages du moment et refuse s'ils ont changé. Facultatif
+  // pour une page ouverte avant cet ajout ; le prix ne vient jamais de là.
+  attendu: z
+    .object({ prixXof: z.number().int(), depart: z.string().max(5), retour: z.string().max(5) })
+    .optional(),
   client: clientEnLigne,
   moyenPaiement: moyenEnLigne,
   message: z.string().trim().max(1000).optional(),
