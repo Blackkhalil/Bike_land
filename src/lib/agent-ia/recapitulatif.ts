@@ -28,9 +28,10 @@ import {
   type ParametresAgentIa,
   type ReponseAgentIa,
 } from "./client";
-import { verifierTexteIa, type FaitCalcule } from "./verification";
+import { controlerNombres, verifierTexteIa, type FaitCalcule } from "./verification";
 
 export {
+  controlerNombres,
   lireNombres,
   verifierTexteIa,
   type ChiffresAttendus,
@@ -49,25 +50,41 @@ export const NOMS_OFFRES_GROUPE: Record<CodeOffreGroupe, string> = {
 
 export interface EntreeRecapitulatif {
   offre: CodeOffreGroupe;
-  /** Le prénom du client, et lui seul. Absent : le message dit simplement « Bonjour ». */
+  /** Le prénom du client. Seul son premier mot part chez l'agent ; absent, le message dit simplement « Bonjour ». */
   prenom?: string | null;
   /** Le texte modèle fixe du moteur (celui du tableur), toujours juste : c'est le repli. */
   texteModele: string;
   /**
    * Les faits calculés et mis en forme par le moteur : total, détail,
    * personnes, date, heures de départ et de retour, cocos, gâteaux, règle de
-   * retard. Tout nombre que le texte peut citer doit y figurer (ou dans le
-   * texte modèle). Marquer `obligatoire` ce que le message doit reprendre.
+   * retard. Toute heure et tout nombre que le texte peut citer y figure, y
+   * compris ceux du texte modèle (« 25 km », « 20 gâteaux »). Les dates
+   * s'écrivent en toutes lettres (« samedi 21 novembre 2026 »). Marquer
+   * `obligatoire` ce que le message doit reprendre (total, règle de retard).
    */
   faits: readonly FaitCalcule[];
   /** Le total à payer, qui doit figurer dans le texte. */
   totalXof: number;
-  /** Tous les montants que le texte peut citer. */
+  /** Tous les montants que le texte peut citer, y compris ceux des faits et du texte modèle. */
   montantsXof: readonly number[];
 }
 
-/** Pourquoi le texte modèle a été envoyé à la place du texte de l'agent. */
-export type MotifRepliRecapitulatif = "cle-absente" | "refus" | "erreur" | "delai" | "montant-inconnu" | "format";
+/**
+ * Pourquoi le texte modèle a été envoyé à la place du texte de l'agent :
+ * clé absente ; coordonnées dans les faits (rien n'est envoyé) ; texte modèle
+ * ou faits qui citent un chiffre hors du calcul (rien n'est envoyé) ; refus,
+ * erreur ou délai dépassé chez l'agent ; texte de l'agent refusé par le
+ * contrôle (montant inconnu, ou forme).
+ */
+export type MotifRepliRecapitulatif =
+  | "cle-absente"
+  | "coordonnees"
+  | "faits"
+  | "refus"
+  | "erreur"
+  | "delai"
+  | "montant-inconnu"
+  | "format";
 
 export interface ResultatRecapitulatif {
   texte: string;
@@ -75,18 +92,22 @@ export interface ResultatRecapitulatif {
   motifRepli?: MotifRepliRecapitulatif;
 }
 
-/** Le client attend : quelques secondes, nouvelle tentative comprise. */
-export const DELAI_RECAPITULATIF_MS = 10_000;
+/**
+ * Le récapitulatif part après le paiement : personne n'attend devant
+ * l'écran, on laisse à l'agent le temps de réfléchir puis d'écrire.
+ */
+export const DELAI_RECAPITULATIF_MS = 30_000;
 /** De quoi réfléchir (toujours actif sur ce modèle) puis écrire un message court. */
 export const MAX_TOKENS_RECAPITULATIF = 4096;
-/** Reformuler des faits donnés est un travail simple : effort faible, réponse plus rapide. */
+/** Reformuler des faits donnés est un travail simple : effort faible, réponse plus rapide et moins chère. */
 export const EFFORT_RECAPITULATIF = "low" as const;
 
 export const CONSIGNES_RECAPITULATIF = `Tu es l'assistant de réservation de Bike Land, une entreprise de location de vélos à Fidjrossè, Cotonou (Bénin). Tu écris le message de récapitulatif qu'un client reçoit pour sa réservation d'une offre de groupe.
 
 Règles à respecter sans exception :
 - Tu ne calcules jamais rien. Tu reprends uniquement les chiffres des faits fournis, tels qu'ils sont écrits : mêmes montants, mêmes heures, même date. Tu n'en ajoutes aucun et tu n'en arrondis aucun.
-- Les montants s'écrivent en chiffres, avec une espace entre les milliers, suivis de F, comme dans les faits.
+- Les montants s'écrivent en chiffres, avec une espace entre les milliers, suivis de F : 11 250 F.
+- Les heures s'écrivent en chiffres, comme dans les faits : 8 h, 8 h 45, 12 h. Jamais « midi » ni « minuit ».
 - Aucun nombre en lettres : écris les nombres en chiffres, comme dans les faits.
 - Reprends toutes les informations des faits, en particulier le total à payer et la règle de retard.
 - N'invente rien : aucune remise, aucune promesse, aucun lien, aucun numéro, aucune adresse.
@@ -112,9 +133,14 @@ export function prenomPourLAgent(prenom: string | null | undefined): string | nu
   return propre ? propre : null;
 }
 
-/** Une adresse email ou un numéro de téléphone (8 chiffres ou plus) : rien de tel ne part chez l'agent. */
+/**
+ * Une adresse email ou un numéro de téléphone (8 chiffres ou plus, espacés
+ * ou non) : rien de tel ne part chez l'agent. Une date au format 2026-11-21
+ * n'en est pas un.
+ */
 function contientDesCoordonnees(texte: string): boolean {
-  return /@/.test(texte) || /\+?\d(?:[\s.-]?\d){7,}/.test(texte);
+  const sansDates = texte.replace(/\b\d{4}-\d{2}-\d{2}\b/g, " ");
+  return /@/.test(sansDates) || /\+?\d(?:[\s.-]?\d){7,}/.test(sansDates);
 }
 
 /** La demande envoyée à l'agent, sans rien d'autre que l'offre, le prénom et les faits. */
@@ -156,14 +182,21 @@ export async function redigerRecapitulatif(
   const client = clientDeLAgent(options);
   if (!client) return modele("cle-absente");
 
-  const prenom = prenomPourLAgent(entree.prenom);
+  const attendus = { totalXof: entree.totalXof, montantsXof: entree.montantsXof, faits: entree.faits };
   const envoye = [entree.texteModele, ...entree.faits.flatMap((fait) => [fait.libelle, fait.valeur])];
   if (envoye.some(contientDesCoordonnees)) {
-    return modele("format", "des coordonnées figurent dans les faits, rien n'est envoyé à l'agent");
+    return modele("coordonnees", "un email ou un numéro figure dans les faits, rien n'est envoyé à l'agent");
+  }
+  // Le texte modèle et les faits doivent citer les mêmes chiffres : sinon
+  // l'agent, qui part du texte modèle, serait refusé à coup sûr.
+  for (const texte of envoye) {
+    const concordance = controlerNombres(texte, attendus);
+    if (!concordance.ok) return modele("faits", `texte modèle ou faits hors du calcul, ${concordance.detail}`);
   }
 
   let reponse: ReponseAgentIa;
   try {
+    const prenom = prenomPourLAgent(entree.prenom);
     reponse = await envoyerAgentIa(client, demandeRecapitulatif(entree, prenom), options?.delaiMs ?? DELAI_RECAPITULATIF_MS);
   } catch (erreur) {
     return modele(causeDeLEchec(erreur), resumeErreur(erreur));
@@ -173,13 +206,12 @@ export async function redigerRecapitulatif(
   if (reponse.stop_reason === "refusal") return modele("refus", "l'agent a décliné la demande");
   if (reponse.stop_reason !== "end_turn") return modele("format", `réponse interrompue (${reponse.stop_reason})`);
 
-  const texte = texteDeLaReponse(reponse).replace(/\n{3,}/g, "\n\n");
-  const verification = verifierTexteIa(texte, {
-    totalXof: entree.totalXof,
-    montantsXof: entree.montantsXof,
-    faits: entree.faits,
-    texteModele: entree.texteModele,
-  });
+  // Les caractères invisibles (espaces de largeur nulle, marques de sens
+  // d'écriture) sont retirés : le texte contrôlé est exactement celui qui part.
+  const texte = texteDeLaReponse(reponse)
+    .replace(/\p{Cf}/gu, "")
+    .replace(/\n{3,}/g, "\n\n");
+  const verification = verifierTexteIa(texte, attendus);
   if (!verification.ok) return modele(verification.motif, verification.detail);
   return { texte, source: "ia" };
 }

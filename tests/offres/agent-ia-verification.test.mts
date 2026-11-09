@@ -43,7 +43,7 @@ const MODELE =
   "Prestige) et de nos casques. Vous aurez 10 cocos petit format inclus dans le prix, à raison de 1 par personne." +
   "\n\nLe retour des vélos doit être expressément respecté. Vous avez une marge de retard de 7 minutes ; au-delà, " +
   "le groupe paiera 1 000 F par minute.\n\nMerci de faire confiance à Bike Land !";
-const ATTENDUS = { totalXof: 11250, montantsXof: [11250, 17250, 1250, 1000], faits: FAITS, texteModele: MODELE };
+const ATTENDUS = { totalXof: 11250, montantsXof: [11250, 17250, 1250, 1000], faits: FAITS };
 const BON =
   "Bonjour Awa,\n\nMerci pour votre réservation Bike for All du samedi 21 novembre 2026 ! Votre groupe de 10 " +
   "personnes roulera 45 minutes, de 8 h à 8 h 45, avec toute notre gamme de vélos et nos casques. Un petit coco " +
@@ -53,7 +53,7 @@ const BON =
 
 console.log("\n— Lecture des montants sous toutes leurs formes");
 verifier("espace simple : 11 250 F", lus("11 250 F"), [["montant", 11250]]);
-verifier("espace insécable et FCFA : 11 250 FCFA", lus("11 250 FCFA"), [["montant", 11250]]);
+verifier("espace insécable et FCFA : 11 250 FCFA", lus("11\u00a0250\u00a0FCFA"), [["montant", 11250]]);
 verifier("espace fine insécable, comme Intl fr-FR", lus(`${new Intl.NumberFormat("fr-FR").format(11250)} F`), [["montant", 11250]]);
 verifier("collé : 11250F", lus("11250F"), [["montant", 11250]]);
 verifier("point des milliers : 11.250 F", lus("11.250 F"), [["montant", 11250]]);
@@ -61,7 +61,7 @@ verifier("virgule des milliers : 11,250 francs", lus("11,250 francs"), [["montan
 verifier("F CFA en deux mots", lus("11 250 F CFA."), [["montant", 11250]]);
 verifier("sans unité : un simple nombre", lus("11 250"), [["nombre", 11250]]);
 verifier("collé à un point : lu quand même", lus("10 personnes.15000 F"), [["nombre", 10], ["montant", 15000]]);
-verifier("caractère invisible au milieu : lu comme un seul nombre", lus("11​250 F"), [["montant", 11250]]);
+verifier("caractère invisible au milieu : lu comme un seul nombre", lus("11\u200b250 F"), [["montant", 11250]]);
 verifier("décimal : 1,5 reste 1,5", lus("1,5 heure"), [["nombre", 1.5]]);
 verifier("heures : 8 h, 08h00, 8 h 45, 08:45", lus("8 h, 08h00, 8 h 45, 08:45"), [["heure", 480], ["heure", 480], ["heure", 525], ["heure", 525]]);
 verifier("« 8 heures » et « 10 hommes » ne sont pas des heures", lus("8 heures, 10 hommes"), [["nombre", 8], ["nombre", 10]]);
@@ -71,15 +71,20 @@ console.log("\n— Textes acceptés");
 verifier("le bon texte passe", controle(BON), "ok");
 verifier(
   "montants écrits avec l'espace fine d'Intl : passent",
-  controle(BON.replace("11 250 F", "11 250 F").replace("17 250 F", "17 250 FCFA")),
+  controle(BON.replace("11 250 F", "11\u202f250\u00a0F").replace("17 250 F", "17\u202f250\u00a0FCFA")),
   "ok",
 );
 verifier("heures écrites autrement (08h00 à 08h45) : passent", controle(BON.replace("de 8 h à 8 h 45", "de 08h00 à 08h45")), "ok");
-verifier("un nombre absent des faits et du texte modèle (25 km) : refusé", controle(`${BON} Balade de 25 km.`), "montant-inconnu");
+verifier("un nombre absent des faits (25 km) : refusé", controle(`${BON} Balade de 25 km.`), "montant-inconnu");
 verifier(
-  "un nombre du texte modèle seulement (10 cocos) : admis, il vient du même calcul",
+  "« 10 cocos » : admis, 10 figure dans les faits (Personnes)",
   controle(BON.replace("Un petit coco par personne est compris.", "Vos 10 cocos petit format sont compris.")),
   "ok",
+);
+verifier(
+  "un nombre du texte modèle seulement ne suffit pas : seuls les faits comptent",
+  v.controlerNombres("Balade de 25 km.", { ...ATTENDUS, texteModele: "Balade de 25 km." }).ok,
+  false,
 );
 verifier("« un » et « une » restent permis : ce sont des articles", controle(BON.replace("Un petit coco", "Une boisson et un petit coco")), "ok");
 
@@ -99,7 +104,22 @@ verifier(
   controle(BON.replace("1 000 F par minute de retard", "1 000 par minute de retard")),
   "montant-inconnu",
 );
-verifier("total collé à un point, faux : 15000 F", controle(BON.replace("compris.", "compris.15000 F")), "montant-inconnu");
+verifier("total collé à un point, faux : 15 000 F", controle(BON.replace("compris.", "compris.15 000 F")), "montant-inconnu");
+verifier(
+  "montant écrit dans un fait mais absent de montantsXof : refusé",
+  controle(`${BON} Les gâteaux font 300 F.`, { ...ATTENDUS, faits: [...FAITS, { libelle: "Gâteaux", valeur: "300 F" }] }),
+  "montant-inconnu",
+);
+verifier("prix barré cité sans son unité (17 250) : refusé", controle(BON.replace("au lieu de 17 250 F", "au lieu de 17 250")), "montant-inconnu");
+
+console.log("\n— Montants écrits comme sur le site (milliers séparés par une espace)");
+verifier("collé : 11250 F, refusé", controle(BON.replace("11 250 F", "11250 F")), "format");
+verifier("point des milliers : 11.250 F, refusé", controle(BON.replace("11 250 F", "11.250 F")), "format");
+verifier("virgule des milliers : 11,250 F, refusé (se lirait 11,25 F)", controle(BON.replace("11 250 F", "11,250 F")), "format");
+verifier("espace insécable simple : passe", controle(BON.replace("11 250 F", "11\u00a0250 F")), "ok");
+verifier("FCFA et francs CFA : passent", controle(BON.replace("11 250 F", "11 250 FCFA").replace("17 250 F", "17 250 francs CFA")), "ok");
+verifier("« 11 250 CFA » est lu comme un montant", lus("11 250 CFA"), [["montant", 11250]]);
+verifier("800 F, sans milliers : bien écrit", v.controlerNombres("800 F", { totalXof: 800, montantsXof: [800], faits: [] }).ok, true);
 
 console.log("\n— Nombres en lettres");
 verifier("« dix personnes »", controle(BON.replace("10 personnes", "dix personnes")), "format");
@@ -109,11 +129,16 @@ verifier("« une demi-heure »", controle(BON.replace("45 minutes", "une demi-he
 verifier("« le deuxième groupe »", controle(`${BON} Vous êtes le deuxième groupe.`), "format");
 verifier("chiffres d'une autre écriture : « ½ »", controle(`${BON} ½`), "format");
 verifier("chiffres pleine chasse : « １０ »", controle(BON.replace("10 personnes", "１０ personnes")), "format");
+verifier("heure en lettres : « midi »", controle(BON.replace("de 8 h à 8 h 45", "de 8 h à midi")), "format");
+verifier("« la moitié »", controle(`${BON} Soit la moitié du prix normal.`), "format");
 
 console.log("\n— Forme");
 verifier("tiret long « — »", controle(BON.replace("Bonjour Awa,", "Bonjour Awa —")), "format");
 verifier("tiret demi-cadratin « – »", controle(BON.replace("Bonjour Awa,", "Bonjour Awa –")), "format");
 verifier("double tiret « -- »", controle(BON.replace("Bonjour Awa,", "Bonjour Awa --")), "format");
+verifier("double tiret masqué par un caractère invisible", controle(BON.replace("Bonjour Awa,", "Bonjour Awa -\u200b-")), "format");
+verifier("liste à puces", controle(BON.replace("\n\nLe total", "\n\n- Le total")), "format");
+verifier("autre monnaie : 20 €", controle(`${BON} Soit 20 €.`), "format");
 verifier("texte vide", controle("   "), "format");
 verifier("texte trop court", controle("Total 11 250 F."), "format");
 verifier("texte trop long", controle(`${BON} ${"Merci encore. ".repeat(120)}`), "format");

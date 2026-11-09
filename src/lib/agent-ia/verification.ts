@@ -12,13 +12,20 @@
  * modèle est toujours juste), laisser passer un faux montant coûte un client.
  *
  * Ce qu'il exige :
- *  - chaque montant écrit en chiffres (suivi de F, FCFA ou francs) vient du
- *    calcul : la liste des montants, ou un montant écrit dans les faits ou
- *    le texte modèle, tous deux produits par le moteur ; le total y figure ;
- *  - chaque autre nombre (personnes, minutes, heures, date) figure dans les
- *    faits ou le texte modèle ;
- *  - aucun nombre en lettres, aucun chiffre d'une autre écriture, aucun
- *    tiret long, ni lien, adresse, mise en forme ou texte vide ou trop long.
+ *  - chaque montant (un nombre suivi de F, FCFA, CFA, francs ou XOF) est l'un
+ *    des montants du calcul (`montantsXof`, total compris), écrit comme sur
+ *    le site : les milliers séparés par une espace (« 11 250 F ») ;
+ *  - chaque heure et chaque autre nombre (personnes, minutes, date) figure
+ *    dans les faits ;
+ *  - le total à payer et les faits obligatoires (la règle de retard) sont
+ *    repris ;
+ *  - aucun nombre ni aucune heure en lettres, aucun chiffre d'une autre
+ *    écriture, aucun tiret long, aucune autre monnaie, ni lien, adresse, mise
+ *    en forme, ni texte vide ou trop long.
+ *
+ * Les espaces de toutes sortes comptent pour des espaces : « 11 250 F » écrit
+ * avec l'espace fine insécable d'Intl (celle de formatXof) passe comme
+ * « 11 250 F » écrit avec une espace simple.
  */
 
 /** Un fait déjà calculé et mis en forme par le moteur : « Total à payer », « 11 250 F ». */
@@ -38,14 +45,14 @@ export interface ChiffresAttendus {
   /** Le total à payer, qui doit figurer dans le texte. */
   totalXof: number;
   /**
-   * Les montants que le texte peut citer : total, prix barré, lignes du
-   * détail, réduction, pénalité de retard par minute. Ceux qui sont écrits
-   * dans les faits ou le texte modèle sont admis d'office.
+   * Tous les montants que le texte peut citer : total, prix barré, lignes du
+   * détail, réduction, frais de paiement électronique, pénalité de retard
+   * par minute. Un montant absent de cette liste est refusé, même s'il est
+   * écrit dans un fait.
    */
   montantsXof: readonly number[];
+  /** Les faits : toute heure et tout autre nombre que le texte peut citer y figure. */
   faits: readonly FaitCalcule[];
-  /** Le texte modèle du moteur : ses nombres viennent du même calcul. */
-  texteModele?: string;
 }
 
 export type MotifRefusTexte = "montant-inconnu" | "format";
@@ -64,6 +71,9 @@ export interface NombreLu {
   genre: "montant" | "heure" | "nombre";
   /** Le montant en francs, l'heure en minutes depuis minuit, ou le nombre. */
   valeur: number;
+  /** Le nombre tel qu'il est écrit, sans son unité, les espaces ramenées à l'espace simple : « 11 250 ». */
+  ecriture: string;
+  /** Le passage entier, unité comprise : « 11 250 F ». */
   brut: string;
 }
 
@@ -89,7 +99,7 @@ const HEURE = /(?<!\d)(\d{1,2})(?:\s?[hH](?!\p{L})(?:\s?([0-5]\d)(?!\d))?|:([0-5
  * décimal (« 1,5 »), suivi ou non d'une unité monétaire.
  */
 const NOMBRE =
-  /(?<!\d)(\d{1,3}(?:[ .,]\d{3})+(?!\d)|\d+(?:[.,]\d+)?)(\s*(?:F\s?CFA|FCFA|francs?(?:\s?CFA)?|XOF|F)(?![\p{L}\d]))?/giu;
+  /(?<!\d)(\d{1,3}(?:[ .,]\d{3})+(?!\d)|\d+(?:[.,]\d+)?)(\s*(?:F\.?\s?CFA|FCFA|CFA|francs?(?:\s?CFA)?|XOF|F)(?![\p{L}\d]))?/giu;
 
 function valeurDe(nombre: string): number {
   // Groupes de trois chiffres : les séparateurs sont des milliers.
@@ -106,7 +116,7 @@ export function lireNombres(texte: string): NombreLu[] {
     HEURE,
     (brut: string, heures: string, minutesH: string | undefined, minutesP: string | undefined, position: number) => {
       const minutes = Number(minutesH ?? minutesP ?? 0);
-      lus.push({ position, nombre: { genre: "heure", valeur: Number(heures) * 60 + minutes, brut } });
+      lus.push({ position, nombre: { genre: "heure", valeur: Number(heures) * 60 + minutes, ecriture: brut, brut } });
       return " ".repeat(brut.length);
     },
   );
@@ -114,7 +124,7 @@ export function lireNombres(texte: string): NombreLu[] {
     const [brut, nombre, unite] = correspondance;
     lus.push({
       position: correspondance.index ?? 0,
-      nombre: { genre: unite ? "montant" : "nombre", valeur: valeurDe(nombre), brut: brut.trim() },
+      nombre: { genre: unite ? "montant" : "nombre", valeur: valeurDe(nombre), ecriture: nombre, brut: brut.trim() },
     });
   }
   return lus.sort((a, b) => a.position - b.position).map((lu) => lu.nombre);
@@ -123,9 +133,9 @@ export function lireNombres(texte: string): NombreLu[] {
 /* --------------------------------------------------------------- Ce qui est refusé */
 
 /**
- * Les nombres en toutes lettres, sans les articles « un » et « une » : un
- * montant ou une durée en lettres ne peut pas être vérifié, donc il n'est
- * pas admis. Comparés sans accents.
+ * Les nombres et les heures en toutes lettres, sans les articles « un » et
+ * « une » : un montant, une durée ou une heure en lettres ne peut pas être
+ * vérifié, donc il n'est pas admis. Comparés sans accents.
  */
 const NOMBRES_EN_LETTRES = new Set([
   "zero",
@@ -168,6 +178,12 @@ const NOMBRES_EN_LETTRES = new Set([
   "demies",
   "quart",
   "quarts",
+  "moitie",
+  "moities",
+  "double",
+  "doubles",
+  "triple",
+  "triples",
   "dizaine",
   "dizaines",
   "douzaine",
@@ -185,6 +201,9 @@ const NOMBRES_EN_LETTRES = new Set([
   "centaines",
   "millier",
   "milliers",
+  // Des heures en lettres : « retour à midi » ne se vérifie pas.
+  "midi",
+  "minuit",
 ]);
 
 /** Les ordinaux en lettres : « deuxième », « dixième ». */
@@ -195,7 +214,7 @@ function sansAccents(mot: string): string {
   return mot.normalize("NFD").replace(/\p{M}/gu, "");
 }
 
-/** Le premier nombre écrit en lettres, s'il y en a un. */
+/** Le premier nombre (ou la première heure) écrit en lettres, s'il y en a un. */
 export function nombreEnLettres(texte: string): string | null {
   for (const mot of texte.toLowerCase().match(/\p{L}+/gu) ?? []) {
     const simple = sansAccents(mot);
@@ -207,7 +226,7 @@ export function nombreEnLettres(texte: string): string | null {
 /**
  * Ce qui ne doit jamais partir : tirets longs (règle du responsable), liens,
  * adresses et noms de compte, balises, modèles à trous, mise en forme
- * Markdown, emojis.
+ * Markdown, listes à puces, emojis, autres monnaies que le franc CFA.
  */
 const INTERDITS: { motif: RegExp; detail: string }[] = [
   { motif: /[‒–—―⸺⸻﹘]|--/u, detail: "tiret long" },
@@ -215,7 +234,9 @@ const INTERDITS: { motif: RegExp; detail: string }[] = [
   { motif: /@/u, detail: "adresse ou nom de compte" },
   { motif: /[<>{}[\]]/u, detail: "balise ou modèle à trous" },
   { motif: /\*\*|__|`|^\s*#/mu, detail: "mise en forme" },
+  { motif: /^\s*[-*•]\s/mu, detail: "liste à puces" },
   { motif: /\p{Extended_Pictographic}/u, detail: "emoji" },
+  { motif: /[€$£¥₦]|\b(?:EUR|USD|euros?|dollars?|nairas?)\b/iu, detail: "autre monnaie" },
 ];
 
 /** Des chiffres d'une autre écriture (« ١٢ », « ５ », « ½ », « ² ») : illisibles pour le contrôle. */
@@ -232,28 +253,60 @@ function heureEnClair(minutes: number): string {
 }
 
 /**
- * Les chiffres admis, tirés des textes du moteur (faits, texte modèle) :
- * chaque montant, chaque nombre, chaque heure et ses parties (« 8 h 45 »
- * admet aussi 8 et 45).
+ * Les heures et les autres nombres admis, tirés des faits : chaque nombre
+ * sans unité, chaque heure et ses parties (« 8 h 45 » admet aussi 8 et 45).
+ * Les montants des faits n'en font pas partie : ils doivent figurer dans
+ * `montantsXof`, et un montant cité sans son unité est refusé.
  */
-function chiffresAdmis(textes: readonly string[]): { montants: Set<number>; nombres: Set<number>; heures: Set<number> } {
-  const montants = new Set<number>();
+function chiffresDesFaits(faits: readonly FaitCalcule[]): { nombres: Set<number>; heures: Set<number> } {
   const nombres = new Set<number>();
   const heures = new Set<number>();
-  for (const texte of textes) {
-    for (const lu of lireNombres(texte)) {
+  for (const fait of faits) {
+    for (const lu of [...lireNombres(fait.libelle), ...lireNombres(fait.valeur)]) {
       if (lu.genre === "heure") {
         heures.add(lu.valeur);
         nombres.add(Math.floor(lu.valeur / 60));
         nombres.add(lu.valeur % 60);
-        nombres.add(lu.valeur);
-      } else {
-        if (lu.genre === "montant") montants.add(lu.valeur);
+      } else if (lu.genre === "nombre") {
         nombres.add(lu.valeur);
       }
     }
   }
-  return { montants, nombres, heures };
+  return { nombres, heures };
+}
+
+/** Un montant écrit comme sur le site : « 800 F », « 11 250 F », jamais « 11250 F » ni « 11.250 F ». */
+function montantBienEcrit(lu: NombreLu): boolean {
+  return /^\d{1,3}$/.test(lu.ecriture) || /^\d{1,3}(?: \d{3})+$/.test(lu.ecriture);
+}
+
+/**
+ * Les nombres d'un texte viennent-ils tous du calcul ? Montants dans
+ * `montantsXof` (et bien écrits), heures et autres nombres dans les faits.
+ * Ne regarde que les chiffres : la forme du texte est contrôlée par
+ * `verifierTexteIa`. Sert aussi à vérifier, avant d'appeler l'agent, que le
+ * texte modèle et les faits concordent (recapitulatif.ts).
+ */
+export function controlerNombres(texte: string, attendus: ChiffresAttendus): VerificationTexte {
+  const montantsAdmis = new Set([attendus.totalXof, ...attendus.montantsXof]);
+  const admis = chiffresDesFaits(attendus.faits);
+  for (const lu of lireNombres(texte)) {
+    if (lu.genre === "montant") {
+      if (!montantBienEcrit(lu)) {
+        return { ok: false, motif: "format", detail: `montant « ${lu.brut} » mal écrit (milliers séparés par une espace)` };
+      }
+      if (!montantsAdmis.has(lu.valeur)) {
+        return { ok: false, motif: "montant-inconnu", detail: `montant ${montantEnClair(lu.valeur)} absent du calcul` };
+      }
+    } else if (lu.genre === "heure") {
+      if (!admis.heures.has(lu.valeur)) {
+        return { ok: false, motif: "montant-inconnu", detail: `heure ${heureEnClair(lu.valeur)} absente des faits` };
+      }
+    } else if (!admis.nombres.has(lu.valeur)) {
+      return { ok: false, motif: "montant-inconnu", detail: `nombre ${lu.brut} absent des faits` };
+    }
+  }
+  return { ok: true };
 }
 
 /**
@@ -261,7 +314,7 @@ function chiffresAdmis(textes: readonly string[]): { montants: Set<number>; nomb
  * en clair (pour les journaux : jamais le texte entier).
  */
 export function verifierTexteIa(texte: string, attendus: ChiffresAttendus): VerificationTexte {
-  const propre = texte.trim();
+  const propre = normaliser(texte).trim();
   if (propre.length < LONGUEUR_MIN_TEXTE) return { ok: false, motif: "format", detail: "texte vide ou trop court" };
   if (propre.length > LONGUEUR_MAX_TEXTE) return { ok: false, motif: "format", detail: "texte trop long" };
 
@@ -272,24 +325,10 @@ export function verifierTexteIa(texte: string, attendus: ChiffresAttendus): Veri
   const enLettres = nombreEnLettres(propre);
   if (enLettres) return { ok: false, motif: "format", detail: `nombre en lettres : « ${enLettres} »` };
 
-  const sources = [...attendus.faits.map((fait) => fait.valeur), attendus.texteModele ?? ""];
-  const admis = chiffresAdmis(sources);
-  const montantsAdmis = new Set([attendus.totalXof, ...attendus.montantsXof, ...admis.montants]);
-  const nombresAdmis = new Set([...admis.nombres, ...montantsAdmis]);
+  const nombres = controlerNombres(propre, attendus);
+  if (!nombres.ok) return nombres;
+
   const lus = lireNombres(propre);
-
-  for (const lu of lus) {
-    if (lu.genre === "montant" && !montantsAdmis.has(lu.valeur)) {
-      return { ok: false, motif: "montant-inconnu", detail: `montant ${montantEnClair(lu.valeur)} absent du calcul` };
-    }
-    if (lu.genre === "heure" && !admis.heures.has(lu.valeur)) {
-      return { ok: false, motif: "montant-inconnu", detail: `heure ${heureEnClair(lu.valeur)} absente des faits` };
-    }
-    if (lu.genre === "nombre" && !nombresAdmis.has(lu.valeur)) {
-      return { ok: false, motif: "montant-inconnu", detail: `nombre ${lu.brut} absent des faits` };
-    }
-  }
-
   if (!lus.some((lu) => lu.genre === "montant" && lu.valeur === attendus.totalXof)) {
     return { ok: false, motif: "montant-inconnu", detail: `total ${montantEnClair(attendus.totalXof)} absent du texte` };
   }

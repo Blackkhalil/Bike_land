@@ -16,6 +16,17 @@
  * modèle du tableur, ou la vérification à la main dans l'administration).
  * Chaque fonction accepte un client injecté, pour que les tests ne touchent
  * jamais le réseau.
+ *
+ * Ce modèle exige que l'organisation Anthropic de Bike Land garde les
+ * données 30 jours (pas de « zéro conservation ») : sinon chaque appel est
+ * refusé (erreur 400) et le repli s'applique. C'est cette durée que la page
+ * « Protection des données » annonce.
+ *
+ * Réglages du modèle, tirés de la référence de l'API Claude : la réflexion
+ * est toujours active sur Claude Fable 5.1, on n'envoie donc aucun réglage
+ * `thinking` (max_tokens lui laisse de la place) ; aucun paramètre
+ * d'échantillonnage (temperature, top_p, top_k), aucun préremplissage de la
+ * réponse, aucun outil imposé ; la profondeur se règle par l'effort.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
@@ -37,8 +48,12 @@ export const ENTETE_REPLI_SERVEUR = "server-side-fallback-2026-07-01" as const;
 /** Une seule nouvelle tentative au plus : le client attend la réponse. */
 export const NOUVELLES_TENTATIVES_MAX = 1;
 
-/** Le délai par défaut d'un appel, nouvelle tentative comprise. */
-export const DELAI_PAR_DEFAUT_MS = 10_000;
+/**
+ * Le délai par défaut d'un appel, nouvelle tentative comprise. Claude Fable
+ * 5.1 réfléchit avant de répondre : quelques secondes à quelques dizaines
+ * de secondes. Chaque usage fixe le sien (recapitulatif.ts, capture.ts).
+ */
+export const DELAI_PAR_DEFAUT_MS = 30_000;
 
 export type ParametresAgentIa = Anthropic.Beta.MessageCreateParamsNonStreaming;
 export type ReponseAgentIa = Anthropic.Beta.BetaMessage;
@@ -71,11 +86,23 @@ export interface OptionsAgentIa {
 /**
  * Le client Anthropic, ou `null` quand la clé manque. Ne lève jamais
  * d'erreur et n'écrit jamais la clé nulle part.
+ *
+ * Journal du SDK limité aux avertissements, et traces OpenTelemetry
+ * coupées, quelles que soient les variables d'environnement
+ * (ANTHROPIC_LOG, ANTHROPIC_OPEN_TELEMETRY_*) : en mode « debug », le SDK
+ * écrirait le corps de chaque demande, donc la capture d'écran et le prénom
+ * du client, dans les journaux de Vercel.
  */
 export function creerClientAgentIa(): ClientAgentIa | null {
   const cle = process.env.ANTHROPIC_API_KEY?.trim();
   if (!cle) return null;
-  return new Anthropic({ apiKey: cle, maxRetries: NOUVELLES_TENTATIVES_MAX, timeout: DELAI_PAR_DEFAUT_MS });
+  return new Anthropic({
+    apiKey: cle,
+    maxRetries: NOUVELLES_TENTATIVES_MAX,
+    timeout: DELAI_PAR_DEFAUT_MS,
+    logLevel: "warn",
+    openTelemetry: false,
+  });
 }
 
 /** Le client injecté, ou celui de la clé, ou `null`. */
@@ -139,12 +166,15 @@ export function causeDeLEchec(erreur: unknown): "delai" | "erreur" {
 }
 
 /**
- * Ce qu'on peut écrire dans les journaux d'une erreur : son type et son
- * statut HTTP. Jamais le message complet, qui pourrait reprendre une partie
- * de la demande.
+ * Ce qu'on peut écrire dans les journaux d'une erreur : son type, son statut
+ * HTTP, le code stable d'Anthropic et l'identifiant de la demande (utile au
+ * support d'Anthropic). Jamais le message complet, qui pourrait reprendre une
+ * partie de la demande.
  */
 export function resumeErreur(erreur: unknown): string {
-  if (erreur instanceof Anthropic.APIError) return `${erreur.name} ${erreur.status ?? ""}`.trim();
+  if (erreur instanceof Anthropic.APIError) {
+    return [erreur.name, erreur.status, erreur.errorCode, erreur.requestID].filter(Boolean).join(" ");
+  }
   if (erreur instanceof Error) return erreur.name;
   return "erreur inconnue";
 }
