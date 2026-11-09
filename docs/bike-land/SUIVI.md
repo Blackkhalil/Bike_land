@@ -108,9 +108,9 @@ demande après le vendredi 19 h pour le week-end, refusée.
   cahier (« vélo, eau, un coco »), modifiables. Confirmé par le responsable le
   9 novembre (« 1 coco »).
 - Réduction : comptes reconnus = Instagram @bikeland_bj (site) et TikTok
-  @bikelanbj (donné par le responsable le 9 novembre, écrit sans « d » ; si
-  l'orthographe est fausse, une capture TikTok passe simplement en validation
-  manuelle, jamais de réduction à tort).
+  @bikelandbj (confirmé par le responsable le 9 novembre ; si un nom est faux,
+  la capture passe simplement en validation manuelle, jamais de réduction à
+  tort).
 - Essais de paiement avec la clé SasPay réelle (décision 17) : les tests
   automatiques restent en mode démonstration, sans argent ; les quelques vrais
   paiements de contrôle se font sur la base de test, avec le numéro du
