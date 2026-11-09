@@ -20,15 +20,24 @@ const verifier = (nom: string, obtenu: unknown, attendu: unknown) => {
   console.log(`${ok ? "OK  " : "FAUX"} ${nom}${ok ? "" : ` : ${normaliser(obtenu)} au lieu de ${normaliser(attendu)}`}`);
 };
 
-/* Le décor : lundi 9 novembre 2026, 10 h à Cotonou ; 18 vélos libres. */
+/* Le décor : vente en ligne, lundi 9 novembre 2026, 10 h à Cotonou ; 18 vélos libres. */
 const heureBenin = (date: string, heure: string) => Date.parse(`${date}T${heure}:00.000Z`) - 3600_000;
-const LUNDI_10H = heureBenin("2026-11-09", "10:00");
+const LUNDI = "2026-11-09";
+const LUNDI_10H = heureBenin(LUNDI, "10:00");
 const SAMEDI = "2026-11-14";
 const DIMANCHE = "2026-11-15";
 const MERCREDI = "2026-11-11";
 const STOCK = { CLASSIQUE: 10, PREMIUM: 6, PRESTIGE: 2 };
-type Contexte = { date: string; maintenant: number; velosDisponibles: number; stockParGamme?: Record<string, number> };
-const contexte = (plus: Partial<Contexte> = {}): Contexte => ({ date: SAMEDI, maintenant: LUNDI_10H, velosDisponibles: 18, stockParGamme: STOCK, ...plus });
+type Contexte = { canal?: unknown; date: string; maintenant: number; velosDisponibles: number; stockParGamme?: Record<string, number> };
+const contexte = (plus: Partial<Contexte> = {}): Contexte => ({
+  canal: "en-ligne",
+  date: SAMEDI,
+  maintenant: LUNDI_10H,
+  velosDisponibles: 18,
+  stockParGamme: STOCK,
+  ...plus,
+});
+const COMPTOIR = { canal: "comptoir" };
 
 // Chaque résultat passe par ici : la somme des lignes doit faire le total,
 // et aucun texte ne doit contenir de tiret long.
@@ -50,13 +59,13 @@ const suivre = (issue: Issue): Issue => {
 };
 
 const bfaBudget = (personnes: number, budgetXof: number, plus: Record<string, unknown> = {}, ctx: Partial<Contexte> = {}, reglages = R) =>
-  suivre(m.calculerBikeForAllBudget({ personnes, budgetXof, depart: "08:00", paiementElectronique: true, ...plus }, reglages, contexte(ctx)));
+  suivre(m.calculerBikeForAllBudget({ personnes, budgetXof, depart: "08:00", ...plus }, reglages, contexte(ctx)));
 const bfaDuree = (personnes: number, minutes: number, coco: string, plus: Record<string, unknown> = {}, ctx: Partial<Contexte> = {}, reglages = R) =>
-  suivre(m.calculerBikeForAllDuree({ personnes, minutes, coco, depart: "08:00", paiementElectronique: true, ...plus }, reglages, contexte(ctx)));
+  suivre(m.calculerBikeForAllDuree({ personnes, minutes, coco, depart: "08:00", ...plus }, reglages, contexte(ctx)));
 const roadTrip = (personnes: number, plus: Record<string, unknown> = {}, ctx: Partial<Contexte> = {}, reglages = R) =>
-  suivre(m.calculerRoadTrip({ personnes, paiementElectronique: true, ...plus }, reglages, contexte(ctx)));
+  suivre(m.calculerRoadTrip({ personnes, ...plus }, reglages, contexte(ctx)));
 const gbashi = (velos: Record<string, unknown>, plus: Record<string, unknown> = {}, ctx: Partial<Contexte> = {}, reglages = R) =>
-  suivre(m.calculerGbashi({ velos, paiementElectronique: true, ...plus }, reglages, contexte({ date: DIMANCHE, ...ctx })));
+  suivre(m.calculerGbashi({ velos, ...plus }, reglages, contexte({ date: DIMANCHE, ...ctx })));
 
 const chiffres = (issue: Issue) =>
   issue.ok
@@ -169,10 +178,98 @@ verifier("week-end suivant, demandé vendredi 20 h : accepté", code(roadTrip(10
 verifier("date limite d'un samedi et d'un dimanche : vendredi 19 h (18 h UTC)", [m.dateLimiteDuWeekend(SAMEDI, R.dateLimiteWeekend), m.dateLimiteDuWeekend(DIMANCHE, R.dateLimiteWeekend), m.dateLimiteDuWeekend(MERCREDI, R.dateLimiteWeekend)], [Date.UTC(2026, 10, 13, 18), Date.UTC(2026, 10, 13, 18), null]);
 const hier = refus(bfaBudget(10, 10000, {}, { date: "2026-11-08" }));
 verifier("hier : date passée", [hier.code, hier.champ, hier.message], ["DATE_PASSEE", "date", "Cette date est déjà passée : choisissez un jour à venir."]);
-const ceMatin = refus(bfaBudget(10, 10000, { depart: "10:00" }, { date: "2026-11-09" }));
-verifier("aujourd'hui 10 h, il est 10 h : départ passé", [ceMatin.code, ceMatin.champ, ceMatin.message], ["DATE_PASSEE", "depart", "Cette heure de départ est déjà passée : choisissez-en une plus tardive, ou un autre jour."]);
-verifier("aujourd'hui 10 h 15 : accepté", code(bfaBudget(10, 10000, { depart: "10:15" }, { date: "2026-11-09" })), "accepté");
-verifier("road trip de ce samedi, demandé samedi 9 h : départ passé", refus(roadTrip(10, {}, { maintenant: heureBenin(SAMEDI, "09:00") })).message, "Le départ de ce jour-là est déjà passé : choisissez une autre date.");
+const ceMatin = refus(bfaBudget(10, 10000, { depart: "10:00" }, { date: LUNDI }));
+verifier(
+  "aujourd'hui 10 h, il est 10 h : départ passé, on propose le premier départ encore possible",
+  [ceMatin.code, ceMatin.champ, ceMatin.premierDepartPossible, ceMatin.message],
+  ["DATE_PASSEE", "depart", "12:00", "Cette heure de départ est déjà passée. Aujourd'hui, le premier départ encore possible est à 12 h : en ligne, la réservation se fait au moins 2 h avant le départ."],
+);
+const ceSoir = refus(bfaBudget(10, 10000, { depart: "20:00" }, { date: LUNDI, maintenant: heureBenin(LUNDI, "21:00") }));
+verifier(
+  "aujourd'hui 20 h, il est 21 h : plus aucun départ possible aujourd'hui",
+  [ceSoir.code, ceSoir.champ, ceSoir.premierDepartPossible, ceSoir.message],
+  ["DATE_PASSEE", "date", undefined, "Cette heure de départ est déjà passée, et il n'y a plus de départ possible aujourd'hui : choisissez un autre jour."],
+);
+verifier("road trip de ce samedi, demandé samedi 9 h : la date limite du vendredi passe avant", code(roadTrip(10, {}, { maintenant: heureBenin(SAMEDI, "09:00") })), "DATE_LIMITE");
+const roadTripMercredi = { ...R, roadTrip: { ...R.roadTrip, jours: [3] } };
+verifier(
+  "road trip réglé le mercredi, demandé ce mercredi 9 h : départ passé",
+  refus(roadTrip(10, {}, { date: MERCREDI, maintenant: heureBenin(MERCREDI, "09:00") }, roadTripMercredi)).message,
+  "Le départ de ce jour-là est déjà passé : choisissez une autre date.",
+);
+
+console.log("\n— En ligne : au moins 2 h avant le départ (délai minimum, réglable)");
+const lundi = (heure: string) => heureBenin(LUNDI, heure);
+verifier("départ 12 h demandé à 10 h : 2 h pile, accepté", code(bfaBudget(10, 10000, { depart: "12:00" }, { date: LUNDI })), "accepté");
+const uneMinuteDeMoins = refus(bfaBudget(10, 10000, { depart: "12:00" }, { date: LUNDI, maintenant: lundi("10:01") }));
+verifier(
+  "départ 12 h demandé à 10 h 01 : 1 h 59, refusé, premier départ possible 12 h 15",
+  [uneMinuteDeMoins.code, uneMinuteDeMoins.champ, uneMinuteDeMoins.premierDepartPossible, uneMinuteDeMoins.message],
+  ["DELAI", "depart", "12:15", "En ligne, la réservation se fait au moins 2 h avant le départ, le temps de tout préparer. Aujourd'hui, le premier départ encore possible est à 12 h 15."],
+);
+verifier(
+  "départ 12 h demandé à 10 h 00 min 01 s : refusé aussi, à la seconde près",
+  [code(bfaBudget(10, 10000, { depart: "12:00" }, { date: LUNDI, maintenant: lundi("10:00") + 1000 })), refus(bfaBudget(10, 10000, { depart: "12:00" }, { date: LUNDI, maintenant: lundi("10:00") + 1000 })).premierDepartPossible],
+  ["DELAI", "12:15"],
+);
+verifier(
+  "par durée aussi : 12 h demandé à 10 h accepté, à 10 h 01 refusé",
+  [code(bfaDuree(10, 60, "aucun", { depart: "12:00" }, { date: LUNDI })), code(bfaDuree(10, 60, "aucun", { depart: "12:00" }, { date: LUNDI, maintenant: lundi("10:01") }))],
+  ["accepté", "DELAI"],
+);
+verifier("départ 21 h 30 demandé à 19 h 30 : accepté (30 min, retour 22 h)", code(bfaBudget(10, 5000, { depart: "21:30" }, { date: LUNDI, maintenant: lundi("19:30") })), "accepté");
+const plusRien = refus(bfaBudget(10, 5000, { depart: "21:30" }, { date: LUNDI, maintenant: lundi("19:31") }));
+verifier(
+  "départ 21 h 30 demandé à 19 h 31 : plus aucun départ possible aujourd'hui",
+  [plusRien.code, plusRien.champ, plusRien.premierDepartPossible, plusRien.message],
+  ["DELAI", "date", undefined, "En ligne, la réservation se fait au moins 2 h avant le départ, le temps de tout préparer : il n'y a plus de départ possible aujourd'hui. Choisissez un autre jour."],
+);
+const dixHeures = { ...R, delaiMinimumMinutes: 600 };
+const lendemain = refus(bfaBudget(10, 10000, {}, { date: "2026-11-10", maintenant: lundi("23:00") }, dixHeures));
+verifier(
+  "délai réglé à 10 h : mardi 8 h demandé lundi 23 h, refusé, premier départ mardi 9 h",
+  [lendemain.code, lendemain.premierDepartPossible, lendemain.message],
+  ["DELAI", "09:00", "En ligne, la réservation se fait au moins 10 h avant le départ, le temps de tout préparer. Ce jour-là, le premier départ encore possible est à 9 h."],
+);
+const unJour = { ...R, delaiMinimumMinutes: 1440 };
+verifier("délai réglé à 24 h : road trip de samedi demandé vendredi 8 h, accepté (24 h pile)", code(roadTrip(10, {}, { maintenant: vendredi("08:00") }, unJour)), "accepté");
+const roadTripTard = refus(roadTrip(10, {}, { maintenant: vendredi("08:01") }, unJour));
+verifier(
+  "… demandé vendredi 8 h 01 : trop tard pour ce jour-là, pas d'autre départ à proposer",
+  [roadTripTard.code, roadTripTard.champ, roadTripTard.premierDepartPossible, roadTripTard.message],
+  ["DELAI", "date", undefined, "En ligne, la réservation se fait au moins 24 h avant le départ, le temps de tout préparer : pour ce jour-là, c'est trop tard. Choisissez une autre date."],
+);
+const gbashiMercredi = { ...R, gbashi: { ...R.gbashi, jours: [3] } };
+verifier(
+  "Gbashi réglé le mercredi : 7 h demandé à 5 h, accepté ; à 5 h 01, trop tard pour aujourd'hui",
+  [
+    code(gbashi({ CLASSIQUE: 5 }, {}, { date: MERCREDI, maintenant: heureBenin(MERCREDI, "05:00") }, gbashiMercredi)),
+    refus(gbashi({ CLASSIQUE: 5 }, {}, { date: MERCREDI, maintenant: heureBenin(MERCREDI, "05:01") }, gbashiMercredi)).message,
+  ],
+  ["accepté", "En ligne, la réservation se fait au moins 2 h avant le départ, le temps de tout préparer : pour aujourd'hui, c'est trop tard. Choisissez une autre date."],
+);
+const sansDelai = { ...R, delaiMinimumMinutes: 0 };
+const pile = refus(bfaBudget(10, 10000, { depart: "10:00" }, { date: LUNDI }, sansDelai));
+verifier(
+  "délai réglé à 0 : départ 10 h 15 demandé à 10 h, accepté ; 10 h, déjà passé, on propose 10 h 15",
+  [code(bfaBudget(10, 10000, { depart: "10:15" }, { date: LUNDI }, sansDelai)), pile.code, pile.premierDepartPossible, pile.message],
+  ["accepté", "DATE_PASSEE", "10:15", "Cette heure de départ est déjà passée. Aujourd'hui, le premier départ encore possible est à 10 h 15."],
+);
+verifier("samedi 8 h demandé samedi 7 h : la date limite du vendredi l'emporte sur le délai", code(bfaBudget(10, 5000, {}, { maintenant: heureBenin(SAMEDI, "07:00") })), "DATE_LIMITE");
+const retourTard = refus(bfaBudget(10, 10000, { depart: "21:30" }, { date: LUNDI, maintenant: lundi("19:00") }));
+verifier("21 h 30 et 45 min, demandés à 19 h : retour trop tard, on propose 21 h 15, encore réservable", [retourTard.code, retourTard.dernierDepartPossible], ["HEURE", "21:15"]);
+const coince = refus(bfaBudget(10, 10000, { depart: "21:30" }, { date: LUNDI, maintenant: lundi("19:30") }));
+verifier(
+  "… demandés à 19 h 30 : 21 h 15 rentrerait à l'heure, mais il est trop tard pour le réserver",
+  [coince.code, coince.champ, coince.dernierDepartPossible, coince.message],
+  ["HEURE", "budgetXof", undefined, "Votre budget offre 45 minutes de vélo : le retour se ferait après 22 h, l'heure limite, et il est trop tard pour réserver un départ plus tôt aujourd'hui. Choisissez un budget plus petit, ou un autre jour."],
+);
+const coinceDuree = refus(bfaDuree(10, 45, "aucun", { depart: "21:30" }, { date: LUNDI, maintenant: lundi("19:30") }));
+verifier(
+  "… par durée : une durée plus courte, ou un autre jour",
+  [coinceDuree.champ, coinceDuree.message],
+  ["minutes", "Avec 45 minutes de vélo, le retour se ferait après 22 h, l'heure limite, et il est trop tard pour réserver un départ plus tôt aujourd'hui. Choisissez une durée plus courte, ou un autre jour."],
+);
 
 console.log("\n— Les heures de Bike for All (décision 11 : 8 h à 21 h 30, retour 22 h)");
 const horaires = "Les départs se font de 8 h à 21 h 30, au quart d'heure.";
@@ -195,17 +292,37 @@ verifier("budget illisible", refus(bfaBudget(10, Number.NaN)).champ, "budgetXof"
 verifier("coco « moyen »", [refus(bfaDuree(10, 60, "moyen")).code, refus(bfaDuree(10, 60, "moyen")).champ], ["SAISIE", "coco"]);
 verifier("gâteaux négatifs ou décimaux", [refus(bfaBudget(10, 10000, { gateauxParPersonne: -1 })).champ, refus(roadTrip(10, { gateauxParPersonne: 1.5 })).champ], ["gateauxParPersonne", "gateauxParPersonne"]);
 verifier("heure « 8h »", refus(bfaBudget(10, 10000, { depart: "8h" })).champ, "depart");
-verifier("mode de paiement absent", refus(bfaBudget(10, 10000, { paiementElectronique: undefined })).champ, "paiementElectronique");
 verifier("date impossible (30 février)", [refus(roadTrip(10, {}, { date: "2027-02-30" })).code, refus(roadTrip(10, {}, { date: "2027-02-30" })).champ], ["SAISIE", "date"]);
 verifier("Gbashi, nombre de vélos négatif", refus(gbashi({ PRESTIGE: -1 })).champ, "velos");
 verifier("réduction « oui » au lieu de vrai", refus(roadTrip(10, { reductionValidee: "oui" })).champ, "reductionValidee");
-let horlogeCassee = "aucune erreur";
-try {
-  m.calculerRoadTrip({ personnes: 10, paiementElectronique: true }, R, { ...contexte(), maintenant: Number.NaN });
-} catch (erreur) {
-  horlogeCassee = erreur instanceof TypeError ? "TypeError" : "autre erreur";
-}
-verifier("horloge illisible : erreur du serveur, pas un refus muet", horlogeCassee, "TypeError");
+const erreurDe = (calcul: () => unknown) => {
+  try {
+    calcul();
+    return "aucune erreur";
+  } catch (erreur) {
+    return erreur instanceof TypeError ? "TypeError" : "autre erreur";
+  }
+};
+verifier(
+  "horloge illisible : erreur du serveur, pas un refus muet",
+  erreurDe(() => m.calculerRoadTrip({ personnes: 10 }, R, { ...contexte(), maintenant: Number.NaN })),
+  "TypeError",
+);
+verifier(
+  "canal absent ou inconnu : erreur du serveur, jamais une vente au hasard avec ou sans les frais (même sur une demande refusée)",
+  [
+    erreurDe(() => m.calculerBikeForAllBudget({ personnes: 10, budgetXof: 10000, depart: "08:00" }, R, { ...contexte(), canal: undefined })),
+    erreurDe(() => m.calculerRoadTrip({ personnes: 10 }, R, { ...contexte(), canal: "telephone" })),
+    erreurDe(() => m.calculerGbashi({ velos: { CLASSIQUE: 5 } }, R, { ...contexte({ date: DIMANCHE }), canal: "" })),
+    erreurDe(() => m.calculerBikeForAllDuree({ personnes: 2, minutes: 60, coco: "aucun", depart: "08:00" }, R, { ...contexte(), canal: null })),
+  ],
+  ["TypeError", "TypeError", "TypeError", "TypeError"],
+);
+verifier(
+  "en ligne, un « paiementElectronique: false » glissé dans la demande ne retire pas les frais",
+  [resultat(bfaBudget(10, 10000, { paiementElectronique: false })).fraisPaiementXof, resultat(roadTrip(10, { paiementElectronique: false })).totalXof],
+  [1250, 31250],
+);
 
 console.log("\n— Les bornes");
 verifier("exactement 30 minutes (10 pers., 5 000 F) : accepté", resultat(bfaBudget(10, 5000)).minutes, 30);
@@ -238,19 +355,37 @@ let essais = 0;
 for (let personnes = 10; personnes <= 40; personnes += 1) {
   for (let budget = 5000; budget <= 20000; budget += 50) {
     essais += 1;
-    const accepte = m.calculerBikeForAllBudget({ personnes, budgetXof: budget, depart: "08:00", paiementElectronique: true }, R, contexte({ velosDisponibles: 60 })).ok;
+    const accepte = m.calculerBikeForAllBudget({ personnes, budgetXof: budget, depart: "08:00" }, R, contexte({ velosDisponibles: 60 })).ok;
     if (accepte !== (m.budgetMinimumBikeForAllXof(personnes, R, budget) === budget)) desaccords += 1;
   }
 }
 verifier(`budget minimum annoncé = budget accepté, sur ${essais} essais (10 à 40 pers., 5 000 à 20 000 F)`, desaccords, 0);
 
-console.log("\n— Au comptoir, en espèces (décision 12) : mêmes réglages, sans les 125 F");
-const comptoir = resultat(bfaBudget(10, 10000, { paiementElectronique: false }));
+console.log("\n— Au comptoir, en espèces (décision 12) : mêmes réglages, sans les 125 F, ni date limite, ni délai");
+const comptoir = resultat(bfaBudget(10, 10000, {}, COMPTOIR));
 verifier("cas 2 au comptoir : 10 000 F, barré 16 000 F, pas de ligne de frais", [comptoir.totalXof, comptoir.prixBarreXof, comptoir.fraisPaiementXof, comptoir.lignes.length], [10000, 16000, 0, 1]);
-verifier("cas 6 au comptoir : 17 875 F, barré 30 375 F", chiffres(bfaDuree(15, 60, "petit", { gateauxParPersonne: 1, paiementElectronique: false })), ["petit", 60, 17875, 30375]);
-verifier("road trip au comptoir : 30 000 F ; avec réduction 28 800 F, barré 30 000 F", [chiffres(roadTrip(10, { paiementElectronique: false })), chiffres(roadTrip(10, { paiementElectronique: false, reductionValidee: true }))], [["grand", 240, 30000, null], ["grand", 240, 28800, 30000]]);
-verifier("Gbashi au comptoir : 3 500 / 4 000 / 4 500 F, soit 19 500 F", resultat(gbashi({ CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 }, { paiementElectronique: false })).totalXof, 19500);
+verifier("le canal est rendu, et le paiement électronique en découle", [comptoir.canal, comptoir.paiementElectronique, cas2.canal, cas2.paiementElectronique], ["comptoir", false, "en-ligne", true]);
+verifier("cas 6 au comptoir : 17 875 F, barré 30 375 F", chiffres(bfaDuree(15, 60, "petit", { gateauxParPersonne: 1 }, COMPTOIR)), ["petit", 60, 17875, 30375]);
+verifier("road trip au comptoir : 30 000 F ; avec réduction 28 800 F, barré 30 000 F", [chiffres(roadTrip(10, {}, COMPTOIR)), chiffres(roadTrip(10, { reductionValidee: true }, COMPTOIR))], [["grand", 240, 30000, null], ["grand", 240, 28800, 30000]]);
+const gbashiComptoir = resultat(gbashi({ CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 }, {}, COMPTOIR));
+verifier("Gbashi au comptoir : 3 500 / 4 000 / 4 500 F, soit 19 500 F ; encaissé net 19 500 F - 2 375 F", [gbashiComptoir.totalXof, gbashiComptoir.encaisseNetXof], [19500, 19500 - 2375]);
 verifier("Gbashi en ligne, 1 vélo de chaque gamme + 2 Premium : 3 625 + 3 × 4 125 + 4 625 F", resultat(gbashi({ CLASSIQUE: 1, PREMIUM: 3, PRESTIGE: 1 })).totalXof, 3625 + 3 * 4125 + 4625);
+verifier("pas de date limite au comptoir : road trip de samedi vendu samedi 7 h", code(roadTrip(10, {}, { ...COMPTOIR, maintenant: heureBenin(SAMEDI, "07:00") })), "accepté");
+verifier("… ni pour Gbashi : dimanche vendu samedi soir", code(gbashi({ CLASSIQUE: 5 }, {}, { ...COMPTOIR, maintenant: heureBenin(SAMEDI, "20:00") })), "accepté");
+verifier("pas de délai au comptoir : départ 10 h 15 vendu à 10 h", code(bfaBudget(10, 10000, { depart: "10:15" }, { ...COMPTOIR, date: LUNDI })), "accepté");
+verifier(
+  "saisie après coup : Bike for All parti à 8 h, road trip parti à 8 h, vendus plus tard le jour même",
+  [code(bfaBudget(10, 10000, {}, { ...COMPTOIR, date: LUNDI })), code(roadTrip(10, {}, { ...COMPTOIR, maintenant: heureBenin(SAMEDI, "13:00") }))],
+  ["accepté", "accepté"],
+);
+const hierAuComptoir = refus(bfaBudget(10, 10000, {}, { ...COMPTOIR, date: "2026-11-08" }));
+verifier("jamais un jour passé, même au comptoir", [hierAuComptoir.code, hierAuComptoir.message], ["DATE_PASSEE", "Cette date est déjà passée : choisissez un jour à venir."]);
+verifier("mêmes jours qu'en ligne : pas de road trip un mercredi", code(roadTrip(10, {}, { ...COMPTOIR, date: MERCREDI })), "JOUR");
+verifier(
+  "mêmes horaires : départ 7 h 45 refusé ; 21 h 30 et 45 min vendus à 21 h, on propose 21 h 15 (pas de délai)",
+  [code(bfaBudget(10, 5000, { depart: "07:45" }, COMPTOIR)), refus(bfaBudget(10, 10000, { depart: "21:30" }, { ...COMPTOIR, date: LUNDI, maintenant: lundi("21:00") })).dernierDepartPossible],
+  ["HEURE", "21:15"],
+);
 
 console.log("\n— Les options et les réglages");
 verifier("gâteaux sans plafond : 10 pers. × 8 gâteaux", resultat(bfaBudget(10, 10000, { gateauxParPersonne: 8 })).gateauxXof, 12000);

@@ -10,7 +10,7 @@
 import type { ReglagesOffres } from "@/data/reglages-offres";
 
 import { formatMontant } from "./montants";
-import type { LigneOffre } from "./types";
+import type { CanalVente, LigneOffre } from "./types";
 
 /** Les gâteaux : le nombre, et leur prix. */
 export function gateauxDe(
@@ -47,13 +47,9 @@ export function consommablesOfferts(
   };
 }
 
-/** Les frais de paiement électronique : par personne en ligne, rien au comptoir. */
-export function fraisPaiementDe(
-  personnes: number,
-  paiementElectronique: boolean,
-  reglages: Pick<ReglagesOffres, "paiement">,
-): number {
-  return paiementElectronique ? personnes * reglages.paiement.fraisParPersonneXof : 0;
+/** Les frais de paiement électronique : par personne en ligne, rien au comptoir, en espèces (décision 12). */
+export function fraisPaiementDe(personnes: number, canal: CanalVente, reglages: Pick<ReglagesOffres, "paiement">): number {
+  return canal === "en-ligne" ? personnes * reglages.paiement.fraisParPersonneXof : 0;
 }
 
 export function ligneGateaux(gateaux: number, gateauxXof: number, reglages: Pick<ReglagesOffres, "consommables">): LigneOffre[] {

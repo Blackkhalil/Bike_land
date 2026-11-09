@@ -11,7 +11,8 @@
  * (décision 12).
  *
  * Départ et retour sont ceux des réglages (samedi ou dimanche, 8 h à 12 h) :
- * le client ne choisit que la date.
+ * le client ne choisit que la date. En ligne, il réserve au plus tard le
+ * vendredi à 19 h, et toujours au moins 2 h avant le départ (réglables).
  */
 
 import type { ReglagesOffres } from "@/data/reglages-offres";
@@ -23,6 +24,7 @@ import {
   controlerOptions,
   controlerPersonnes,
   estEntierPositif,
+  lireCanal,
   refusSaisie,
   velosLibres,
 } from "./controles";
@@ -31,7 +33,7 @@ import { arrondiDivision, enDixMilliemes, formatMontant, formatPourcentage } fro
 import { recapRoadTrip } from "./recapitulatif";
 import type { ContexteOffre, DemandeRoadTrip, IssueOffre, LigneOffre, ResultatOffre } from "./types";
 
-type Reglages = Pick<ReglagesOffres, "roadTrip" | "consommables" | "paiement" | "dateLimiteWeekend" | "retard">;
+type Reglages = Pick<ReglagesOffres, "roadTrip" | "consommables" | "paiement" | "delaiMinimumMinutes" | "dateLimiteWeekend" | "retard">;
 
 /** La réduction du road trip : le taux réglé (4 %) du prix avant frais, arrondi au franc. */
 export function reductionRoadTripXof(prixAvantFraisXof: number, reglages: Pick<ReglagesOffres, "roadTrip">): number {
@@ -40,6 +42,7 @@ export function reductionRoadTripXof(prixAvantFraisXof: number, reglages: Pick<R
 
 /** Road trip en groupe : le prix du groupe, ou le refus motivé. */
 export function calculerRoadTrip(demande: DemandeRoadTrip, reglages: Reglages, contexte: ContexteOffre): IssueOffre {
+  const canal = lireCanal(contexte);
   const saisie =
     (estEntierPositif(demande.personnes) ? null : refusSaisie("personnes")) ??
     (demande.reductionValidee === undefined || typeof demande.reductionValidee === "boolean" ? null : refusSaisie("reductionValidee")) ??
@@ -52,14 +55,14 @@ export function calculerRoadTrip(demande: DemandeRoadTrip, reglages: Reglages, c
 
   const refus =
     controlerPersonnes("road-trip-groupe", N, rt.personnesMin, velosLibres(contexte.velosDisponibles)) ??
-    controlerCalendrier("road-trip-groupe", contexte, rt.depart, rt.jours, reglages, false);
+    controlerCalendrier("road-trip-groupe", contexte, rt.depart, rt.jours, reglages, null);
   if (refus) return { ok: false, refus };
 
   const prixAvantFraisXof = N * rt.prixPersonneXof;
   // Jamais de réduction par défaut (décision 8) : seulement si elle a été validée.
   const reductionXof = demande.reductionValidee === true ? reductionRoadTripXof(prixAvantFraisXof, reglages) : 0;
   const { gateaux, gateauxXof, coutXof: coutGateauxXof } = gateauxDe(N, gateauxParPersonne, reglages);
-  const fraisPaiementXof = fraisPaiementDe(N, demande.paiementElectronique, reglages);
+  const fraisPaiementXof = fraisPaiementDe(N, canal, reglages);
   const totalXof = prixAvantFraisXof - reductionXof + gateauxXof + fraisPaiementXof;
   const prixBarreXof = reductionXof > 0 ? totalXof + reductionXof : null;
 
@@ -100,7 +103,8 @@ export function calculerRoadTrip(demande: DemandeRoadTrip, reglages: Reglages, c
     gateaux,
     velosParGamme: null,
     lignes,
-    paiementElectronique: demande.paiementElectronique,
+    canal,
+    paiementElectronique: canal === "en-ligne",
     fraisOrganisationXof: 0,
     cocosXof: 0,
     gateauxXof,

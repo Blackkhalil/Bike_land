@@ -21,6 +21,8 @@
  *
  * Le tableur, lui, ne refuse pas sous 30 minutes : le refus est une
  * décision du responsable (décision 16), avec le budget minimum calculé.
+ * Le paiement électronique vaut pour la vente en ligne, jamais au comptoir
+ * (canal du contexte, décision 12).
  *
  * Les comparaisons et les arrondis se font en nombres entiers (dix-
  * millièmes pour les taux) : 20 % de 13 750 F pour 10 personnes donne
@@ -39,6 +41,7 @@ import {
   controlerPersonnes,
   controlerRetour,
   estEntierPositif,
+  lireCanal,
   refusSaisie,
   velosLibres,
 } from "./controles";
@@ -58,7 +61,14 @@ import type {
 
 type Reglages = Pick<
   ReglagesOffres,
-  "tarifNormalHeureXof" | "bikeForAll" | "accompagnateur" | "consommables" | "paiement" | "dateLimiteWeekend" | "retard"
+  | "tarifNormalHeureXof"
+  | "bikeForAll"
+  | "accompagnateur"
+  | "consommables"
+  | "paiement"
+  | "delaiMinimumMinutes"
+  | "dateLimiteWeekend"
+  | "retard"
 >;
 
 const COCOS: readonly Coco[] = ["aucun", "petit", "grand"];
@@ -169,6 +179,7 @@ function controlerSaisie(demande: DemandeBikeForAllBudget | DemandeBikeForAllDur
  * l'heure de retour, le prix et le prix barré, ou le refus motivé.
  */
 export function calculerBikeForAllBudget(demande: DemandeBikeForAllBudget, reglages: Reglages, contexte: ContexteOffre): IssueOffre {
+  const canal = lireCanal(contexte);
   const saisie = controlerSaisie(demande) ?? (estEntierPositif(demande.budgetXof) ? null : refusSaisie("budgetXof"));
   if (saisie) return { ok: false, refus: saisie };
 
@@ -190,7 +201,8 @@ export function calculerBikeForAllBudget(demande: DemandeBikeForAllBudget, regla
     return { ok: false, refus: { code: "BUDGET_MIN", champ: "budgetXof", message, budgetMinimumXof: minimum } };
   }
 
-  const calendrier = controlerCalendrier("bike-for-all", contexte, demande.depart, null, reglages, true) ?? controlerDepart(demande.depart, reglages);
+  const calendrier =
+    controlerCalendrier("bike-for-all", contexte, demande.depart, null, reglages, bfa) ?? controlerDepart(demande.depart, reglages);
   if (calendrier) return { ok: false, refus: calendrier };
 
   // Le pseudo-code du cahier, dans son ordre.
@@ -216,12 +228,12 @@ export function calculerBikeForAllBudget(demande: DemandeBikeForAllBudget, regla
     };
   }
 
-  const retour = controlerRetour(demande.depart, minutes, "budget", reglages);
+  const retour = controlerRetour(demande.depart, minutes, "budget", reglages, contexte);
   if (retour) return { ok: false, refus: retour };
 
   const accompagnateurXof = accompagnateur ? prixAccompagnateurXof(N, minutes, reglages) : 0;
   const { gateaux, gateauxXof, coutXof: coutGateauxXof } = gateauxDe(N, gateauxParPersonne, reglages);
-  const fraisPaiementXof = fraisPaiementDe(N, demande.paiementElectronique, reglages);
+  const fraisPaiementXof = fraisPaiementDe(N, canal, reglages);
   const totalXof = B + gateauxXof + accompagnateurXof + fraisPaiementXof;
   const barreXof = prixBarreXof(N, minutes, { cocosXof, gateauxXof, accompagnateurXof, fraisPaiementXof }, reglages);
   const fin = heureDe(minutesDe(demande.depart) + minutes);
@@ -253,7 +265,8 @@ export function calculerBikeForAllBudget(demande: DemandeBikeForAllBudget, regla
     gateaux,
     velosParGamme: null,
     lignes,
-    paiementElectronique: demande.paiementElectronique,
+    canal,
+    paiementElectronique: canal === "en-ligne",
     fraisOrganisationXof: fraisXof,
     cocosXof,
     gateauxXof,
@@ -279,6 +292,7 @@ export function calculerBikeForAllBudget(demande: DemandeBikeForAllBudget, regla
  * (décision 16).
  */
 export function calculerBikeForAllDuree(demande: DemandeBikeForAllDuree, reglages: Reglages, contexte: ContexteOffre): IssueOffre {
+  const canal = lireCanal(contexte);
   const saisie =
     controlerSaisie(demande) ??
     (estEntierPositif(demande.minutes) ? null : refusSaisie("minutes")) ??
@@ -308,9 +322,9 @@ export function calculerBikeForAllDuree(demande: DemandeBikeForAllDuree, reglage
   }
 
   const refus =
-    controlerCalendrier("bike-for-all", contexte, demande.depart, null, reglages, true) ??
+    controlerCalendrier("bike-for-all", contexte, demande.depart, null, reglages, bfa) ??
     controlerDepart(demande.depart, reglages) ??
-    controlerRetour(demande.depart, minutes, "duree", reglages);
+    controlerRetour(demande.depart, minutes, "duree", reglages, contexte);
   if (refus) return { ok: false, refus };
 
   const tempsXof = arrondiDivision(N * minutes * bfa.tarifHeurePersonneXof, 60);
@@ -319,7 +333,7 @@ export function calculerBikeForAllDuree(demande: DemandeBikeForAllDuree, reglage
   const cocosXof = prixCoco * N;
   const accompagnateurXof = accompagnateur ? prixAccompagnateurXof(N, minutes, reglages) : 0;
   const { gateaux, gateauxXof, coutXof: coutGateauxXof } = gateauxDe(N, gateauxParPersonne, reglages);
-  const fraisPaiementXof = fraisPaiementDe(N, demande.paiementElectronique, reglages);
+  const fraisPaiementXof = fraisPaiementDe(N, canal, reglages);
   const totalXof = tempsXof + fraisXof + cocosXof + gateauxXof + accompagnateurXof + fraisPaiementXof;
   const barreXof = prixBarreXof(N, minutes, { cocosXof, gateauxXof, accompagnateurXof, fraisPaiementXof }, reglages);
   const fin = heureDe(minutesDe(demande.depart) + minutes);
@@ -354,7 +368,8 @@ export function calculerBikeForAllDuree(demande: DemandeBikeForAllDuree, reglage
     gateaux,
     velosParGamme: null,
     lignes,
-    paiementElectronique: demande.paiementElectronique,
+    canal,
+    paiementElectronique: canal === "en-ligne",
     fraisOrganisationXof: fraisXof,
     cocosXof,
     gateauxXof,

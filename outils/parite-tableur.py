@@ -35,7 +35,11 @@ Domaines tirés (graine fixe, le fichier est reproductible) :
 Chaque combinaison coco / gâteaux / accompagnateur (ou réduction / gâteaux)
 revient à tour de rôle, le reste est tiré au hasard. Paiement électronique
 pour les cas demandés ; une série en plus sans paiement électronique
-(« Non » du tableur), qui est le comptoir de la décision 12.
+(« Non » du tableur), qui est le comptoir de la décision 12. Le test en tire
+le canal de vente du moteur : « en-ligne » pour « Oui », « comptoir » pour
+« Non ». Les sorties du test sont demandées le lundi 9 novembre 2026 à 10 h,
+pour le mercredi et le samedi suivants : la date limite du vendredi et le
+délai minimum en ligne, que le tableur ne connaît pas, sont donc respectés.
 
 Les récapitulatifs (A33, A27, A20) sont gardés en entier pour les 25 premiers
 cas de chaque série, et pour tous sous forme d'empreinte (SHA-256 du texte,

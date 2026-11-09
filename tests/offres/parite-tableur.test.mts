@@ -58,9 +58,33 @@ verifier(
 );
 
 // Le décor : demandé le lundi 9 novembre 2026 à 10 h ; Bike for All le
-// mercredi, le road trip le samedi ; 18 vélos libres (Paramètres!B5).
+// mercredi, le road trip le samedi ; 18 vélos libres (Paramètres!B5). C'est
+// assez tôt pour la date limite du vendredi et pour le délai minimum en
+// ligne (vérifié plus bas) : le tableur ne connaît ni l'un ni l'autre.
+//
+// Le canal de vente suit la case « Paiement électronique ? » du tableur,
+// gardée dans chaque entrée : « Oui », en ligne ; « Non », le comptoir
+// (décision 12). Le moteur, lui, ne lit pas ce champ dans la demande.
 const MAINTENANT = Date.parse("2026-11-09T09:00:00.000Z");
-const contexte = (date: string) => ({ date, maintenant: MAINTENANT, velosDisponibles: P.B5 });
+const MERCREDI = "2026-11-11";
+const SAMEDI = "2026-11-14";
+const canalDe = (entree: Record<string, any>) => (entree.paiementElectronique ? "en-ligne" : "comptoir");
+const contexte = (date: string, entree: Record<string, any>) => ({
+  canal: canalDe(entree),
+  date,
+  maintenant: MAINTENANT,
+  velosDisponibles: P.B5,
+});
+const instantBenin = (date: string, heure: string) => Date.parse(`${date}T${heure}:00.000Z`) - 3600_000;
+const premierDepart = Math.min(
+  ...[...cas.bikeForAll, ...cas.bikeForAllDuree].map((c: Cas) => instantBenin(MERCREDI, c.entree.depart)),
+  instantBenin(SAMEDI, R.roadTrip.depart),
+);
+verifier(
+  "le décor respecte le délai minimum en ligne : premier départ du fichier à plus de 2 h de la demande",
+  premierDepart - MAINTENANT >= R.delaiMinimumMinutes * 60_000,
+  true,
+);
 
 type Cas = { entree: Record<string, any>; tableur: Record<string, any> };
 type Champs = Record<string, (resultat: Record<string, any>) => unknown>;
@@ -142,7 +166,7 @@ const ligne = (resultat: Record<string, any>, code: string) =>
 const budget = comparerOnglet(
   "Bike for All (budget)",
   cas.bikeForAll,
-  (e) => m.calculerBikeForAllBudget(e, R, contexte("2026-11-11")),
+  (e) => m.calculerBikeForAllBudget(e, R, contexte(MERCREDI, e)),
   {
     fraisOrganisationXof: (r) => r.fraisOrganisationXof,
     coco: (r) => r.coco,
@@ -168,7 +192,7 @@ console.log(`     ${budget.exclus} cas exclus : le tableur y accepte moins de 30
 const duree = comparerOnglet(
   "Bike for All (durée)",
   cas.bikeForAllDuree,
-  (e) => m.calculerBikeForAllDuree(e, R, contexte("2026-11-11")),
+  (e) => m.calculerBikeForAllDuree(e, R, contexte(MERCREDI, e)),
   {
     tempsXof: (r) => ligne(r, "temps"),
     fraisOrganisationXof: (r) => r.fraisOrganisationXof,
@@ -188,7 +212,7 @@ const duree = comparerOnglet(
 const roadTrip = comparerOnglet(
   "Road trip en groupe",
   cas.roadTrip,
-  (e) => m.calculerRoadTrip(e, R, contexte("2026-11-14")),
+  (e) => m.calculerRoadTrip(e, R, contexte(SAMEDI, e)),
   {
     prixAvantReductionXof: (r) => ligne(r, "road-trip"),
     reductionXof: (r) => r.reductionXof,

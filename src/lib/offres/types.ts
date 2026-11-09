@@ -8,10 +8,11 @@
  *  - la demande du client, telle que le formulaire la décrit (étape 3) ;
  *  - les réglages des offres (src/data/reglages-offres.ts), relus à chaque
  *    calcul ;
- *  - le contexte du jour demandé : la date, l'heure qu'il est, et les vélos
- *    libres ce jour-là. C'est l'appelant qui les lit (base, horloge) : le
- *    moteur ne touche ni à la base, ni à l'horloge, ni au réseau, ce qui
- *    permet de le tester à la minute près et de l'appeler aussi bien dans le
+ *  - le contexte de la vente : le canal (en ligne ou au comptoir), la date
+ *    demandée, l'heure qu'il est, et les vélos libres ce jour-là. C'est
+ *    l'appelant qui les fixe ou les lit (route, base, horloge) : le moteur
+ *    ne touche ni à la base, ni à l'horloge, ni au réseau, ce qui permet de
+ *    le tester à la minute près et de l'appeler aussi bien dans le
  *    navigateur que sur le serveur.
  *
  * Il rend soit un résultat chiffré, soit un refus motivé, poli, à montrer
@@ -32,6 +33,19 @@ export type Coco = "aucun" | "petit" | "grand";
 /** Une heure de la journée, « 08:00 », heure du Bénin. */
 export type HeureMinute = string;
 
+/**
+ * Où se fait la vente (décision 12, mêmes réglages des deux côtés) :
+ *
+ *  - « en-ligne » : sur le site, payée par Mobile Money. Les frais de
+ *    paiement électronique s'ajoutent (125 F par personne), la date limite
+ *    du week-end s'applique (vendredi 19 h) et le départ doit être à
+ *    `delaiMinimumMinutes` au moins de la demande (2 h) ;
+ *  - « comptoir » : à la boutique, en espèces. Ni frais de paiement, ni date
+ *    limite, ni délai ; la vente peut être saisie après coup, donc un départ
+ *    plus tôt le jour même est accepté, jamais un jour passé.
+ */
+export type CanalVente = "en-ligne" | "comptoir";
+
 /* ------------------------------------------------------------ Demandes */
 
 /**
@@ -48,13 +62,6 @@ export interface DemandeBikeForAllBudget {
   gateauxParPersonne?: number;
   /** Non par défaut. */
   accompagnateur?: boolean;
-  /**
-   * Vrai en ligne : les frais de paiement électronique s'ajoutent. Faux au
-   * comptoir, en espèces : mêmes réglages, sans ces frais (décision 12).
-   * Toujours précisé : un oubli ne doit ni facturer des frais au comptoir,
-   * ni les perdre en ligne.
-   */
-  paiementElectronique: boolean;
 }
 
 /** Bike for All, le client donne sa durée (cahier, 4.2) : le moteur additionne. */
@@ -66,7 +73,6 @@ export interface DemandeBikeForAllDuree {
   coco: Coco;
   gateauxParPersonne?: number;
   accompagnateur?: boolean;
-  paiementElectronique: boolean;
 }
 
 /** Road trip en groupe (cahier, 4.4) : départ et retour fixés par les réglages. */
@@ -78,7 +84,6 @@ export interface DemandeRoadTrip {
    */
   reductionValidee?: boolean;
   gateauxParPersonne?: number;
-  paiementElectronique: boolean;
 }
 
 /**
@@ -88,18 +93,27 @@ export interface DemandeRoadTrip {
 export interface DemandeGbashi {
   velos: Partial<Record<GammeVelo, number>>;
   gateauxParPersonne?: number;
-  paiementElectronique: boolean;
 }
 
 /* ------------------------------------------------------------ Contexte */
 
-/** Ce que l'appelant sait du jour demandé, et l'heure qu'il est. */
+/** Ce que l'appelant sait de la vente : son canal, le jour demandé, l'heure qu'il est. */
 export interface ContexteOffre {
+  /**
+   * En ligne ou au comptoir : les frais de paiement et les règles de délai
+   * en découlent (voir CanalVente). Toujours fixé par le serveur selon la
+   * route (le site : « en-ligne » ; l'administration : « comptoir »), jamais
+   * lu dans la demande du client, qui s'éviterait sinon frais et délais.
+   * Absent ou inconnu : erreur du serveur (TypeError), jamais une vente au
+   * hasard avec ou sans les frais.
+   */
+  canal: CanalVente;
   /** Le jour de la sortie, AAAA-MM-JJ, heure du Bénin. */
   date: DateISO;
   /**
    * L'instant présent (le serveur le lit, le moteur jamais). Sert à refuser
-   * un départ passé et une réservation du week-end après la date limite.
+   * un jour passé et, en ligne, un départ passé ou trop proche (délai
+   * minimum) et une réservation du week-end après la date limite.
    */
   maintenant: Date | number;
   /**
@@ -136,10 +150,12 @@ export type CodeRefus =
   | "JOUR"
   /** Départ hors des horaires, hors du quart d'heure, ou retour après l'heure limite. */
   | "HEURE"
-  /** Départ déjà passé. */
+  /** Jour déjà passé ; en ligne, départ déjà passé le jour même. */
   | "DATE_PASSEE"
-  /** Réservation du week-end après le vendredi 19 h. */
-  | "DATE_LIMITE";
+  /** En ligne : réservation du week-end après le vendredi 19 h. */
+  | "DATE_LIMITE"
+  /** En ligne : départ trop proche, à moins de `delaiMinimumMinutes` (2 h) de la demande. */
+  | "DELAI";
 
 /** Le champ du formulaire auquel rattacher le message. */
 export type ChampOffre =
@@ -150,7 +166,6 @@ export type ChampOffre =
   | "gateauxParPersonne"
   | "accompagnateur"
   | "reductionValidee"
-  | "paiementElectronique"
   | "velos"
   | "date"
   | "depart";
@@ -170,8 +185,14 @@ export interface Refus {
   maximum?: number;
   /** STOCK_GAMME : la gamme en cause. */
   gamme?: GammeVelo;
-  /** HEURE, retour trop tardif : le dernier départ qui rentre à l'heure. */
+  /** HEURE, retour trop tardif : le dernier départ qui rentre à l'heure (et, en ligne, encore réservable). */
   dernierDepartPossible?: HeureMinute;
+  /**
+   * DELAI, et DATE_PASSEE le jour même, quand le client choisit son heure
+   * (Bike for All) : le premier départ encore réservable en ligne ce jour-là.
+   * Absent s'il n'y en a plus (le message invite alors à changer de jour).
+   */
+  premierDepartPossible?: HeureMinute;
 }
 
 /* ------------------------------------------------------------ Résultat */
@@ -226,6 +247,9 @@ export interface ResultatOffre {
   /** Gbashi Bike : les vélos de chaque gamme ; ailleurs, gamme mélangée : `null`. */
   velosParGamme: Record<GammeVelo, number> | null;
   lignes: LigneOffre[];
+  /** Le canal de la vente, repris du contexte. */
+  canal: CanalVente;
+  /** Vrai en ligne (frais de paiement électronique), faux au comptoir : tiré du canal, jamais saisi à part. */
   paiementElectronique: boolean;
   /** Bike for All : frais d'organisation retenus ; zéro ailleurs. */
   fraisOrganisationXof: number;
@@ -234,7 +258,7 @@ export interface ResultatOffre {
   gateauxXof: number;
   /** Bike for All : le prix de l'accompagnateur, zéro sans lui. */
   accompagnateurXof: number;
-  /** Frais de paiement électronique : 125 F par personne en ligne, zéro au comptoir. */
+  /** Frais de paiement électronique : 125 F par personne en ligne, zéro au comptoir (décision 12). */
   fraisPaiementXof: number;
   /** Road trip : la réduction accordée, en positif ; zéro ailleurs. */
   reductionXof: number;

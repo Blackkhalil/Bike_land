@@ -25,6 +25,7 @@ import {
   controlerOptions,
   controlerPersonnes,
   estEntierPositif,
+  lireCanal,
   refusSaisie,
   velosLibres,
 } from "./controles";
@@ -33,7 +34,7 @@ import { formatMontant } from "./montants";
 import { NOMS_GAMMES, ORDRE_GAMMES, recapGbashi } from "./recapitulatif";
 import type { ContexteOffre, DemandeGbashi, GammeVelo, IssueOffre, LigneOffre, Refus, ResultatOffre } from "./types";
 
-type Reglages = Pick<ReglagesOffres, "gbashi" | "consommables" | "paiement" | "dateLimiteWeekend" | "retard">;
+type Reglages = Pick<ReglagesOffres, "gbashi" | "consommables" | "paiement" | "delaiMinimumMinutes" | "dateLimiteWeekend" | "retard">;
 
 /** Les vélos demandés, gamme par gamme (zéro pour une gamme absente), ou `null` si un nombre est illisible. */
 function lireVelos(velos: unknown): Record<GammeVelo, number> | null {
@@ -70,6 +71,7 @@ function controlerStock(velos: Record<GammeVelo, number>, contexte: ContexteOffr
 
 /** Gbashi Bike : le prix du groupe, ou le refus motivé. */
 export function calculerGbashi(demande: DemandeGbashi, reglages: Reglages, contexte: ContexteOffre): IssueOffre {
+  const canal = lireCanal(contexte);
   const velos = lireVelos(demande.velos);
   if (!velos) return { ok: false, refus: refusSaisie("velos") };
   const saisie = controlerOptions(demande);
@@ -82,7 +84,7 @@ export function calculerGbashi(demande: DemandeGbashi, reglages: Reglages, conte
   const refus =
     controlerPersonnes("gbashi-groupe", N, gb.personnesMin, velosLibres(contexte.velosDisponibles), "velos") ??
     controlerStock(velos, contexte) ??
-    controlerCalendrier("gbashi-groupe", contexte, gb.depart, gb.jours, reglages, false);
+    controlerCalendrier("gbashi-groupe", contexte, gb.depart, gb.jours, reglages, null);
   if (refus) return { ok: false, refus };
 
   const lignesVelos: LigneOffre[] = ORDRE_GAMMES.filter((gamme) => velos[gamme] > 0).map((gamme) => ({
@@ -93,7 +95,7 @@ export function calculerGbashi(demande: DemandeGbashi, reglages: Reglages, conte
   }));
   const velosXof = lignesVelos.reduce((total, ligne) => total + ligne.montantXof, 0);
   const { gateaux, gateauxXof, coutXof: coutGateauxXof } = gateauxDe(N, gateauxParPersonne, reglages);
-  const fraisPaiementXof = fraisPaiementDe(N, demande.paiementElectronique, reglages);
+  const fraisPaiementXof = fraisPaiementDe(N, canal, reglages);
   const totalXof = velosXof + gateauxXof + fraisPaiementXof;
   const { cocos, eaux, coutXof: coutConsommablesXof } = consommablesOfferts(N, gb, reglages);
 
@@ -111,7 +113,8 @@ export function calculerGbashi(demande: DemandeGbashi, reglages: Reglages, conte
     gateaux,
     velosParGamme: velos,
     lignes: [...lignesVelos, ...ligneGateaux(gateaux, gateauxXof, reglages), ...ligneFraisPaiement(N, fraisPaiementXof, reglages)],
-    paiementElectronique: demande.paiementElectronique,
+    canal,
+    paiementElectronique: canal === "en-ligne",
     fraisOrganisationXof: 0,
     cocosXof: 0,
     gateauxXof,

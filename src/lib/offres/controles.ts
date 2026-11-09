@@ -8,7 +8,7 @@
  */
 
 import type { ReglagesOffres } from "@/data/reglages-offres";
-import { estDateISOValide } from "@/lib/dates";
+import { estDateISOValide, type DateISO } from "@/lib/dates";
 
 import {
   dateAuBeninDe,
@@ -22,7 +22,9 @@ import {
   minutesDe,
   NOMS_JOURS,
 } from "./calendrier";
-import type { ChampOffre, CodeOffreGroupe, ContexteOffre, HeureMinute, Refus } from "./types";
+import type { CanalVente, ChampOffre, CodeOffreGroupe, ContexteOffre, HeureMinute, Refus } from "./types";
+
+const MINUTE_MS = 60 * 1000;
 
 /** Le nom de l'offre en tête de phrase : « Bike for All se réserve… ». */
 export const SUJETS_OFFRES: Record<CodeOffreGroupe, string> = {
@@ -39,7 +41,6 @@ const MESSAGES_SAISIE: Record<ChampOffre, string> = {
   gateauxParPersonne: "Indiquez le nombre de gâteaux par personne, en chiffres (0 si vous n'en voulez pas).",
   accompagnateur: "Dites-nous si vous souhaitez un accompagnateur.",
   reductionValidee: "Dites-nous si la réduction a été validée.",
-  paiementElectronique: "Précisez le mode de paiement : en ligne ou en espèces.",
   velos: "Indiquez le nombre de vélos de chaque gamme, en chiffres.",
   date: "Choisissez une date dans le calendrier.",
   depart: "Choisissez une heure de départ, par exemple 08:00.",
@@ -73,20 +74,33 @@ export function lireMaintenant(contexte: ContexteOffre): number {
   return instant;
 }
 
+/**
+ * Le canal de la vente, « en-ligne » ou « comptoir ». Comme l'horloge, c'est
+ * le serveur qui le fixe : absent ou inconnu, c'est une erreur du serveur,
+ * qui lève une erreur au lieu de vendre avec ou sans les frais au hasard.
+ */
+export function lireCanal(contexte: ContexteOffre): CanalVente {
+  const canal: unknown = contexte.canal;
+  if (canal !== "en-ligne" && canal !== "comptoir") {
+    throw new TypeError("Offres de groupe : le canal de vente (contexte.canal) doit valoir « en-ligne » ou « comptoir ».");
+  }
+  return canal;
+}
+
 /** Un nombre de vélos libres : un entier positif, zéro s'il est inconnu. */
 export function velosLibres(valeur: unknown): number {
   return typeof valeur === "number" && Number.isFinite(valeur) ? Math.max(0, Math.floor(valeur)) : 0;
 }
 
 /**
- * Les options communes : gâteaux (zéro par défaut, sans plafond), mode de
- * paiement (toujours précisé). Rend le premier champ illisible, ou `null`.
+ * Les options communes : les gâteaux (zéro par défaut, sans plafond). Rend
+ * le refus d'une saisie illisible, ou `null`. Le mode de paiement n'est pas
+ * une saisie du client : il découle du canal (contexte).
  */
-export function controlerOptions(demande: { gateauxParPersonne?: unknown; paiementElectronique?: unknown }): Refus | null {
+export function controlerOptions(demande: { gateauxParPersonne?: unknown }): Refus | null {
   if (demande.gateauxParPersonne !== undefined && !estEntierPositif(demande.gateauxParPersonne)) {
     return refusSaisie("gateauxParPersonne");
   }
-  if (typeof demande.paiementElectronique !== "boolean") return refusSaisie("paiementElectronique");
   return null;
 }
 
@@ -120,34 +134,82 @@ export function controlerPersonnes(
   return null;
 }
 
+/** La grille des départs qu'on choisit (Bike for All) : du premier au dernier départ, au pas réglé. */
+export type GrilleDeparts = Pick<ReglagesOffres["bikeForAll"], "premierDepart" | "dernierDepart" | "pasMinutes">;
+
 /**
- * Le jour et l'heure de départ face au calendrier : départ déjà passé, jour
- * où l'offre ne part pas, réservation du week-end après la date limite
- * (vendredi 19 h, décision 11 : pour les trois offres).
+ * En ligne, un départ se réserve s'il vient après maintenant, et au moins
+ * `delaiMinimumMinutes` après. Vrai aussi pour un départ réglé à 0 minute
+ * de délai : un départ à l'instant même est déjà passé.
+ */
+function departReservable(instantDepart: number, maintenant: number, delaiMinimumMinutes: number): boolean {
+  const avantDepart = instantDepart - maintenant;
+  return avantDepart > 0 && avantDepart >= delaiMinimumMinutes * MINUTE_MS;
+}
+
+/**
+ * En ligne, le premier départ de la grille qu'on peut encore réserver ce
+ * jour-là (la même règle que departReservable). `null` s'il n'y en a plus
+ * ce jour-là. Ne regarde ni la date limite du week-end, ni l'heure de
+ * retour : les contrôles qui l'appellent s'en chargent.
+ */
+export function premierDepartReservable(
+  date: DateISO,
+  maintenant: number,
+  delaiMinimumMinutes: number,
+  grille: GrilleDeparts,
+): HeureMinute | null {
+  // En minutes depuis minuit ce jour-là : la première minute qui respecte le
+  // délai, et qui vient après maintenant.
+  const minuit = instantAuBenin(date, "00:00");
+  const auPlusTot = Math.max(
+    Math.ceil((maintenant + delaiMinimumMinutes * MINUTE_MS - minuit) / MINUTE_MS),
+    Math.floor((maintenant - minuit) / MINUTE_MS) + 1,
+  );
+  const premier = Math.ceil(Math.max(minutesDe(grille.premierDepart), auPlusTot) / grille.pasMinutes) * grille.pasMinutes;
+  return premier <= minutesDe(grille.dernierDepart) ? heureDe(premier) : null;
+}
+
+/** « aujourd'hui » ou « ce jour-là », selon que la date demandée est celle du jour au Bénin. */
+function ceJourLa(date: DateISO, maintenant: number): string {
+  return date === dateAuBeninDe(maintenant) ? "aujourd'hui" : "ce jour-là";
+}
+
+/** La même chose en tête de phrase : « Aujourd'hui », « Ce jour-là ». */
+function enTete(texte: string): string {
+  return texte.charAt(0).toUpperCase() + texte.slice(1);
+}
+
+/**
+ * Le jour et l'heure de départ face au calendrier et au canal de la vente :
  *
- * `joursPermis` à `null` : tous les jours (Bike for All). `heureChoisie` :
- * le client a choisi l'heure (Bike for All), sinon elle est fixée.
+ *  - partout : une date lisible, pas un jour passé, un jour où l'offre part ;
+ *  - en ligne seulement : la date limite du week-end (vendredi 19 h,
+ *    décision 11 : pour les trois offres), un départ pas encore passé, et le
+ *    délai minimum avant le départ (2 h, le temps de tout préparer) ;
+ *  - au comptoir, rien de plus : la vente se saisit aussi après coup, un
+ *    départ plus tôt le jour même est donc accepté.
+ *
+ * `joursPermis` à `null` : tous les jours (Bike for All). `grille` : les
+ * départs que le client choisit (Bike for All), qui servent à lui proposer
+ * le premier départ encore possible ; `null` quand l'heure est fixée (road
+ * trip, Gbashi Bike).
  */
 export function controlerCalendrier(
   offre: CodeOffreGroupe,
   contexte: ContexteOffre,
   depart: HeureMinute,
   joursPermis: readonly number[] | null,
-  reglages: Pick<ReglagesOffres, "dateLimiteWeekend">,
-  heureChoisie: boolean,
+  reglages: Pick<ReglagesOffres, "dateLimiteWeekend" | "delaiMinimumMinutes">,
+  grille: GrilleDeparts | null,
 ): Refus | null {
   const maintenant = lireMaintenant(contexte);
+  const canal = lireCanal(contexte);
   const { date } = contexte;
   if (typeof date !== "string" || !estDateISOValide(date)) return refusSaisie("date");
 
-  if (instantAuBenin(date, depart) <= maintenant) {
-    const message =
-      date < dateAuBeninDe(maintenant)
-        ? "Cette date est déjà passée : choisissez un jour à venir."
-        : heureChoisie
-          ? "Cette heure de départ est déjà passée : choisissez-en une plus tardive, ou un autre jour."
-          : "Le départ de ce jour-là est déjà passé : choisissez une autre date.";
-    return { code: "DATE_PASSEE", champ: heureChoisie && date >= dateAuBeninDe(maintenant) ? "depart" : "date", message };
+  if (date < dateAuBeninDe(maintenant)) {
+    return { code: "DATE_PASSEE", champ: "date", message: "Cette date est déjà passée : choisissez un jour à venir." };
   }
 
   if (joursPermis && !joursPermis.includes(jourDeLaSemaine(date))) {
@@ -156,6 +218,8 @@ export function controlerCalendrier(
       : `${SUJETS_OFFRES[offre]} n'a pas de départ prévu pour le moment.`;
     return { code: "JOUR", champ: "date", message };
   }
+
+  if (canal === "comptoir") return null;
 
   const limite = dateLimiteDuWeekend(date, reglages.dateLimiteWeekend);
   if (limite !== null && maintenant > limite) {
@@ -166,7 +230,41 @@ export function controlerCalendrier(
       message: `Les réservations du week-end se font au plus tard le ${NOMS_JOURS[jour]} à ${heureEnClair(heure)}, et ce délai est passé pour cette date : choisissez un autre jour.`,
     };
   }
-  return null;
+
+  const delai = reglages.delaiMinimumMinutes;
+  const instantDepart = instantAuBenin(date, depart);
+  if (departReservable(instantDepart, maintenant, delai)) return null;
+
+  // Départ passé ou trop proche. Quand le client choisit son heure, on lui
+  // propose le premier départ encore possible ce jour-là, s'il en reste un.
+  const premier = grille ? premierDepartReservable(date, maintenant, delai, grille) : null;
+  const proposition = premier ? { champ: "depart" as const, premierDepartPossible: premier } : { champ: "date" as const };
+  const jour = ceJourLa(date, maintenant);
+
+  if (instantDepart <= maintenant) {
+    if (!grille) {
+      return { code: "DATE_PASSEE", champ: "date", message: "Le départ de ce jour-là est déjà passé : choisissez une autre date." };
+    }
+    const raison = delai > 0 ? ` : en ligne, la réservation se fait au moins ${dureeEnClair(delai)} avant le départ` : "";
+    return {
+      code: "DATE_PASSEE",
+      message: premier
+        ? `Cette heure de départ est déjà passée. ${enTete(jour)}, le premier départ encore possible est à ${heureEnClair(premier)}${raison}.`
+        : `Cette heure de départ est déjà passée, et il n'y a plus de départ possible ${jour} : choisissez un autre jour.`,
+      ...proposition,
+    };
+  }
+
+  const regle = `En ligne, la réservation se fait au moins ${dureeEnClair(delai)} avant le départ, le temps de tout préparer`;
+  return {
+    code: "DELAI",
+    message: !grille
+      ? `${regle} : pour ${jour}, c'est trop tard. Choisissez une autre date.`
+      : premier
+        ? `${regle}. ${enTete(jour)}, le premier départ encore possible est à ${heureEnClair(premier)}.`
+        : `${regle} : il n'y a plus de départ possible ${jour}. Choisissez un autre jour.`,
+    ...proposition,
+  };
 }
 
 /** « au quart d'heure » : le pas des départs, dans une phrase. */
@@ -192,33 +290,49 @@ export function controlerDepart(depart: HeureMinute, reglages: Pick<ReglagesOffr
 
 /**
  * Le dernier départ qui rentre à l'heure pour cette durée : sur la grille
- * des départs, au plus tard au dernier départ réglé. `null` s'il n'y en a
- * aucun.
+ * des départs, au plus tard au dernier départ réglé, et pas avant
+ * `auPlusTot` quand il est donné (en ligne : le premier départ encore
+ * réservable ce jour-là). `null` s'il n'y en a aucun.
  */
-export function dernierDepartPour(minutesDeVelo: number, reglages: Pick<ReglagesOffres, "bikeForAll">): HeureMinute | null {
+export function dernierDepartPour(
+  minutesDeVelo: number,
+  reglages: Pick<ReglagesOffres, "bikeForAll">,
+  auPlusTot: HeureMinute | null = null,
+): HeureMinute | null {
   const { premierDepart, dernierDepart, retourAuPlusTard, pasMinutes } = reglages.bikeForAll;
   const auPlusTard = Math.min(minutesDe(dernierDepart), minutesDe(retourAuPlusTard) - minutesDeVelo);
   const surLaGrille = Math.floor(auPlusTard / pasMinutes) * pasMinutes;
-  return surLaGrille >= minutesDe(premierDepart) && surLaGrille >= 0 ? heureDe(surLaGrille) : null;
+  const plancher = Math.max(0, minutesDe(premierDepart), auPlusTot === null ? 0 : minutesDe(auPlusTot));
+  return surLaGrille >= plancher ? heureDe(surLaGrille) : null;
 }
 
 /**
  * Le retour d'un Bike for All : au plus tard à l'heure réglée (22 h). Le
  * message propose le dernier départ possible, ou une demande plus courte.
+ * En ligne, ce départ doit aussi respecter le délai minimum : s'il est déjà
+ * trop tard pour lui, le message le dit et propose un autre jour.
  */
 export function controlerRetour(
   depart: HeureMinute,
   minutesDeVelo: number,
   mode: "budget" | "duree",
-  reglages: Pick<ReglagesOffres, "bikeForAll">,
+  reglages: Pick<ReglagesOffres, "bikeForAll" | "delaiMinimumMinutes">,
+  contexte: ContexteOffre,
 ): Refus | null {
   const { retourAuPlusTard } = reglages.bikeForAll;
   if (minutesDe(depart) + minutesDeVelo <= minutesDe(retourAuPlusTard)) return null;
+
+  const maintenant = lireMaintenant(contexte);
+  const enLigne = lireCanal(contexte) === "en-ligne";
+  // Au comptoir, tout départ de la grille ; en ligne, pas avant le délai minimum.
+  const premierPermis = enLigne
+    ? premierDepartReservable(contexte.date, maintenant, reglages.delaiMinimumMinutes, reglages.bikeForAll)
+    : reglages.bikeForAll.premierDepart;
   const debut =
     mode === "budget"
       ? `Votre budget offre ${dureeEnClair(minutesDeVelo)} de vélo :`
       : `Avec ${dureeEnClair(minutesDeVelo)} de vélo,`;
-  const possible = dernierDepartPour(minutesDeVelo, reglages);
+  const possible = premierPermis === null ? null : dernierDepartPour(minutesDeVelo, reglages, premierPermis);
   if (possible) {
     return {
       code: "HEURE",
@@ -227,9 +341,19 @@ export function controlerRetour(
       dernierDepartPossible: possible,
     };
   }
+  const champ = mode === "budget" ? "budgetXof" : "minutes";
+  const plusCourt = mode === "budget" ? "un budget plus petit" : "une durée plus courte";
+  if (dernierDepartPour(minutesDeVelo, reglages) === null) {
+    return {
+      code: "HEURE",
+      champ,
+      message: `${debut} le retour se ferait après ${heureEnClair(retourAuPlusTard)}, l'heure limite, même au premier départ. Choisissez ${plusCourt}.`,
+    };
+  }
+  // Un départ plus tôt rentrerait à l'heure, mais il est trop tard pour le réserver en ligne.
   return {
     code: "HEURE",
-    champ: mode === "budget" ? "budgetXof" : "minutes",
-    message: `${debut} le retour se ferait après ${heureEnClair(retourAuPlusTard)}, l'heure limite, même au premier départ. Choisissez ${mode === "budget" ? "un budget plus petit" : "une durée plus courte"}.`,
+    champ,
+    message: `${debut} le retour se ferait après ${heureEnClair(retourAuPlusTard)}, l'heure limite, et il est trop tard pour réserver un départ plus tôt ${ceJourLa(contexte.date, maintenant)}. Choisissez ${plusCourt}, ou un autre jour.`,
   };
 }
