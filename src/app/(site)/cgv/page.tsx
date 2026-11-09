@@ -4,12 +4,18 @@ import { ArticleLegal, PageLegale } from "@/components/PageLegale";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   DUREE_MAX_LOCATION_LIBRE,
+  EXPIRATION_PANIER_MINUTES,
   gammesDuDepart,
   PERSONNES_MIN_ROAD_TRIP,
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
 } from "@/data/offres";
+import { formatHeureMinute, NOMS_JOURS } from "@/data/reglages";
+import { lireReglagesOffresAvec, type ReglagesOffres } from "@/data/reglages-offres";
+import { comptesBikeLand, NOMS_RESEAUX } from "@/lib/agent-ia/comptes";
+import { depot } from "@/lib/db";
 import { formatXof } from "@/lib/format";
+import { penaliteRetardXof } from "@/lib/offres/retard";
 import { site } from "@/lib/site";
 import { metadonneesPage } from "@/lib/seo";
 
@@ -17,11 +23,185 @@ export const metadata: Metadata = metadonneesPage({
   titre: "Conditions générales de vente",
   description:
     "Conditions de vente Bike Land : réservation en ligne, paiement Mobile Money, road trips encadrés, " +
-    "location à l'heure, caution, annulation et responsabilité.",
+    "offres de groupe, location à l'heure, caution, annulation et responsabilité.",
   chemin: "/cgv",
 });
 
-export default function PageCGV() {
+/**
+ * Régénérée au plus toutes les cinq minutes, et tout de suite après un
+ * réglage dans l'administration (rafraichirSitePublic) : les conditions des
+ * offres de groupe citent les chiffres des réglages en vigueur.
+ */
+export const revalidate = 300;
+
+/** L'espace insécable entre un nombre et son unité. */
+const INSECABLE = String.fromCharCode(0xa0);
+
+/**
+ * Les réglages des offres de groupe en vigueur, ou `null` quand ils sont
+ * illisibles ou que la base ne répond pas : les clauses s'écrivent alors sans
+ * chiffres, jamais avec des valeurs que la vente n'appliquerait pas (la vente
+ * est elle-même refusée dans ce cas). Sans base (mode démonstration), ce sont
+ * les valeurs de départ, celles qu'applique alors le calcul.
+ */
+async function reglagesEnVigueur(): Promise<ReglagesOffres | null> {
+  try {
+    const lecture = await lireReglagesOffresAvec((cle) => depot.lireParametreAdmin(cle));
+    return lecture.source === "illisible" ? null : lecture.reglages;
+  } catch {
+    return null;
+  }
+}
+
+/** « 7 minutes », « 1 minute ». */
+function minutesEnClair(minutes: number): string {
+  return `${minutes}${INSECABLE}minute${minutes > 1 ? "s" : ""}`;
+}
+
+/** « 2 heures », « 1 h 30 », « 45 minutes ». */
+function dureeEnClair(minutes: number): string {
+  if (minutes < 60) return minutesEnClair(minutes);
+  const heures = Math.floor(minutes / 60);
+  const reste = minutes % 60;
+  if (!reste) return `${heures}${INSECABLE}heure${heures > 1 ? "s" : ""}`;
+  return `${heures}${INSECABLE}h${INSECABLE}${String(reste).padStart(2, "0")}`;
+}
+
+/** « 4 % », « 3,5 % ». */
+function pourcentage(taux: number): string {
+  return `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(taux * 100)}${INSECABLE}%`;
+}
+
+/** Les comptes qui ouvrent droit à la réduction : « Instagram (@bikeland_bj) ou TikTok (Bike Land) ». */
+function comptesEnClair(): { abonnement: string; story: string | null } {
+  const comptes = comptesBikeLand().filter((compte) => compte.reseau !== "facebook");
+  const noms = comptes.map(
+    (compte) => `${NOMS_RESEAUX[compte.reseau]} (${compte.identifiant ? `@${compte.identifiant}` : compte.nom})`,
+  );
+  const instagram = comptes.find((compte) => compte.reseau === "instagram" && compte.identifiant);
+  return {
+    abonnement: noms.length > 1 ? `${noms.slice(0, -1).join(", ")} ou ${noms[noms.length - 1]}` : (noms[0] ?? ""),
+    story: instagram ? `@${instagram.identifiant}` : null,
+  };
+}
+
+/**
+ * Les conditions particulières des offres de groupe (décisions du
+ * responsable du 9 novembre 2026, voir docs/bike-land/SUIVI.md), avec les
+ * chiffres des réglages en vigueur, ou sans chiffres quand ils sont illisibles.
+ */
+function ConditionsOffresDeGroupe({ reglages }: { reglages: ReglagesOffres | null }) {
+  const r = reglages;
+  const comptes = comptesEnClair();
+  const baremeAffiche = "selon le barème affiché au moment de la réservation";
+  const exempleRetard = r ? r.retard.toleranceMinutes + 3 : 0;
+  return (
+    <ArticleLegal titre="Article 12. Conditions particulières des offres de groupe">
+      <p>
+        Bike for All, Road trip en groupe et Gbashi Bike se réservent pour tout un groupe, en une seule
+        fois. Les conditions qui suivent complètent les articles précédents. Le prix exact de votre
+        réservation, ligne par ligne, vous est toujours affiché avant le paiement.
+      </p>
+      <p>
+        <strong>Quand réserver.</strong>{" "}
+        {r && r.delaiMinimumMinutes > 0 ? (
+          <>
+            En ligne, réservez au moins {dureeEnClair(r.delaiMinimumMinutes)} avant l&apos;heure de départ :
+            c&apos;est le temps qu&apos;il nous faut pour préparer les vélos, les cocos et les gâteaux.
+          </>
+        ) : r ? (
+          <>En ligne, réservez avant l&apos;heure de départ.</>
+        ) : (
+          <>
+            En ligne, réservez avant l&apos;heure de départ, en respectant le délai indiqué sur la page de
+            l&apos;offre : c&apos;est le temps qu&apos;il nous faut pour préparer les vélos, les cocos et les
+            gâteaux.
+          </>
+        )}{" "}
+        {r ? (
+          <>
+            Pour un départ le samedi ou le dimanche, réservez au plus tard le{" "}
+            {NOMS_JOURS[r.dateLimiteWeekend.jour]} à {formatHeureMinute(r.dateLimiteWeekend.heure)} qui
+            précède.
+          </>
+        ) : (
+          <>
+            Pour un départ le samedi ou le dimanche, réservez au plus tard à la date limite indiquée sur la
+            page de l&apos;offre.
+          </>
+        )}{" "}
+        Au comptoir, ces délais ne s&apos;appliquent pas, dans la limite des vélos disponibles.
+      </p>
+      <p>
+        <strong>Vos coordonnées.</strong> Votre adresse email est obligatoire : nous y envoyons le
+        récapitulatif de votre réservation, votre facture et votre lien de suivi.
+      </p>
+      <p>
+        <strong>Paiement.</strong> Le paiement se fait en entier à la réservation : en ligne par Mobile
+        Money, au comptoir aussi en espèces. En ligne, des frais de paiement électronique{" "}
+        {r ? (
+          <>
+            de <span className="whitespace-nowrap">{formatXof(r.paiement.fraisParPersonneXof)}</span> par
+            personne s&apos;ajoutent au prix de l&apos;offre
+          </>
+        ) : (
+          <>par personne s&apos;ajoutent au prix de l&apos;offre, {baremeAffiche}</>
+        )}{" "}
+        ; ils figurent sur une ligne à part, avant le paiement. Au comptoir, ces frais ne sont pas
+        demandés.
+      </p>
+      <p>
+        Pendant que vous payez, les vélos de votre groupe vous sont gardés{" "}
+        {minutesEnClair(EXPIRATION_PANIER_MINUTES)}. Un paiement reçu après ce délai confirme la
+        réservation si les vélos sont encore libres. Sinon, nous vous prévenons par email et le montant
+        payé vous est remboursé sous 48 heures, par Mobile Money.
+      </p>
+      {(!r || r.roadTrip.reduction > 0) && (
+        <p>
+          <strong>
+            Réduction{r ? ` de ${pourcentage(r.roadTrip.reduction)}` : ""} sur le Road trip en groupe.
+          </strong>{" "}
+          Elle remercie le groupe qui fait connaître {site.nom} : abonnement à notre compte{" "}
+          {comptes.abonnement}
+          {comptes.story ? <>, ou story qui identifie {comptes.story}</> : null}.{" "}
+          {r ? null : <>Son taux est celui affiché au moment de la réservation. </>}
+          Elle porte sur le prix du road trip, hors frais de paiement électronique, et s&apos;applique une
+          seule fois par groupe, sur une seule capture d&apos;écran. La capture est vérifiée
+          automatiquement par un assistant d&apos;intelligence artificielle (voir notre page Protection
+          des données) ; en cas de doute, notre équipe la vérifie à la main. La réduction n&apos;est
+          jamais appliquée par défaut : tant qu&apos;elle n&apos;est pas validée, le prix s&apos;entend sans
+          réduction. À la remise des vélos, l&apos;équipe peut demander au responsable du groupe de
+          montrer son téléphone ; s&apos;il n&apos;est pas abonné, il peut s&apos;abonner sur place ou
+          régler la différence.
+        </p>
+      )}
+      <p>
+        <strong>Retard au retour.</strong> Un groupe en retard bloque les vélos du groupe suivant : merci
+        de rentrer à l&apos;heure prévue.{" "}
+        {r && r.retard.penaliteParMinuteXof > 0 ? (
+          <>
+            Vous disposez d&apos;une marge de {minutesEnClair(r.retard.toleranceMinutes)} ; au-delà, le
+            groupe paie{" "}
+            <span className="whitespace-nowrap">{formatXof(r.retard.penaliteParMinuteXof)}</span> par minute
+            de retard, pour tout le groupe (par exemple{" "}
+            <span className="whitespace-nowrap">{formatXof(penaliteRetardXof(exempleRetard, r))}</span> pour{" "}
+            {minutesEnClair(exempleRetard)} de retard). Cette pénalité se règle en espèces au retour des
+            vélos.
+          </>
+        ) : r ? null : (
+          <>
+            Vous disposez d&apos;une marge de tolérance ; au-delà, le groupe paie une pénalité par minute de
+            retard, pour tout le groupe, {baremeAffiche}. Cette pénalité se règle en espèces au retour des
+            vélos.
+          </>
+        )}
+      </p>
+    </ArticleLegal>
+  );
+}
+
+export default async function PageCGV() {
+  const reglagesOffres = await reglagesEnVigueur();
   return (
     <PageLegale
       titre="Conditions générales de vente"
@@ -79,6 +259,11 @@ export default function PageCGV() {
           une sortie en groupe encadrée, à date et heure fixes, au prix unique par personne
           annoncé sur sa page, quel que soit le vélo. Le vélo de chaque participant est attribué
           par {site.nom} parmi les vélos disponibles ; il n&apos;est pas choisi.
+        </p>
+        <p>
+          Les offres de groupe <strong>Bike for All</strong>, <strong>Road trip en groupe</strong> et{" "}
+          <strong>Gbashi Bike</strong>, quand elles se réservent sur ce site, suivent en plus les
+          conditions particulières de l&apos;article 12.
         </p>
         <p>
           Les prix sont indiqués en francs CFA (XOF), toutes taxes comprises.
@@ -188,6 +373,8 @@ export default function PageCGV() {
           tribunaux de Cotonou sont compétents.
         </p>
       </ArticleLegal>
+
+      <ConditionsOffresDeGroupe reglages={reglagesOffres} />
     </PageLegale>
   );
 }
