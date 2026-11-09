@@ -422,6 +422,9 @@ export function reservationsToucheesParmi(
     | "heureFin"
     | "horaire"
     | "nombrePersonnes"
+    | "dureeHeures"
+    | "minuteDebut"
+    | "minuteFin"
     | "client"
     | "lignes"
   >[],
@@ -476,6 +479,10 @@ export function reservationsToucheesParmi(
       heureFin: reservation.heureFin,
       ...(reservation.horaire ? { horaire: reservation.horaire } : {}),
       nombrePersonnes: reservation.nombrePersonnes,
+      ...(reservation.dureeHeures !== undefined ? { dureeHeures: reservation.dureeHeures } : {}),
+      ...(reservation.minuteDebut !== undefined && reservation.minuteFin !== undefined
+        ? { minuteDebut: reservation.minuteDebut, minuteFin: reservation.minuteFin }
+        : {}),
       client: {
         prenom: reservation.client.prenom,
         nom: reservation.client.nom,

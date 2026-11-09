@@ -458,6 +458,10 @@ export interface ReservationTouchee {
   heureFin: number;
   horaire?: { depart: string; retour: string };
   nombrePersonnes: number;
+  /** De quoi résumer la formule (`resumeOffre`) : la durée d'une location libre, les minutes d'une offre de groupe. */
+  dureeHeures?: number;
+  minuteDebut?: number;
+  minuteFin?: number;
   client: { prenom: string; nom: string; telephone?: string };
   velos: { veloId: string; veloNom: string; raison: RaisonVeloTouche; date?: DateISO; motif?: string }[];
 }
