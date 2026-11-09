@@ -12,7 +12,7 @@ responsable notée ici.
 |---|---|
 | 0. Audit et plan | Terminée le 9 novembre 2026 |
 | Feu vert 1 | Donné le 9 novembre 2026 |
-| 1. Construction | En cours : lot 0 |
+| 1. Construction | En cours : lot 0 terminé, lots 1 et 2 en construction |
 | 2. Tests | À venir |
 | 3. Démo, feu vert 2 | À venir |
 | 4. Mise en ligne | À venir |
@@ -49,7 +49,7 @@ responsable notée ici.
 | 14 | Email | Obligatoire dans les formulaires (récapitulatif, facture, lien de suivi). |
 | 15 | Couleurs | Identité actuelle du site (orange sur noir et crème), pas de terracotta. |
 | 16 | Points 8.1 à 8.5 du brief | Refus sous 30 minutes, budget minimum calculé (1 000 F + 400 F par personne aujourd'hui) ; seuil de 15 000 F gardé tel quel (budget en mode budget, temps de vélo en mode durée) ; quart d'heure ; exemple à 20 personnes ignoré ; hypothèses du tableur confirmées et modifiables. |
-| 17 | Infrastructure | Accord pour un projet Supabase de test gratuit ; clé SasPay de test demandée par le responsable ; secrets Vercel saisis par le responsable, guidé ; nettoyage des anciens secrets locaux. |
+| 17 | Infrastructure | Accord pour un projet Supabase de test gratuit ; secrets Vercel saisis par le responsable, guidé ; nettoyage des anciens secrets locaux. SasPay : pas de clé de test, la clé actuelle sert aussi aux essais (message du 9 novembre : « utilise la même clé SasPay qu'on a ici »), avec les précautions ci-dessous. |
 
 ## Cas de test de référence (après décisions)
 
@@ -93,6 +93,80 @@ demande après le vendredi 19 h pour le week-end, refusée.
   une tâche planifiée par jour) ; nettoyage quotidien.
 - Tests de non-régression dans `tests/`, lancés par `npm test` (tsx, sans base,
   sans paiement réel).
+- Interrupteur coupé : plus de nouvelle demande de groupe, mais un paiement déjà
+  lancé est toujours confirmé par SasPay et une réservation payée reste honorée.
+- Réglages des offres illisibles (valeur impossible en base) : vente refusée et
+  alerte dans l'administration, jamais de vente aux valeurs par défaut.
+- Comptoir (relecture du lot 1) : ni date limite du vendredi, ni délai minimum
+  avant le départ ; un départ plus tôt le jour même peut être saisi après coup,
+  jamais un jour passé. Ces deux règles ne valent que pour la réservation en
+  ligne.
+- En ligne, réservation au moins 2 h avant le départ (réglage
+  `delaiMinimumMinutes`, modifiable) : le temps de préparer vélos, cocos et
+  gâteaux.
+- Gbashi : un coco (grand format) et une eau par personne, d'après la carte du
+  cahier (« vélo, eau, un coco »), modifiables. À confirmer par le responsable :
+  le site actuel en annonce deux depuis la consigne du 7 novembre.
+- Réduction : comptes reconnus = Instagram @bikeland_bj (site) et le compte
+  TikTok « Bike Land » cité par le cahier, dont l'identifiant reste à donner ;
+  d'ici là, une capture TikTok passe en validation manuelle.
+- Essais de paiement avec la clé SasPay réelle (décision 17) : les tests
+  automatiques restent en mode démonstration, sans argent ; les quelques vrais
+  paiements de contrôle se font sur la base de test, avec le numéro du
+  responsable et des prix de test minuscules (200 F, minimum SasPay) réglés
+  dans les réglages de la base de test seulement. SasPay envoie ses
+  notifications au site de production : les références de test portent une
+  marque distincte pour que la production ne les confonde jamais avec une vraie
+  réservation (elle les ignore déjà, référence inconnue et montant contrôlé).
+
+## Environnements
+
+| Environnement | Détail |
+|---|---|
+| Production | Branche `Projet-Bikeland`, projets Vercel `bike-land` (site) et `bikeland-gestion-rsfaj` (gestion), base Supabase de production. |
+| Test | Projet Supabase `bike-land-staging` (id `ypyiwoppmjfrmicaqazo`, Londres) : schéma de production, protection RLS sur toutes les tables, 18 vélos fictifs. |
+| Branche de travail | `feature/offres-groupe`, locale seulement. Pas de push tant que les aperçus Vercel reçoivent la base de production : il faut d'abord donner aux aperçus de cette branche la base de test (la clé SasPay reste la même, décision 17). |
+
+## Plan de retour arrière
+
+La mise en ligne (Phase 4) se fait en deux temps : d'abord le code et la base,
+interrupteur coupé, sans aucun changement pour les clients ; ensuite le
+responsable allume l'interrupteur. En cas de problème, chaque niveau se tente
+avant le suivant.
+
+1. **Couper l'interrupteur** (immédiat, sans déploiement, faisable par le
+   responsable depuis son téléphone) : tableau de bord de l'administration,
+   « Ouverture des réservations », « Offres de groupe » sur fermé. Les trois
+   offres disparaissent du site, le road trip actuel et Gbashi reprennent leur
+   fonctionnement d'avant (décision 1). Les réservations payées restent
+   valables et visibles dans l'administration.
+2. **Revenir au déploiement de l'étape 1** (quelques minutes) : « Instant
+   Rollback » Vercel sur les deux projets, vers le déploiement mis en ligne
+   interrupteur coupé (identifiant noté ici le jour J). Jamais plus loin dès
+   qu'une réservation de groupe existe : un code plus ancien ne connaît pas les
+   nouvelles valeurs d'offre et l'administration ne pourrait plus lire ces
+   réservations (même règle que pour Padel : jamais avant ee64e52).
+3. **Corriger et redéployer** : `git revert` du commit fautif sur
+   `Projet-Bikeland`, `npm test`, puis push.
+4. **Base de données** : rien n'est supprimé ni renommé. Les ajouts (colonnes,
+   tables, valeurs d'offre) sont ignorés par le code qui ne s'en sert pas : pas
+   de retour arrière de la base. Sauvegarde complète juste avant la migration
+   de production (`npm run db:sauvegarde`, à compléter des tables récentes avant
+   la Phase 4), fichier gardé hors git.
+5. **Paiements en cours** : un paiement arrivé après un retour arrière est
+   enregistré ; si les vélos ne sont plus garantis, le remboursement est listé
+   dans l'administration (décision 6) et le client prévenu par email.
+
+## Actions du responsable
+
+| Action | Quand | État |
+|---|---|---|
+| Clé SasPay de test | Remplacée par la clé actuelle (décision 17) | Sans objet |
+| Saisir le mot de passe de la base de test dans `.env.staging` (guidé) | Avant les tests sur la base de test | À faire |
+| Donner aux aperçus Vercel de la branche la base de test (guidé ; la clé SasPay y est déjà) | Avant la démo (Phase 3) | À faire |
+| Créer la clé Anthropic (agent IA) | Avant le lot 5 | À faire |
+| Révoquer l'ancien jeton Vercel (Compte, Tokens) : il a été retiré du PC | Quand possible | À faire |
+| Programmer les jours de Padel bike dans l'administration | Avant le 20 novembre | À faire |
 
 ## Journal
 
@@ -101,3 +175,12 @@ demande après le vendredi 19 h pour le week-end, refusée.
   envoyés. Feu vert 1 reçu avec les décisions ci-dessus.
 - 9 novembre 2026 : Phase 1, lot 0 commencé : suivi, fiches des sous-agents,
   tests de non-régression, correctifs Padel issus de la relecture, base de test.
+- 9 novembre 2026 : lot 0 terminé. Correctifs Padel en production (ce91892),
+  contrat des réglages des offres (7165e38), pénalité de retard (264fad3),
+  `npm test` : 12 suites de non-régression (371 contrôles) et 14 contrôles des
+  réglages, tous verts. Ménage des secrets locaux : variables KkiaPay et ancien
+  jeton Vercel retirés de `.env`, 4 copies périmées supprimées (noms seulement
+  consultés, jamais les valeurs). Plan de retour arrière écrit.
+- 9 novembre 2026 : lots 1 (moteur de calcul) et 2 (données et administration)
+  lancés en parallèle, chacun dans son worktree, suivis d'une relecture
+  indépendante en lecture seule.

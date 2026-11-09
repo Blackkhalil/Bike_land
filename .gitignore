@@ -55,3 +55,6 @@ public/images sibe web inspiration/
 # Documents de travail de l'exploitant (cahier des charges, calculatrice
 # des offres) : ils restent sur le poste.
 /bikeland new docs/
+
+# Copies de travail des sous-agents (git worktree), propres à ce poste.
+.claude/worktrees/
