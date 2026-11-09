@@ -105,9 +105,14 @@ export const schemaDemandeReservation = schemaDemandeDevis.and(
 );
 export type DemandeReservation = z.infer<typeof schemaDemandeReservation>;
 
-/** Preuve de réduction : champs du formulaire multipart, à côté du fichier « capture ». */
+/**
+ * Preuve de réduction : champs du formulaire multipart, à côté du fichier
+ * « capture ». L'email sert à prévenir le client quand la preuve est vérifiée
+ * à la main (l'agent IA n'est pas activé au lancement, décision 21).
+ */
 export const schemaChampsPreuve = z.object({
   telephone: z.string().trim().min(8).max(20),
+  email: z.string().trim().email().max(120),
 });
 /** Ce que la route des preuves accepte. */
 export const TYPES_CAPTURE = ["image/jpeg", "image/png", "image/webp"] as const;
