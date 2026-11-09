@@ -53,6 +53,7 @@ responsable notée ici.
 | 18 | Gbashi | Un coco et une eau par personne (10 novembre : « 1 coco »). |
 | 19 | Compte TikTok | @bikelandbj, reconnu pour la réduction comme Instagram @bikeland_bj. |
 | 20 | Chatbot | Pas dans cette mission : d'abord le formulaire et l'agent IA en coulisse (récapitulatif, captures). Une bulle « Discuter avec Bike Land » viendra juste après la mise en ligne, sur la même calculatrice (choix du 10 novembre). |
+| 21 | Agent IA au lancement | Pas activé (10 novembre, pour ne rien dépenser) : le récapitulatif est le texte fixe du tableur, et chaque capture de réduction est vérifiée à la main dans l'administration. Le code de l'agent reste prêt : il s'active plus tard en ajoutant une clé (le modèle le moins cher, Claude Haiku, est conseillé). Avant d'activer : appliquer les points de la relecture du lot 5a (unités et rôles des montants dans le contrôle du texte, dates en lettres, lieu de traitement). Les pages CGV et données personnelles ne parlent de l'IA que si elle est activée. |
 
 ## Cas de test de référence (après décisions)
 
