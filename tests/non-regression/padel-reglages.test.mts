@@ -148,6 +148,10 @@ verifier("1 personne : 422 GROUPE, le champ le dit", [r.statut, r.donnees.code, 
 const dispo = await appeler(disponibilite, "/api/disponibilite", { toutes: true, dateDebut: jour, dateFin: jour, heureDebut: 18, heureFin: 23 }, "203.0.113.92");
 verifier("disponibilité, toutes gammes, de 18 h à 23 h", [dispo.statut, typeof dispo.donnees.libres], [200, "number"]);
 const libresAvant = dispo.donnees.libres as number;
+// Le matin du même jour, avant la réservation : la comparaison se fait avec
+// lui, pas avec le soir, que l'historique de démonstration remplit plus ou
+// moins selon le jour où le test tourne.
+const matinAvant = (await appeler(disponibilite, "/api/disponibilite", { toutes: true, dateDebut: jour, dateFin: jour, heureDebut: 9, heureFin: 12 }, "203.0.113.92")).donnees.libres as number;
 r = await appeler(reserver, "/api/reservations", demande(3, jour, { heureDebut: 9 }), "203.0.113.93");
 verifier("3 personnes : 201, confirmée en démonstration", [r.statut, r.donnees.confirmee], [201, true]);
 const tokenPremier = r.donnees.token as string;
@@ -159,7 +163,7 @@ verifier("la plage : 18 h 30 - 22 h 30", espaces(formatPlageReservation(reservat
 const dispoApres = await appeler(disponibilite, "/api/disponibilite", { toutes: true, dateDebut: jour, dateFin: jour, heureDebut: 18, heureFin: 23 }, "203.0.113.92");
 verifier("3 vélos de moins ce soir-là", dispoApres.donnees.libres, libresAvant - 3);
 const dispoMatin = await appeler(disponibilite, "/api/disponibilite", { toutes: true, dateDebut: jour, dateFin: jour, heureDebut: 9, heureFin: 12 }, "203.0.113.92");
-verifier("le matin, les vélos restent libres", dispoMatin.donnees.libres >= dispoApres.donnees.libres + 3, true);
+verifier("le matin, les vélos restent libres", dispoMatin.donnees.libres, matinAvant);
 const restants = libresAvant - 3;
 if (restants + 1 <= 12) {
   r = await appeler(reserver, "/api/reservations", demande(restants + 1, jour), "203.0.113.94");
