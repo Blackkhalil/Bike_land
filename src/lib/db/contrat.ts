@@ -343,12 +343,6 @@ export function messagePlacesManquantes(demandees: number, libres: number, auCom
 
 /* ------------------------------------------ Offres de groupe : administration */
 
-/** « 08:45 » pour 525 minutes depuis minuit. */
-export function heureMinuteDe(minutes: number): string {
-  const borne = Math.max(0, Math.min(24 * 60, Math.round(minutes)));
-  return `${String(Math.floor(borne / 60)).padStart(2, "0")}:${String(borne % 60).padStart(2, "0")}`;
-}
-
 /** Un événement à écrire au journal. `auteur` : « admin (Koffi) ». */
 export interface NouvelEvenement {
   type: string;

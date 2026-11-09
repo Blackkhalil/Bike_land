@@ -71,7 +71,6 @@ import type {
 import {
   ConflitDisponibiliteError,
   creneauOctobreRoseDemande,
-  heureMinuteDe,
   limiteJournal,
   messagePlacesManquantes,
   messageVelosManquants,
@@ -311,14 +310,10 @@ function versReservation(booking: BookingComplet): Reservation {
     dateFin: versISO(booking.endDate),
     heureDebut: booking.startHour,
     heureFin: booking.endHour,
-    // L'horaire exact : celui noté à la réservation, sinon celui que donnent
-    // les minutes d'une offre de groupe (8 h - 8 h 45), pour que la facture,
-    // le suivi et la fiche du jour l'annoncent à la minute.
-    ...(booking.startTime && booking.endTime
-      ? { horaire: { depart: booking.startTime, retour: booking.endTime } }
-      : booking.startMinute !== null && booking.endMinute !== null
-        ? { horaire: { depart: heureMinuteDe(booking.startMinute), retour: heureMinuteDe(booking.endMinute) } }
-        : {}),
+    ...(booking.startTime && booking.endTime ? { horaire: { depart: booking.startTime, retour: booking.endTime } } : {}),
+    // Le créneau au quart d'heure d'une offre de groupe, tel qu'en
+    // démonstration : les affichages de src/lib/format.ts en tirent
+    // l'horaire (8 h - 8 h 45) quand aucun n'est noté.
     ...(booking.startMinute !== null && booking.endMinute !== null
       ? { minuteDebut: booking.startMinute, minuteFin: booking.endMinute }
       : {}),
