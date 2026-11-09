@@ -15,6 +15,9 @@
 import { GAMMES, type GammeVelo } from "@/data/offres";
 import type { ParcDuJour } from "@/lib/db/contrat";
 
+/** Les codes des gammes, dans l'ordre du catalogue. */
+const CODES_GAMMES: GammeVelo[] = GAMMES.map((gamme) => gamme.code);
+
 /** Un créneau en minutes depuis minuit : [debutMinute, finMinute). */
 export interface CreneauMinutes {
   debutMinute: number;
@@ -37,7 +40,7 @@ export interface VelosLibres {
 export function velosLibresSurCreneau(parc: ParcDuJour, creneau: CreneauMinutes): VelosLibres {
   const occupes = new Set(parc.occupations.filter((o) => seChevauchent(o, creneau)).map((o) => o.veloId));
   const libres = parc.velos.filter((velo) => !occupes.has(velo.id));
-  const parGamme = Object.fromEntries(GAMMES.map((gamme) => [gamme, 0])) as Record<GammeVelo, number>;
+  const parGamme = Object.fromEntries(CODES_GAMMES.map((gamme) => [gamme, 0])) as Record<GammeVelo, number>;
   for (const velo of libres) parGamme[velo.gamme] += 1;
   return { total: libres.length, parGamme, ids: libres.map((velo) => velo.id) };
 }
@@ -48,7 +51,7 @@ export type BesoinVelos = number | Partial<Record<GammeVelo, number>>;
 /** Les vélos libres suffisent-ils au besoin ? */
 export function suffit(libres: VelosLibres, besoin: BesoinVelos): boolean {
   if (typeof besoin === "number") return libres.total >= besoin;
-  return GAMMES.every((gamme) => (besoin[gamme] ?? 0) <= libres.parGamme[gamme]);
+  return CODES_GAMMES.every((gamme) => (besoin[gamme] ?? 0) <= libres.parGamme[gamme]);
 }
 
 /** La grille des départs d'une offre, en minutes depuis minuit. */
