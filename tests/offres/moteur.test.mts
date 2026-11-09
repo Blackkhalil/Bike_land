@@ -78,7 +78,7 @@ verifier("5. 12 pers., 20 000 F, accompagnateur : grand coco, 90 min, 24 650 F, 
 verifier("6. durée, 15 pers., 60 min, petit coco, 1 gâteau : 19 750 F, barré 32 250 F", chiffres(bfaDuree(15, 60, "petit", { gateauxParPersonne: 1 })), ["petit", 60, 19750, 32250]);
 verifier("7. Road trip, 10 pers. : 31 250 F, pas de prix barré (décision 2)", chiffres(roadTrip(10)), ["grand", 240, 31250, null]);
 verifier("8. Road trip, 10 pers., réduction : 30 050 F, barré 31 250 F", chiffres(roadTrip(10, { reductionValidee: true })), ["grand", 240, 30050, 31250]);
-verifier("9. Gbashi, 2 Classique, 2 Premium, 1 Prestige : 20 125 F (décision 4)", chiffres(gbashi({ CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 })), ["aucun", 240, 20125, null]);
+verifier("9. Gbashi, 2 Classique, 2 Premium, 1 Prestige : 20 125 F (décision 4), coco grand format compris", chiffres(gbashi({ CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 })), ["grand", 240, 20125, null]);
 
 console.log("\n— Le détail des cas de référence");
 const cas2 = resultat(bfaBudget(10, 10000));
@@ -114,6 +114,12 @@ verifier(
   [cas9.lignes.map((l: Ligne) => [l.libelle, l.montantXof]), cas9.depart, cas9.fin, cas9.personnes, cas9.velosParGamme],
   [[["Vélos Classique", 7000], ["Vélos Premium", 8000], ["Vélo Prestige", 4500], ["Frais de paiement électronique", 625]], "07:00", "11:00", 5, { CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 }],
 );
+verifier(
+  "cas 9 : « vélo, eau, un coco » : 5 cocos et 5 eaux à préparer, sans ligne à part",
+  [cas9.cocos, cas9.eaux, cas9.cocosXof, cas9.lignes.some((l: Ligne & { code: string }) => l.code === "cocos")],
+  [5, 5, 0, false],
+);
+verifier("cas 9 : encaissé net 17 125 F (20 125 F - 5 × 275 F - 5 × 200 F - 625 F)", cas9.encaisseNetXof, 20125 - 5 * 275 - 5 * 200 - 625);
 
 console.log("\n— Les refus");
 const r18 = refus(bfaBudget(18, 5000));
@@ -275,11 +281,34 @@ verifier(
 );
 verifier("Road trip, cas 8 : « au lieu de »", cas8.recapModele.split(",").slice(0, 3).join(","), "ROAD TRIP BIKE LAND : Cher client, pour votre groupe de 10 personnes, vous paierez 30 050 F au lieu de 31 250 F");
 verifier(
-  "Gbashi Bike, cas 9 : sur le même patron",
+  "Gbashi Bike, cas 9 : sur le même patron, avec l'eau et le coco de la carte",
   cas9.recapModele,
-  `GBASHI BIKE : Cher client, pour votre groupe de 5 personnes, vous paierez 20 125 F, pour une sortie Gbashi Bike de 07h00 à 11h00 : du vélo jusqu'au bord de mer, puis une séance de musculation encadrée par nos coachs. Vous roulerez sur 2 vélos Classique, 2 Premium et 1 Prestige, avec nos casques.${FIN}`,
+  `GBASHI BIKE : Cher client, pour votre groupe de 5 personnes, vous paierez 20 125 F, pour une sortie Gbashi Bike de 07h00 à 11h00 : du vélo jusqu'au bord de mer, puis une séance de musculation encadrée par nos coachs. Vous roulerez sur 2 vélos Classique, 2 Premium et 1 Prestige, avec nos casques. Vous aurez 1 coco et 1 bouteille d'eau par personne, inclus dans le prix.${FIN}`,
 );
-verifier("Gbashi, une seule gamme", resultat(gbashi({ PREMIUM: 5 }, { gateauxParPersonne: 2 })).recapModele.split(".").slice(1, 3).join("."), " Vous roulerez sur 5 vélos Premium, avec nos casques. Vous aurez aussi 10 gâteaux, à raison de 2 par personne");
+verifier(
+  "Gbashi, une seule gamme, avec des gâteaux",
+  resultat(gbashi({ PREMIUM: 5 }, { gateauxParPersonne: 2 })).recapModele.split(".").slice(1, 4).join("."),
+  " Vous roulerez sur 5 vélos Premium, avec nos casques. Vous aurez 1 coco et 1 bouteille d'eau par personne, inclus dans le prix. Vous aurez aussi 10 gâteaux, à raison de 2 par personne",
+);
+const gbashiDeuxCocos = { ...R, gbashi: { ...R.gbashi, cocosGrandsParPersonne: 2, eauxParPersonne: 0 } };
+const deuxCocos = resultat(gbashi({ CLASSIQUE: 5 }, {}, {}, gbashiDeuxCocos));
+verifier(
+  "Gbashi réglé à 2 cocos et pas d'eau : 10 cocos, aucune eau, encaissé net 14 750 F (18 125 F - 10 × 275 F - 625 F)",
+  [deuxCocos.cocos, deuxCocos.eaux, deuxCocos.encaisseNetXof, deuxCocos.recapModele.split(".")[2]],
+  [10, 0, 5 * 3625 - 10 * 275 - 625, " Vous aurez 2 cocos par personne, inclus dans le prix"],
+);
+const gbashiSansRien = resultat(gbashi({ CLASSIQUE: 5 }, {}, {}, { ...R, gbashi: { ...R.gbashi, cocosGrandsParPersonne: 0, eauxParPersonne: 0 } }));
+verifier(
+  "Gbashi réglé sans coco ni eau : rien d'annoncé, coco « aucun »",
+  [gbashiSansRien.coco, gbashiSansRien.cocos, gbashiSansRien.eaux, gbashiSansRien.recapModele.includes("inclus dans le prix")],
+  ["aucun", 0, 0, false],
+);
+const roadTripSansEau = resultat(roadTrip(10, {}, {}, { ...R, roadTrip: { ...R.roadTrip, eauxParPersonne: 0 } }));
+verifier(
+  "road trip réglé sans eau : la phrase ne parle que des cocos",
+  [roadTripSansEau.eaux, roadTripSansEau.recapModele.split(".")[2]],
+  [0, " Vous aurez 2 cocos par personne, inclus dans le prix"],
+);
 verifier("les montants du récapitulatif, retrouvés : total, barré, pénalité", m.extraireMontants(cas2.recapModele), [11250, 17250, 1000]);
 
 console.log("\n— Les montants");

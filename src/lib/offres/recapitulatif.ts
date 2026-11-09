@@ -13,7 +13,9 @@
  *  - les valeurs que le tableur écrivait en dur (25 km, Classique, Premium,
  *    Prestige) et que les réglages portent désormais (distance) ;
  *  - le singulier, si un nombre vaut 1 (le tableur écrit toujours le
- *    pluriel ; avec 10 personnes au moins, le texte est le même).
+ *    pluriel ; avec 10 personnes au moins, le texte est le même) ;
+ *  - les cocos ou l'eau réglés à zéro, qui ne sont pas annoncés (le tableur
+ *    écrirait « 0 cocos »).
  *
  * Les heures restent écrites comme dans le tableur : « 08h00 ».
  */
@@ -54,6 +56,20 @@ function phraseGateaux(personnes: number, gateauxParPersonne: number): string {
     : "";
 }
 
+/**
+ * Les cocos et l'eau compris dans le prix (road trip, Gbashi Bike) : « Vous
+ * aurez 2 cocos et 2 bouteilles d'eau par personne, inclus dans le prix. »,
+ * la phrase du tableur (A20). Ce qui est réglé à zéro n'est pas annoncé.
+ */
+function phraseConsommables(parPersonne: { cocosGrandsParPersonne: number; eauxParPersonne: number }): string {
+  const { cocosGrandsParPersonne: cocos, eauxParPersonne: eaux } = parPersonne;
+  const offerts = [
+    ...(cocos > 0 ? [compte(cocos, "coco")] : []),
+    ...(eaux > 0 ? [`${compte(eaux, "bouteille")} d'eau`] : []),
+  ];
+  return offerts.length ? ` Vous aurez ${offerts.join(" et ")} par personne, inclus dans le prix.` : "";
+}
+
 /** Bike for All, par budget (A33) ou par durée (A27) : le même texte. */
 export function recapBikeForAll(
   donnees: {
@@ -91,12 +107,12 @@ export function recapRoadTrip(
   reglages: Pick<ReglagesOffres, "roadTrip" | "retard">,
 ): string {
   const { personnes } = donnees;
-  const { distanceKm, depart, retour, cocosGrandsParPersonne, eauxParPersonne } = reglages.roadTrip;
+  const { distanceKm, depart, retour } = reglages.roadTrip;
   return (
     `ROAD TRIP BIKE LAND : Cher client, pour votre groupe de ${compte(personnes, "personne")}, vous paierez ${formatMontant(donnees.totalXof)}` +
     (donnees.prixBarreXof !== null ? ` au lieu de ${formatMontant(donnees.prixBarreXof)}` : "") +
     `, pour une balade de ${distanceKm} km de ${heureDuRecap(depart)} à ${heureDuRecap(retour)}. ${GAMME_COMPLETE}` +
-    ` Vous aurez ${compte(cocosGrandsParPersonne, "coco")} et ${compte(eauxParPersonne, "bouteille")} d'eau par personne, inclus dans le prix.` +
+    phraseConsommables(reglages.roadTrip) +
     phraseGateaux(personnes, donnees.gateauxParPersonne) +
     fin(reglages)
   );
@@ -112,9 +128,9 @@ export function velosEnClair(velos: Record<GammeVelo, number>): string {
 }
 
 /**
- * Gbashi Bike, sur le patron du tableur. L'eau et le coco annoncés par le
- * cahier n'y figurent pas : les réglages n'en donnent ni le nombre ni le
- * format, et le récapitulatif ne promet que ce que le moteur compte.
+ * Gbashi Bike, sur le patron du tableur : la sortie, les vélos choisis, puis
+ * l'eau et le coco de la carte du cahier (« vélo, eau, un coco »), comptés
+ * par le moteur comme ceux du road trip.
  */
 export function recapGbashi(
   donnees: { personnes: number; totalXof: number; velos: Record<GammeVelo, number>; gateauxParPersonne: number },
@@ -127,6 +143,7 @@ export function recapGbashi(
     `pour une sortie Gbashi Bike de ${heureDuRecap(depart)} à ${heureDuRecap(retour)} : du vélo jusqu'au bord de mer, ` +
     "puis une séance de musculation encadrée par nos coachs. " +
     `Vous roulerez sur ${velosEnClair(donnees.velos)}, avec nos casques.` +
+    phraseConsommables(reglages.gbashi) +
     phraseGateaux(personnes, donnees.gateauxParPersonne) +
     fin(reglages)
   );

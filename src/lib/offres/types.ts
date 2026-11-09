@@ -212,11 +212,14 @@ export interface ResultatOffre {
   fin: HeureMinute;
   /** La durée de vélo, en minutes. */
   minutes: number;
-  /** Le coco servi : celui retenu par le budget, choisi, ou celui du road trip. */
+  /**
+   * Le coco servi : celui retenu par le budget ou choisi (Bike for All), le
+   * grand format compris dans le prix (road trip, Gbashi Bike).
+   */
   coco: Coco;
   /** Le nombre de cocos à préparer. */
   cocos: number;
-  /** Le nombre de bouteilles d'eau à préparer (road trip). */
+  /** Le nombre de bouteilles d'eau à préparer (road trip, Gbashi Bike ; zéro pour Bike for All). */
   eaux: number;
   /** Le nombre de gâteaux à préparer. */
   gateaux: number;
@@ -226,7 +229,7 @@ export interface ResultatOffre {
   paiementElectronique: boolean;
   /** Bike for All : frais d'organisation retenus ; zéro ailleurs. */
   fraisOrganisationXof: number;
-  /** Bike for All : le prix des cocos ; ailleurs, compris dans le prix : zéro. */
+  /** Bike for All : le prix des cocos ; ailleurs, compris dans le prix (pas de ligne à part) : zéro. */
   cocosXof: number;
   gateauxXof: number;
   /** Bike for All : le prix de l'accompagnateur, zéro sans lui. */

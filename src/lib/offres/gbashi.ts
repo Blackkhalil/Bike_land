@@ -8,6 +8,11 @@
  * sans les frais. Le groupe compte une personne par vélo, 5 au moins, et
  * chaque gamme au plus les vélos libres de cette gamme ce jour-là.
  *
+ * Le prix comprend ce que promet la carte du cahier, « vélo, eau, un coco » :
+ * par personne, un coco grand format et une bouteille d'eau (réglables).
+ * Comme au road trip, ils sont comptés pour la préparation et retirés de
+ * l'encaissé net (le coco au prix du grand format, l'eau à son coût).
+ *
  * Départ et retour sont ceux des réglages (dimanche, 7 h à 11 h).
  */
 
@@ -23,7 +28,7 @@ import {
   refusSaisie,
   velosLibres,
 } from "./controles";
-import { fraisPaiementDe, gateauxDe, ligneFraisPaiement, ligneGateaux } from "./lignes";
+import { consommablesOfferts, fraisPaiementDe, gateauxDe, ligneFraisPaiement, ligneGateaux } from "./lignes";
 import { formatMontant } from "./montants";
 import { NOMS_GAMMES, ORDRE_GAMMES, recapGbashi } from "./recapitulatif";
 import type { ContexteOffre, DemandeGbashi, GammeVelo, IssueOffre, LigneOffre, Refus, ResultatOffre } from "./types";
@@ -90,6 +95,7 @@ export function calculerGbashi(demande: DemandeGbashi, reglages: Reglages, conte
   const { gateaux, gateauxXof, coutXof: coutGateauxXof } = gateauxDe(N, gateauxParPersonne, reglages);
   const fraisPaiementXof = fraisPaiementDe(N, demande.paiementElectronique, reglages);
   const totalXof = velosXof + gateauxXof + fraisPaiementXof;
+  const { cocos, eaux, coutXof: coutConsommablesXof } = consommablesOfferts(N, gb, reglages);
 
   const resultat: ResultatOffre = {
     offre: "gbashi-groupe",
@@ -99,11 +105,9 @@ export function calculerGbashi(demande: DemandeGbashi, reglages: Reglages, conte
     depart: gb.depart,
     fin: gb.retour,
     minutes: minutesDe(gb.retour) - minutesDe(gb.depart),
-    // L'eau et le coco que le cahier annonce n'ont ni nombre ni format dans
-    // les réglages : le moteur ne les compte pas (voir recapGbashi).
-    coco: "aucun",
-    cocos: 0,
-    eaux: 0,
+    coco: cocos > 0 ? "grand" : "aucun",
+    cocos,
+    eaux,
     gateaux,
     velosParGamme: velos,
     lignes: [...lignesVelos, ...ligneGateaux(gateaux, gateauxXof, reglages), ...ligneFraisPaiement(N, fraisPaiementXof, reglages)],
@@ -116,7 +120,7 @@ export function calculerGbashi(demande: DemandeGbashi, reglages: Reglages, conte
     reductionXof: 0,
     totalXof,
     prixBarreXof: null,
-    encaisseNetXof: totalXof - coutGateauxXof - fraisPaiementXof,
+    encaisseNetXof: totalXof - coutConsommablesXof - coutGateauxXof - fraisPaiementXof,
     velosBloques: N,
     recapModele: recapGbashi({ personnes: N, totalXof, velos, gateauxParPersonne }, reglages),
   };

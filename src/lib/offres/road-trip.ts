@@ -26,7 +26,7 @@ import {
   refusSaisie,
   velosLibres,
 } from "./controles";
-import { fraisPaiementDe, gateauxDe, ligneFraisPaiement, ligneGateaux } from "./lignes";
+import { consommablesOfferts, fraisPaiementDe, gateauxDe, ligneFraisPaiement, ligneGateaux } from "./lignes";
 import { arrondiDivision, enDixMilliemes, formatMontant, formatPourcentage } from "./montants";
 import { recapRoadTrip } from "./recapitulatif";
 import type { ContexteOffre, DemandeRoadTrip, IssueOffre, LigneOffre, ResultatOffre } from "./types";
@@ -63,10 +63,7 @@ export function calculerRoadTrip(demande: DemandeRoadTrip, reglages: Reglages, c
   const totalXof = prixAvantFraisXof - reductionXof + gateauxXof + fraisPaiementXof;
   const prixBarreXof = reductionXof > 0 ? totalXof + reductionXof : null;
 
-  const cocos = N * rt.cocosGrandsParPersonne;
-  const eaux = N * rt.eauxParPersonne;
-  // Comme le tableur : les cocos du road trip comptés au prix du grand format, l'eau à son coût d'achat.
-  const coutConsommablesXof = cocos * reglages.consommables.cocoGrandXof + eaux * reglages.consommables.eauCoutXof;
+  const { cocos, eaux, coutXof: coutConsommablesXof } = consommablesOfferts(N, rt, reglages);
 
   const lignes: LigneOffre[] = [
     {
