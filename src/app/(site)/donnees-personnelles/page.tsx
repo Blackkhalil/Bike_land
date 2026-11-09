@@ -7,16 +7,26 @@ import { metadonneesPage } from "@/lib/seo";
 export const metadata: Metadata = metadonneesPage({
   titre: "Protection des données personnelles",
   description:
-    "Quelles données Bike Land collecte, pourquoi, combien de temps elles sont conservées et comment " +
-    "exercer vos droits auprès de l'APDP, l'autorité béninoise.",
+    "Quelles données Bike Land collecte, pourquoi, combien de temps elles sont conservées, ce qui est confié " +
+    "à un assistant d'IA et comment exercer vos droits auprès de l'APDP.",
   chemin: "/donnees-personnelles",
 });
+
+/**
+ * Les durées de l'agent IA des offres de groupe (src/lib/agent-ia/) : chez
+ * Anthropic, la conservation exigée par le modèle Claude Fable 5.1 (30 jours,
+ * selon la référence de l'API Claude) ; chez Bike Land, la capture est
+ * supprimée dès la décision, au plus tard après 30 jours (décision technique
+ * du 9 novembre 2026, voir docs/bike-land/SUIVI.md).
+ */
+const CONSERVATION_ANTHROPIC_JOURS = 30;
+const CONSERVATION_CAPTURE_JOURS = 30;
 
 export default function PageDonneesPersonnelles() {
   return (
     <PageLegale
       titre="Protection des données personnelles"
-      miseAJour="14 octobre 2026"
+      miseAJour="10 novembre 2026"
       sousTitre="Nous collectons le strict nécessaire à la location, et rien de plus. Cette page dit précisément quoi, pourquoi et pour combien de temps."
     >
       <ArticleLegal titre="Responsable du traitement">
@@ -51,6 +61,13 @@ export default function PageDonneesPersonnelles() {
           <li>
             <strong>Message libre</strong> : le texte que vous nous adressez, s&apos;il y a lieu.
           </li>
+          <li>
+            <strong>Capture d&apos;écran pour la réduction</strong> (Road trip en groupe) : si vous demandez
+            la réduction, la capture que vous envoyez, qui montre votre abonnement à l&apos;un de nos
+            comptes ou votre story. Finalité : vérifier que la réduction vous est due. Elle peut faire
+            apparaître votre nom d&apos;utilisateur et votre photo de profil : envoyez seulement l&apos;écran
+            demandé.
+          </li>
         </ul>
         <p>
           Aucun compte n&apos;est créé : votre fiche client se constitue à partir de votre
@@ -64,6 +81,10 @@ export default function PageDonneesPersonnelles() {
           le respect d&apos;obligations légales, notamment comptables, pour les factures ; votre
           consentement pour toute communication non liée à une location en cours.
         </p>
+        <p>
+          La capture d&apos;écran pour la réduction repose sur votre choix : rien ne vous oblige à
+          l&apos;envoyer, et sans elle vous réservez simplement au prix sans réduction.
+        </p>
       </ArticleLegal>
 
       <ArticleLegal titre="Durée de conservation">
@@ -71,6 +92,11 @@ export default function PageDonneesPersonnelles() {
           <li>Données de réservation&nbsp;: 3&nbsp;ans après la fin de la location.</li>
           <li>Factures et pièces comptables&nbsp;: 10&nbsp;ans, conformément aux obligations fiscales.</li>
           <li>Messages du formulaire de contact&nbsp;: 12&nbsp;mois après la dernière réponse.</li>
+          <li>
+            Capture d&apos;écran pour la réduction&nbsp;: supprimée dès que la décision est prise, et au
+            plus tard {CONSERVATION_CAPTURE_JOURS}&nbsp;jours après son envoi ;{" "}
+            {CONSERVATION_ANTHROPIC_JOURS}&nbsp;jours chez Anthropic (voir plus bas).
+          </li>
         </ul>
       </ArticleLegal>
 
@@ -79,7 +105,47 @@ export default function PageDonneesPersonnelles() {
           Les données ne sont ni vendues, ni louées, ni cédées. Elles sont accessibles à
           l&apos;équipe de {site.nom} et à nos sous-traitants techniques, strictement pour ce qui
           leur incombe : l&apos;hébergeur du site et de la base de données, l&apos;agrégateur de
-          paiement et le service d&apos;envoi des emails transactionnels.
+          paiement, le service d&apos;envoi des emails transactionnels et, pour les offres de groupe,
+          l&apos;assistant d&apos;intelligence artificielle décrit ci-dessous.
+        </p>
+      </ArticleLegal>
+
+      <ArticleLegal titre="Assistant d'intelligence artificielle (offres de groupe)">
+        <p>
+          Pour les offres de groupe (Bike for All, Road trip en groupe et Gbashi Bike), nous faisons
+          appel à Claude, un assistant d&apos;intelligence artificielle de la société Anthropic, pour deux
+          tâches seulement :
+        </p>
+        <ul className="ml-5 list-disc space-y-2">
+          <li>
+            <strong>Vérifier la capture d&apos;écran de la réduction.</strong> L&apos;image est transmise à
+            Anthropic, et Claude nous dit si elle montre un abonnement à l&apos;un de nos comptes ou une
+            story qui nous identifie. Nous ne consultons jamais la liste de nos abonnés. En cas de doute,
+            notre équipe vérifie la capture à la main ; la réduction n&apos;est jamais accordée par défaut.
+            Si le résultat vous semble faux, écrivez-nous à {site.email} : une personne de notre équipe
+            regardera votre capture.
+          </li>
+          <li>
+            <strong>Rédiger le message récapitulatif de votre réservation.</strong> Nous transmettons
+            votre prénom et les détails de la réservation : offre, date, horaires, nombre de personnes et
+            montants calculés par notre site. Jamais votre nom, votre téléphone ni votre email. Claude ne
+            calcule rien : le site vérifie chaque montant du message avant de l&apos;envoyer, et au
+            moindre écart c&apos;est notre texte habituel qui part.
+          </li>
+        </ul>
+        <p>
+          <strong>Transfert hors du Bénin.</strong> Anthropic est établie aux États-Unis : ces données
+          quittent donc le Bénin pour y être traitées. Anthropic agit pour le compte de {site.nom}, comme
+          sous-traitant, selon ses conditions commerciales.
+        </p>
+        <p>
+          <strong>Combien de temps.</strong> Chez Anthropic, ces données sont conservées{" "}
+          {CONSERVATION_ANTHROPIC_JOURS}&nbsp;jours, durée exigée pour ce modèle, puis effacées.
+          Anthropic peut les garder plus longtemps seulement si la loi l&apos;y oblige ou pour la sécurité
+          de son service, par exemple en cas d&apos;utilisation abusive, selon ses propres règles. Chez{" "}
+          {site.nom}, la capture est rangée dans un espace de stockage privé, qui n&apos;est pas public.
+          Notre équipe ne la regarde que pour une vérification à la main. Elle est supprimée dès que la
+          décision est prise, et au plus tard {CONSERVATION_CAPTURE_JOURS}&nbsp;jours après son envoi.
         </p>
       </ArticleLegal>
 
