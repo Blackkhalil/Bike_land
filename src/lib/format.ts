@@ -7,7 +7,7 @@
 
 import { formatHoraire, sortieDeLaReservation } from "@/data/octobre-rose";
 import { formatHeureMinute } from "@/data/reglages";
-import { creneauDuDepart, DERNIER_GBASHI_DU_DIMANCHE } from "@/data/offres";
+import { creneauDuDepart, DERNIER_GBASHI_DU_DIMANCHE, estOffreGroupe, OFFRES_GROUPE } from "@/data/offres";
 
 import type { CodeOffre, MoyenPaiement } from "./types";
 
@@ -216,6 +216,15 @@ export function formatPourcentage(valeur: number, decimales = 0): string {
   return `${formatNombre(valeur, decimales)}${INSECABLE}%`;
 }
 
+/** « 45 min », « 1 h », « 1 h 30 » : une durée en minutes, telle qu'on la dit. */
+export function formatDureeMinutes(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes));
+  if (total < 60) return `${total}${INSECABLE}min`;
+  const heures = Math.floor(total / 60);
+  const reste = total % 60;
+  return reste ? `${heures}${INSECABLE}h${INSECABLE}${String(reste).padStart(2, "0")}` : `${heures}${INSECABLE}h`;
+}
+
 function versDate(valeur: string | Date): Date {
   return typeof valeur === "string" ? new Date(`${valeur.slice(0, 10)}T00:00:00Z`) : valeur;
 }
@@ -234,10 +243,21 @@ export function resumeOffre(reservation: {
   dureeHeures?: number;
   dateDebut?: string;
   heureDebut?: number;
+  minuteDebut?: number;
+  minuteFin?: number;
 }): string {
   const n = reservation.nombrePersonnes;
   if (reservation.offre === "road-trip") {
     return `${nomDuRoadTrip(reservation)} · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;
+  }
+  // Les offres de groupe, à la personne ; Bike for All dit aussi sa durée,
+  // au quart d'heure, quand le créneau est connu.
+  if (estOffreGroupe(reservation.offre)) {
+    const duree =
+      reservation.offre === "bike-for-all" && reservation.minuteDebut !== undefined && reservation.minuteFin !== undefined
+        ? ` · ${formatDureeMinutes(reservation.minuteFin - reservation.minuteDebut)}`
+        : "";
+    return `${OFFRES_GROUPE[reservation.offre].nom} · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}${duree}`;
   }
   if (reservation.offre === "octobre-rose") {
     return `Octobre rose · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;

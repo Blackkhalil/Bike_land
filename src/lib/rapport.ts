@@ -12,9 +12,10 @@
  */
 
 import { OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
+import { estOffreGroupe } from "@/data/offres";
 import { aujourdhui } from "@/lib/dates";
 import { libelleCommission, libelleReduction, type CodeParrainage } from "@/lib/parrainage";
-import { cocosDe, estEnAttente, estPayee, seulementPayees } from "@/lib/reservations";
+import { aPreparerOffreGroupe, cocosDe, estEnAttente, estPayee, seulementPayees } from "@/lib/reservations";
 import {
   calculerStatistiques,
   construirePeriode,
@@ -54,13 +55,24 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
   // Les sorties sur commande : Gbashi bike a les cocos et l'eau du road trip.
   const participantsGbashi = participantsDe("gbashi-bike");
   const participantsPadel = participantsDe("padel-bike");
-  const participants = participantsRoadTrip + participantsOctobreRose + participantsGbashi + participantsPadel;
+  // Les offres de groupe : leurs participants, et ce que le calcul de
+  // chacune a prévu de préparer (cocos, gâteaux, eau), figé à la réservation.
+  const groupes = departs.filter((r) => estOffreGroupe(r.offre));
+  const participantsGroupes = groupes.reduce((total, r) => total + r.nombrePersonnes, 0);
+  const aPreparerGroupes = groupes.map((r) => aPreparerOffreGroupe(r));
+  const participants =
+    participantsRoadTrip + participantsOctobreRose + participantsGbashi + participantsPadel + participantsGroupes;
   const offert = OCTOBRE_ROSE.offertParPersonne;
+  // `cocosDe` compte déjà ceux des offres de groupe.
   const cocosRoadTrip = departs.reduce((total, r) => total + cocosDe(r), 0);
   const aPrevoir = {
     cocos: cocosRoadTrip + participantsOctobreRose * offert.cocos,
-    gateaux: participantsOctobreRose * offert.gateaux,
-    eaux: participantsRoadTrip + participantsGbashi + participantsOctobreRose * offert.eaux,
+    gateaux: participantsOctobreRose * offert.gateaux + aPreparerGroupes.reduce((total, p) => total + p.gateaux, 0),
+    eaux:
+      participantsRoadTrip +
+      participantsGbashi +
+      participantsOctobreRose * offert.eaux +
+      aPreparerGroupes.reduce((total, p) => total + p.eaux, 0),
   };
   const cautions = departs
     .filter((r) => r.offre === "location-libre")
@@ -83,7 +95,8 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
  */
 export const AIDE_A_PREVOIR =
   `Deux cocos et une eau par participant au road trip et à Gbashi bike${String.fromCharCode(0xa0)}; ` +
-  `${texteOffertOctobreRose()} par participant à Octobre rose.`;
+  `${texteOffertOctobreRose()} par participant à Octobre rose${String.fromCharCode(0xa0)}; ` +
+  "pour les offres de groupe, ce que leur récapitulatif a prévu.";
 
 /* ---------------------------------------------------- La structure */
 

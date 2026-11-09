@@ -17,6 +17,7 @@
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
+import { estOffreGroupe, OFFRES_GROUPE } from "@/data/offres";
 import { montant, type Rapport } from "@/lib/rapport";
 import { site } from "@/lib/site";
 import type { Reservation, StatutReservation } from "@/lib/types";
@@ -83,7 +84,9 @@ const DETAIL: ColonneDetail[] = [
             ? `Gbashi bike, ${r.nombrePersonnes} pers.`
             : r.offre === "padel-bike"
               ? `Padel bike, ${r.nombrePersonnes} pers.`
-              : `Libre, ${r.dureeHeures ?? "?"} h`,
+              : estOffreGroupe(r.offre)
+                ? `${OFFRES_GROUPE[r.offre].court}, ${r.nombrePersonnes} pers.`
+                : `Libre, ${r.dureeHeures ?? "?"} h`,
   },
   {
     titre: "Paiement",

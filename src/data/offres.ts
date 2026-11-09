@@ -25,9 +25,9 @@ import {
 } from "@/data/octobre-rose";
 import { DECALAGE_BENIN_MS } from "@/lib/dates";
 import { site } from "@/lib/site";
-import type { CodeOffre } from "@/lib/types";
+import type { CodeOffre, CodeOffreGroupe } from "@/lib/types";
 
-export type { CodeOffre };
+export type { CodeOffre, CodeOffreGroupe };
 
 /** L'espace insécable de la typographie française, avant « : ». */
 const INSECABLE = String.fromCharCode(0xa0);
@@ -150,6 +150,24 @@ export function estSurCommande(offre: CodeOffre): offre is CodeSortieSurCommande
 }
 
 /**
+ * Les trois offres de groupe (cahier des charges du 9 novembre 2026), par
+ * leur nom. `nom` est celui que voient le client et l'équipe ; `court`
+ * tient dans une colonne étroite (export PDF). Leurs prix, horaires et
+ * minimums ne sont pas ici : ils se règlent dans l'administration
+ * (src/data/reglages-offres.ts) et le moteur de src/lib/offres/ les lit.
+ */
+export const OFFRES_GROUPE: Record<CodeOffreGroupe, { nom: string; court: string }> = {
+  "bike-for-all": { nom: "Bike for All", court: "Bike for All" },
+  "road-trip-groupe": { nom: "Road trip en groupe", court: "Road trip groupe" },
+  "gbashi-groupe": { nom: "Gbashi Bike sur réservation", court: "Gbashi groupe" },
+};
+
+/** Cette formule est-elle l'une des trois offres de groupe ? */
+export function estOffreGroupe(offre: CodeOffre): offre is CodeOffreGroupe {
+  return offre === "bike-for-all" || offre === "road-trip-groupe" || offre === "gbashi-groupe";
+}
+
+/**
  * Le road trip du samedi se fait en groupe : dix personnes au moins par
  * réservation (décision de l'exploitant, novembre 2026), en ligne comme au
  * comptoir. Une personne, un vélo, tous de la gamme choisie : une gamme qui
@@ -251,6 +269,23 @@ export const EXIGENCES: Record<CodeOffre, string[]> = {
   "padel-bike": [
     "Venir en tenue de sport, prêt à pédaler puis à jouer au padel.",
     "Être présent au point de départ quinze minutes avant l'heure convenue.",
+  ],
+  // Les offres de groupe : les heures, la tolérance de retard et son prix se
+  // règlent dans l'administration, le récapitulatif envoyé au client les
+  // donne en chiffres.
+  "bike-for-all": [
+    "Être au point de départ quinze minutes avant l'heure : le groupe part à l'heure.",
+    "Rendre les vélos à l'heure prévue : au-delà de la tolérance, chaque minute de retard se paie, pour tout le groupe, en espèces au retour.",
+  ],
+  "road-trip-groupe": [
+    "Rien à apporter : vélos et casques sont fournis au départ.",
+    "Être au point de départ quinze minutes avant l'heure : le groupe part à l'heure.",
+    "Rendre les vélos à l'heure prévue : au-delà de la tolérance, chaque minute de retard se paie, pour tout le groupe, en espèces au retour.",
+  ],
+  "gbashi-groupe": [
+    "Venir en tenue de sport : à l'arrivée, séance encadrée par des coachs en bord de mer.",
+    "Être au point de départ quinze minutes avant l'heure : le groupe part à l'heure.",
+    "Rendre les vélos à l'heure prévue : au-delà de la tolérance, chaque minute de retard se paie, pour tout le groupe, en espèces au retour.",
   ],
 };
 

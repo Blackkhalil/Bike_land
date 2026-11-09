@@ -22,8 +22,22 @@ import type { GammeVelo } from "@/data/offres";
  * Les formules. Gbashi bike et Padel bike sont des sorties sur commande
  * (novembre 2026) : elles ne se réservent pas en ligne, le comptoir les
  * enregistre au jour et à l'heure convenus avec le client.
+ *
+ * Les trois offres de groupe (`CodeOffreGroupe`) s'y ajoutent : leur prix
+ * vient du moteur de src/lib/offres/ et des réglages de l'administration,
+ * jamais de `calculerDevis`. « gbashi-groupe » est Gbashi Bike sur
+ * réservation ; « gbashi-bike » reste pour les ventes passées au comptoir.
  */
-export type CodeOffre = "road-trip" | "location-libre" | "octobre-rose" | "gbashi-bike" | "padel-bike";
+export type CodeOffre =
+  | "road-trip"
+  | "location-libre"
+  | "octobre-rose"
+  | "gbashi-bike"
+  | "padel-bike"
+  | CodeOffreGroupe;
+
+/** Bike for All, Road trip en groupe, Gbashi Bike sur réservation. */
+export type CodeOffreGroupe = "bike-for-all" | "road-trip-groupe" | "gbashi-groupe";
 
 export type { GammeVelo };
 
@@ -182,6 +196,16 @@ export interface Reservation {
    * ci-dessus restent celles pendant lesquelles les vélos sont pris.
    */
   horaire?: { depart: string; retour: string };
+  /**
+   * Le créneau exact d'une offre de groupe, en minutes depuis minuit
+   * (480 = 8 h, 525 = 8 h 45). Les heures pleines ci-dessus le couvrent.
+   */
+  minuteDebut?: number;
+  minuteFin?: number;
+  /** Le retard saisi au retour des vélos, et sa pénalité. */
+  retard?: RetardReservation;
+  /** Ce que le calcul d'une offre de groupe a donné à la réservation. */
+  offreDetails?: DetailsOffreGroupe;
   jours: number;
   lignes: LigneReservation[];
   options: OptionReservee[];
@@ -324,4 +348,116 @@ export interface ReglagesOuverture {
   /** État des créneaux de road trip modifiés depuis l'admin, par code. */
   creneaux: Record<string, boolean>;
   joursFermes: JourFerme[];
+}
+
+/* ------------------------------------------------------ Offres de groupe */
+
+/**
+ * Ce que le calcul d'une offre de groupe a donné, figé sur la réservation
+ * (colonne `offreDetails`) : un réglage changé ensuite ne réécrit pas ce que
+ * le client a payé. Écrit par la réservation des offres de groupe ; lu par
+ * l'administration (fiche du jour, cocos à prévoir, fiche de la
+ * réservation). Tous les champs sont facultatifs : l'administration affiche
+ * ce qui est là et ignore le reste.
+ */
+export interface DetailsOffreGroupe {
+  /** Bike for All : le client a donné son budget, ou sa durée. */
+  mode?: "budget" | "duree";
+  budgetXof?: number;
+  /** La durée de vélo retenue, en minutes. */
+  minutes?: number;
+  /** « 08:00 », « 08:45 ». */
+  depart?: string;
+  retour?: string;
+  /** Le format de coco, et combien en préparer pour tout le groupe. */
+  coco?: "aucun" | "petit" | "grand";
+  cocos?: number;
+  eaux?: number;
+  gateaux?: number;
+  accompagnateur?: boolean;
+  accompagnateurXof?: number;
+  /** Gbashi Bike : combien de vélos de chaque gamme. */
+  gammes?: Partial<Record<GammeVelo, number>>;
+  reductionXof?: number;
+  fraisPaiementXof?: number;
+  prixBarreXof?: number;
+  totalXof?: number;
+  /** Le récapitulatif envoyé au client, tel quel. */
+  recapitulatif?: string;
+  [cle: string]: unknown;
+}
+
+/** Le retard au retour des vélos, saisi dans l'administration. */
+export interface RetardReservation {
+  minutes: number;
+  /** Calculée avec la tolérance et le montant par minute du moment de la saisie. */
+  penaliteXof: number;
+  /** « admin (Koffi) ». */
+  saisiPar?: string;
+}
+
+/** Un vélo indisponible un jour précis : il sort du parc ce jour-là seulement. */
+export interface IndisponibiliteVelo {
+  id: string;
+  veloId: string;
+  veloNom: string;
+  date: DateISO;
+  motif?: string;
+  creePar: string;
+  creeLe: string;
+}
+
+/**
+ * Une ligne du journal des événements. `type` est libre (les types connus
+ * et leurs libellés sont dans src/lib/journal.ts) : une offre ou un lot qui
+ * journalise un nouvel événement n'a rien à déclarer ici.
+ */
+export interface EvenementJournal {
+  id: string;
+  type: string;
+  reference?: string;
+  details: Record<string, unknown>;
+  auteur: string;
+  creeLe: string;
+}
+
+export type StatutRemboursement = "a_faire" | "fait";
+
+/** De l'argent à rendre à un client, et qui l'a rendu. */
+export interface Remboursement {
+  id: string;
+  reservationId: string;
+  reference: string;
+  offre: CodeOffre;
+  /** À qui rendre l'argent : le contact saisi pour la réservation. */
+  client: { prenom: string; nom: string; email: string; telephone?: string };
+  montantXof: number;
+  motif: string;
+  statut: StatutRemboursement;
+  faitPar?: string;
+  faitLe?: string;
+  creeLe: string;
+}
+
+/** Pourquoi un vélo réservé ne peut plus partir. */
+export type RaisonVeloTouche = "RETIRE" | "MAINTENANCE" | "INDISPONIBLE";
+
+/**
+ * Une réservation payée dont un vélo n'est plus là : retiré du parc, à
+ * l'atelier, ou déclaré indisponible ce jour-là. Bike Land appelle le client
+ * (cahier des charges, étape 1 : « afficher une alerte qui liste les
+ * réservations concernées »).
+ */
+export interface ReservationTouchee {
+  reference: string;
+  offre: CodeOffre;
+  statut: "CONFIRMEE" | "EN_COURS";
+  dateDebut: DateISO;
+  dateFin: DateISO;
+  heureDebut: number;
+  heureFin: number;
+  horaire?: { depart: string; retour: string };
+  nombrePersonnes: number;
+  client: { prenom: string; nom: string; telephone?: string };
+  velos: { veloId: string; veloNom: string; raison: RaisonVeloTouche; date?: DateISO; motif?: string }[];
 }

@@ -22,7 +22,7 @@
  *    reparti à la vente, et cette ligne ne redeviendra jamais rien.
  */
 
-import { COCOS_ROAD_TRIP, EXPIRATION_PANIER_MINUTES, panierExpire } from "@/data/offres";
+import { COCOS_ROAD_TRIP, estOffreGroupe, EXPIRATION_PANIER_MINUTES, panierExpire } from "@/data/offres";
 import { ajouterJours, type DateISO } from "@/lib/dates";
 import type { Paiement, Reservation, StatutReservation } from "@/lib/types";
 
@@ -143,11 +143,40 @@ export function paiementPrincipal(reservation: Reservation): Paiement | undefine
  * par personne, quelle que soit la gamme (`COCOS_ROAD_TRIP`), comme le
  * devis les promet au client. Zéro ailleurs : Octobre rose a son propre
  * compte, Padel bike n'en promet pas.
+ *
+ * Une offre de groupe a les siens, comptés à la réservation selon le
+ * budget et les réglages du moment (`offreDetails.cocos`) : ce nombre-là, et
+ * aucun autre. Sans lui, zéro, plutôt qu'un nombre deviné.
  */
-export function cocosDe(reservation: Pick<Reservation, "offre" | "nombrePersonnes">): number {
+export function cocosDe(
+  reservation: Pick<Reservation, "offre" | "nombrePersonnes"> & Partial<Pick<Reservation, "offreDetails">>,
+): number {
+  if (estOffreGroupe(reservation.offre)) return quantiteDe(reservation.offreDetails?.cocos);
   return reservation.offre === "road-trip" || reservation.offre === "gbashi-bike"
     ? reservation.nombrePersonnes * COCOS_ROAD_TRIP
     : 0;
+}
+
+/**
+ * Ce que le calcul d'une offre de groupe a prévu de préparer pour le
+ * groupe : cocos, gâteaux, bouteilles d'eau (`offreDetails`). Zéro pour
+ * tout ce qu'il ne dit pas, et pour les autres formules.
+ */
+export function aPreparerOffreGroupe(
+  reservation: Pick<Reservation, "offre"> & Partial<Pick<Reservation, "offreDetails">>,
+): { cocos: number; gateaux: number; eaux: number } {
+  if (!estOffreGroupe(reservation.offre)) return { cocos: 0, gateaux: 0, eaux: 0 };
+  const details = reservation.offreDetails;
+  return {
+    cocos: quantiteDe(details?.cocos),
+    gateaux: quantiteDe(details?.gateaux),
+    eaux: quantiteDe(details?.eaux),
+  };
+}
+
+/** Un nombre de choses à préparer, lu dans l'instantané : entier positif, ou zéro. */
+function quantiteDe(valeur: unknown): number {
+  return typeof valeur === "number" && Number.isFinite(valeur) && valeur > 0 ? Math.floor(valeur) : 0;
 }
 
 /**

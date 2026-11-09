@@ -35,6 +35,8 @@ import {
   type GammeVelo,
 } from "@/data/offres";
 import { blocPadel, lireReglagesAvec } from "@/data/reglages";
+import { lireReglagesOffresAvec } from "@/data/reglages-offres";
+import { penaliteRetardXof } from "../offres/retard";
 import { calculerDevis } from "../tarification";
 import {
   genererReference,
@@ -53,10 +55,15 @@ import type {
   AvisClient,
   Client,
   CodeOffre,
+  DetailsOffreGroupe,
+  EvenementJournal,
+  IndisponibiliteVelo,
   MessageContact,
   Partenaire,
   PointDeRetrait,
+  Remboursement,
   Reservation,
+  StatutRemboursement,
   Velo,
   FormuleFermee,
   JourFerme,
@@ -64,9 +71,14 @@ import type {
 import {
   ConflitDisponibiliteError,
   creneauOctobreRoseDemande,
+  heureMinuteDe,
+  limiteJournal,
   messagePlacesManquantes,
   messageVelosManquants,
   ordreAttribution,
+  refusRetard,
+  reservationsToucheesParmi,
+  RETARD_MAX_MINUTES,
   velosDeLaGamme,
   velosLibresDeLaGamme,
   resteUneHeureLibre,
@@ -76,6 +88,7 @@ import {
   type DemandeReservation,
   type FiltreCatalogue,
   type ResultatReservation,
+  type ResultatRetard,
 } from "./contrat";
 
 /** L'offre telle que la base la range, et telle que le domaine la nomme. */
@@ -85,6 +98,9 @@ const OFFRE_EN_BASE: Record<CodeOffre, BookingOffer> = {
   "octobre-rose": "OCTOBRE_ROSE",
   "gbashi-bike": "GBASHI_BIKE",
   "padel-bike": "PADEL_BIKE",
+  "bike-for-all": "BIKE_FOR_ALL",
+  "road-trip-groupe": "ROAD_TRIP_GROUPE",
+  "gbashi-groupe": "GBASHI_GROUPE",
 };
 const OFFRE_DU_DOMAINE: Record<BookingOffer, CodeOffre> = {
   ROAD_TRIP: "road-trip",
@@ -92,6 +108,9 @@ const OFFRE_DU_DOMAINE: Record<BookingOffer, CodeOffre> = {
   OCTOBRE_ROSE: "octobre-rose",
   GBASHI_BIKE: "gbashi-bike",
   PADEL_BIKE: "padel-bike",
+  BIKE_FOR_ALL: "bike-for-all",
+  ROAD_TRIP_GROUPE: "road-trip-groupe",
+  GBASHI_GROUPE: "gbashi-groupe",
 };
 
 /**
@@ -292,7 +311,29 @@ function versReservation(booking: BookingComplet): Reservation {
     dateFin: versISO(booking.endDate),
     heureDebut: booking.startHour,
     heureFin: booking.endHour,
-    ...(booking.startTime && booking.endTime ? { horaire: { depart: booking.startTime, retour: booking.endTime } } : {}),
+    // L'horaire exact : celui noté à la réservation, sinon celui que donnent
+    // les minutes d'une offre de groupe (8 h - 8 h 45), pour que la facture,
+    // le suivi et la fiche du jour l'annoncent à la minute.
+    ...(booking.startTime && booking.endTime
+      ? { horaire: { depart: booking.startTime, retour: booking.endTime } }
+      : booking.startMinute !== null && booking.endMinute !== null
+        ? { horaire: { depart: heureMinuteDe(booking.startMinute), retour: heureMinuteDe(booking.endMinute) } }
+        : {}),
+    ...(booking.startMinute !== null && booking.endMinute !== null
+      ? { minuteDebut: booking.startMinute, minuteFin: booking.endMinute }
+      : {}),
+    ...(booking.retardMinutes !== null
+      ? {
+          retard: {
+            minutes: booking.retardMinutes,
+            penaliteXof: booking.penaliteRetardXof ?? 0,
+            saisiPar: booking.penaliteSaisiePar ?? undefined,
+          },
+        }
+      : {}),
+    ...(booking.offreDetails !== null && typeof booking.offreDetails === "object" && !Array.isArray(booking.offreDetails)
+      ? { offreDetails: booking.offreDetails as DetailsOffreGroupe }
+      : {}),
     jours: booking.days,
     lignes: booking.items.map((item) => ({
       veloId: item.bikeId,
@@ -359,6 +400,20 @@ const inclusionReservation = {
     select: { promoCode: true, discountXof: true, commissionXof: true },
   },
 } satisfies Prisma.BookingInclude;
+
+/** Ce qu'il faut d'une réservation pour savoir à qui rendre l'argent. */
+const inclusionRemboursement = {
+  booking: {
+    select: {
+      reference: true,
+      offer: true,
+      contactFirstName: true,
+      contactLastName: true,
+      contactPhone: true,
+      customer: { select: { firstName: true, lastName: true, email: true, phone: true } },
+    },
+  },
+} satisfies Prisma.RemboursementInclude;
 
 /**
  * Une reservation bloque le velo si elle est dans un statut bloquant ET
@@ -1881,6 +1936,260 @@ const depotDirect: Depot = {
       traiteLe: message.handledAt?.toISOString(),
     }));
   },
+
+  /* ------------------------------------------ Offres de groupe : administration */
+
+  async listerIndisponibilites(options) {
+    const where: Prisma.IndisponibiliteVeloWhereInput = {};
+    if (options?.depuis || options?.jusqua) {
+      where.date = {
+        ...(options.depuis ? { gte: new Date(`${options.depuis}T00:00:00Z`) } : {}),
+        ...(options.jusqua ? { lte: new Date(`${options.jusqua}T00:00:00Z`) } : {}),
+      };
+    }
+    if (options?.veloId) where.bikeId = options.veloId;
+    const lignes = await client().indisponibiliteVelo.findMany({
+      where,
+      include: { bike: { select: { name: true } } },
+      orderBy: { date: "asc" },
+    });
+    // Même ordre qu'en démonstration : par jour, puis par nom de vélo.
+    return lignes
+      .map(versIndisponibilite)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.veloNom.localeCompare(b.veloNom, "fr"));
+  },
+
+  async ajouterIndisponibilite({ veloId, date, motif, par }) {
+    const jour = new Date(`${date}T00:00:00Z`);
+    const motifNettoye = motif?.trim() || null;
+    // La déclaration et sa ligne de journal ensemble, ou rien.
+    return client().$transaction(
+      async (tx) => {
+        const bike = await tx.bike.findUnique({ where: { id: veloId }, select: { name: true } });
+        if (!bike) return null;
+        const deja = await tx.indisponibiliteVelo.findUnique({
+          where: { bikeId_date: { bikeId: veloId, date: jour } },
+          select: { id: true },
+        });
+        const ligne = await tx.indisponibiliteVelo.upsert({
+          where: { bikeId_date: { bikeId: veloId, date: jour } },
+          create: { bikeId: veloId, date: jour, motif: motifNettoye, creePar: par },
+          update: { motif: motifNettoye },
+          include: { bike: { select: { name: true } } },
+        });
+        await tx.journalEvenement.create({
+          data: {
+            type: "indisponibilite-ajoutee",
+            details: { veloId, veloNom: bike.name, date, motif: motifNettoye, dejaDeclare: Boolean(deja) },
+            auteur: par,
+          },
+        });
+        return versIndisponibilite(ligne);
+      },
+      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
+    );
+  },
+
+  async retirerIndisponibilite(id, par) {
+    return client().$transaction(
+      async (tx) => {
+        const ligne = await tx.indisponibiliteVelo.findUnique({
+          where: { id },
+          include: { bike: { select: { name: true } } },
+        });
+        if (!ligne) return false;
+        // Sous condition : deux clics simultanés n'écrivent qu'une ligne au journal.
+        const { count } = await tx.indisponibiliteVelo.deleteMany({ where: { id } });
+        if (count === 0) return false;
+        await tx.journalEvenement.create({
+          data: {
+            type: "indisponibilite-retiree",
+            details: { veloId: ligne.bikeId, veloNom: ligne.bike.name, date: versISO(ligne.date), motif: ligne.motif },
+            auteur: par,
+          },
+        });
+        return true;
+      },
+      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
+    );
+  },
+
+  async journaliser(evenement) {
+    const ligne = await client().journalEvenement.create({
+      data: {
+        type: evenement.type,
+        reference: evenement.reference ?? null,
+        details: (evenement.details ?? {}) as Prisma.InputJsonObject,
+        auteur: evenement.auteur,
+      },
+    });
+    return versEvenement(ligne);
+  },
+
+  async listerJournal(filtre) {
+    const where: Prisma.JournalEvenementWhereInput = {};
+    if (filtre?.type) where.type = filtre.type;
+    const reference = filtre?.reference?.trim();
+    if (reference) where.reference = { equals: reference, mode: "insensitive" };
+    const depuis = filtre?.depuis ? new Date(filtre.depuis) : null;
+    if (depuis && !Number.isNaN(depuis.getTime())) where.createdAt = { gte: depuis };
+    const lignes = await client().journalEvenement.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limiteJournal(filtre),
+    });
+    return lignes.map(versEvenement);
+  },
+
+  async creerRemboursement({ reference, montantXof, motif, par }) {
+    const motifNettoye = motif.trim();
+    return client().$transaction(
+      async (tx) => {
+        const booking = await tx.booking.findUnique({
+          where: { reference: reference.toUpperCase() },
+          select: { id: true, reference: true },
+        });
+        if (!booking) return null;
+        // La même demande deux fois (un webhook rejoué) : la première. En
+        // isolation sérialisable, deux demandes simultanées ne passent pas
+        // toutes les deux : PostgreSQL en annule une (P2034), qui, rejouée,
+        // trouve l'autre.
+        const existant = await tx.remboursement.findFirst({
+          where: { bookingId: booking.id, statut: "a_faire", montantXof, motif: motifNettoye },
+          include: inclusionRemboursement,
+        });
+        if (existant) return versRemboursement(existant);
+        const cree = await tx.remboursement.create({
+          data: { bookingId: booking.id, montantXof, motif: motifNettoye },
+          include: inclusionRemboursement,
+        });
+        await tx.journalEvenement.create({
+          data: {
+            type: "remboursement-cree",
+            reference: booking.reference,
+            details: { remboursementId: cree.id, montantXof, motif: motifNettoye },
+            auteur: par ?? "site",
+          },
+        });
+        return versRemboursement(cree);
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: DELAI_ATTENTE_MS,
+        timeout: DELAI_TRANSACTION_MS,
+      },
+    );
+  },
+
+  async listerRemboursements(filtre) {
+    const lire = (statut: StatutRemboursement) =>
+      client().remboursement.findMany({
+        where: { statut },
+        include: inclusionRemboursement,
+        // À faire : le plus ancien d'abord, c'est le plus pressé. Faits : le
+        // plus récent d'abord.
+        orderBy: statut === "a_faire" ? { createdAt: "asc" } : [{ faitLe: "desc" }, { createdAt: "desc" }],
+        ...(filtre?.limite ? { take: Math.max(1, Math.floor(filtre.limite)) } : {}),
+      });
+    const lignes = filtre?.statut
+      ? await lire(filtre.statut)
+      : (await Promise.all([lire("a_faire"), lire("fait")])).flat();
+    const resultat = lignes.map(versRemboursement);
+    return filtre?.limite ? resultat.slice(0, Math.max(1, Math.floor(filtre.limite))) : resultat;
+  },
+
+  async marquerRemboursementFait(id, par) {
+    return client().$transaction(
+      async (tx) => {
+        // Sous condition : seul l'appel qui trouve encore « à faire » le note.
+        const { count } = await tx.remboursement.updateMany({
+          where: { id, statut: "a_faire" },
+          data: { statut: "fait", faitPar: par, faitLe: new Date() },
+        });
+        if (count === 0) return null;
+        const ligne = await tx.remboursement.findUniqueOrThrow({ where: { id }, include: inclusionRemboursement });
+        await tx.journalEvenement.create({
+          data: {
+            type: "remboursement-fait",
+            reference: ligne.booking.reference,
+            details: { remboursementId: ligne.id, montantXof: ligne.montantXof, motif: ligne.motif },
+            auteur: par,
+          },
+        });
+        return versRemboursement(ligne);
+      },
+      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
+    );
+  },
+
+  async enregistrerRetard(reference, minutes, par): Promise<ResultatRetard> {
+    // Les réglages du moment : la tolérance et le montant par minute.
+    const lecture = await lireReglagesOffresAvec(lireParametre);
+    return client().$transaction(
+      async (tx): Promise<ResultatRetard> => {
+        const booking = await tx.booking.findUnique({
+          where: { reference: reference.toUpperCase() },
+          select: { id: true, reference: true, offer: true, status: true, retardMinutes: true, penaliteRetardXof: true },
+        });
+        if (!booking) return { ok: false, raison: "introuvable" };
+        const refus = refusRetard({ offre: OFFRE_DU_DOMAINE[booking.offer], statut: booking.status });
+        if (refus) return { ok: false, raison: refus };
+        // Jamais au prix par défaut quand les réglages enregistrés ne se lisent plus.
+        if (lecture.source === "illisible") return { ok: false, raison: "reglages" };
+        const retenues = Math.max(0, Math.min(RETARD_MAX_MINUTES, Math.floor(minutes)));
+        const penalite = penaliteRetardXof(retenues, lecture.reglages);
+        // Sous condition, comme le contrôle ci-dessus : une annulation glissée
+        // entre les deux ne reçoit pas de pénalité.
+        const { count } = await tx.booking.updateMany({
+          where: { id: booking.id, status: { in: ["CONFIRMEE", "EN_COURS", "TERMINEE"] } },
+          data: { retardMinutes: retenues, penaliteRetardXof: penalite, penaliteSaisiePar: par },
+        });
+        if (count === 0) return { ok: false, raison: "statut" };
+        await tx.journalEvenement.create({
+          data: {
+            type: "retard",
+            reference: booking.reference,
+            details: {
+              minutes: retenues,
+              penaliteXof: penalite,
+              toleranceMinutes: lecture.reglages.retard.toleranceMinutes,
+              penaliteParMinuteXof: lecture.reglages.retard.penaliteParMinuteXof,
+              avant:
+                booking.retardMinutes !== null
+                  ? { minutes: booking.retardMinutes, penaliteXof: booking.penaliteRetardXof ?? 0 }
+                  : null,
+            },
+            auteur: par,
+          },
+        });
+        const complet = await tx.booking.findUniqueOrThrow({ where: { id: booking.id }, include: inclusionReservation });
+        return { ok: true, reservation: versReservation(complet) };
+      },
+      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
+    );
+  },
+
+  async reservationsTouchees(depuis) {
+    const jour = new Date(`${depuis}T00:00:00Z`);
+    const [bookings, bikes, indisponibilites] = await Promise.all([
+      client().booking.findMany({
+        where: { status: { in: ["CONFIRMEE", "EN_COURS"] }, endDate: { gte: jour } },
+        include: inclusionReservation,
+        orderBy: [{ startDate: "asc" }, { startHour: "asc" }],
+      }),
+      client().bike.findMany({ select: { id: true, status: true } }),
+      client().indisponibiliteVelo.findMany({
+        where: { date: { gte: jour } },
+        select: { bikeId: true, date: true, motif: true },
+      }),
+    ]);
+    return reservationsToucheesParmi(
+      bookings.map(versReservation),
+      new Map(bikes.map((bike) => [bike.id, bike.status])),
+      indisponibilites.map((i) => ({ veloId: i.bikeId, date: versISO(i.date), motif: i.motif ?? undefined })),
+      depuis,
+    );
+  },
 };
 
 /**
@@ -2034,5 +2343,73 @@ function versJourFerme(jour: {
     formule: jour.formule as FormuleFermee,
     motif: jour.motif ?? undefined,
     creeLe: jour.createdAt.toISOString(),
+  };
+}
+
+/** Traduit un vélo indisponible de la base vers le domaine. */
+function versIndisponibilite(ligne: {
+  id: string;
+  bikeId: string;
+  bike: { name: string };
+  date: Date;
+  motif: string | null;
+  creePar: string;
+  createdAt: Date;
+}): IndisponibiliteVelo {
+  return {
+    id: ligne.id,
+    veloId: ligne.bikeId,
+    veloNom: ligne.bike.name,
+    date: versISO(ligne.date),
+    ...(ligne.motif ? { motif: ligne.motif } : {}),
+    creePar: ligne.creePar,
+    creeLe: ligne.createdAt.toISOString(),
+  };
+}
+
+/** Traduit une ligne du journal de la base vers le domaine. */
+function versEvenement(ligne: {
+  id: string;
+  type: string;
+  reference: string | null;
+  details: Prisma.JsonValue;
+  auteur: string;
+  createdAt: Date;
+}): EvenementJournal {
+  const details =
+    ligne.details !== null && typeof ligne.details === "object" && !Array.isArray(ligne.details)
+      ? (ligne.details as Record<string, unknown>)
+      : { valeur: ligne.details };
+  return {
+    id: ligne.id,
+    type: ligne.type,
+    ...(ligne.reference ? { reference: ligne.reference } : {}),
+    details,
+    auteur: ligne.auteur,
+    creeLe: ligne.createdAt.toISOString(),
+  };
+}
+
+/** Traduit un remboursement de la base vers le domaine, avec le contact de la réservation. */
+function versRemboursement(ligne: Prisma.RemboursementGetPayload<{ include: typeof inclusionRemboursement }>): Remboursement {
+  const booking = ligne.booking;
+  const telephone = booking.contactPhone ?? booking.customer.phone ?? undefined;
+  return {
+    id: ligne.id,
+    reservationId: ligne.bookingId,
+    reference: booking.reference,
+    offre: OFFRE_DU_DOMAINE[booking.offer],
+    client: {
+      prenom: booking.contactFirstName ?? booking.customer.firstName,
+      nom: booking.contactLastName ?? booking.customer.lastName,
+      email: booking.customer.email,
+      ...(telephone ? { telephone } : {}),
+    },
+    montantXof: ligne.montantXof,
+    motif: ligne.motif,
+    statut: ligne.statut === "fait" ? "fait" : "a_faire",
+    ...(ligne.faitPar ? { faitPar: ligne.faitPar } : {}),
+    ...(ligne.faitLe ? { faitLe: ligne.faitLe.toISOString() } : {}),
+    creeLe: ligne.createdAt.toISOString(),
   };
 }

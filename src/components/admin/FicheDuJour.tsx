@@ -1,12 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
+import { estOffreGroupe, OFFRES_GROUPE } from "@/data/offres";
 import { formatDate, formatXof, resumeOffre } from "@/lib/format";
-import { cocosDe } from "@/lib/reservations";
+import { aPreparerOffreGroupe, cocosDe } from "@/lib/reservations";
 import type { Reservation } from "@/lib/types";
+
+/** « (petit format) », « (grand format) » : le format des cocos, quand le calcul l'a noté. */
+function formatCoco(coco: unknown): string {
+  return coco === "petit" ? " (petit format)" : coco === "grand" ? " (grand format)" : "";
+}
 
 /**
  * Ce que le coordinateur doit faire concrètement, selon la formule et
@@ -28,6 +35,29 @@ function consignes(reservation: Reservation, sens: "depart" | "retour"): string[
       } : sortie Octobre rose.`,
       `Prévoir ${texteOffertOctobreRose(n)}, offerts.`,
       "Aucune caution : la sortie est encadrée.",
+    ];
+  }
+  if (estOffreGroupe(reservation.offre)) {
+    const n = reservation.nombrePersonnes;
+    if (sens === "retour") {
+      return [
+        `Récupérer ${n > 1 ? `les ${n} vélos et casques` : "le vélo et le casque"}.`,
+        "Retour en retard : notez les minutes sur la fiche de la réservation, la pénalité se paie en espèces.",
+      ];
+    }
+    // Ce que le calcul a prévu pour ce groupe, figé à la réservation.
+    const prevu = aPreparerOffreGroupe(reservation);
+    const aPrevoir = [
+      prevu.cocos > 0 ? `${prevu.cocos} coco${prevu.cocos > 1 ? "s" : ""}${formatCoco(reservation.offreDetails?.coco)}` : null,
+      prevu.gateaux > 0 ? `${prevu.gateaux} gâteau${prevu.gateaux > 1 ? "x" : ""}` : null,
+      prevu.eaux > 0 ? `${prevu.eaux} bouteille${prevu.eaux > 1 ? "s" : ""} d'eau` : null,
+    ].filter((element): element is string => element !== null);
+    return [
+      `Préparer ${n} vélo${n > 1 ? "s" : ""} et ${n} casque${n > 1 ? "s" : ""} : ${OFFRES_GROUPE[reservation.offre].nom}.`,
+      ...(aPrevoir.length > 0
+        ? [`Prévoir ${aPrevoir.length > 1 ? `${aPrevoir.slice(0, -1).join(", ")} et ${aPrevoir[aPrevoir.length - 1]}` : aPrevoir[0]}.`]
+        : []),
+      ...(reservation.offreDetails?.accompagnateur ? ["Un accompagnateur part avec le groupe."] : []),
     ];
   }
   if (reservation.offre === "gbashi-bike" || reservation.offre === "padel-bike") {
@@ -173,6 +203,16 @@ function Ligne({
           >
             {action === "depart" ? "Vélo remis au client" : "Vélo rendu"}
           </button>
+        )}
+        {/* Une offre de groupe rentrée en retard : les minutes se notent sur
+            la fiche de la réservation, qui calcule la pénalité. */}
+        {sens === "retour" && estOffreGroupe(reservation.offre) && (
+          <Link
+            href={`/admin/reservations?detail=${encodeURIComponent(reservation.reference)}`}
+            className="inline-flex min-h-[44px] items-center rounded-[var(--radius-bouton)] border border-noir-piste/20 px-4 text-[0.88rem] font-semibold"
+          >
+            Minutes de retard
+          </Link>
         )}
       </div>
     </li>

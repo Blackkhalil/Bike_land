@@ -10,7 +10,7 @@
 import { itineraires } from "@/data/contenus";
 import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
 import { formatHeureMinute } from "@/data/reglages";
-import { creneauDuDepart, EXIGENCES, exigencesOctobreRose } from "@/data/offres";
+import { creneauDuDepart, estOffreGroupe, EXIGENCES, exigencesOctobreRose, OFFRES_GROUPE } from "@/data/offres";
 
 import { site } from "./site";
 import { numeroDeFacture } from "./facture";
@@ -18,13 +18,14 @@ import {
   formatCreneau,
   formatDateAvecJour,
   formatDateComplete,
+  formatDureeMinutes,
   formatXof,
   libelleReglement,
   libelleRemise,
   nomDuRoadTrip,
   resumeOffre,
 } from "./format";
-import { cocosDe, paiementPrincipal } from "./reservations";
+import { aPreparerOffreGroupe, cocosDe, paiementPrincipal } from "./reservations";
 import type { Reservation } from "./types";
 
 /** Le rose d'Octobre rose, celui du site (--color-rose-octobre). */
@@ -49,6 +50,22 @@ function compte(n: number, singulier: string, pluriel = `${singulier}s`): string
 /** « 3 personnes », « 1 personne ». */
 function personnes(n: number): string {
   return compte(n, "personne");
+}
+
+/**
+ * « Prévoir 10 cocos, 10 gâteaux et 20 bouteilles d'eau. » : ce que le
+ * calcul d'une offre de groupe a prévu, pour l'email de l'équipe. Rien s'il
+ * n'a rien prévu.
+ */
+function texteAPreparerGroupe(aPreparer: { cocos: number; gateaux: number; eaux: number }): string {
+  const elements = [
+    aPreparer.cocos > 0 ? compte(aPreparer.cocos, "coco") : null,
+    aPreparer.gateaux > 0 ? compte(aPreparer.gateaux, "gâteau", "gâteaux") : null,
+    aPreparer.eaux > 0 ? compte(aPreparer.eaux, "bouteille d'eau", "bouteilles d'eau") : null,
+  ].filter((element): element is string => element !== null);
+  if (elements.length === 0) return "";
+  const liste = elements.length > 1 ? `${elements.slice(0, -1).join(", ")} et ${elements[elements.length - 1]}` : elements[0];
+  return ` Prévoir ${liste}.`;
 }
 
 /** « Référence : BL-4F2K9Q », une ligne de la version texte. */
@@ -257,6 +274,19 @@ function detailsOffre(reservation: Reservation): [string, string][] {
       ["Participants", personnes(reservation.nombrePersonnes)],
     ];
   }
+  // Les offres de groupe : leur nom, le groupe, et la durée de vélo de Bike
+  // for All quand le créneau est connu.
+  if (estOffreGroupe(reservation.offre)) {
+    const duree =
+      reservation.offre === "bike-for-all" && reservation.minuteDebut !== undefined && reservation.minuteFin !== undefined
+        ? [["Durée de vélo", formatDureeMinutes(reservation.minuteFin - reservation.minuteDebut)] as [string, string]]
+        : [];
+    return [
+      ["Formule", OFFRES_GROUPE[reservation.offre].nom],
+      ["Participants", personnes(reservation.nombrePersonnes)],
+      ...duree,
+    ];
+  }
   const nom = nomDuRoadTrip(reservation);
   return [
     ["Formule", nom === "Road trip" ? "Road trip encadré" : `${nom}, road trip encadré`],
@@ -284,6 +314,8 @@ function aPrevoir(reservation: Reservation): string[] {
   if (reservation.offre === "gbashi-bike" || reservation.offre === "padel-bike") {
     return [...EXIGENCES[reservation.offre], "Aucune caution n'est demandée : la sortie est encadrée."];
   }
+  // Les offres de groupe : leurs consignes, retour à l'heure compris.
+  if (estOffreGroupe(reservation.offre)) return [...EXIGENCES[reservation.offre]];
   // Un départ qui demande une tenue (sa consigne) la dit d'abord.
   const consigne = creneauDuDepart(reservation.dateDebut, reservation.heureDebut)?.consigne;
   return [
@@ -743,7 +775,11 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
         : reservation.offre === "padel-bike"
           ? // Padel bike ne promet ni eau ni coco : les vélos et les casques.
             `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}) et ${n} casque${n > 1 ? "s" : ""}, pour Padel bike.`
-          : `À prévoir : ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
+          : estOffreGroupe(reservation.offre)
+            ? // Une offre de groupe : ce que son calcul a prévu, figé à la réservation.
+              `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}) et ${n} casque${n > 1 ? "s" : ""}, pour ${OFFRES_GROUPE[reservation.offre].nom}.` +
+              texteAPreparerGroupe(aPreparerOffreGroupe(reservation))
+            : `À prévoir : ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
 
   return envoyer({
     destinataire,
