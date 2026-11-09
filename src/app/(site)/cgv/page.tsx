@@ -4,9 +4,11 @@ import { ArticleLegal, PageLegale } from "@/components/PageLegale";
 import {
   CAUTION_LOCATION_LIBRE_XOF,
   DUREE_MAX_LOCATION_LIBRE,
+  DUREE_PADEL_HEURES,
   gammesDuDepart,
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
+  PRIX_PADEL_BIKE_XOF,
 } from "@/data/offres";
 import { formatXof } from "@/lib/format";
 import { site } from "@/lib/site";
@@ -24,7 +26,7 @@ export default function PageCGV() {
   return (
     <PageLegale
       titre="Conditions générales de vente"
-      miseAJour="4 novembre 2026"
+      miseAJour="9 novembre 2026"
       sousTitre="Ce que nous nous engageons à faire, et ce que nous vous demandons en retour. Elles s'appliquent à toute réservation effectuée sur ce site."
     >
       <ArticleLegal titre="Article 1. Objet">
@@ -51,13 +53,19 @@ export default function PageCGV() {
         <p>
           {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
           en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, au forfait par
-          personne selon la gamme de vélo et le jour&nbsp;: dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} le
-          samedi, en vélo {gammesDuDepart("samedi-matin")}&nbsp;; dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}{" "}
-          le dimanche (Gbashi bike, avec sa séance de sport), en vélo {gammesDuDepart("dimanche-matin")}&nbsp;;
-          eau et coco compris. La{" "}
+          personne selon la gamme de vélo&nbsp;: dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} le samedi, en
+          vélo {gammesDuDepart("samedi-matin")}, eau et coco compris. La{" "}
           <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
           accompagnement, facturée à l&apos;heure selon la grille publiée sur le site, de une à{" "}
           {DUREE_MAX_LOCATION_LIBRE} heures.
+        </p>
+        <p>
+          Deux produits se commandent sur WhatsApp, hors réservation en ligne&nbsp;:{" "}
+          <strong>Gbashi bike</strong>, le road trip du dimanche avec sa séance de sport, dès{" "}
+          {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)} par personne selon la gamme, et{" "}
+          <strong>Padel bike</strong>, à vélo jusqu&apos;au terrain de padel puis {DUREE_PADEL_HEURES} heures
+          de padel, à {formatXof(PRIX_PADEL_BIKE_XOF)} par personne. Le jour, le nombre de participants
+          et le règlement sont convenus avec {site.nom} au moment de la commande.
         </p>
         <p>
           {site.nom} organise aussi des <strong>sorties de saison</strong>, comme Octobre rose :

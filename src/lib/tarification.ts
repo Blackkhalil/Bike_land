@@ -80,7 +80,8 @@ export interface ParametresDevis {
    * Vente réglée en espèces au comptoir : au prix de la plaquette, sans les
    * frais du paiement en ligne que portent les tarifs du site (cf.
    * `FRAIS_PAIEMENT_EN_LIGNE_XOF`). Octobre rose fait exception : son prix
-   * au comptoir est celui de la sortie (`prixComptoirXof`). Le serveur ne
+   * au comptoir est celui de la sortie (`prixComptoirXof`). Gbashi bike
+   * aussi, vendu sur commande : son prix n'a pas de frais à retirer. Le serveur ne
    * l'accorde qu'à une vente saisie dans l'administration, jamais à une
    * réservation en ligne.
    */
@@ -166,9 +167,13 @@ export function calculerDevis(parametres: ParametresDevis): Devis {
         motifRoadTripGamme(gamme, parametres.date) ?? "Cette gamme ne roule pas ce road trip.",
       );
     }
-    const prixUnitaire = prixDuJour - fraisRetires;
+    const creneau = parametres.date ? creneauDuJour(parametres.date) : undefined;
+    // Un départ sur commande (Gbashi bike) ne se paie jamais en ligne : son
+    // prix ne porte pas les frais du paiement en ligne, le comptoir n'a
+    // rien à en retirer.
+    const prixUnitaire = prixDuJour - (creneau && !creneau.enLigne ? 0 : fraisRetires);
     const cocos = COCOS_ROAD_TRIP;
-    const nom = (parametres.date ? creneauDuJour(parametres.date)?.produit : null) ?? "Road trip";
+    const nom = creneau?.produit ?? "Road trip";
     sousTotalXof = prixUnitaire * nombrePersonnes;
     cautionXof = 0;
     lignes.push({

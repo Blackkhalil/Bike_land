@@ -2,9 +2,11 @@
  * L'ouverture des réservations, telle que l'exploitant l'a réglée.
  *
  * Deux réglages, faits depuis le tableau de bord. Les créneaux du road
- * trip s'ouvrent et se ferment pour toutes les semaines : le dimanche est
- * fermé parce que complet, il se rouvre d'un clic. Des jours précis se
- * ferment quand ils sont complets, pour une formule ou pour les deux.
+ * trip s'ouvrent et se ferment pour toutes les semaines : le samedi fermé
+ * parce que complet se rouvre d'un clic. Gbashi bike, le dimanche, n'a pas
+ * ce réglage : il se commande sur WhatsApp, jamais en ligne (`enLigne`
+ * dans CRENEAUX_ROAD_TRIP). Des jours précis se ferment quand ils sont
+ * complets, pour une formule ou pour les deux.
  *
  * Tout ce qui propose ou accepte une réservation passe par ce module : le
  * widget de la fiche vélo, le tunnel, et surtout le serveur, qui refuse
@@ -29,6 +31,7 @@ import {
   creneauxDisponibles,
   estJourFerme,
   FERMETURE_HEURE,
+  motifDepartSurCommande,
   motifHoraireLocation,
   OUVERTURE_HEURE,
   roadTripPossible,
@@ -56,12 +59,15 @@ export interface Ouverture extends OuvertureCreneaux {
  * comme un créneau, sous son propre code, daté (`codeOctobreRose`) : chaque
  * jour se règle seul. Ouverte tant que l'exploitant n'y a pas touché, elle
  * figure alors parmi les `creneauxActifs`.
+ *
+ * Un départ sur commande (Gbashi bike) n'y figure jamais, même ouvert en
+ * base avant qu'il ne passe sur commande : il ne se réserve pas en ligne.
  */
 export async function lireOuverture(): Promise<Ouverture> {
   const brut = await depot.lireOuverture();
-  const actifs: string[] = CRENEAUX_ROAD_TRIP.filter((c) => brut.creneaux[c.code] ?? c.actifParDefaut).map(
-    (c) => c.code,
-  );
+  const actifs: string[] = CRENEAUX_ROAD_TRIP.filter(
+    (c) => c.enLigne && (brut.creneaux[c.code] ?? c.actifParDefaut),
+  ).map((c) => c.code);
   for (const sortie of OCTOBRE_ROSE.sorties) {
     const code = codeOctobreRose(sortie);
     if (brut.creneaux[code] ?? true) actifs.push(code);
@@ -288,6 +294,8 @@ export function motifDeRefus(
     const creneau = CRENEAUX_ROAD_TRIP.find(
       (c) => c.jourSemaine === jourSemaine && c.heureDebut === demande.heureDebut,
     );
+    // Gbashi bike se commande sur WhatsApp : le motif donne le numéro.
+    if (creneau && !creneau.enLigne) return motifDepartSurCommande(creneau);
     if (!creneau || !ouverture.creneauxActifs.has(creneau.code)) {
       return "Ce départ de road trip n'est pas ouvert à la réservation. Choisissez une autre date.";
     }

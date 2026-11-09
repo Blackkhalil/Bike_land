@@ -30,6 +30,25 @@ export const AFFICHES_GBASHI: Affiche[] = [
   alt: `Affiche Gbashi bike. ${scene}. ${legende}.`,
 }));
 
+/**
+ * Padel bike : l'affiche du concept, puis le terrain de padel. Des images
+ * tirées des vidéos de l'exploitant (public/images/Padel Bike, non
+ * publié) : seule la première porte du texte.
+ */
+export const AFFICHES_PADEL: Affiche[] = [
+  {
+    src: "/images/produits/padel/01.jpg",
+    alt:
+      "Affiche Padel bike, devant le terrain de padel. Le concept est simple : on démarre à vélo pour " +
+      "s'échauffer, on arrive au lieu de padel et on joue pendant 3 heures. Participation : 3 500 F par " +
+      "personne. Vous pouvez commencer vos réservations.",
+  },
+  { src: "/images/produits/padel/02.jpg", alt: "Un joueur sert sur la piste rouge, près du filet." },
+  { src: "/images/produits/padel/03.jpg", alt: "Deux raquettes de padel et un tube de balles sur le gazon vert." },
+  { src: "/images/produits/padel/04.jpg", alt: "Un échange de padel sur la piste rouge, la balle en jeu." },
+  { src: "/images/produits/padel/05.jpg", alt: "Une piste de padel verte, entourée de vitres et de grillage." },
+];
+
 /** Le road trip : la sortie encadrée sur la route des Pêches. */
 export const AFFICHES_ROAD_TRIP: Affiche[] = [
   ["Ce week-end, on roule ? Road trip : un cycliste casqué sur la route des Pêches", "Samedi et dimanche matin, sur la côte de Fidjrossè"],

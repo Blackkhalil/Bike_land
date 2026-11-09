@@ -137,8 +137,9 @@ export function TunnelReservation({
   const routeur = useRouter();
   const [etape, setEtape] = useState<Etape>(1);
 
-  // La sortie encadrée de la gamme : le road trip, ou Gbashi bike seul pour
-  // le Classique, qui ne roule pas le samedi. Les départs reçus sont déjà
+  // La sortie encadrée que la gamme réserve en ligne : le road trip du
+  // samedi, aucune pour le Classique (Gbashi bike se commande sur
+  // WhatsApp). Les départs reçus sont déjà
   // ceux de la gamme (`departsDeLaGamme`) : sans aucun, la formule encadrée
   // n'est pas proposée, faute de jour qui lui donne un prix.
   const sortie = sortieEncadreeDe(gamme);
@@ -173,7 +174,7 @@ export function TunnelReservation({
     creneauDemande !== undefined &&
     creneauDemande.date !== dateInitiale;
   // Sans départ ouvert pour la gamme, la formule encadrée se pose sur son
-  // premier départ « Sold out » (le dimanche pour le Classique), et non sur
+  // premier départ « Sold out », et non sur
   // le jour et l'heure de la location libre : le récapitulatif dit alors
   // vrai, et rien ne se paie tant qu'aucun départ ouvert n'est choisi.
   const departAffiche = creneauDemande ?? premierDepart(complets);
@@ -339,8 +340,8 @@ export function TunnelReservation({
   const nombreEffectif = Math.min(nombrePersonnes, velosMax);
 
   // Le jour qui fixe le prix du road trip affiché : celui choisi quand la
-  // gamme roule ce départ ; sinon un départ qu'elle roule (le dimanche pour
-  // le Classique), le temps que le client en choisisse un. Sans cela, un
+  // gamme roule ce départ ; sinon un départ qu'elle roule, le temps que le
+  // client en choisisse un. Sans cela, un
   // Classique passé en road trip sur un samedi n'aurait aucun prix.
   const departHorsGamme = offre === "road-trip" && !roadTripPossible(gamme, dateDebut);
   // En road trip, on ne continue que sur un départ ouvert de la gamme : ni un
@@ -654,8 +655,8 @@ export function TunnelReservation({
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {OFFRES.filter((item) => item.code !== "road-trip" || roadTripOffert).map((item) => {
                   const actif = offre === item.code;
-                  // Le Classique ne roule que Gbashi bike, le dimanche : la
-                  // formule encadrée porte ce nom-là pour lui.
+                  // Une gamme dont la seule sortie en ligne porte son propre
+                  // nom donne ce nom à la formule encadrée.
                   const nomFormule =
                     item.code === "road-trip" && sortie && sortie.nom !== "Road trip"
                       ? `${sortie.nom}, ${sortie.avantPrix.replace(/ à$/, "")}`

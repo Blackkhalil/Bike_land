@@ -10,6 +10,7 @@ import { Pastille, Section, TitreSection } from "@/components/ui";
 import {
   creneauxDisponibles,
   departsComplets,
+  DUREE_MAX_LOCATION_LIBRE,
   FERMETURE_HEURE,
   GAMME_LA_PLUS_PRISE,
   GAMMES,
@@ -47,20 +48,17 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const gamme = gammeDeLAdresse((await params).gamme);
   if (!gamme) return { title: "Gamme introuvable" };
   const heure = formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof);
-  // Le road trip encadré le week-end, ou Gbashi bike le dimanche pour le
-  // Classique, qui ne roule pas le samedi.
+  // Le road trip encadré du samedi, pour le Premium et le Prestige. Le
+  // Classique n'a pas de sortie encadrée en ligne (Gbashi bike se commande
+  // sur WhatsApp) : sa description dit plutôt la durée et la machine.
   const sortie = sortieEncadreeDe(gamme.code);
   const prixSortie = sortie ? formatXof(sortie.prixMinimum) : "";
-  const enSortie = !sortie
-    ? ""
-    : sortie.nom === "Road trip"
-      ? `, ou en road trip encadré le week-end dès ${prixSortie} par personne`
-      : `, ou en ${sortie.nom} ${sortie.avantPrix} ${prixSortie} par personne`;
-  const enSortieCourt = !sortie
-    ? ""
-    : sortie.nom === "Road trip"
-      ? `, road trip encadré dès ${prixSortie} par personne`
-      : `, ${sortie.nom} ${sortie.avantPrix} ${prixSortie} par personne`;
+  const quoi = sortie ? (sortie.nom === "Road trip" ? "road trip encadré" : sortie.nom) : "";
+  const machine = gamme.machine.charAt(0).toLowerCase() + gamme.machine.slice(1);
+  const enSortie = sortie
+    ? `, ou en ${quoi} ${sortie.avantPrix} ${prixSortie} par personne`
+    : `, de 1 à ${DUREE_MAX_LOCATION_LIBRE} heures : ${machine}`;
+  const enSortieCourt = sortie ? `, ${quoi} ${sortie.avantPrix} ${prixSortie} par personne` : "";
   return metadonneesPage({
     titre: `Location de vélo ${gamme.nom} à Cotonou`,
     description: premierQuiTient(
@@ -148,16 +146,15 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
                 {formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof)}
               </strong>
               l&apos;heure
-              {/* Le road trip, ou Gbashi bike le dimanche pour le Classique,
-                  qui ne roule pas le samedi. */}
+              {/* Le road trip du samedi, pour le Premium et le Prestige : le
+                  Classique n'a pas de sortie encadrée en ligne. */}
               {sortie && (
                 <>
                   <span aria-hidden="true" className="hidden px-1 opacity-40 sm:inline">
                     •
                   </span>
                   {/* Un bloc à part, qui passe entier à la ligne : la phrase
-                      longue du Classique (Gbashi bike le dimanche) s'y replie
-                      sans déborder d'un téléphone. */}
+                      s'y replie sans déborder d'un téléphone. */}
                   <span className="min-w-0">
                     {sortie.nomDansLaPhrase} {sortie.avantPrix}{" "}
                     <strong className="whitespace-nowrap font-semibold tabular-nums text-craie">

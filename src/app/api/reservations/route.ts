@@ -122,7 +122,9 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
 
   // Créneau ou jour fermé depuis le tableau de bord : complet, ou
   // volontairement retiré. Vérifié ici et non seulement à l'affichage,
-  // une page restée ouverte pouvant encore le proposer.
+  // une page restée ouverte pouvant encore le proposer. Gbashi bike, le
+  // dimanche, est refusé ici aussi : il se commande sur WhatsApp, et le
+  // motif donne le numéro.
   const refus = motifDeRefus(await lireOuverture(), donnees);
   if (refus) {
     return { refus: NextResponse.json({ erreur: refus, code: "COMPLET" }, { status: 409 }) };
@@ -139,7 +141,7 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
 
   // Le road trip du samedi se roule en Premium ou Prestige : une page
   // restée ouverte, un ancien lien ou un appel direct ne réservent pas un
-  // Classique sur ce départ. Gbashi bike, le dimanche, le prend toujours.
+  // Classique sur ce départ.
   const horsGamme = donnees.offre === "road-trip" ? motifRoadTripGamme(gamme, donnees.dateDebut) : null;
   if (horsGamme) {
     return { refus: NextResponse.json({ erreur: horsGamme, code: "GAMME" }, { status: 409 }) };

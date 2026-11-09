@@ -149,7 +149,8 @@ async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
   const roadTrip = donnees.offre === "road-trip";
   // Le road trip du samedi se roule en Premium ou Prestige : un Classique
   // n'y part pas, au comptoir pas plus qu'en ligne. Il garde la location
-  // libre, et Gbashi bike le dimanche.
+  // libre, et Gbashi bike le dimanche : commandé sur WhatsApp, le comptoir
+  // l'enregistre ici, à son prix.
   const horsGamme = roadTrip ? motifRoadTripGamme(velo.gamme, donnees.date) : null;
   if (horsGamme) {
     return {

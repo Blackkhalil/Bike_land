@@ -246,13 +246,21 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           creneaux={[
             ...CRENEAUX_ROAD_TRIP.map((c) => ({
               code: c.code,
-              // Le dimanche est Gbashi bike : l'ouvrir ici ouvre Gbashi bike.
+              // Le dimanche est Gbashi bike, nommé ici.
               libelle: c.produit ? `${c.libelle} · ${c.produit}` : c.libelle,
-              // Les gammes qui roulent ce départ : fermer le dimanche ferme
-              // la seule sortie encadrée du Classique.
+              // Les gammes qui roulent ce départ.
               horaire: `${c.heureDebut} h - ${c.heureFin} h · ${gammesDuDepart(c.code)}`,
               actif: ouverture.creneauxActifs.has(c.code),
               prochainDepart: departsProposes.find((d) => d.code === c.code)?.date,
+              // Gbashi bike se commande sur WhatsApp : rien à ouvrir ni à
+              // fermer, les commandes s'enregistrent au comptoir.
+              ...(c.enLigne
+                ? {}
+                : {
+                    surCommande: true,
+                    remarque:
+                      "Sur commande : ne se réserve plus en ligne. Les clients écrivent sur WhatsApp, et la commande s'enregistre au comptoir.",
+                  }),
             })),
             // Une ligne par jour de sortie Octobre rose : chacun s'ouvre et se
             // ferme seul.

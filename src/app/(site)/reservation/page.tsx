@@ -17,11 +17,13 @@ import {
   motifRoadTripGamme,
   roadTripPossible,
 } from "@/data/offres";
+import { MESSAGES_WHATSAPP } from "@/data/produits";
 import type { CodeOffre } from "@/lib/types";
 import { depot } from "@/lib/db";
 import { aujourdhui, estDateISOValide } from "@/lib/dates";
 import { departsDeLaGamme, lireOuverture, motifDeRefus } from "@/lib/ouverture";
 import { formatDate } from "@/lib/format";
+import { lienWhatsApp, site } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Réserver",
@@ -122,14 +124,19 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   let heureRetenue = heureDebut;
   let dureeRetenue = dureeHeures;
   let disponible = false;
+  // Gbashi bike, le dimanche, se commande sur WhatsApp : un lien vers ce
+  // départ (page restée ouverte, ancien lien) mène au numéro, pas au
+  // tunnel. Le serveur le refuserait de toute façon.
+  const departDuJour = offre === "road-trip" ? creneauDuJour(debut) : undefined;
+  const surCommande = departDuJour && !departDuJour.enLigne ? departDuJour : undefined;
   // Le road trip du samedi se roule en Premium ou Prestige : un lien vers
   // ce départ pour le Classique (page restée ouverte, ancien lien) mène à
-  // l'explication, pas au tunnel. Gbashi bike, le dimanche, le prend.
+  // l'explication, pas au tunnel.
   // Seulement un jour de départ : un autre jour (ancien lien sans formule),
   // le tunnel propose lui-même les départs de la gamme.
   const horsGamme =
     offre === "road-trip" && creneauDuJour(debut) ? motifRoadTripGamme(gamme.code, debut) : null;
-  if (horsGamme) {
+  if (surCommande || horsGamme) {
     disponible = false;
   } else if (offre === "road-trip") {
     disponible = await gammeLibreA(heureDebut, DUREE_ROAD_TRIP_HEURES);
@@ -188,6 +195,34 @@ export default async function PageReservation({ searchParams }: { searchParams: 
           >
             Choisir une autre date
           </Link>
+        </div>
+      ) : surCommande ? (
+        <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
+          <p className="titre-editorial text-[1.4rem]">
+            {surCommande.produit ?? "Ce départ"} se commande sur WhatsApp
+          </p>
+          <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
+            Il ne se réserve plus en ligne&nbsp;: écrivez-nous au{" "}
+            <span className="whitespace-nowrap font-semibold text-noir-piste">{site.whatsapp[1].numero}</span>,
+            avec le jour choisi et le nombre de personnes, et nous organisons votre sortie. Aucun
+            montant n&apos;a été prélevé.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a
+              href={lienWhatsApp(`${MESSAGES_WHATSAPP.gbashiBike} Jour souhaité : le ${formatDate(debut)}.`)}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex rounded-full bg-noir-piste px-6 py-3 text-sm font-semibold text-craie"
+            >
+              Commander sur WhatsApp
+            </a>
+            <Link
+              href={lienGamme}
+              className="inline-flex rounded-full border border-noir-piste/30 px-6 py-3 text-sm font-semibold text-noir-piste"
+            >
+              Réserver un vélo {gamme.nom}
+            </Link>
+          </div>
         </div>
       ) : horsGamme ? (
         <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">

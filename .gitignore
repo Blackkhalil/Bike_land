@@ -49,3 +49,9 @@ public/images sibe web inspiration/
 /public/images/Gbashi bike/
 /public/images/Roadtrip/
 /public/images/affiches/
+# Vidéos Padel bike d'origine : le site en sert des images (public/images/produits/padel/).
+/public/images/Padel Bike/
+
+# Documents de travail de l'exploitant (cahier des charges, calculatrice
+# des offres) : ils restent sur le poste.
+/bikeland new docs/

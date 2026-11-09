@@ -18,7 +18,17 @@ export interface Affiche {
  * et la faire partir sous les yeux du lecteur l'en empêcherait. Les deux
  * boutons servent à la souris et au clavier.
  */
-export function GalerieAffiches({ affiches, titre }: { affiches: Affiche[]; titre: string }) {
+export function GalerieAffiches({
+  affiches,
+  titre,
+  nom = { singulier: "affiche", pluriel: "affiches" },
+}: {
+  affiches: Affiche[];
+  titre: string;
+  /** Ce que la galerie montre, au féminin : des affiches, ou des images (Padel bike). */
+  nom?: { singulier: string; pluriel: string };
+}) {
+  const Nom = nom.singulier.charAt(0).toUpperCase() + nom.singulier.slice(1);
   const piste = useRef<HTMLUListElement>(null);
 
   const defiler = (sens: 1 | -1) => {
@@ -56,7 +66,7 @@ export function GalerieAffiches({ affiches, titre }: { affiches: Affiche[]; titr
       </ul>
       <div className="mt-3 flex items-center justify-between gap-4">
         <p className="text-[0.8rem] opacity-80">
-          {affiches.length} affiches : glissez pour les voir
+          {affiches.length} {nom.pluriel} : glissez pour les voir
         </p>
         <div className="flex gap-2">
           <button
@@ -64,7 +74,7 @@ export function GalerieAffiches({ affiches, titre }: { affiches: Affiche[]; titr
             onClick={() => defiler(-1)}
             className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-current/40 transition-colors hover:bg-current/10"
           >
-            <span className="sr-only">Affiche précédente</span>
+            <span className="sr-only">{Nom} précédente</span>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M10 3 5 8l5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -74,7 +84,7 @@ export function GalerieAffiches({ affiches, titre }: { affiches: Affiche[]; titr
             onClick={() => defiler(1)}
             className="grid h-11 w-11 place-items-center rounded-[var(--radius-bouton)] border border-current/40 transition-colors hover:bg-current/10"
           >
-            <span className="sr-only">Affiche suivante</span>
+            <span className="sr-only">{Nom} suivante</span>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="m6 3 5 5-5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

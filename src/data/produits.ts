@@ -2,13 +2,16 @@
  * Nos produits : les façons de rouler avec Bike Land, présentées ensemble
  * sur la page /produits.
  *
- * Trois sont permanents, un est de saison :
+ * Quatre sont permanents, un est de saison :
  *
- *  - **Gbashi bike** : le road trip du dimanche, version sport. Même
- *    réservation et même prix que le road trip ; à l'arrivée, séance de
- *    sport devant la plage. C'est le créneau « dimanche-matin » de
- *    CRENEAUX_ROAD_TRIP : l'ouvrir ou le fermer dans le tableau de bord
- *    ouvre ou ferme Gbashi bike.
+ *  - **Gbashi bike** : le road trip du dimanche, version sport ; à
+ *    l'arrivée, séance de sport devant la plage. C'est le créneau
+ *    « dimanche-matin » de CRENEAUX_ROAD_TRIP. Sur commande depuis novembre
+ *    2026 : il ne se réserve plus en ligne, on le commande sur WhatsApp, et
+ *    le comptoir l'enregistre.
+ *  - **Padel bike** : à vélo jusqu'au terrain de padel, puis trois heures
+ *    de padel. Sur commande, sur WhatsApp, depuis son lancement (novembre
+ *    2026) : ses jours et ses heures ne sont pas fixés.
  *  - **Road trip** : la sortie encadrée du samedi, créneau « samedi-matin ».
  *  - **Location libre** : le vélo pour soi, à l'heure.
  *  - **Octobre rose** : des sorties aux couleurs d'Octobre rose, le mois de
@@ -21,6 +24,9 @@
  *
  * Les prix ne sont pas ici : ils viennent de src/data/offres.ts, et celui
  * d'Octobre rose de src/data/octobre-rose.ts.
+ *
+ * Un produit sur commande montre en clair le numéro WhatsApp de l'équipe,
+ * à côté du bouton qui ouvre la discussion, message déjà écrit.
  */
 
 import {
@@ -40,9 +46,9 @@ export const CRENEAU_ROAD_TRIP: CodeCreneau = "samedi-matin";
 
 /**
  * Ce que le visiteur a choisi sur la page Nos produits, retenu le temps de
- * la visite : un créneau (« dimanche-matin » pour Gbashi bike) ou la
- * location libre. L'encart de réservation de la fiche vélo s'ouvre dessus,
- * sans quoi il retomberait sur le road trip du samedi.
+ * la visite : un créneau en ligne (« samedi-matin ») ou la location libre.
+ * L'encart de réservation de la fiche vélo s'ouvre dessus. Un créneau
+ * qui ne se réserve plus en ligne (Gbashi bike) est ignoré par l'encart.
  */
 export const CLE_CHOIX_PRODUIT = "bikeland.choix-produit";
 export type ChoixProduit = CodeCreneau | "location-libre";
@@ -151,7 +157,8 @@ export function placesRestantes(places: number): string {
 /** Les messages WhatsApp déjà écrits des boutons de la page. */
 export const MESSAGES_WHATSAPP = {
   octobreRose: "Bonjour Bike Land, je souhaite participer à la sortie Octobre rose.",
-  gbashiBike: "Bonjour Bike Land, je souhaite réserver Gbashi bike, le road trip sport du dimanche.",
+  gbashiBike: "Bonjour Bike Land, je souhaite commander Gbashi bike, le road trip sport du dimanche.",
+  padelBike: "Bonjour Bike Land, je souhaite commander Padel bike, le vélo jusqu'au padel puis 3 h de padel.",
   roadTrip: "Bonjour Bike Land, je souhaite réserver le road trip du samedi.",
   question: "Bonjour Bike Land, j'ai une question.",
 } as const;

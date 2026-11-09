@@ -24,9 +24,10 @@ const schema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("creneau"),
     // Chaque sortie Octobre rose se règle sous son propre code : fermer un
-    // jour laisse les autres ouverts.
+    // jour laisse les autres ouverts. Un départ sur commande (Gbashi bike)
+    // ne se règle pas : il ne se réserve jamais en ligne.
     code: z.enum([
-      ...CRENEAUX_ROAD_TRIP.map((c) => c.code),
+      ...CRENEAUX_ROAD_TRIP.filter((c) => c.enLigne).map((c) => c.code),
       ...OCTOBRE_ROSE.sorties.map((sortie) => codeOctobreRose(sortie)),
     ] as [string, ...string[]]),
     actif: z.boolean(),

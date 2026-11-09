@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { BoutonLien } from "@/components/Bouton";
 import { EnSaisonOctobreRose } from "@/components/EnSaisonOctobreRose";
@@ -9,7 +9,7 @@ import { GalerieAffiches } from "@/components/GalerieAffiches";
 import { SelonInscriptionsOctobreRose } from "@/components/SelonInscriptionsOctobreRose";
 import { LienChoixProduit } from "@/components/LienChoixProduit";
 import { Pastille, Section, TitreSection } from "@/components/ui";
-import { AFFICHES_GBASHI, AFFICHES_ROAD_TRIP } from "@/data/affiches";
+import { AFFICHES_GBASHI, AFFICHES_PADEL, AFFICHES_ROAD_TRIP } from "@/data/affiches";
 import { itineraireOctobreRose, itineraires } from "@/data/contenus";
 import { formatHoraire, OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
 import {
@@ -18,6 +18,7 @@ import {
   creneauxDisponibles,
   departsComplets,
   DUREE_MAX_LOCATION_LIBRE,
+  DUREE_PADEL_HEURES,
   DERNIER_DEPART_HEURE,
   FERMETURE_HEURE,
   formatHeure,
@@ -29,6 +30,7 @@ import {
   PRIX_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_GBASHI_BIKE_XOF,
   PRIX_MINIMUM_ROAD_TRIP_XOF,
+  PRIX_PADEL_BIKE_XOF,
   roadTripPossible,
 } from "@/data/offres";
 import {
@@ -53,10 +55,11 @@ import { metadonneesPage } from "@/lib/seo";
 const PRIX_HEURE_MINIMUM = Math.min(...Object.values(GRILLE_HORAIRE).map((grille) => grille[0].prixXof));
 
 export const metadata: Metadata = metadonneesPage({
-  titre: "Road trip, Gbashi bike et location à l'heure",
+  titre: "Road trip, Padel bike, Gbashi bike et location",
   description:
-    `Road trip le samedi dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}, Gbashi bike avec sport sur la plage le dimanche ` +
-    `dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}, et location à l'heure dès ${formatXof(PRIX_HEURE_MINIMUM)} à Cotonou.`,
+    `Road trip le samedi dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} et location à l'heure dès ` +
+    `${formatXof(PRIX_HEURE_MINIMUM)} à Cotonou. Sur commande : Padel bike à ${formatXof(PRIX_PADEL_BIKE_XOF)}, ` +
+    `Gbashi bike dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}.`,
   chemin: "/produits",
 });
 
@@ -128,6 +131,24 @@ function Repere({ terme, children }: { terme: string; children: ReactNode }) {
 }
 
 /**
+ * Le numéro WhatsApp de l'équipe, en clair, pour un produit sur commande :
+ * on peut l'enregistrer ou le recopier. Le toucher ouvre la discussion,
+ * message déjà écrit, comme le bouton.
+ */
+function NumeroWhatsApp({ message }: { message: string }) {
+  return (
+    <a
+      href={lienWhatsApp(message)}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="lien-souligne whitespace-nowrap tabular-nums"
+    >
+      {site.whatsapp[1].numero}
+    </a>
+  );
+}
+
+/**
  * La photo d'un produit, en grand bloc arrondi. Les photos de sortie
  * remplissent leur cadre ; la photo d'atelier d'un vélo, sur fond blanc,
  * y tient entière.
@@ -167,21 +188,20 @@ function PhotoProduit({
 /**
  * Nos produits : les façons de rouler, côte à côte (voir src/data/produits.ts).
  *
- * Gbashi bike et le road trip se réservent en ligne tant que leur départ
- * est ouvert dans le tableau de bord. Fermé, leur prochain départ reste
- * affiché, « Sold out », avec la date suivante encore ouverte s'il y en
- * a une ; sinon leur bouton passe à WhatsApp plutôt que de mener à un
- * départ introuvable. Octobre rose ne paraît qu'en octobre, en tête de page.
+ * Le road trip se réserve en ligne tant que son départ est ouvert dans le
+ * tableau de bord. Fermé, son prochain départ reste affiché, « Sold out »,
+ * avec la date suivante encore ouverte s'il y en a une ; sinon son bouton
+ * passe à WhatsApp plutôt que de mener à un départ introuvable. Padel bike
+ * et Gbashi bike se commandent sur WhatsApp : bouton et numéro en clair.
+ * Octobre rose ne paraît qu'en octobre, en tête de page.
  */
 export default async function PageProduits() {
   const ouverture = await lireOuverture();
   const maintenant = new Date();
   const departs = creneauxDisponibles(maintenant, ouverture);
-  const dimanche = departs.find((depart) => depart.code === CRENEAU_GBASHI_BIKE);
   const samedi = departs.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
   // Un départ fermé dans le tableau de bord reste affiché, « Sold out ».
   const complets = departsComplets(maintenant, ouverture);
-  const dimancheComplet = complets.find((depart) => depart.code === CRENEAU_GBASHI_BIKE);
   const samediComplet = complets.find((depart) => depart.code === CRENEAU_ROAD_TRIP);
   const avecOctobreRose = octobreRoseEnCours(maintenant);
   // Octobre rose se réserve sur sa propre page. Ici, on dit seulement s'il
@@ -206,6 +226,7 @@ export default async function PageProduits() {
   const forfait = GRILLE_HORAIRE.CLASSIQUE[GRILLE_HORAIRE.CLASSIQUE.length - 1];
 
   const sommaire = [
+    { id: "padel-bike", nom: "Padel bike" },
     { id: "gbashi-bike", nom: "Gbashi bike" },
     { id: "road-trip", nom: "Road trip" },
     { id: "location-libre", nom: "Location libre" },
@@ -226,8 +247,8 @@ export default async function PageProduits() {
           plusieurs envies
         </TitreSection>
         <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-craie/70">
-          En groupe le samedi, version sport le dimanche, ou en solo à l&apos;heure&nbsp;: tout part de
-          la route des Pêches, à Fidjrossè.
+          À vélo jusqu&apos;au padel, en groupe le samedi, version sport le dimanche, ou en solo à
+          l&apos;heure&nbsp;: tout part de la route des Pêches, à Fidjrossè.
           <EnSaisonOctobreRose enSaisonAuServeur={avecOctobreRose}>
             {" Et ce mois-ci, des sorties aux couleurs d'Octobre rose."}
           </EnSaisonOctobreRose>
@@ -381,14 +402,76 @@ export default async function PageProduits() {
         </Section>
       </EnSaisonOctobreRose>
 
+      {/* -------------------------------------------------- Padel bike */}
+      {/* Le nouveau produit, en tête : sur commande, sur WhatsApp, tant que
+          ses jours et ses heures ne sont pas fixés. */}
+      <Section id="padel-bike" fond="craie" className="scroll-mt-[72px] py-20 sm:py-24">
+        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+          <div className="min-w-0 lg:order-last">
+            <GalerieAffiches
+              affiches={AFFICHES_PADEL}
+              titre="Les images de Padel bike"
+              nom={{ singulier: "image", pluriel: "images" }}
+            />
+          </div>
+          <div>
+            <div className="flex flex-wrap gap-2">
+              <Pastille ton="succes">Nouveau</Pastille>
+              <Pastille ton="neutre">Sur commande</Pastille>
+            </div>
+            <TitreSection className="mt-5">Padel bike</TitreSection>
+            <p className="mt-3 font-display text-[1.4rem] leading-tight">
+              Le vélo pour y aller, le padel pour jouer
+            </p>
+            <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-gris-cadre">
+              Le concept est simple&nbsp;: on démarre à vélo pour s&apos;échauffer, tous ensemble et
+              dans la bonne humeur, jusqu&apos;au terrain de padel. Sur place, {DUREE_PADEL_HEURES}{" "}
+              heures de padel entre amis.
+            </p>
+            <dl className="mt-8 max-w-md">
+              <Repere terme="Programme">
+                À vélo, puis {DUREE_PADEL_HEURES}&nbsp;h de padel
+              </Repere>
+              <Repere terme="Tarif">
+                <span className="font-display text-[1.2rem] text-orange-sourd">
+                  {formatXof(PRIX_PADEL_BIKE_XOF)}
+                </span>{" "}
+                par personne
+              </Repere>
+              <Repere terme="Réservation">Sur commande, sur WhatsApp</Repere>
+              <Repere terme="WhatsApp">
+                <NumeroWhatsApp message={MESSAGES_WHATSAPP.padelBike} />
+              </Repere>
+            </dl>
+            <div className="mt-8">
+              <BoutonLien
+                href={lienWhatsApp(MESSAGES_WHATSAPP.padelBike)}
+                target="_blank"
+                rel="noreferrer noopener"
+                variante="primaire"
+                taille="lg"
+              >
+                Commander sur WhatsApp
+              </BoutonLien>
+              <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-gris-cadre">
+                Dites-nous le jour qui vous arrange et le nombre de personnes&nbsp;: nous organisons
+                la sortie.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Section>
+
       {/* ------------------------------------------------- Gbashi bike */}
+      {/* Sur commande depuis novembre 2026 : plus de réservation en ligne,
+          le numéro WhatsApp en clair à côté du bouton. */}
       <Section id="gbashi-bike" fond="lagune" className="scroll-mt-[72px] py-20 sm:py-24">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
           <GalerieAffiches affiches={AFFICHES_GBASHI} titre="Les affiches de Gbashi bike" />
           <div>
             <div className="flex flex-wrap gap-2">
               <Pastille ton="sombre">Le dimanche</Pastille>
-              {dimancheComplet && <Pastille ton="neutre">Sold out</Pastille>}
+              <Pastille ton="neutre">Sur commande</Pastille>
             </div>
             <TitreSection className="mt-5">Gbashi bike</TitreSection>
             <p className="mt-3 font-display text-[1.4rem] leading-tight">
@@ -401,46 +484,42 @@ export default async function PageProduits() {
             </p>
             <dl className="mt-8 max-w-md">
               <Repere terme="Départ">Le dimanche à {heureDuCreneau(CRENEAU_GBASHI_BIKE)}, en groupe</Repere>
-              <ReperesDepart complet={dimancheComplet} ouvert={dimanche} />
+              <Repere terme="Réservation">Sur commande, sur WhatsApp</Repere>
               <Repere terme="Tarif">
                 <span className="font-display text-[1.2rem]">dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}</span>{" "}
                 par personne
                 <span className="block text-[0.82rem] font-normal opacity-80">
-                  {GAMMES.map((gamme) => `${gamme.nom} ${formatXof(PRIX_GBASHI_BIKE_XOF[gamme.code])}`).join(" · ")}
+                  {/* Chaque gamme reste avec son prix, en bout de ligne aussi. */}
+                  {GAMMES.map((gamme, index) => (
+                    <Fragment key={gamme.code}>
+                      {index > 0 && " · "}
+                      <span className="whitespace-nowrap">
+                        {gamme.nom} {formatXof(PRIX_GBASHI_BIKE_XOF[gamme.code])}
+                      </span>
+                    </Fragment>
+                  ))}
                 </span>
               </Repere>
               <Repere terme="Compris">Vélo, casque, antivol, kit, eau et coco frais</Repere>
               <Repere terme="À prévoir">Une tenue de sport, et quinze minutes d&apos;avance</Repere>
+              <Repere terme="WhatsApp">
+                <NumeroWhatsApp message={MESSAGES_WHATSAPP.gbashiBike} />
+              </Repere>
             </dl>
             <div className="mt-8">
-              {dimanche ? (
-                <>
-                  <LienChoixProduit href="/velos" choix={CRENEAU_GBASHI_BIKE} variante="clair" taille="lg">
-                    Réserver mon dimanche
-                  </LienChoixProduit>
-                  <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/85">
-                    Choisissez votre gamme&nbsp;: le départ du dimanche y sera déjà sélectionné. Le
-                    prix dépend de la gamme.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <BoutonLien
-                    href={lienWhatsApp(MESSAGES_WHATSAPP.gbashiBike)}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    variante="clair"
-                    taille="lg"
-                  >
-                    Écrire sur WhatsApp
-                  </BoutonLien>
-                  <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/85">
-                    {dimancheComplet
-                      ? "Le prochain dimanche est sold out : écrivez-nous pour les suivants."
-                      : "Le départ du dimanche ne se réserve pas en ligne en ce moment : écrivez-nous."}
-                  </p>
-                </>
-              )}
+              <BoutonLien
+                href={lienWhatsApp(MESSAGES_WHATSAPP.gbashiBike)}
+                target="_blank"
+                rel="noreferrer noopener"
+                variante="clair"
+                taille="lg"
+              >
+                Commander sur WhatsApp
+              </BoutonLien>
+              <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/85">
+                Gbashi bike ne se réserve plus en ligne&nbsp;: dites-nous le dimanche choisi et le
+                nombre de personnes, nous organisons la sortie. Le prix dépend de la gamme.
+              </p>
             </div>
           </div>
         </div>
@@ -473,7 +552,7 @@ export default async function PageProduits() {
                 par personne
               </Repere>
               {/* Le samedi se roule en Premium ou Prestige : le Classique a
-                  la location libre, et Gbashi bike le dimanche. */}
+                  la location libre, et Gbashi bike le dimanche, sur commande. */}
               <Repere terme="Vélos">{gammesDuDepart(CRENEAU_ROAD_TRIP)}</Repere>
               <Repere terme="Compris">Vélo, casque, antivol, kit, eau et coco frais</Repere>
             </dl>
@@ -595,8 +674,9 @@ export default async function PageProduits() {
             </BoutonLien>
           </div>
           <p className="mt-10 text-[0.8rem] leading-relaxed text-craie/60">
-            Tarifs de la réservation en ligne. Le montant exact à régler s&apos;affiche avant le
-            paiement.
+            Tarifs de la réservation en ligne&nbsp;: le montant exact à régler s&apos;affiche avant le
+            paiement. Padel bike et Gbashi bike se commandent sur WhatsApp, au{" "}
+            <span className="whitespace-nowrap">{site.whatsapp[1].numero}</span>.
           </p>
         </div>
       </Section>

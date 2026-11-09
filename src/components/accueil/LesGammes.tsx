@@ -57,8 +57,9 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
           );
           // La gamme que les clients prennent le plus : le Premium.
           const misEnAvant = gamme.code === GAMME_LA_PLUS_PRISE;
-          // Le road trip du samedi, ou Gbashi bike le dimanche pour le
-          // Classique, qui ne roule pas le samedi.
+          // Le road trip du samedi, pour le Premium et le Prestige. Le
+          // Classique n'a pas de sortie encadrée en ligne (Gbashi bike se
+          // commande sur WhatsApp) : ni ligne de sortie, ni cocos offertes.
           const sortie = sortieEncadreeDe(gamme.code);
 
           return (
@@ -107,12 +108,14 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
                     </dd>
                   </div>
                 )}
-                <div className="flex justify-between gap-3">
-                  <dt className="shrink-0 text-gris-cadre">Offert au retour</dt>
-                  <dd className="text-right font-medium">
-                    Eau + {COCOS_ROAD_TRIP} cocos
-                  </dd>
-                </div>
+                {sortie && (
+                  <div className="flex justify-between gap-3">
+                    <dt className="shrink-0 text-gris-cadre">Offert au retour</dt>
+                    <dd className="text-right font-medium">
+                      Eau + {COCOS_ROAD_TRIP} cocos
+                    </dd>
+                  </div>
+                )}
               </dl>
 
               <p className="mt-5 text-[0.82rem] text-gris-cadre">

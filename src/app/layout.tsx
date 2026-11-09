@@ -43,6 +43,7 @@ export const metadata: Metadata = {
     "vélo route des Pêches",
     "sortie vélo week-end Cotonou",
     "Gbashi bike",
+    "Padel bike",
   ],
   openGraph: {
     type: "website",

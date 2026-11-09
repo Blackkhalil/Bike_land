@@ -120,14 +120,18 @@ export default async function PageCatalogue() {
                         {formatXof(GRILLE_HORAIRE[gamme.code][0].prixXof)}
                       </span>
                       <span className="mt-1 block text-[0.8rem] text-craie/60">
-                        l&apos;heure ·{" "}
-                        {/* Le road trip, ou Gbashi bike le dimanche pour le
-                            Classique, qui ne roule pas le samedi. */}
+                        l&apos;heure
+                        {/* Le road trip du samedi, pour le Premium et le
+                            Prestige. Le Classique n'a pas de sortie encadrée
+                            en ligne : ni phrase, ni séparateur. */}
                         {gamme.sortie && (
-                          <span className="inline-block">
-                            {gamme.sortie.nomDansLaPhrase} {gamme.sortie.avantPrix}{" "}
-                            <span className="whitespace-nowrap">{formatXof(gamme.sortie.prixMinimum)} / pers.</span>
-                          </span>
+                          <>
+                            {" ·"}{" "}
+                            <span className="inline-block">
+                              {gamme.sortie.nomDansLaPhrase} {gamme.sortie.avantPrix}{" "}
+                              <span className="whitespace-nowrap">{formatXof(gamme.sortie.prixMinimum)} / pers.</span>
+                            </span>
+                          </>
                         )}
                       </span>
                     </span>

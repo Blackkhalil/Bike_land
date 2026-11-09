@@ -59,8 +59,8 @@ export const site = {
   horaires: "Tous les jours, 8 h - 22 h",
   /**
    * Les horaires pour les données structurées lues par Google : tous les
-   * jours, car le dimanche se réserve aussi (Gbashi bike à 8 h, location
-   * libre à partir de 11 h, voir src/data/offres.ts).
+   * jours, car le dimanche se réserve aussi (location libre à partir de
+   * 11 h ; Gbashi bike, à 8 h, sur commande : voir src/data/offres.ts).
    */
   horairesOuverture: {
     jours: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],

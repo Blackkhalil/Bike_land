@@ -15,6 +15,11 @@ export interface CreneauPilote {
   prochainDepart?: string;
   /** Ce que dit la ligne quand l'état ordinaire ne suffit pas (heure limite passée). */
   remarque?: string;
+  /**
+   * Un départ sur commande (Gbashi bike) : il ne se réserve pas en ligne,
+   * la ligne le dit, sans bouton pour l'ouvrir ou le fermer.
+   */
+  surCommande?: boolean;
 }
 
 const LIBELLES_FORMULE: Record<FormuleFermee, string> = {
@@ -27,8 +32,9 @@ const LIBELLES_FORMULE: Record<FormuleFermee, string> = {
  * Ouvrir et fermer la réservation, sans passer par le code.
  *
  * Deux usages. Un créneau de road trip se ferme pour toutes les semaines :
- * le dimanche quand il est complet parce que des places ont été vendues
- * en espèces, et il se rouvre d'un clic. L'inscription en ligne à Octobre
+ * le samedi quand il est complet parce que des places ont été vendues
+ * en espèces, et il se rouvre d'un clic. Gbashi bike, le dimanche, se
+ * commande sur WhatsApp : sa ligne le dit, sans bouton. L'inscription en ligne à Octobre
  * rose se ferme de même, le temps de la campagne. Un jour précis se ferme
  * quand il est complet, pour le road trip, la location libre ou les deux.
  *
@@ -114,6 +120,11 @@ export function PilotageOuverture({
                     : "Fermé : affiché « Sold out » sur le site."}
                 </p>
               </div>
+              {c.surCommande ? (
+                <span className="rounded-full bg-orange-signal/15 px-2.5 py-1 text-[0.75rem] font-semibold text-orange-sourd">
+                  Sur commande
+                </span>
+              ) : (
               <div className="flex items-center gap-3">
                 <span
                   className={`rounded-full px-2.5 py-1 text-[0.75rem] font-semibold ${
@@ -135,6 +146,7 @@ export function PilotageOuverture({
                   {envoi === c.code ? "…" : c.actif ? "Fermer" : "Ouvrir"}
                 </button>
               </div>
+              )}
             </li>
           ))}
         </ul>

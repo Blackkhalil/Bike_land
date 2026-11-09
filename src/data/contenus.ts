@@ -106,7 +106,7 @@ export const etapesLocation = [
     numero: "02",
     titre: "Choisissez votre formule et votre jour",
     detail:
-      `Road trip encadré le samedi (${gammesDuDepart("samedi-matin")}), Gbashi bike le dimanche (${gammesDuDepart("dimanche-matin")}), ou location libre à l'heure. ` +
+      `Road trip encadré le samedi (${gammesDuDepart("samedi-matin")}) ou location libre à l'heure ; Gbashi bike et Padel bike se commandent sur WhatsApp. ` +
       "Le calendrier ne propose que les jours où il reste des vélos dans votre gamme. Pas de compte à créer, pas de mot de passe à retenir.",
   },
   {
@@ -151,7 +151,7 @@ export const faq = [
       {
         question: "Combien de temps à l'avance faut-il réserver ?",
         reponse:
-          "Pour un road trip, la veille suffit souvent, à condition de réserver avant 22 h : le départ du samedi se ferme le vendredi à 22 h, celui du dimanche le samedi à 22 h, et le road trip ne se réserve plus en ligne entre 22 h et 8 h. La location libre se réserve à toute heure, même la nuit. Entre novembre et mars, comptez plutôt trois à quatre jours : le parc est volontairement restreint et les samedis partent vite.",
+          "Pour un road trip, la veille suffit souvent, à condition de réserver avant 22 h : le départ du samedi se ferme le vendredi à 22 h, et le road trip ne se réserve plus en ligne entre 22 h et 8 h. La location libre se réserve à toute heure, même la nuit. Entre novembre et mars, comptez plutôt trois à quatre jours : le parc est volontairement restreint et les samedis partent vite.",
       },
     ],
   },

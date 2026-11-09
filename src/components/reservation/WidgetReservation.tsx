@@ -32,8 +32,8 @@ import { site } from "@/lib/site";
  * chose selon la formule, d'où le choix en tête d'encart :
  *
  *  - **Road trip** : la sortie est encadrée et part en groupe. Il n'y a
- *    donc rien à choisir d'autre que le créneau, samedi ou dimanche matin
- *    (le dimanche, c'est Gbashi bike) : un calendrier laisserait croire
+ *    donc rien à choisir d'autre que le créneau, le samedi matin (le
+ *    dimanche, Gbashi bike se commande sur WhatsApp) : un calendrier laisserait croire
  *    qu'on peut partir un mardi.
  *  - **Location libre** : le calendrier a tout son sens. Un jour n'y est
  *    barré que si tous les vélos de la gamme sont pris. L'heure de départ
@@ -69,22 +69,23 @@ export function WidgetReservation({
    */
   const parametres = useSearchParams();
   const jourDemande = parametres.get("debut");
-  // La sortie encadrée de la gamme : le road trip, ou Gbashi bike seul le
-  // dimanche pour le Classique, qui ne roule pas le samedi.
+  // La sortie encadrée que la gamme réserve en ligne : le road trip du
+  // samedi ; aucune pour le Classique (Gbashi bike se commande sur WhatsApp).
   const sortie = sortieEncadreeDe(gamme);
   const horsGamme = noteDepartsHorsGamme(gamme);
-  // Un jour demandé qui tombe sur un départ encadré le présélectionne :
-  // `?debut=` d'un dimanche ouvre l'encart sur Gbashi bike. S'il n'est
-  // plus proposé (complet, ou clos la veille à 22 h), c'est le même
-  // créneau la semaine suivante, et non le premier de la liste : un
-  // dimanche ne doit pas devenir un samedi, qui n'est pas le même produit.
+  // Un jour demandé qui tombe sur un départ encadré en ligne le
+  // présélectionne. S'il n'est plus proposé (complet, ou clos la veille à
+  // 22 h), c'est le même créneau la semaine suivante, et non le premier de
+  // la liste. Un dimanche n'en présélectionne aucun : Gbashi bike ne se
+  // réserve plus en ligne.
   const codeDemande = jourDemande
     ? (creneaux.find((item) => item.date === jourDemande) ??
         creneaux.find((item) => item.code === creneauDuJour(jourDemande)?.code))?.code
     : undefined;
-  // L'encart s'ouvre sur le road trip quand la gamme le roule. Le Classique,
-  // qui ne roule que Gbashi bike, s'ouvre sur la location libre, son usage
-  // ordinaire, sauf si l'adresse demande un départ qu'il roule.
+  // L'encart s'ouvre sur le road trip quand la gamme le roule. Une gamme
+  // dont la seule sortie porte un autre nom s'ouvre sur la location libre,
+  // sauf si l'adresse demande un départ qu'elle roule. Le Classique, sans
+  // sortie encadrée en ligne, s'ouvre toujours sur la location libre.
   const [offre, setOffre] = useState<CodeOffre>(
     sortie && (sortie.nom === "Road trip" || codeDemande) ? "road-trip" : "location-libre",
   );

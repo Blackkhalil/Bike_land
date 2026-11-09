@@ -52,15 +52,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   // L'accroche saisie dans l'admin peut finir par un point : on n'en veut qu'un.
   const accroche = velo.accroche.trim().replace(/\.+$/, "");
   const heure = formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof);
-  // Le road trip le week-end, ou Gbashi bike le dimanche pour un Classique,
-  // qui ne roule pas le samedi.
+  // Le road trip du samedi, pour un vélo Premium ou Prestige. Un Classique
+  // n'a pas de sortie encadrée en ligne : Gbashi bike se commande sur WhatsApp.
   const sortie = sortieEncadreeDe(velo.gamme);
   const prixSortie = sortie ? formatXof(sortie.prixMinimum) : "";
-  const enSortie = !sortie
-    ? ""
-    : sortie.nom === "Road trip"
-      ? `, ou en road trip le week-end dès ${prixSortie} par personne`
-      : `, ou en ${sortie.nom} ${sortie.avantPrix} ${prixSortie} par personne`;
+  const enSortie = sortie
+    ? `, ou en ${sortie.nomDansLaPhrase} ${sortie.avantPrix} ${prixSortie} par personne`
+    : "";
   const enSortieCourt = !sortie
     ? ""
     : `, ${sortie.nomDansLaPhrase} ${sortie.avantPrix} ${prixSortie}`;
@@ -177,16 +175,15 @@ export default async function PageVelo({ params }: { params: Params }) {
                   {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)}
                 </strong>
                 l&apos;heure
-                {/* Le road trip, ou Gbashi bike le dimanche pour un
-                    Classique, qui ne roule pas le samedi. */}
+                {/* Le road trip du samedi, pour un vélo Premium ou
+                    Prestige : un Classique n'a pas de sortie encadrée en ligne. */}
                 {sortie && (
                   <>
                     <span aria-hidden="true" className="hidden px-1 opacity-40 sm:inline">
                       •
                     </span>
                     {/* Un bloc à part, qui passe entier à la ligne : la
-                        phrase longue du Classique (Gbashi bike le dimanche)
-                        s'y replie sans déborder d'un téléphone. */}
+                        phrase s'y replie sans déborder d'un téléphone. */}
                     <span className="min-w-0">
                       {sortie.nomDansLaPhrase} {sortie.avantPrix}{" "}
                       <strong className="whitespace-nowrap font-semibold tabular-nums text-noir-piste">

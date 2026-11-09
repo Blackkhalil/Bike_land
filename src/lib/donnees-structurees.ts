@@ -160,8 +160,9 @@ export function veloALouer(velo: Velo) {
     url,
     offers: [
       offre("Location à l'heure", GRILLE_HORAIRE[velo.gamme][0].prixXof, "HUR"),
-      // Le road trip, ou Gbashi bike le dimanche pour un Classique, qui ne
-      // roule pas le samedi : jamais une offre que le vélo ne fait pas.
+      // Le road trip du samedi, pour un vélo Premium ou Prestige : jamais
+      // une offre que le vélo ne fait pas en ligne (Gbashi bike se commande
+      // sur WhatsApp).
       ...(sortie
         ? [
             offre(

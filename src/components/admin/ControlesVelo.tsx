@@ -118,7 +118,7 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
               aria-pressed={actif}
               title={`${formatXof(prixHeure)} l'heure, ${texteRoadTripSamedi(gamme.code)}, Gbashi bike ${formatXof(
                 PRIX_GBASHI_BIKE_XOF[gamme.code],
-              )} par personne`}
+              )} par personne, sur commande`}
               className={`min-h-[40px] rounded-[var(--radius-bouton)] border px-3.5 text-[0.82rem] font-semibold transition-colors ${
                 actif
                   ? "border-orange-signal bg-orange-signal text-noir-piste"
@@ -133,7 +133,7 @@ export function ControlesVelo({ velo }: { velo: Velo }) {
 
       <p className="mt-2 text-[0.78rem] text-gris-cadre">
         {formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof)} l&apos;heure, {texteRoadTripSamedi(velo.gamme)}, Gbashi
-        bike {formatXof(PRIX_GBASHI_BIKE_XOF[velo.gamme])} le dimanche, par personne. Les réservations déjà prises
+        bike {formatXof(PRIX_GBASHI_BIKE_XOF[velo.gamme])} le dimanche sur commande, par personne. Les réservations déjà prises
         gardent leur montant.
       </p>
 
