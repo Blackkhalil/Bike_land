@@ -9,14 +9,17 @@
  *    droit à la réduction ; un compte ajouté au site y ouvre droit sans
  *    toucher à ce fichier. WhatsApp n'est pas un compte qu'on suit : il est
  *    écarté ;
- *  - les comptes cités par le cahier des charges dont le site n'a pas encore
- *    le lien : le compte TikTok « Bike Land ». Son nom d'utilisateur n'est
- *    pas encore connu (décision technique du 9 novembre 2026, voir
- *    docs/bike-land/SUIVI.md) : il est enregistré sans identifiant, et une
- *    capture TikTok n'est donc jamais validée automatiquement, elle passe en
- *    vérification à la main. Dès que le responsable donne le compte, il
- *    suffit d'ajouter son lien dans `site.reseaux` : il remplace cette
- *    entrée et la validation automatique s'ouvre.
+ *  - les comptes cités par le cahier des charges dont le site n'a pas le
+ *    lien : le compte TikTok « Bike Land », @bikelandbj, confirmé par le
+ *    responsable le 9 novembre 2026 (voir docs/bike-land/SUIVI.md). Le jour
+ *    où son lien est ajouté à `site.reseaux`, c'est ce lien qui compte et
+ *    cette entrée s'efface d'elle-même.
+ *
+ * Un compte peut aussi être connu sans son nom d'utilisateur (`identifiant`
+ * à `null`, comme l'était TikTok avant la réponse du responsable) : une
+ * capture de ce réseau n'est alors jamais validée automatiquement, elle passe
+ * en vérification à la main. De même, si un nom enregistré ici est faux, les
+ * captures passent à la main : jamais de réduction à tort.
  *
  * Aucune liste d'abonnés n'est jamais lue : interdit par ces réseaux, et le
  * compte de Bike Land pourrait être bloqué. Seule la capture d'écran envoyée
@@ -49,14 +52,30 @@ export const NOMS_RESEAUX: Record<ReseauSocial, string> = {
   facebook: "Facebook",
 };
 
+/** Un compte cité par le cahier des charges, avec son nom d'utilisateur s'il est connu. */
+export interface CompteDuCahier {
+  reseau: ReseauSocial;
+  nom: string;
+  /** Le nom d'utilisateur donné par le responsable, sans @ ; `null` tant qu'il ne l'a pas donné. */
+  identifiant: string | null;
+}
+
 /**
  * Les comptes cités par le cahier des charges (étape 6) dont le site n'a pas
- * le lien : le compte TikTok « Bike Land », nom d'utilisateur à donner par le
- * responsable. Aucun identifiant n'est deviné.
+ * le lien : le compte TikTok « Bike Land », @bikelandbj, nom d'utilisateur
+ * confirmé par le responsable le 9 novembre 2026. Aucun identifiant n'est
+ * deviné : un compte sans réponse du responsable s'écrit avec `null`.
  */
-export const COMPTES_DU_CAHIER: ReadonlyArray<{ reseau: ReseauSocial; nom: string }> = [
-  { reseau: "tiktok", nom: "Bike Land" },
+export const COMPTES_DU_CAHIER: readonly CompteDuCahier[] = [
+  { reseau: "tiktok", nom: "Bike Land", identifiant: "bikelandbj" },
 ];
+
+/** L'adresse publique d'un compte, d'après son réseau et son nom d'utilisateur. */
+function adresseDuCompte(reseau: ReseauSocial, identifiant: string): string {
+  if (reseau === "tiktok") return `https://www.tiktok.com/@${identifiant}`;
+  if (reseau === "instagram") return `https://instagram.com/${identifiant}`;
+  return `https://www.facebook.com/${identifiant}`;
+}
 
 /** Le réseau d'une adresse, d'après son domaine, ou `null` (WhatsApp, autre). */
 function reseauDe(hote: string): ReseauSocial | null {
@@ -92,11 +111,11 @@ export function normaliserIdentifiant(brut: string): string {
 
 /**
  * Les comptes de Bike Land : ceux des liens du site, puis ceux du cahier des
- * charges dont le réseau n'a pas encore de lien sur le site, sans identifiant.
+ * charges dont le réseau n'a pas de lien sur le site.
  */
 export function comptesBikeLand(
   reseaux: ReadonlyArray<{ nom: string; url: string }> = site.reseaux,
-  cahier: ReadonlyArray<{ reseau: ReseauSocial; nom: string }> = COMPTES_DU_CAHIER,
+  cahier: readonly CompteDuCahier[] = COMPTES_DU_CAHIER,
 ): CompteBikeLand[] {
   const comptes: CompteBikeLand[] = [];
   for (const lien of reseaux) {
@@ -114,7 +133,13 @@ export function comptesBikeLand(
   }
   for (const compte of cahier) {
     if (comptes.some((c) => c.reseau === compte.reseau)) continue;
-    comptes.push({ reseau: compte.reseau, nom: compte.nom, identifiant: null, url: null });
+    const identifiant = compte.identifiant ? normaliserIdentifiant(compte.identifiant) || null : null;
+    comptes.push({
+      reseau: compte.reseau,
+      nom: compte.nom,
+      identifiant,
+      url: identifiant ? adresseDuCompte(compte.reseau, identifiant) : null,
+    });
   }
   return comptes;
 }

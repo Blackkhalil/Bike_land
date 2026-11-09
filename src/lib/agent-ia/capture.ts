@@ -9,11 +9,10 @@
  *    exactement celui d'un compte de Bike Land, sur le bon réseau ;
  *  - « refusee » quand l'agent voit clairement que ce n'est pas le cas ;
  *  - « en_attente » dans tous les autres cas : doute, compte inconnu, réseau
- *    dont Bike Land n'a pas encore donné le nom d'utilisateur (TikTok
- *    aujourd'hui, voir comptes.ts), réponse illisible, refus, erreur, délai
- *    dépassé, clé absente. Bike Land vérifie alors à la main dans
- *    l'administration. Jamais de réduction accordée par défaut : le client
- *    paie sans la réduction, ou attend.
+ *    dont Bike Land n'a pas donné le nom d'utilisateur (voir comptes.ts),
+ *    réponse illisible, refus, erreur, délai dépassé, clé absente. Bike Land
+ *    vérifie alors à la main dans l'administration. Jamais de réduction
+ *    accordée par défaut : le client paie sans la réduction, ou attend.
  *
  * L'image n'est ni journalisée ni conservée ici (son stockage privé et sa
  * suppression relèvent de la réservation, lot 5b). Aucune liste d'abonnés
@@ -221,7 +220,7 @@ function decider(verdict: Verdict, comptes: readonly CompteBikeLand[]): Resultat
   const compte = surLeReseau.find((c) => c.identifiant !== null && vu !== "" && normaliserIdentifiant(c.identifiant) === vu);
   if (!compte) {
     // Le réseau d'un compte dont Bike Land n'a pas encore donné le nom
-    // d'utilisateur (TikTok) : jamais validé automatiquement.
+    // d'utilisateur : jamais validé automatiquement.
     const sansIdentifiant = surLeReseau.find((c) => c.identifiant === null);
     if (sansIdentifiant) {
       return {
