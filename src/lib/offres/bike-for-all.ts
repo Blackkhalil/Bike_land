@@ -61,14 +61,6 @@ type Reglages = Pick<
   "tarifNormalHeureXof" | "bikeForAll" | "accompagnateur" | "consommables" | "paiement" | "dateLimiteWeekend" | "retard"
 >;
 
-/**
- * Les personnes comprises dans le prix minimum de l'accompagnateur : il
- * coûte 200 F de plus par personne « au-delà de 5 » (cahier, 4.3 ; tableur,
- * « B4-5 »). Ce nombre n'est pas dans les réglages des offres : il est
- * écrit ici, une seule fois.
- */
-export const PERSONNES_INCLUSES_ACCOMPAGNATEUR = 5;
-
 const COCOS: readonly Coco[] = ["aucun", "petit", "grand"];
 
 /** Les frais d'organisation : 1 000 F, ou 2 000 F dès le seuil (15 000 F). */
@@ -104,14 +96,15 @@ export function minutesAchetees(montantXof: number, personnes: number, reglages:
 }
 
 /**
- * Le prix de l'accompagnateur : 1 500 F + 200 F par personne au-delà de 5
- * + 250 F par heure entamée après la première ; jamais moins de 1 500 F,
- * jamais plus de 5 000 F (cahier, 4.3).
+ * Le prix de l'accompagnateur : 1 500 F + 200 F par personne au-delà des 5
+ * comprises dans ce minimum + 250 F par heure entamée après la première ;
+ * jamais moins de 1 500 F, jamais plus de 5 000 F (cahier, 4.3 ; tableur,
+ * « B4-5 » : les 5 personnes sont le réglage `personnesIncluses`).
  */
 export function prixAccompagnateurXof(personnes: number, minutes: number, reglages: Pick<ReglagesOffres, "accompagnateur">): number {
-  const { minXof, parPersonneXof, parHeureXof, plafondXof } = reglages.accompagnateur;
+  const { minXof, personnesIncluses, parPersonneXof, parHeureXof, plafondXof } = reglages.accompagnateur;
   const heures = Math.max(1, Math.ceil(minutes / 60));
-  const prix = minXof + parPersonneXof * (personnes - PERSONNES_INCLUSES_ACCOMPAGNATEUR) + parHeureXof * (heures - 1);
+  const prix = minXof + parPersonneXof * (personnes - personnesIncluses) + parHeureXof * (heures - 1);
   return Math.min(plafondXof, Math.max(minXof, prix));
 }
 

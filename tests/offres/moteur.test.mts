@@ -218,6 +218,14 @@ const tableau = [10, 13, 15, 20].map((personnes) => [45, 90, 150].map((minutes) 
 verifier("accompagnateur, le tableau du cahier (4.3)", tableau, [[2500, 2750, 3000], [3100, 3350, 3600], [3500, 3750, 4000], [4500, 4750, 5000]]);
 verifier("accompagnateur : plafond 5 000 F (20 pers. 4 h, 25 pers.)", [m.prixAccompagnateurXof(20, 181, R), m.prixAccompagnateurXof(25, 45, R)], [5000, 5000]);
 verifier("accompagnateur : 1 heure pile compte une heure", m.prixAccompagnateurXof(10, 60, R), 2500);
+const huitComprises = { ...R, accompagnateur: { ...R.accompagnateur, personnesIncluses: 8 } };
+verifier(
+  "accompagnateur, 8 personnes comprises (réglage) : 10 pers. moins d'1 h, 1 900 F ; 6 pers., le minimum 1 500 F",
+  [m.prixAccompagnateurXof(10, 45, huitComprises), m.prixAccompagnateurXof(6, 45, huitComprises)],
+  [1500 + 2 * 200, 1500],
+);
+verifier("… et dans le calcul : cas 3 avec 8 personnes comprises, 11 250 F + 1 900 F", resultat(bfaBudget(10, 10000, { accompagnateur: true }, {}, huitComprises)).totalXof, 11250 + 1900);
+verifier("plus de nombre écrit en dur : la constante des 5 personnes a disparu", m.PERSONNES_INCLUSES_ACCOMPAGNATEUR, undefined);
 const coupe = { ...R, bikeForAll: { ...R.bikeForAll, partMaxCocos: 0.5 } };
 verifier("coco qui empêche les 30 min : retiré, durée recalculée (part des cocos à 50 %)", chiffres(bfaBudget(10, 5000, {}, {}, coupe)), ["aucun", 30, 6250, 11750]);
 verifier("budget minimum : 5 000 F (10 pers.), 5 400 F (11), 8 200 F (18)", [10, 11, 18].map((n) => m.budgetMinimumBikeForAllXof(n, R)), [5000, 5400, 8200]);

@@ -25,7 +25,6 @@ export {
   cocoDuBudget,
   fraisOrganisationXof,
   minutesAchetees,
-  PERSONNES_INCLUSES_ACCOMPAGNATEUR,
   prixAccompagnateurXof,
   prixCocoXof,
 } from "./bike-for-all";
