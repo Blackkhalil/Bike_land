@@ -55,7 +55,9 @@ export interface ReglagesOffres {
   };
   accompagnateur: {
     minXof: number;
-    /** Par personne au-delà de 5. */
+    /** Personnes comprises dans le minimum (5 dans le tableur, cellule B23). */
+    personnesIncluses: number;
+    /** Par personne au-delà de `personnesIncluses`. */
     parPersonneXof: number;
     /** Par heure entamée au-delà de la première. */
     parHeureXof: number;
@@ -92,6 +94,12 @@ export interface ReglagesOffres {
     /** Prix par personne selon la gamme du vélo, avant les frais de paiement (décision 4). */
     prixXof: Record<GammeVelo, number>;
     personnesMin: number;
+    /**
+     * Ce qui est offert par personne : « vélo, eau, un coco » (carte Gbashi du
+     * cahier). Comptés pour la préparation et l'encaissé net, comme le road trip.
+     */
+    cocosGrandsParPersonne: number;
+    eauxParPersonne: number;
     jours: number[];
     depart: string;
     retour: string;
@@ -100,7 +108,13 @@ export interface ReglagesOffres {
     /** Frais de paiement électronique, par personne, ajoutés en ligne. */
     fraisParPersonneXof: number;
   };
-  /** Les réservations du week-end se font au plus tard ce jour-là, à cette heure. */
+  /**
+   * En ligne, une réservation se fait au moins ce nombre de minutes avant le
+   * départ, pour les trois offres : le temps de préparer les vélos, les cocos
+   * et les gâteaux. Le comptoir n'est pas concerné.
+   */
+  delaiMinimumMinutes: number;
+  /** Les réservations en ligne du week-end se font au plus tard ce jour-là, à cette heure. */
   dateLimiteWeekend: {
     jour: number;
     heure: string;
@@ -133,6 +147,7 @@ export const REGLAGES_OFFRES_PAR_DEFAUT: ReglagesOffres = {
   },
   accompagnateur: {
     minXof: 1500,
+    personnesIncluses: 5,
     parPersonneXof: 200,
     parHeureXof: 250,
     plafondXof: 5000,
@@ -158,6 +173,8 @@ export const REGLAGES_OFFRES_PAR_DEFAUT: ReglagesOffres = {
   gbashi: {
     prixXof: { CLASSIQUE: 3500, PREMIUM: 4000, PRESTIGE: 4500 },
     personnesMin: 5,
+    cocosGrandsParPersonne: 1,
+    eauxParPersonne: 1,
     jours: [0],
     depart: "07:00",
     retour: "11:00",
@@ -165,6 +182,7 @@ export const REGLAGES_OFFRES_PAR_DEFAUT: ReglagesOffres = {
   paiement: {
     fraisParPersonneXof: 125,
   },
+  delaiMinimumMinutes: 120,
   dateLimiteWeekend: {
     jour: 5,
     heure: "19:00",
@@ -209,6 +227,7 @@ export const schemaReglagesOffres = z
     }),
     accompagnateur: z.object({
       minXof: montant,
+      personnesIncluses: z.number().int().min(0).max(100),
       parPersonneXof: montant,
       parHeureXof: montant,
       plafondXof: montant,
@@ -234,11 +253,14 @@ export const schemaReglagesOffres = z
     gbashi: z.object({
       prixXof: z.object({ CLASSIQUE: montant.min(1), PREMIUM: montant.min(1), PRESTIGE: montant.min(1) }),
       personnesMin: z.number().int().min(1).max(100),
+      cocosGrandsParPersonne: z.number().int().min(0).max(10),
+      eauxParPersonne: z.number().int().min(0).max(10),
       jours,
       depart: heure,
       retour: heure,
     }),
     paiement: z.object({ fraisParPersonneXof: montant }),
+    delaiMinimumMinutes: z.number().int().min(0).max(2880),
     dateLimiteWeekend: z.object({ jour: z.number().int().min(0).max(6), heure }),
     retard: z.object({
       toleranceMinutes: z.number().int().min(0).max(120),
