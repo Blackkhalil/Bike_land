@@ -4,18 +4,22 @@ import { z } from "zod";
 import { codeOctobreRose, OCTOBRE_ROSE } from "@/data/octobre-rose";
 import { CRENEAUX_ROAD_TRIP, heureAuBenin } from "@/data/offres";
 import { CODE_PADEL_BIKE } from "@/data/padel-bike";
+import { CODE_INTERRUPTEUR_OFFRES } from "@/data/reglages-offres";
 import { sessionAdminValide } from "@/lib/admin";
 import { estDateISOValide } from "@/lib/dates";
 import { depot } from "@/lib/db";
+import { auteurAdmin } from "@/lib/journal";
 import { rafraichirSitePublic } from "@/lib/rafraichir";
+import { schemaPrenom } from "@/lib/saisie-admin";
 
 /**
  * Ouvrir ou fermer la réservation, depuis le tableau de bord.
  *
  * Trois gestes : ouvrir ou fermer un créneau de road trip pour toutes les
  * semaines (ou l'inscription en ligne à une sortie Octobre rose, chacune
- * sous son propre code, daté, ou la réservation en ligne de Padel bike),
- * fermer un jour précis quand il est complet, et le rouvrir.
+ * sous son propre code, daté, ou la réservation en ligne de Padel bike, ou
+ * l'interrupteur des offres de groupe, écrit au journal), fermer un jour
+ * précis quand il est complet, et le rouvrir.
  *
  * Les fiches des vélos sont mises en cache. Après chaque changement, on
  * demande à Next de les reconstruire à la prochaine visite : sans cela,
@@ -30,10 +34,15 @@ const schema = z.discriminatedUnion("action", [
     // règle sous son propre code.
     code: z.enum([
       CODE_PADEL_BIKE,
+      // L'interrupteur des trois offres de groupe, désactivé par défaut.
+      CODE_INTERRUPTEUR_OFFRES,
       ...CRENEAUX_ROAD_TRIP.filter((c) => c.enLigne).map((c) => c.code),
       ...OCTOBRE_ROSE.sorties.map((sortie) => codeOctobreRose(sortie)),
     ]),
     actif: z.boolean(),
+    // Le prénom retenu sur ce téléphone, s'il y en a un : il signe la ligne
+    // du journal de l'interrupteur. Facultatif, ignoré s'il ne se lit pas.
+    prenom: z.string().max(80).optional(),
   }),
   z.object({
     action: z.literal("fermer"),
@@ -64,6 +73,17 @@ export async function POST(requete: Request) {
   try {
     if (demande.action === "creneau") {
       await depot.reglerCreneau(demande.code, demande.actif);
+      // Montrer ou cacher les offres de groupe aux clients se trace au journal.
+      if (demande.code === CODE_INTERRUPTEUR_OFFRES) {
+        const prenom = schemaPrenom.safeParse(demande.prenom);
+        await depot
+          .journaliser({
+            type: "interrupteur-offres",
+            details: { actif: demande.actif },
+            auteur: auteurAdmin(prenom.success ? prenom.data : undefined),
+          })
+          .catch((erreur) => console.error("[ouverture] interrupteur réglé, journal non écrit", erreur));
+      }
     } else if (demande.action === "fermer") {
       // Fermer un jour passé n'aurait aucun effet, et l'encombrerait.
       if (demande.date < heureAuBenin().date) {

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { usePrenomRetenu } from "@/components/admin/ChampPrenom";
 import { formatDate } from "@/lib/format";
 import type { FormuleFermee, JourFerme } from "@/lib/types";
 
@@ -20,6 +21,13 @@ export interface CreneauPilote {
    * la ligne le dit, sans bouton pour l'ouvrir ou le fermer.
    */
   surCommande?: boolean;
+  /**
+   * Les mots de la ligne quand « Ouvert / Fermé » ne conviennent pas : un
+   * interrupteur (les offres de groupe) s'active et se désactive.
+   */
+  mots?: { actif: string; inactif: string; ouvrir: string; fermer: string };
+  /** Une question posée avant d'ouvrir, quand ouvrir change beaucoup pour les clients. */
+  confirmationOuverture?: string;
 }
 
 const LIBELLES_FORMULE: Record<FormuleFermee, string> = {
@@ -54,6 +62,7 @@ export function PilotageOuverture({
 }) {
   const routeur = useRouter();
   const [enCours, demarrerTransition] = useTransition();
+  const { prenom } = usePrenomRetenu();
   const [envoi, setEnvoi] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [date, setDate] = useState("");
@@ -131,11 +140,21 @@ export function PilotageOuverture({
                     c.actif ? "bg-vert-lagune/15 text-vert-lagune" : "bg-craie-ombre text-noir-piste"
                   }`}
                 >
-                  {c.actif ? "Ouvert" : "Fermé"}
+                  {c.actif ? (c.mots?.actif ?? "Ouvert") : (c.mots?.inactif ?? "Fermé")}
                 </span>
                 <button
                   type="button"
-                  onClick={() => envoyer(c.code, { action: "creneau", code: c.code, actif: !c.actif })}
+                  onClick={() => {
+                    // Ouvrir ce qui change beaucoup pour les clients se confirme.
+                    if (!c.actif && c.confirmationOuverture && !window.confirm(c.confirmationOuverture)) return;
+                    // Le prénom retenu sur ce téléphone signe le journal, quand il y en a un.
+                    void envoyer(c.code, {
+                      action: "creneau",
+                      code: c.code,
+                      actif: !c.actif,
+                      ...(prenom.trim() ? { prenom: prenom.trim() } : {}),
+                    });
+                  }}
                   disabled={occupe(c.code)}
                   className={`min-h-11 rounded-[var(--radius-bouton)] px-4 py-2 text-[0.82rem] font-semibold transition-opacity disabled:opacity-40 ${
                     c.actif
@@ -143,7 +162,11 @@ export function PilotageOuverture({
                       : "bg-orange-signal text-noir-piste hover:opacity-85"
                   }`}
                 >
-                  {envoi === c.code ? "…" : c.actif ? "Fermer" : "Ouvrir"}
+                  {envoi === c.code
+                    ? "…"
+                    : c.actif
+                      ? (c.mots?.fermer ?? "Fermer")
+                      : (c.mots?.ouvrir ?? "Ouvrir")}
                 </button>
               </div>
               )}

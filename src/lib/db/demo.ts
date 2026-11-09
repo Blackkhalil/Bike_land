@@ -21,6 +21,8 @@ import {
   SORTIES_SUR_COMMANDE,
 } from "@/data/offres";
 import { blocPadel, lireReglagesAvec } from "@/data/reglages";
+import { lireReglagesOffresAvec } from "@/data/reglages-offres";
+import { penaliteRetardXof } from "../offres/retard";
 import { calculerDevis } from "../tarification";
 import { genererReference, genererToken, hacherToken, lireToken } from "../tokens";
 import {
@@ -32,10 +34,14 @@ import {
 import type {
   AvisClient,
   Client,
+  EvenementJournal,
+  IndisponibiliteVelo,
   MessageContact,
   Partenaire,
   PointDeRetrait,
+  Remboursement,
   Reservation,
+  StatutRemboursement,
   StatutReservation,
   Velo,
   JourFerme,
@@ -44,16 +50,22 @@ import {
   ConflitDisponibiliteError,
   creneauOctobreRoseDemande,
   creneauxSeChevauchent,
+  limiteJournal,
+  memeRemboursement,
   messagePlacesManquantes,
   messageVelosManquants,
   ordreAttribution,
+  refusRetard,
+  reservationsToucheesParmi,
   resteUneHeureLibre,
+  RETARD_MAX_MINUTES,
   velosDeLaGamme,
   velosLibresDeLaGamme,
   TransactionDejaUtiliseeError,
   type Depot,
   type DemandeReservation,
   type FiltreCatalogue,
+  type NouvelEvenement,
   type ResultatReservation,
 } from "./contrat";
 import { construireHistorique } from "./historique";
@@ -91,6 +103,12 @@ interface EtatDemo {
   joursFermes: JourFerme[];
   /** Réglages de l'administration (double authentification, réglages des produits). */
   parametresAdmin: Map<string, string>;
+  /** Les vélos indisponibles un jour précis, une ligne par vélo et par jour. */
+  indisponibilites: Omit<IndisponibiliteVelo, "veloNom">[];
+  /** Le journal des événements, dans l'ordre où ils ont été écrits. */
+  journal: EvenementJournal[];
+  /** L'argent à rendre, rattaché à la réservation par son identifiant. */
+  remboursements: Omit<Remboursement, "reference" | "offre" | "client">[];
 }
 
 // L'état vit sur `globalThis` : en développement, le rechargement à chaud
@@ -120,13 +138,66 @@ function etat(): EtatDemo {
       reglagesCreneaux: new Map(),
       joursFermes: [],
       parametresAdmin: new Map(),
+      indisponibilites: [],
+      journal: [],
+      remboursements: [],
     };
   }
   // Un état créé avant l'ajout de ces réglages, gardé par le rechargement à chaud.
   porteur[cle].reglagesCreneaux ??= new Map();
   porteur[cle].joursFermes ??= [];
   porteur[cle].parametresAdmin ??= new Map();
+  porteur[cle].indisponibilites ??= [];
+  porteur[cle].journal ??= [];
+  porteur[cle].remboursements ??= [];
   return porteur[cle]!;
+}
+
+/** Pour des identifiants uniques même à la même milliseconde. */
+let compteurIdentifiants = 0;
+function identifiant(prefixe: string): string {
+  compteurIdentifiants += 1;
+  return `${prefixe}-${Date.now().toString(36)}-${compteurIdentifiants.toString(36)}`;
+}
+
+/** Une ligne du journal, écrite sans attente : avec l'écriture qu'elle raconte. */
+function ecrireAuJournal(evenement: NouvelEvenement): EvenementJournal {
+  const ligne: EvenementJournal = {
+    id: identifiant("jrn"),
+    type: evenement.type,
+    ...(evenement.reference ? { reference: evenement.reference } : {}),
+    details: copie(evenement.details ?? {}),
+    auteur: evenement.auteur,
+    creeLe: new Date().toISOString(),
+  };
+  etat().journal.push(ligne);
+  return ligne;
+}
+
+/** Le nom du vélo, lu dans le catalogue (il a pu changer depuis). */
+function nomDuVelo(veloId: string): string {
+  return velos.find((velo) => velo.id === veloId)?.nom ?? veloId;
+}
+
+function versIndisponibilite(ligne: Omit<IndisponibiliteVelo, "veloNom">): IndisponibiliteVelo {
+  return { ...ligne, veloNom: nomDuVelo(ligne.veloId) };
+}
+
+/** Un remboursement, avec la réservation et le client à qui rendre l'argent. */
+function versRemboursement(ligne: EtatDemo["remboursements"][number]): Remboursement | null {
+  const reservation = etat().reservations.find((r) => r.id === ligne.reservationId);
+  if (!reservation) return null;
+  return {
+    ...ligne,
+    reference: reservation.reference,
+    offre: reservation.offre,
+    client: {
+      prenom: reservation.client.prenom,
+      nom: reservation.client.nom,
+      email: reservation.client.email,
+      ...(reservation.client.telephone ? { telephone: reservation.client.telephone } : {}),
+    },
+  };
 }
 
 function copie<T>(valeur: T): T {
@@ -542,6 +613,8 @@ export const depotDemo: Depot = {
     if (index === -1) return false;
 
     const reservation = donnees.reservations[index];
+    // De l'argent à rendre y est rattaché : comme en base, elle reste.
+    if (donnees.remboursements.some((r) => r.reservationId === reservation.id)) return false;
     // Même garde-fou qu'en base : ce qui a encaissé ne s'efface pas, ni ce
     // qui porte un paiement reçu hors délai (la référence provisoire
     // « TX-… » de la démonstration ne compte pas).
@@ -1065,6 +1138,185 @@ export const depotDemo: Depot = {
 
   async listerMessagesContact() {
     return copie(etat().messages);
+  },
+
+  /* ------------------------------------------ Offres de groupe : administration */
+
+  async listerIndisponibilites(options) {
+    return copie(
+      etat()
+        .indisponibilites.filter(
+          (i) =>
+            (!options?.depuis || i.date >= options.depuis) &&
+            (!options?.jusqua || i.date <= options.jusqua) &&
+            (!options?.veloId || i.veloId === options.veloId),
+        )
+        .map(versIndisponibilite)
+        .sort((a, b) => a.date.localeCompare(b.date) || a.veloNom.localeCompare(b.veloNom, "fr")),
+    );
+  },
+
+  async ajouterIndisponibilite({ veloId, date, motif, par }) {
+    // Comme en base : un vélo inconnu n'est pas déclaré, et un vélo déjà
+    // déclaré ce jour-là garde sa ligne, motif mis à jour.
+    if (!velos.some((velo) => velo.id === veloId)) return null;
+    const donnees = etat();
+    const motifNettoye = motif?.trim() || undefined;
+    let ligne = donnees.indisponibilites.find((i) => i.veloId === veloId && i.date === date);
+    const dejaDeclare = Boolean(ligne);
+    if (ligne) {
+      ligne.motif = motifNettoye;
+    } else {
+      ligne = {
+        id: identifiant("indispo"),
+        veloId,
+        date,
+        ...(motifNettoye ? { motif: motifNettoye } : {}),
+        creePar: par,
+        creeLe: new Date().toISOString(),
+      };
+      donnees.indisponibilites.push(ligne);
+    }
+    ecrireAuJournal({
+      type: "indisponibilite-ajoutee",
+      details: { veloId, veloNom: nomDuVelo(veloId), date, motif: motifNettoye ?? null, dejaDeclare },
+      auteur: par,
+    });
+    return copie(versIndisponibilite(ligne));
+  },
+
+  async retirerIndisponibilite(id, par) {
+    const donnees = etat();
+    const index = donnees.indisponibilites.findIndex((i) => i.id === id);
+    if (index < 0) return false;
+    const [ligne] = donnees.indisponibilites.splice(index, 1);
+    ecrireAuJournal({
+      type: "indisponibilite-retiree",
+      details: { veloId: ligne.veloId, veloNom: nomDuVelo(ligne.veloId), date: ligne.date, motif: ligne.motif ?? null },
+      auteur: par,
+    });
+    return true;
+  },
+
+  async journaliser(evenement) {
+    return copie(ecrireAuJournal(evenement));
+  },
+
+  async listerJournal(filtre) {
+    const reference = filtre?.reference?.trim().toUpperCase();
+    // Du plus récent au plus ancien : l'ordre d'écriture, retourné, départage
+    // deux événements de la même milliseconde comme en base.
+    return copie(
+      [...etat().journal]
+        .reverse()
+        .filter(
+          (e) =>
+            (!filtre?.type || e.type === filtre.type) &&
+            (!reference || e.reference?.toUpperCase() === reference) &&
+            (!filtre?.depuis || e.creeLe >= filtre.depuis),
+        )
+        .slice(0, limiteJournal(filtre)),
+    );
+  },
+
+  async creerRemboursement({ reference, montantXof, motif, par }) {
+    const reservation = trouver(reference);
+    if (!reservation) return null;
+    const donnees = etat();
+    const demande = { reservationId: reservation.id, montantXof, motif: motif.trim() };
+    // La même demande deux fois (un webhook rejoué) : la première, rien de plus.
+    const existant = donnees.remboursements.find((r) => memeRemboursement(r, demande));
+    if (existant) return copie(versRemboursement(existant));
+    const ligne: EtatDemo["remboursements"][number] = {
+      id: identifiant("remb"),
+      ...demande,
+      statut: "a_faire",
+      creeLe: new Date().toISOString(),
+    };
+    donnees.remboursements.push(ligne);
+    ecrireAuJournal({
+      type: "remboursement-cree",
+      reference: reservation.reference,
+      details: { remboursementId: ligne.id, montantXof, motif: demande.motif },
+      auteur: par ?? "site",
+    });
+    return copie(versRemboursement(ligne));
+  },
+
+  async listerRemboursements(filtre) {
+    const ordre = (statut: StatutRemboursement) =>
+      etat()
+        .remboursements.filter((r) => r.statut === statut)
+        // À faire : le plus ancien d'abord, c'est le plus pressé. Faits : le
+        // plus récent d'abord.
+        .sort((a, b) =>
+          statut === "a_faire"
+            ? a.creeLe.localeCompare(b.creeLe)
+            : (b.faitLe ?? b.creeLe).localeCompare(a.faitLe ?? a.creeLe),
+        );
+    const lignes = filtre?.statut ? ordre(filtre.statut) : [...ordre("a_faire"), ...ordre("fait")];
+    const resultat = lignes
+      .map(versRemboursement)
+      .filter((r): r is Remboursement => r !== null);
+    return copie(filtre?.limite ? resultat.slice(0, Math.max(1, Math.floor(filtre.limite))) : resultat);
+  },
+
+  async marquerRemboursementFait(id, par) {
+    const ligne = etat().remboursements.find((r) => r.id === id);
+    // Sous condition, comme en base : un second clic ne note rien deux fois.
+    if (!ligne || ligne.statut !== "a_faire") return null;
+    ligne.statut = "fait";
+    ligne.faitPar = par;
+    ligne.faitLe = new Date().toISOString();
+    const remboursement = versRemboursement(ligne);
+    ecrireAuJournal({
+      type: "remboursement-fait",
+      reference: remboursement?.reference,
+      details: { remboursementId: ligne.id, montantXof: ligne.montantXof, motif: ligne.motif },
+      auteur: par,
+    });
+    return copie(remboursement);
+  },
+
+  async enregistrerRetard(reference, minutes, par) {
+    // Les réglages d'abord : l'attente vient avant les contrôles et
+    // l'écriture, qui se suivent sans attente (voir `creneauxBloquants`).
+    const lecture = await lireReglagesOffresAvec(async (cleReglage) => etat().parametresAdmin.get(cleReglage) ?? null);
+    const reservation = trouver(reference);
+    if (!reservation) return { ok: false as const, raison: "introuvable" as const };
+    const refus = refusRetard(reservation);
+    if (refus) return { ok: false as const, raison: refus };
+    // Jamais au prix par défaut quand les réglages enregistrés ne se lisent plus.
+    if (lecture.source === "illisible") return { ok: false as const, raison: "reglages" as const };
+    const retenues = Math.max(0, Math.min(RETARD_MAX_MINUTES, Math.floor(minutes)));
+    const penaliteXof = penaliteRetardXof(retenues, lecture.reglages);
+    const avant = reservation.retard;
+    reservation.retard = { minutes: retenues, penaliteXof, saisiPar: par };
+    ecrireAuJournal({
+      type: "retard",
+      reference: reservation.reference,
+      details: {
+        minutes: retenues,
+        penaliteXof,
+        toleranceMinutes: lecture.reglages.retard.toleranceMinutes,
+        penaliteParMinuteXof: lecture.reglages.retard.penaliteParMinuteXof,
+        avant: avant ? { minutes: avant.minutes, penaliteXof: avant.penaliteXof } : null,
+      },
+      auteur: par,
+    });
+    return { ok: true as const, reservation: copie(reservation) };
+  },
+
+  async reservationsTouchees(depuis) {
+    const donnees = etat();
+    return copie(
+      reservationsToucheesParmi(
+        donnees.reservations,
+        new Map(velos.map((velo) => [velo.id, velo.statut])),
+        donnees.indisponibilites,
+        depuis,
+      ),
+    );
   },
 };
 

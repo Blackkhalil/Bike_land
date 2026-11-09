@@ -14,19 +14,25 @@
 
 import { listerJours, type DateISO } from "../dates";
 import { creneauOctobreRose, sortieOctobreRoseDu } from "@/data/octobre-rose";
-import { GAMMES, type GammeVelo } from "@/data/offres";
+import { estOffreGroupe, GAMMES, type GammeVelo } from "@/data/offres";
 import type { CodeParrainage, VerificationParrainage } from "../parrainage";
 import type {
   AvisClient,
   CategorieVelo,
   Client,
   CodeOffre,
+  EvenementJournal,
+  IndisponibiliteVelo,
   MessageContact,
   MoyenPaiement,
   Partenaire,
   PointDeRetrait,
+  RaisonVeloTouche,
+  Remboursement,
   Reservation,
+  ReservationTouchee,
   StatistiquesPartenaire,
+  StatutRemboursement,
   StatutReservation,
   StatutVelo,
   TailleVelo,
@@ -335,6 +341,168 @@ export function messagePlacesManquantes(demandees: number, libres: number, auCom
     : `Il ne reste que ${libres} places : inscrivez ${libres} personnes au plus, ou écrivez-nous pour les autres.`;
 }
 
+/* ------------------------------------------ Offres de groupe : administration */
+
+/** Un événement à écrire au journal. `auteur` : « admin (Koffi) ». */
+export interface NouvelEvenement {
+  type: string;
+  reference?: string;
+  details?: Record<string, unknown>;
+  auteur: string;
+}
+
+export interface FiltreJournal {
+  type?: string;
+  /** La référence d'une réservation, sans tenir compte de la casse. */
+  reference?: string;
+  /** Les événements écrits à partir de cet instant (ISO). */
+  depuis?: string;
+  /** Combien au plus, les plus récents d'abord : 200 par défaut, 1 000 au plus. */
+  limite?: number;
+}
+
+export const LIMITE_JOURNAL_PAR_DEFAUT = 200;
+export const LIMITE_JOURNAL_MAX = 1000;
+
+/** Le nombre d'événements à rendre, borné. */
+export function limiteJournal(filtre?: FiltreJournal): number {
+  const demandee = Math.floor(filtre?.limite ?? LIMITE_JOURNAL_PAR_DEFAUT);
+  return Math.max(1, Math.min(LIMITE_JOURNAL_MAX, Number.isFinite(demandee) ? demandee : LIMITE_JOURNAL_PAR_DEFAUT));
+}
+
+/**
+ * Ce que donne la saisie d'un retard : la réservation à jour, ou pourquoi
+ * rien n'a été écrit. `reglages` : les réglages des offres ne se lisent
+ * plus, la pénalité ne se calcule pas au prix par défaut.
+ */
+export type ResultatRetard =
+  | { ok: true; reservation: Reservation }
+  | { ok: false; raison: "introuvable" | "offre" | "statut" | "reglages" };
+
+/** Le plus long retard qu'on saisit : douze heures. */
+export const RETARD_MAX_MINUTES = 720;
+
+/**
+ * Pourquoi un retard ne se saisit pas sur cette réservation, ou `null` s'il
+ * le peut. La pénalité de retard est celle des offres de groupe (cahier des
+ * charges, étape 9) ; elle se saisit au retour des vélos, donc sur une
+ * réservation payée : confirmée (le départ a pu ne pas être noté), en cours
+ * ou terminée. La même règle en démonstration et en base.
+ */
+export function refusRetard(reservation: Pick<Reservation, "offre" | "statut">): "offre" | "statut" | null {
+  if (!estOffreGroupe(reservation.offre)) return "offre";
+  if (!["CONFIRMEE", "EN_COURS", "TERMINEE"].includes(reservation.statut)) return "statut";
+  return null;
+}
+
+/**
+ * Les réservations payées, à venir ou en cours, dont un vélo attribué n'est
+ * plus là : retiré du parc, à l'atelier, ou déclaré indisponible un jour de
+ * la sortie. Écrit une fois ici, la démonstration et la base y passent les
+ * mêmes données et trouvent les mêmes réservations.
+ *
+ * `depuis` : on ne regarde que les sorties qui finissent ce jour-là ou
+ * après. Triées par jour, puis par heure de départ.
+ */
+export function reservationsToucheesParmi(
+  reservations: Pick<
+    Reservation,
+    | "reference"
+    | "offre"
+    | "statut"
+    | "dateDebut"
+    | "dateFin"
+    | "heureDebut"
+    | "heureFin"
+    | "horaire"
+    | "nombrePersonnes"
+    | "dureeHeures"
+    | "minuteDebut"
+    | "minuteFin"
+    | "client"
+    | "lignes"
+  >[],
+  statutsVelos: ReadonlyMap<string, StatutVelo>,
+  indisponibilites: Pick<IndisponibiliteVelo, "veloId" | "date" | "motif">[],
+  depuis: DateISO,
+): ReservationTouchee[] {
+  const touchees: ReservationTouchee[] = [];
+  for (const reservation of reservations) {
+    if (reservation.statut !== "CONFIRMEE" && reservation.statut !== "EN_COURS") continue;
+    if (reservation.dateFin < depuis) continue;
+    const velos: ReservationTouchee["velos"] = [];
+    for (const ligne of reservation.lignes) {
+      const statut = statutsVelos.get(ligne.veloId);
+      let raison: RaisonVeloTouche | null = statut === "RETIRE" ? "RETIRE" : statut === "MAINTENANCE" ? "MAINTENANCE" : null;
+      let date: DateISO | undefined;
+      let motif: string | undefined;
+      if (!raison) {
+        const indisponible = indisponibilites
+          .filter(
+            (i) =>
+              i.veloId === ligne.veloId &&
+              i.date >= reservation.dateDebut &&
+              i.date <= reservation.dateFin &&
+              i.date >= depuis,
+          )
+          .sort((a, b) => a.date.localeCompare(b.date))[0];
+        if (indisponible) {
+          raison = "INDISPONIBLE";
+          date = indisponible.date;
+          motif = indisponible.motif;
+        }
+      }
+      if (raison) {
+        velos.push({
+          veloId: ligne.veloId,
+          veloNom: ligne.veloNom,
+          raison,
+          ...(date ? { date } : {}),
+          ...(motif ? { motif } : {}),
+        });
+      }
+    }
+    if (velos.length === 0) continue;
+    touchees.push({
+      reference: reservation.reference,
+      offre: reservation.offre,
+      statut: reservation.statut,
+      dateDebut: reservation.dateDebut,
+      dateFin: reservation.dateFin,
+      heureDebut: reservation.heureDebut,
+      heureFin: reservation.heureFin,
+      ...(reservation.horaire ? { horaire: reservation.horaire } : {}),
+      nombrePersonnes: reservation.nombrePersonnes,
+      ...(reservation.dureeHeures !== undefined ? { dureeHeures: reservation.dureeHeures } : {}),
+      ...(reservation.minuteDebut !== undefined && reservation.minuteFin !== undefined
+        ? { minuteDebut: reservation.minuteDebut, minuteFin: reservation.minuteFin }
+        : {}),
+      client: {
+        prenom: reservation.client.prenom,
+        nom: reservation.client.nom,
+        ...(reservation.client.telephone ? { telephone: reservation.client.telephone } : {}),
+      },
+      velos,
+    });
+  }
+  return touchees.sort(
+    (a, b) => a.dateDebut.localeCompare(b.dateDebut) || a.heureDebut - b.heureDebut || a.reference.localeCompare(b.reference),
+  );
+}
+
+/**
+ * La même demande de remboursement, envoyée deux fois (un webhook rejoué) :
+ * même réservation, même montant, même motif, encore à faire. Elle n'en crée
+ * pas une seconde, l'argent ne se rend qu'une fois. Deux paiements reçus en
+ * double se distinguent par leur motif (qui cite la transaction).
+ */
+export function memeRemboursement(
+  a: Pick<Remboursement, "reservationId" | "montantXof" | "motif" | "statut">,
+  b: { reservationId: string; montantXof: number; motif: string },
+): boolean {
+  return a.statut === "a_faire" && a.reservationId === b.reservationId && a.montantXof === b.montantXof && a.motif === b.motif;
+}
+
 export interface Depot {
   listerVelos(filtre?: FiltreCatalogue): Promise<Velo[]>;
   trouverVeloParSlug(slug: string): Promise<Velo | null>;
@@ -640,6 +808,75 @@ export interface Depot {
     message: Omit<MessageContact, "id" | "creeLe" | "traiteLe">,
   ): Promise<MessageContact>;
   listerMessagesContact(): Promise<MessageContact[]>;
+
+  /* ------------------------------------------ Offres de groupe : administration */
+
+  /**
+   * Les vélos déclarés indisponibles un jour précis, du plus proche au plus
+   * lointain. Sans borne, tous ; `depuis` et `jusqua` incluses.
+   */
+  listerIndisponibilites(options?: { depuis?: DateISO; jusqua?: DateISO; veloId?: string }): Promise<IndisponibiliteVelo[]>;
+
+  /**
+   * Déclare un vélo indisponible ce jour-là, et l'écrit au journal. Un vélo
+   * déjà déclaré ce jour-là n'est pas compté deux fois : son motif est mis à
+   * jour. `null` si le vélo n'existe pas. Les réservations déjà payées sur
+   * ce vélo ce jour-là ne sont pas annulées : elles remontent dans
+   * `reservationsTouchees`, pour que Bike Land appelle les clients.
+   */
+  ajouterIndisponibilite(champs: {
+    veloId: string;
+    date: DateISO;
+    motif?: string;
+    par: string;
+  }): Promise<IndisponibiliteVelo | null>;
+
+  /** Rend le vélo au parc ce jour-là, et l'écrit au journal. Faux s'il n'était plus déclaré. */
+  retirerIndisponibilite(id: string, par: string): Promise<boolean>;
+
+  /** Écrit une ligne au journal des événements. Une ligne ne se modifie ni ne s'efface. */
+  journaliser(evenement: NouvelEvenement): Promise<EvenementJournal>;
+
+  /** Le journal, les événements les plus récents d'abord. */
+  listerJournal(filtre?: FiltreJournal): Promise<EvenementJournal[]>;
+
+  /**
+   * Note de l'argent à rendre au client d'une réservation, et l'écrit au
+   * journal. La même demande envoyée deux fois n'en crée qu'une
+   * (`memeRemboursement`) : la première est renvoyée. `null` si la
+   * réservation n'existe pas.
+   */
+  creerRemboursement(champs: {
+    reference: string;
+    montantXof: number;
+    motif: string;
+    par?: string;
+  }): Promise<Remboursement | null>;
+
+  /** Les remboursements, les plus anciens d'abord quand ils sont à faire, les plus récents d'abord une fois faits. */
+  listerRemboursements(filtre?: { statut?: StatutRemboursement; limite?: number }): Promise<Remboursement[]>;
+
+  /**
+   * Note qu'un remboursement est fait, par qui et quand, et l'écrit au
+   * journal. Sous condition : `null` s'il n'existe pas ou s'il était déjà
+   * noté, un second clic ne compte rien deux fois.
+   */
+  marquerRemboursementFait(id: string, par: string): Promise<Remboursement | null>;
+
+  /**
+   * Note le retard au retour des vélos d'une offre de groupe et sa pénalité,
+   * calculée avec les réglages des offres du moment (`penaliteRetardXof`),
+   * puis l'écrit au journal. Une nouvelle saisie corrige la précédente ; zéro
+   * efface la pénalité. Rien n'est écrit si les réglages ne se lisent plus.
+   */
+  enregistrerRetard(reference: string, minutes: number, par: string): Promise<ResultatRetard>;
+
+  /**
+   * Les réservations payées, à venir ou en cours (dernier jour à partir de
+   * `depuis`), dont un vélo attribué est retiré du parc, à l'atelier, ou
+   * déclaré indisponible un jour de la sortie (`reservationsToucheesParmi`).
+   */
+  reservationsTouchees(depuis: DateISO): Promise<ReservationTouchee[]>;
 }
 
 /** Erreur métier : le vélo n'est plus libre sur la période demandée. */

@@ -89,4 +89,15 @@ export const depot: Depot = {
   publierAvis: async (id, publie) => (await obtenirDepot()).publierAvis(id, publie),
   enregistrerMessageContact: async (message) => (await obtenirDepot()).enregistrerMessageContact(message),
   listerMessagesContact: async () => (await obtenirDepot()).listerMessagesContact(),
+  listerIndisponibilites: async (options) => (await obtenirDepot()).listerIndisponibilites(options),
+  ajouterIndisponibilite: async (champs) => (await obtenirDepot()).ajouterIndisponibilite(champs),
+  retirerIndisponibilite: async (id, par) => (await obtenirDepot()).retirerIndisponibilite(id, par),
+  journaliser: async (evenement) => (await obtenirDepot()).journaliser(evenement),
+  listerJournal: async (filtre) => (await obtenirDepot()).listerJournal(filtre),
+  creerRemboursement: async (champs) => (await obtenirDepot()).creerRemboursement(champs),
+  listerRemboursements: async (filtre) => (await obtenirDepot()).listerRemboursements(filtre),
+  marquerRemboursementFait: async (id, par) => (await obtenirDepot()).marquerRemboursementFait(id, par),
+  enregistrerRetard: async (reference, minutes, par) =>
+    (await obtenirDepot()).enregistrerRetard(reference, minutes, par),
+  reservationsTouchees: async (depuis) => (await obtenirDepot()).reservationsTouchees(depuis),
 };

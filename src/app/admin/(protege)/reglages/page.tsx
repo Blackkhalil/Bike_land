@@ -1,20 +1,25 @@
 import type { Metadata } from "next";
 
+import { ReglagesOffresGroupe } from "@/components/admin/ReglagesOffresGroupe";
 import { ReglagesProduits } from "@/components/admin/ReglagesProduits";
 import { heureAuBenin } from "@/data/offres";
 import { REGLAGES_PAR_DEFAUT } from "@/data/reglages";
+import { REGLAGES_OFFRES_PAR_DEFAUT } from "@/data/reglages-offres";
 import { exigerSessionAdmin } from "@/lib/admin";
 import { lireReglages } from "@/lib/reglages";
+import { lireReglagesOffres } from "@/lib/reglages-offres";
 
 export const metadata: Metadata = { title: "Réglages des produits" };
 
 /**
  * Les réglages des produits : ce que l'exploitant change lui-même, sans
- * passer par le code, et que le site applique tout de suite.
+ * passer par le code, et que le site applique tout de suite. Padel bike
+ * d'abord, puis la rubrique « Réglages des offres » des trois offres de
+ * groupe (cahier des charges, étape 1).
  */
 export default async function PageReglages() {
   await exigerSessionAdmin();
-  const reglages = await lireReglages();
+  const [reglages, offres] = await Promise.all([lireReglages(), lireReglagesOffres()]);
 
   return (
     <div>
@@ -26,6 +31,12 @@ export default async function PageReglages() {
         Les réservations déjà prises gardent l&apos;horaire et le prix payés.
       </p>
       <ReglagesProduits reglages={reglages} parDefaut={REGLAGES_PAR_DEFAUT} aujourdhui={heureAuBenin().date} />
+      <ReglagesOffresGroupe
+        reglages={offres.reglages}
+        source={offres.source}
+        probleme={offres.probleme}
+        parDefaut={REGLAGES_OFFRES_PAR_DEFAUT}
+      />
     </div>
   );
 }

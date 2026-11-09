@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Fragment } from "react";
 
 import { CalendrierParc } from "@/components/admin/CalendrierParc";
 import { Pastille } from "@/components/ui";
 import { NettoyerPaniers } from "@/components/admin/NettoyerPaniers";
+import { SaisieRetard } from "@/components/admin/SaisieRetard";
+import { estOffreGroupe, GAMMES } from "@/data/offres";
+import { lireReglagesOffres } from "@/lib/reglages-offres";
 import {
   estEnAttente,
   estVenteEspeces,
@@ -53,12 +57,19 @@ type Recherche = Promise<Record<string, string | string[] | undefined>>;
  * début et de fin sont toujours les mêmes, alors que la formule et son
  * dimensionnement, participants ou heures, distinguent réellement deux
  * réservations.
+ *
+ * La fiche d'une réservation s'ouvre en tête de page (« ?detail=BL-… »),
+ * depuis la liste ou la sortie du jour : le client à appeler, la sortie, et
+ * pour une offre de groupe ce que le calcul a donné et les minutes de
+ * retard au retour.
  */
 export default async function PageReservationsAdmin({ searchParams }: { searchParams: Recherche }) {
   await exigerSessionAdmin();
   const parametres = await searchParams;
   const recherche = typeof parametres.reference === "string" ? parametres.reference.trim() : "";
   const filtreStatut = typeof parametres.statut === "string" ? parametres.statut : "";
+  // La fiche d'une réservation, ouverte en tête de page : « ?detail=BL-… ».
+  const detail = typeof parametres.detail === "string" ? parametres.detail.trim().toUpperCase() : "";
 
   const [reservations, velos] = await Promise.all([
     depot.listerReservations(),
@@ -66,6 +77,30 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
   ]);
 
   const jour = aujourdhui();
+  const fiche = detail ? (reservations.find((r) => r.reference.toUpperCase() === detail) ?? null) : null;
+  // La règle de retard du moment, pour la fiche d'une offre de groupe ; rien
+  // quand les réglages ne se lisent plus (la saisie est alors bloquée).
+  const regleRetard =
+    fiche && estOffreGroupe(fiche.offre)
+      ? await lireReglagesOffres()
+          .then((lecture) => (lecture.source === "illisible" ? null : lecture.reglages.retard))
+          .catch(() => null)
+      : null;
+  /** Le lien qui ouvre la fiche d'une réservation, filtres gardés. */
+  const lienFiche = (reference: string) => {
+    const suite = new URLSearchParams();
+    if (recherche) suite.set("reference", recherche);
+    if (filtreStatut) suite.set("statut", filtreStatut);
+    suite.set("detail", reference);
+    return `/admin/reservations?${suite.toString()}`;
+  };
+  const lienSansFiche = (() => {
+    const suite = new URLSearchParams();
+    if (recherche) suite.set("reference", recherche);
+    if (filtreStatut) suite.set("statut", filtreStatut);
+    const texte = suite.toString();
+    return texte ? `/admin/reservations?${texte}` : "/admin/reservations";
+  })();
 
   // Les départs et retours du jour d'abord : c'est ce que l'exploitant
   // consulte en ouvrant l'atelier le matin. Comme sur la fiche du jour et
@@ -133,6 +168,28 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
         </p>
         <NettoyerPaniers nombre={abandonnes.length} />
       </header>
+
+      {/* La fiche d'une réservation, ouverte depuis la liste ou la sortie du jour. */}
+      {detail && (
+        <section
+          aria-labelledby="titre-fiche"
+          className="mt-8 rounded-[var(--radius-carte)] border-2 border-noir-piste/15 bg-white p-4 sm:p-6"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 id="titre-fiche" className="font-display text-[1rem] font-bold uppercase tracking-tight">
+              Réservation <span className="font-mono">{detail}</span>
+            </h2>
+            <Link href={lienSansFiche} className="lien-souligne cible-elargie text-[0.82rem] font-semibold">
+              Fermer la fiche
+            </Link>
+          </div>
+          {fiche ? (
+            <FicheReservation reservation={fiche} regleRetard={regleRetard} />
+          ) : (
+            <p className="mt-3 text-[0.88rem] text-gris-cadre">Aucune réservation ne porte cette référence.</p>
+          )}
+        </section>
+      )}
 
       {/* Départs et retours du jour */}
       <section className="mt-8 grid gap-4 md:grid-cols-2">
@@ -296,6 +353,12 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
                 </div>
               </dl>
               <p className="mt-2 break-all text-[0.76rem] text-gris-cadre">{reservation.client.email}</p>
+              <Link
+                href={lienFiche(reservation.reference)}
+                className="lien-souligne cible-elargie mt-2 inline-block text-[0.8rem] font-semibold text-orange-sourd"
+              >
+                Ouvrir la fiche
+              </Link>
             </li>
           ))}
           {filtrees.length === 0 && (
@@ -322,7 +385,11 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
             <tbody>
               {filtrees.map((reservation) => (
                 <tr key={reservation.id} className="border-b border-noir-piste/8">
-                  <td className="py-3 pr-4 font-mono text-[0.78rem]">{reservation.reference}</td>
+                  <td className="py-3 pr-4 font-mono text-[0.78rem]">
+                    <Link href={lienFiche(reservation.reference)} className="lien-souligne" title="Ouvrir la fiche">
+                      {reservation.reference}
+                    </Link>
+                  </td>
                   <td className="py-3 pr-4">
                     {reservation.client.prenom} {reservation.client.nom}
                     <span className="block text-[0.76rem] text-gris-cadre">
@@ -405,6 +472,125 @@ function NomsVelos({ reservation }: { reservation: Reservation }) {
       ))}
     </>
   );
+}
+
+/**
+ * La fiche d'une réservation : le client à appeler, la sortie, les vélos,
+ * l'argent, ce que le calcul d'une offre de groupe a donné, et pour une
+ * offre de groupe payée, les minutes de retard au retour.
+ */
+function FicheReservation({
+  reservation,
+  regleRetard,
+}: {
+  reservation: Reservation;
+  regleRetard: { toleranceMinutes: number; penaliteParMinuteXof: number } | null;
+}) {
+  const telephone = reservation.client.telephone;
+  const details = reservation.offreDetails;
+  const groupe = estOffreGroupe(reservation.offre);
+  const payee = reservation.statut === "CONFIRMEE" || reservation.statut === "EN_COURS" || reservation.statut === "TERMINEE";
+  return (
+    <div className="mt-4 grid gap-5 lg:grid-cols-2">
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-[0.86rem] sm:grid-cols-2">
+        <div>
+          <dt className="text-[0.75rem] text-gris-cadre">Client</dt>
+          <dd className="font-semibold">
+            {reservation.client.prenom} {reservation.client.nom}
+            <span className="block break-all text-[0.78rem] font-normal text-gris-cadre">{reservation.client.email}</span>
+            {telephone && (
+              <a href={`tel:${telephone.replace(/\s/g, "")}`} className="lien-souligne block whitespace-nowrap text-[0.82rem] font-semibold">
+                {telephone}
+              </a>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[0.75rem] text-gris-cadre">Statut</dt>
+          <dd className="mt-0.5">
+            <Pastille ton={etiquette(reservation).ton}>{etiquette(reservation).texte}</Pastille>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[0.75rem] text-gris-cadre">Formule</dt>
+          <dd>{resumeOffre(reservation)}</dd>
+        </div>
+        <div>
+          <dt className="text-[0.75rem] text-gris-cadre">Date</dt>
+          <dd>
+            {formatDate(reservation.dateDebut)}
+            <span className="block text-[0.78rem] text-gris-cadre tabular-nums">{formatPlageReservation(reservation)}</span>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[0.75rem] text-gris-cadre">Vélos</dt>
+          <dd>
+            <NomsVelos reservation={reservation} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-[0.75rem] text-gris-cadre">Total</dt>
+          <dd className="font-semibold tabular-nums">
+            {formatXof(reservation.totalXof)}
+            <ReglementEspeces reservation={reservation} />
+          </dd>
+        </div>
+        {reservation.message && (
+          <div className="sm:col-span-2">
+            <dt className="text-[0.75rem] text-gris-cadre">Message du client</dt>
+            <dd className="leading-relaxed">{reservation.message}</dd>
+          </div>
+        )}
+      </dl>
+
+      <div className="grid gap-4">
+        {groupe && details && (
+          <div className="rounded-[var(--radius-bouton)] bg-craie px-4 py-3 text-[0.84rem] leading-relaxed">
+            <p className="font-semibold">Ce que le calcul a donné à la réservation</p>
+            <ul className="mt-1 space-y-0.5">
+              {details.mode && <li>{details.mode === "budget" ? "Le groupe a donné son budget" : "Le groupe a donné sa durée"}{typeof details.budgetXof === "number" ? ` : ${formatXof(details.budgetXof)}` : ""}.</li>}
+              {typeof details.cocos === "number" && details.cocos > 0 && <li>Cocos : {details.cocos}{details.coco === "petit" ? ", petit format" : details.coco === "grand" ? ", grand format" : ""}.</li>}
+              {typeof details.gateaux === "number" && details.gateaux > 0 && <li>Gâteaux : {details.gateaux}.</li>}
+              {typeof details.eaux === "number" && details.eaux > 0 && <li>Bouteilles d&apos;eau : {details.eaux}.</li>}
+              {details.accompagnateur === true && <li>Avec accompagnateur{typeof details.accompagnateurXof === "number" ? ` (${formatXof(details.accompagnateurXof)})` : ""}.</li>}
+              {/* Gbashi Bike : les vélos à sortir, gamme par gamme. */}
+              {velosParGamme(details.gammes) && <li>Vélos par gamme : {velosParGamme(details.gammes)}.</li>}
+              {typeof details.reductionXof === "number" && details.reductionXof > 0 && <li>Réduction (abonné à nos réseaux) : {formatXof(details.reductionXof)}.</li>}
+              {typeof details.fraisPaiementXof === "number" && details.fraisPaiementXof > 0 && <li>Frais de paiement électronique : {formatXof(details.fraisPaiementXof)}.</li>}
+              {typeof details.prixBarreXof === "number" && <li>Prix barré affiché : {formatXof(details.prixBarreXof)}.</li>}
+            </ul>
+            {typeof details.recapitulatif === "string" && details.recapitulatif.trim() && (
+              <details className="mt-2">
+                <summary className="cursor-pointer font-semibold">Le récapitulatif envoyé au client</summary>
+                <p className="mt-1 whitespace-pre-line">{details.recapitulatif}</p>
+              </details>
+            )}
+          </div>
+        )}
+        {groupe && payee ? (
+          <SaisieRetard reference={reservation.reference} retard={reservation.retard} regle={regleRetard} />
+        ) : groupe ? (
+          <p className="text-[0.82rem] text-gris-cadre">
+            Les minutes de retard se notent une fois la réservation payée.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * « 2 Classique, 2 Premium, 1 Prestige » : les vélos d'une réservation
+ * Gbashi Bike par gamme, tels que le calcul les a notés. Vide quand il n'en
+ * dit rien.
+ */
+function velosParGamme(gammes: unknown): string {
+  if (!gammes || typeof gammes !== "object") return "";
+  const parGamme = gammes as Record<string, unknown>;
+  return GAMMES.flatMap((gamme) => {
+    const nombre = parGamme[gamme.code];
+    return typeof nombre === "number" && Number.isInteger(nombre) && nombre > 0 ? [`${nombre} ${gamme.nom}`] : [];
+  }).join(", ");
 }
 
 /** « Espèces, reçu par Koffi » sous le montant d'une vente au comptoir. */

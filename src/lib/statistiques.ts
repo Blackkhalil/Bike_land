@@ -17,11 +17,11 @@ import {
   periodesSeChevauchent,
   type DateISO,
 } from "./dates";
-import { OFFRES } from "@/data/offres";
+import { OFFRES, OFFRES_GROUPE } from "@/data/offres";
 import { libelleMoyen } from "./format";
 import { fraisEncaissement } from "./paiement";
 import { estPayee, estVenteEspeces, paiementPrincipal, seulementPayees } from "./reservations";
-import type { Client, CodeOffre, MoyenPaiement, Reservation, Velo } from "./types";
+import type { Client, CodeOffre, CodeOffreGroupe, MoyenPaiement, Reservation, Velo } from "./types";
 
 export type Granularite = "jour" | "semaine" | "mois" | "annee";
 
@@ -258,6 +258,11 @@ export function calculerStatistiques(
   const vendue = (code: CodeOffre) => facturees.some((r) => r.offre === code);
   const parOffre = [
     ...OFFRES,
+    // Les offres de groupe, chacune sa ligne, au participant, dès qu'elles
+    // ont été vendues sur la période.
+    ...(Object.keys(OFFRES_GROUPE) as CodeOffreGroupe[])
+      .filter((code) => vendue(code))
+      .map((code) => ({ code, nom: OFFRES_GROUPE[code].nom })),
     ...(vendue("padel-bike") ? [{ code: "padel-bike" as const, nom: "Padel bike" }] : []),
     ...(vendue("gbashi-bike") ? [{ code: "gbashi-bike" as const, nom: "Gbashi bike" }] : []),
     ...(avecOctobreRose ? [{ code: "octobre-rose" as const, nom: "Octobre rose" }] : []),

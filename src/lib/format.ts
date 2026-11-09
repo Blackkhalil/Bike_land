@@ -7,8 +7,9 @@
 
 import { formatHoraire, sortieDeLaReservation } from "@/data/octobre-rose";
 import { formatHeureMinute } from "@/data/reglages";
-import { creneauDuDepart, DERNIER_GBASHI_DU_DIMANCHE } from "@/data/offres";
+import { creneauDuDepart, DERNIER_GBASHI_DU_DIMANCHE, estOffreGroupe, OFFRES_GROUPE } from "@/data/offres";
 
+import { DECALAGE_BENIN_MS } from "./dates";
 import type { CodeOffre, MoyenPaiement } from "./types";
 
 const libellesMoyens: Record<MoyenPaiement, string> = {
@@ -149,6 +150,7 @@ export function formatPeriode(debut: string | Date, fin: string | Date): string 
  *
  * Une sortie réglée à la minute (Padel bike) s'annonce par l'horaire
  * retenu à la réservation : « 21 novembre 2026, de 18 h 30 à 22 h 30 ».
+ * Une offre de groupe au quart d'heure, par ses minutes : « de 8 h à 8 h 45 ».
  */
 export function formatCreneau(reservation: {
   dateDebut: string | Date;
@@ -156,6 +158,8 @@ export function formatCreneau(reservation: {
   heureFin: number;
   offre?: CodeOffre;
   horaire?: { depart: string; retour: string };
+  minuteDebut?: number;
+  minuteFin?: number;
 }): string {
   const sortie = sortieDe(reservation);
   if (sortie) {
@@ -164,8 +168,9 @@ export function formatCreneau(reservation: {
       `départ ${formatHoraire(sortie.depart)}`
     );
   }
-  if (reservation.horaire) {
-    return `${formatDate(reservation.dateDebut)}, de ${formatHeureMinute(reservation.horaire.depart)} à ${formatHeureMinute(reservation.horaire.retour)}`;
+  const horaire = horaireExact(reservation);
+  if (horaire) {
+    return `${formatDate(reservation.dateDebut)}, de ${formatHeureMinute(horaire.depart)} à ${formatHeureMinute(horaire.retour)}`;
   }
   return `${formatDate(reservation.dateDebut)}, de ${reservation.heureDebut}${INSECABLE}h à ${reservation.heureFin}${INSECABLE}h`;
 }
@@ -188,7 +193,8 @@ function sortieDe(reservation: { offre?: CodeOffre; dateDebut: string | Date }) 
 /**
  * L'horaire d'une réservation, sans le jour : « 8 h - 11 h » ; pour
  * Octobre rose, du rassemblement au retour, « 16 h - 17 h 30 » ; pour une
- * sortie réglée à la minute, l'horaire retenu, « 18 h 30 - 22 h 30 ».
+ * sortie réglée à la minute, l'horaire retenu, « 18 h 30 - 22 h 30 » ; pour
+ * une offre de groupe, ses minutes, « 8 h - 8 h 45 ».
  */
 export function formatPlageReservation(reservation: {
   offre?: CodeOffre;
@@ -196,12 +202,15 @@ export function formatPlageReservation(reservation: {
   heureDebut: number;
   heureFin: number;
   horaire?: { depart: string; retour: string };
+  minuteDebut?: number;
+  minuteFin?: number;
 }): string {
   const sortie = sortieDe(reservation);
+  const horaire = horaireExact(reservation);
   return sortie
     ? `${formatHoraire(sortie.rassemblement)} - ${formatHoraire(sortie.retour)}`
-    : reservation.horaire
-      ? `${formatHeureMinute(reservation.horaire.depart)} - ${formatHeureMinute(reservation.horaire.retour)}`
+    : horaire
+      ? `${formatHeureMinute(horaire.depart)} - ${formatHeureMinute(horaire.retour)}`
       : formatPlageHoraire(reservation.heureDebut, reservation.heureFin);
 }
 
@@ -214,6 +223,46 @@ export function formatNombre(valeur: number, decimales = 0): string {
 
 export function formatPourcentage(valeur: number, decimales = 0): string {
   return `${formatNombre(valeur, decimales)}${INSECABLE}%`;
+}
+
+/**
+ * « 16 h 05 » : l'heure d'un instant à Cotonou (UTC+1 toute l'année, sans
+ * heure d'été), quel que soit le fuseau du serveur ou du navigateur.
+ */
+export function formatHeureAuBenin(instant: string | Date): string {
+  const benin = new Date(new Date(instant).getTime() + DECALAGE_BENIN_MS);
+  const minutes = benin.getUTCMinutes();
+  return minutes
+    ? `${benin.getUTCHours()}${INSECABLE}h${INSECABLE}${String(minutes).padStart(2, "0")}`
+    : `${benin.getUTCHours()}${INSECABLE}h`;
+}
+
+/**
+ * L'horaire exact d'une réservation : celui noté à la réservation (Padel
+ * bike), sinon celui que donnent les minutes d'une offre de groupe
+ * (480 et 525 : « 08:00 » et « 08:45 »). `undefined` : les heures pleines.
+ * Tout ce qui annonce une heure de départ ou de retour passe par ici plutôt
+ * que par `reservation.horaire` seul, qui ignore les minutes.
+ */
+export function horaireExact(reservation: {
+  horaire?: { depart: string; retour: string };
+  minuteDebut?: number;
+  minuteFin?: number;
+}): { depart: string; retour: string } | undefined {
+  if (reservation.horaire) return reservation.horaire;
+  if (reservation.minuteDebut === undefined || reservation.minuteFin === undefined) return undefined;
+  const enHeure = (minutes: number) =>
+    `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  return { depart: enHeure(reservation.minuteDebut), retour: enHeure(reservation.minuteFin) };
+}
+
+/** « 45 min », « 1 h », « 1 h 30 » : une durée en minutes, telle qu'on la dit. */
+export function formatDureeMinutes(minutes: number): string {
+  const total = Math.max(0, Math.round(minutes));
+  if (total < 60) return `${total}${INSECABLE}min`;
+  const heures = Math.floor(total / 60);
+  const reste = total % 60;
+  return reste ? `${heures}${INSECABLE}h${INSECABLE}${String(reste).padStart(2, "0")}` : `${heures}${INSECABLE}h`;
 }
 
 function versDate(valeur: string | Date): Date {
@@ -234,10 +283,21 @@ export function resumeOffre(reservation: {
   dureeHeures?: number;
   dateDebut?: string;
   heureDebut?: number;
+  minuteDebut?: number;
+  minuteFin?: number;
 }): string {
   const n = reservation.nombrePersonnes;
   if (reservation.offre === "road-trip") {
     return `${nomDuRoadTrip(reservation)} · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;
+  }
+  // Les offres de groupe, à la personne ; Bike for All dit aussi sa durée,
+  // au quart d'heure, quand le créneau est connu.
+  if (estOffreGroupe(reservation.offre)) {
+    const duree =
+      reservation.offre === "bike-for-all" && reservation.minuteDebut !== undefined && reservation.minuteFin !== undefined
+        ? ` · ${formatDureeMinutes(reservation.minuteFin - reservation.minuteDebut)}`
+        : "";
+    return `${OFFRES_GROUPE[reservation.offre].nom} · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}${duree}`;
   }
   if (reservation.offre === "octobre-rose") {
     return `Octobre rose · ${n}${INSECABLE}personne${n > 1 ? "s" : ""}`;

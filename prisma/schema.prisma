@@ -102,12 +102,34 @@ model Bike {
   bookingItems     BookingItem[]
   reviews          Review[]
   maintenanceLogs  MaintenanceLog[]
+  /// Les jours où ce vélo ne roule pas (réparation, prêt), déclarés depuis
+  /// l'administration : il sort du parc de ces jours-là seulement.
+  indisponibilites IndisponibiliteVelo[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([category, status])
   @@index([pickupPointId])
+}
+
+/// Un vélo indisponible un jour précis : en réparation le samedi, prêté pour
+/// une journée. Le statut du vélo (MAINTENANCE, RETIRE) vaut pour tous les
+/// jours ; cette ligne ne retire le vélo du parc que ce jour-là (cahier des
+/// charges des offres de groupe, étape 1). Un vélo n'est déclaré qu'une fois
+/// par jour : le redéclarer met seulement le motif à jour.
+model IndisponibiliteVelo {
+  id        String   @id @default(cuid())
+  bikeId    String
+  bike      Bike     @relation(fields: [bikeId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  motif     String?
+  /// Qui l'a déclaré : « admin (prénom) ».
+  creePar   String
+  createdAt DateTime @default(now())
+
+  @@unique([bikeId, date])
+  @@index([date])
 }
 
 // Point de retrait / restitution (§8 : un seul lieu ou plusieurs, à trancher)
@@ -165,8 +187,13 @@ enum BookingOffer {
   ROAD_TRIP       // sortie encadree, forfait par personne, sans caution
   LOCATION_LIBRE  // velo sans accompagnement, grille horaire, caution
   OCTOBRE_ROSE    // sortie de saison, prix unique, un velo attribue par participant
-  GBASHI_BIKE     // sortie sur commande, au comptoir : prix de la gamme par personne
+  GBASHI_BIKE     // sortie sur commande, au comptoir : prix de la gamme par personne (ventes passees)
   PADEL_BIKE      // sortie sur commande, au comptoir : prix unique, velos attribues d office
+  // Les offres de groupe (cahier des charges du 9 novembre 2026), calculees
+  // par src/lib/offres/ avec les reglages de l'administration.
+  BIKE_FOR_ALL     // le groupe donne son budget ou sa duree, au quart d'heure
+  ROAD_TRIP_GROUPE // 25 km le samedi ou le dimanche, prix par personne, toutes gammes
+  GBASHI_GROUPE    // Gbashi Bike sur reservation, le dimanche, prix de la gamme de chaque velo
 }
 
 enum BookingStatus {
@@ -218,6 +245,27 @@ model Booking {
   /// heures pleines suffisent.
   startTime String?
   endTime   String?
+  /// Le créneau exact en minutes depuis minuit (480 = 8 h, 525 = 8 h 45),
+  /// pour les offres de groupe réservées au quart d'heure. Les heures
+  /// pleines ci-dessus restent remplies (elles couvrent ces minutes) : tout
+  /// ce qui lit les heures continue de fonctionner. Vides ailleurs.
+  startMinute Int?
+  endMinute   Int?
+
+  /// Le retard au retour des vélos, saisi dans l'administration, et la
+  /// pénalité calculée avec les réglages du moment (tolérance, puis un
+  /// montant par minute pour tout le groupe), payée en espèces. Vides tant
+  /// que rien n'est saisi.
+  retardMinutes     Int?
+  penaliteRetardXof Int?
+  /// Qui a saisi le retard : « admin (prénom) ».
+  penaliteSaisiePar String?
+
+  /// Ce qu'une offre de groupe a calculé au moment de la réservation : les
+  /// choix du client (budget ou durée, gâteaux, accompagnateur, gammes) et
+  /// le résultat (coco, minutes, prix barré, récapitulatif). Figé : un
+  /// réglage changé ensuite ne réécrit pas ce que le client a payé.
+  offreDetails Json?
 
   subtotalXof Int
   optionsXof  Int @default(0)
@@ -234,6 +282,9 @@ model Booking {
   items    BookingItem[]
   options  BookingOption[]
   payments Payment[]
+  /// L'argent à rendre au client (paiement arrivé trop tard), fait par le
+  /// responsable et noté dans l'administration.
+  remboursements Remboursement[]
   review   Review?
   /// Code promo utilisé, s'il y en a un. Une réservation au maximum par
   /// utilisation : c'est cette ligne qui rattache le client au partenaire.
@@ -269,6 +320,11 @@ model BookingItem {
   endDate       DateTime @db.Date
   startHour     Int      @default(8)
   endHour       Int      @default(11)
+  /// Les minutes exactes du créneau, au quart d'heure (offres de groupe),
+  /// recopiées de la réservation comme les dates et les heures. Vides
+  /// ailleurs : les heures pleines suffisent.
+  startMinute   Int?
+  endMinute     Int?
   unitPriceXof  Int
   lineTotalXof  Int
 
@@ -551,4 +607,70 @@ model JourFerme {
 
   @@unique([date, formule])
   @@index([date])
+}
+
+// ------------------------------------------------------ Offres de groupe
+
+/// Ce qui s'est passé dans l'administration et autour des offres de groupe :
+/// réglages changés, interrupteur, vélos indisponibles, retards, preuves de
+/// réduction, remboursements. Une ligne ne se modifie ni ne s'efface.
+/// L'auteur est « admin » suivi du prénom saisi (un seul compte aujourd'hui).
+model JournalEvenement {
+  id        String   @id @default(cuid())
+  /// « reglages-offres », « interrupteur-offres », « retard »… (src/lib/journal.ts).
+  type      String
+  /// La référence de la réservation concernée, quand il y en a une.
+  reference String?
+  details   Json
+  auteur    String
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+}
+
+/// Une capture envoyée par un client pour la réduction du road trip
+/// (abonné à un réseau de Bike Land, ou story taguée), et la décision prise :
+/// par l'agent IA, ou à la main dans l'administration en cas de doute. Le
+/// fichier est privé et supprimé dès la décision, 30 jours au plus tard
+/// (`supprimeLe`) ; la ligne reste, sans lui, pour la trace.
+model PreuveReduction {
+  id           String    @id @default(cuid())
+  reference    String?
+  /// Où le fichier est rangé (stockage privé), vide une fois supprimé.
+  fichierCle   String?
+  typeMime     String
+  tailleOctets Int
+  /// « en_attente », « validee » ou « refusee ».
+  statut       String    @default("en_attente")
+  /// La réponse structurée de l'agent IA, telle quelle.
+  verdict      Json?
+  motif        String?
+  decidePar    String?
+  decideLe     DateTime?
+  supprimeLe   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([statut, createdAt])
+}
+
+/// De l'argent à rendre à un client : un paiement arrivé après l'expiration
+/// de sa demande, quand les vélos avaient été repris (décision du
+/// responsable n° 6). Le responsable rembourse lui-même, sur SasPay ou en
+/// Mobile Money, sous 48 h, puis le note ici (« fait », par qui, quand).
+/// La réservation ne peut pas être effacée tant qu'un remboursement y est
+/// rattaché : c'est une pièce comptable.
+model Remboursement {
+  id         String    @id @default(cuid())
+  bookingId  String
+  booking    Booking   @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  montantXof Int
+  motif      String
+  /// « a_faire » ou « fait ».
+  statut     String    @default("a_faire")
+  faitPar    String?
+  faitLe     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([statut, createdAt])
+  @@index([bookingId])
 }
