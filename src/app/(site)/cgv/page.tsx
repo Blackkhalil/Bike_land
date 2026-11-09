@@ -205,7 +205,7 @@ export default async function PageCGV() {
   return (
     <PageLegale
       titre="Conditions générales de vente"
-      miseAJour="9 novembre 2026"
+      miseAJour="10 novembre 2026"
       sousTitre="Ce que nous nous engageons à faire, et ce que nous vous demandons en retour. Elles s'appliquent à toute réservation effectuée sur ce site."
     >
       <ArticleLegal titre="Article 1. Objet">
