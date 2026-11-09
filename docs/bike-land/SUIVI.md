@@ -97,6 +97,19 @@ demande après le vendredi 19 h pour le week-end, refusée.
   lancé est toujours confirmé par SasPay et une réservation payée reste honorée.
 - Réglages des offres illisibles (valeur impossible en base) : vente refusée et
   alerte dans l'administration, jamais de vente aux valeurs par défaut.
+- Comptoir (relecture du lot 1) : ni date limite du vendredi, ni délai minimum
+  avant le départ ; un départ plus tôt le jour même peut être saisi après coup,
+  jamais un jour passé. Ces deux règles ne valent que pour la réservation en
+  ligne.
+- En ligne, réservation au moins 2 h avant le départ (réglage
+  `delaiMinimumMinutes`, modifiable) : le temps de préparer vélos, cocos et
+  gâteaux.
+- Gbashi : un coco (grand format) et une eau par personne, d'après la carte du
+  cahier (« vélo, eau, un coco »), modifiables. À confirmer par le responsable :
+  le site actuel en annonce deux depuis la consigne du 7 novembre.
+- Réduction : comptes reconnus = Instagram @bikeland_bj (site) et le compte
+  TikTok « Bike Land » cité par le cahier, dont l'identifiant reste à donner ;
+  d'ici là, une capture TikTok passe en validation manuelle.
 - Essais de paiement avec la clé SasPay réelle (décision 17) : les tests
   automatiques restent en mode démonstration, sans argent ; les quelques vrais
   paiements de contrôle se font sur la base de test, avec le numéro du
