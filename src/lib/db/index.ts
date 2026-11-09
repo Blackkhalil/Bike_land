@@ -100,4 +100,6 @@ export const depot: Depot = {
   enregistrerRetard: async (reference, minutes, par) =>
     (await obtenirDepot()).enregistrerRetard(reference, minutes, par),
   reservationsTouchees: async (depuis) => (await obtenirDepot()).reservationsTouchees(depuis),
+  parcDuJour: async (date) => (await obtenirDepot()).parcDuJour(date),
+  creerReservationGroupe: async (demande) => (await obtenirDepot()).creerReservationGroupe(demande),
 };

@@ -21,6 +21,8 @@ import type {
   CategorieVelo,
   Client,
   CodeOffre,
+  CodeOffreGroupe,
+  DetailsOffreGroupe,
   EvenementJournal,
   IndisponibiliteVelo,
   MessageContact,
@@ -877,6 +879,104 @@ export interface Depot {
    * déclaré indisponible un jour de la sortie (`reservationsToucheesParmi`).
    */
   reservationsTouchees(depuis: DateISO): Promise<ReservationTouchee[]>;
+
+  /* ------------------------------------------- Offres de groupe (lot 3) */
+
+  /**
+   * Le parc d'un jour et ses créneaux déjà pris, en minutes : la matière de
+   * tous les calculs de disponibilité des offres de groupe (vélos libres sur
+   * un créneau, créneau libre le plus proche), faits ensuite sans base par
+   * src/lib/disponibilite. Toutes les offres partagent les mêmes vélos.
+   */
+  parcDuJour(date: DateISO): Promise<ParcDuJour>;
+
+  /**
+   * Écrit une réservation d'offre de groupe, déjà calculée par le serveur.
+   * Dans une seule transaction sérialisable (avec reprise) : revérifie les
+   * vélos libres sur le créneau, attribue les vélos (toutes gammes, ou le
+   * nombre exact de chaque gamme pour Gbashi Bike), écrit la réservation, ses
+   * vélos et son paiement, et consomme la preuve de réduction citée.
+   * Lève CapaciteInsuffisanteError si les vélos viennent d'être pris.
+   */
+  creerReservationGroupe(demande: DemandeReservationGroupe): Promise<ResultatReservation>;
+}
+
+/**
+ * Le parc d'un jour, pour les offres de groupe : les vélos en état ce
+ * jour-là, et les créneaux déjà pris, en minutes depuis minuit.
+ */
+export interface ParcDuJour {
+  date: DateISO;
+  /**
+   * Les vélos qui peuvent rouler ce jour-là : ni retirés, ni en maintenance,
+   * ni déclarés indisponibles à cette date (IndisponibiliteVelo).
+   */
+  velos: { id: string; nom: string; gamme: GammeVelo }[];
+  /**
+   * Les créneaux pris ce jour-là, toutes offres confondues : réservations
+   * payées, et demandes en attente de paiement depuis moins de 30 minutes.
+   * Une réservation à l'heure pleine compte de heureDebut × 60 à heureFin × 60.
+   */
+  occupations: { veloId: string; debutMinute: number; finMinute: number }[];
+}
+
+/**
+ * Une réservation d'offre de groupe prête à écrire. Le serveur a déjà fait le
+ * calcul (src/lib/offres) avec les réglages et le parc du moment ; le dépôt
+ * ne recalcule aucun prix, il revérifie seulement les vélos.
+ */
+export interface DemandeReservationGroupe {
+  offre: CodeOffreGroupe;
+  /** Le jour de la sortie, heure du Bénin. */
+  date: DateISO;
+  /** Départ et retour du groupe, en minutes depuis minuit (au quart d'heure). */
+  debutMinute: number;
+  finMinute: number;
+  /**
+   * Les vélos à bloquer : un nombre, toutes gammes confondues (Bike for All,
+   * road trip, décision 10), ou le nombre exact de chaque gamme (Gbashi Bike).
+   */
+  velos: number | Partial<Record<GammeVelo, number>>;
+  nombrePersonnes: number;
+  /**
+   * Ce que paie le groupe, frais de paiement électronique compris. La
+   * commission SasPay s'y ajoute au moment de payer, comme ailleurs.
+   */
+  totalXof: number;
+  /** L'instantané du calcul, rangé tel quel dans offreDetails. */
+  details: DetailsOffreGroupe;
+  client: { prenom: string; nom: string; email: string; telephone: string };
+  moyenPaiement: MoyenPaiement;
+  cgvAcceptees: boolean;
+  message?: string;
+  /**
+   * Vente au comptoir réglée en espèces : la réservation naît confirmée et
+   * payée, comme DemandeReservation.encaissement.
+   */
+  encaissement?: { par: string; reference?: string };
+  /** Road trip : la preuve de réduction validée, consommée dans la même transaction (une par groupe). */
+  preuveId?: string;
+}
+
+/**
+ * Les vélos d'un créneau viennent d'être pris par une autre demande : la
+ * transaction a revu le parc et il n'en reste plus assez.
+ */
+export class CapaciteInsuffisanteError extends Error {
+  /** Les vélos encore libres sur le créneau, toutes gammes confondues. */
+  readonly velosLibres: number;
+  /** Les mêmes, gamme par gamme. */
+  readonly parGamme: Record<GammeVelo, number>;
+  constructor(
+    velosLibres: number,
+    parGamme: Record<GammeVelo, number>,
+    message = "Ces vélos viennent d'être réservés sur ce créneau.",
+  ) {
+    super(message);
+    this.name = "CapaciteInsuffisanteError";
+    this.velosLibres = velosLibres;
+    this.parGamme = parGamme;
+  }
 }
 
 /** Erreur métier : le vélo n'est plus libre sur la période demandée. */

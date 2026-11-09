@@ -2188,6 +2188,14 @@ const depotDirect: Depot = {
       depuis,
     );
   },
+  // Offres de groupe : écrites par le lot 3 (disponibilité au quart d'heure).
+  async parcDuJour() {
+    throw new Error("parcDuJour : pas encore écrit (lot 3, disponibilité).");
+  },
+
+  async creerReservationGroupe() {
+    throw new Error("creerReservationGroupe : pas encore écrit (lot 3, disponibilité).");
+  },
 };
 
 /**
