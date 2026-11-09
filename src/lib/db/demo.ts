@@ -613,6 +613,8 @@ export const depotDemo: Depot = {
     if (index === -1) return false;
 
     const reservation = donnees.reservations[index];
+    // De l'argent à rendre y est rattaché : comme en base, elle reste.
+    if (donnees.remboursements.some((r) => r.reservationId === reservation.id)) return false;
     // Même garde-fou qu'en base : ce qui a encaissé ne s'efface pas, ni ce
     // qui porte un paiement reçu hors délai (la référence provisoire
     // « TX-… » de la démonstration ne compte pas).

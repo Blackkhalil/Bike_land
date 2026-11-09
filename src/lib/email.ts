@@ -20,6 +20,7 @@ import {
   formatDateComplete,
   formatDureeMinutes,
   formatXof,
+  horaireExact,
   libelleReglement,
   libelleRemise,
   nomDuRoadTrip,
@@ -643,6 +644,9 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
   const rendezVous = rendezVousDe(reservation);
   const roadTrip = reservation.offre === "road-trip";
   const arrivee = `${reservation.heureDebut - 1} h 45`;
+  // L'heure notée à la réservation (Padel bike), ou le quart d'heure d'une
+  // offre de groupe (8 h 15), sinon l'heure pleine.
+  const horaire = horaireExact(reservation);
 
   const texte = [
     `Bonjour ${reservation.client.prenom},`,
@@ -675,7 +679,7 @@ export async function envoyerRappel(reservation: Reservation, lienSuivi: string)
 
   return envoyer({
     destinataire: reservation.client.email,
-    sujet: `C'est demain : départ à ${reservation.horaire ? formatHeureMinute(reservation.horaire.depart) : `${reservation.heureDebut} h`} de ${rendezVous.lieu}`,
+    sujet: `C'est demain : départ à ${horaire ? formatHeureMinute(horaire.depart) : `${reservation.heureDebut} h`} de ${rendezVous.lieu}`,
     texte,
     html: gabarit({
       titre: "C'est demain",

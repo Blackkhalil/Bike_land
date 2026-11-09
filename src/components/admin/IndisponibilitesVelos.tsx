@@ -106,9 +106,10 @@ export function IndisponibilitesVelos({
         Vélos indisponibles par date
       </h2>
       <p className="mt-1 max-w-2xl text-[0.82rem] leading-relaxed text-gris-cadre">
-        Un vélo en réparation ou prêté un jour précis sort du parc ce jour-là seulement : les
-        offres de groupe comptent un vélo de moins. Pour un vélo à l&apos;atelier pour de bon,
-        changez plutôt son statut sur sa fiche.
+        Un vélo en réparation ou prêté un jour précis sort du parc ce jour-là seulement : il
+        n&apos;est plus proposé à la réservation ce jour-là, et les offres de groupe comptent un
+        vélo de moins. Pour un vélo à l&apos;atelier pour de bon, changez plutôt son statut sur sa
+        fiche.
       </p>
 
       <form

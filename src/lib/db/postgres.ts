@@ -1193,9 +1193,12 @@ const depotDirect: Depot = {
       async (tx) => {
         const booking = await tx.booking.findUnique({
           where: { reference: reference.toUpperCase() },
-          include: { payments: true, promoUsage: true },
+          include: { payments: true, promoUsage: true, remboursements: { select: { id: true }, take: 1 } },
         });
         if (!booking) return false;
+        // De l'argent à rendre y est rattaché : la ligne du remboursement en
+        // a besoin (la base refuserait d'ailleurs l'effacement).
+        if (booking.remboursements.length > 0) return false;
 
         // Garde-fou, et il n'est pas décoratif : une réservation qui a
         // encaissé est une pièce comptable. Elle s'annule, se rembourse,

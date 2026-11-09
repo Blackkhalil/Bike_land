@@ -6,7 +6,7 @@ import { CalendrierParc } from "@/components/admin/CalendrierParc";
 import { Pastille } from "@/components/ui";
 import { NettoyerPaniers } from "@/components/admin/NettoyerPaniers";
 import { SaisieRetard } from "@/components/admin/SaisieRetard";
-import { estOffreGroupe } from "@/data/offres";
+import { estOffreGroupe, GAMMES } from "@/data/offres";
 import { lireReglagesOffres } from "@/lib/reglages-offres";
 import {
   estEnAttente,
@@ -553,6 +553,10 @@ function FicheReservation({
               {typeof details.gateaux === "number" && details.gateaux > 0 && <li>Gâteaux : {details.gateaux}.</li>}
               {typeof details.eaux === "number" && details.eaux > 0 && <li>Bouteilles d&apos;eau : {details.eaux}.</li>}
               {details.accompagnateur === true && <li>Avec accompagnateur{typeof details.accompagnateurXof === "number" ? ` (${formatXof(details.accompagnateurXof)})` : ""}.</li>}
+              {/* Gbashi Bike : les vélos à sortir, gamme par gamme. */}
+              {velosParGamme(details.gammes) && <li>Vélos par gamme : {velosParGamme(details.gammes)}.</li>}
+              {typeof details.reductionXof === "number" && details.reductionXof > 0 && <li>Réduction (abonné à nos réseaux) : {formatXof(details.reductionXof)}.</li>}
+              {typeof details.fraisPaiementXof === "number" && details.fraisPaiementXof > 0 && <li>Frais de paiement électronique : {formatXof(details.fraisPaiementXof)}.</li>}
               {typeof details.prixBarreXof === "number" && <li>Prix barré affiché : {formatXof(details.prixBarreXof)}.</li>}
             </ul>
             {typeof details.recapitulatif === "string" && details.recapitulatif.trim() && (
@@ -573,6 +577,20 @@ function FicheReservation({
       </div>
     </div>
   );
+}
+
+/**
+ * « 2 Classique, 2 Premium, 1 Prestige » : les vélos d'une réservation
+ * Gbashi Bike par gamme, tels que le calcul les a notés. Vide quand il n'en
+ * dit rien.
+ */
+function velosParGamme(gammes: unknown): string {
+  if (!gammes || typeof gammes !== "object") return "";
+  const parGamme = gammes as Record<string, unknown>;
+  return GAMMES.flatMap((gamme) => {
+    const nombre = parGamme[gamme.code];
+    return typeof nombre === "number" && Number.isInteger(nombre) && nombre > 0 ? [`${nombre} ${gamme.nom}`] : [];
+  }).join(", ");
 }
 
 /** « Espèces, reçu par Koffi » sous le montant d'une vente au comptoir. */

@@ -241,8 +241,10 @@ export function formatHeureAuBenin(instant: string | Date): string {
  * L'horaire exact d'une réservation : celui noté à la réservation (Padel
  * bike), sinon celui que donnent les minutes d'une offre de groupe
  * (480 et 525 : « 08:00 » et « 08:45 »). `undefined` : les heures pleines.
+ * Tout ce qui annonce une heure de départ ou de retour passe par ici plutôt
+ * que par `reservation.horaire` seul, qui ignore les minutes.
  */
-function horaireExact(reservation: {
+export function horaireExact(reservation: {
   horaire?: { depart: string; retour: string };
   minuteDebut?: number;
   minuteFin?: number;

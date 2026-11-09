@@ -21,7 +21,7 @@ const { lireReglagesOffres } = await charger("src/lib/reglages-offres.ts");
 const contrat = await charger("src/data/reglages-offres.ts");
 const libelles = await charger("src/data/libelles-reglages-offres.ts");
 const journal = await charger("src/lib/journal.ts");
-const { formatCreneau, formatPlageReservation, resumeOffre } = await charger("src/lib/format.ts");
+const { formatCreneau, formatPlageReservation, horaireExact, resumeOffre } = await charger("src/lib/format.ts");
 const { cocosDe } = await charger("src/lib/reservations.ts");
 const { ajouterJours } = await charger("src/lib/dates.ts");
 const { heureAuBenin } = await charger("src/data/offres.ts");
@@ -322,6 +322,14 @@ const [cree] = await depot.listerJournal({ type: "remboursement-cree", reference
 const [faitJournal] = await depot.listerJournal({ type: "remboursement-fait" });
 verifier("journal : créé par le site, fait par Awa", [cree?.auteur, faitJournal?.auteur, espaces(journal.resumeEvenement(faitJournal).titre)], ["site", "admin (Awa)", "31 250 F remboursés"]);
 verifier("sans prénom : refusé", (await appeler(routeRembourser, "/api/admin/remboursements", { action: "fait", id: second?.id })).statut, 422);
+// La demande en ligne jamais payée s'efface d'habitude ; plus quand de
+// l'argent à rendre y est rattaché (la base le refuserait : ON DELETE RESTRICT).
+const aRendre = await depot.creerRemboursement({ reference: enAttente.reference, montantXof: 1000, motif: "Essai d'effacement" });
+verifier(
+  "une demande qui porte un remboursement ne s'efface pas",
+  [Boolean(aRendre), await depot.supprimerReservation(enAttente.reference), Boolean(await depot.trouverReservationParReference(enAttente.reference))],
+  [true, false, true],
+);
 
 console.log("\n— Les offres de groupe se nomment partout");
 verifier(
@@ -342,6 +350,15 @@ verifier(
     formatPlageReservation({ dateDebut: "2026-11-14", heureDebut: 8, heureFin: 11 }),
   ].map(espaces),
   ["8 h - 8 h 45", "14 novembre 2026, de 8 h à 8 h 45", "8 h - 11 h"],
+);
+verifier(
+  "l'horaire exact (rappel de la veille) : celui noté (Padel bike), sinon les minutes, sinon les heures pleines",
+  [
+    horaireExact({ horaire: { depart: "18:30", retour: "22:30" }, minuteDebut: 480, minuteFin: 525 }),
+    horaireExact({ minuteDebut: 495, minuteFin: 540 }),
+    horaireExact({}),
+  ],
+  [{ depart: "18:30", retour: "22:30" }, { depart: "08:15", retour: "09:00" }, undefined],
 );
 verifier(
   "cocos : ceux que le calcul a prévus, sinon zéro",
