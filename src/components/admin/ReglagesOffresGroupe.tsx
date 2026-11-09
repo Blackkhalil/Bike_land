@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import { ChampPrenom, usePrenomRetenu } from "@/components/admin/ChampPrenom";
 import {
+  heureEnClair,
   lireChemin,
   montantF,
   nomDuReglage,
@@ -13,6 +14,7 @@ import {
 } from "@/data/libelles-reglages-offres";
 import { NOMS_JOURS } from "@/data/reglages";
 import type { ReglagesOffres, SourceReglagesOffres } from "@/data/reglages-offres";
+import { formatDureeMinutes } from "@/lib/format";
 import { penaliteRetardXof } from "@/lib/offres/retard";
 
 /** Les jours dans l'ordre de la semaine, lundi d'abord. */
@@ -134,6 +136,29 @@ export function ReglagesOffresGroupe({
     }
     if (chemin === "paiement.fraisParPersonneXof" && Number.isFinite(frais)) {
       return `Pour un groupe de 10 : ${montantF(frais * 10)}.`;
+    }
+    if (chemin === "accompagnateur.parPersonneXof") {
+      const comprises = lu("accompagnateur.personnesIncluses");
+      if (Number.isInteger(comprises) && comprises >= 0) {
+        return comprises === 0
+          ? "Pour chaque personne du groupe."
+          : `Pour chaque personne au-delà de ${comprises}.`;
+      }
+    }
+    if (chemin === "delaiMinimumMinutes") {
+      const delai = lu(chemin);
+      if (Number.isInteger(delai) && delai >= 0) {
+        return delai === 0
+          ? "Aucun délai : le site prend les réservations jusqu'au départ. Le comptoir n'est pas concerné."
+          : `Soit ${formatDureeMinutes(delai)} avant le départ : le temps de préparer les vélos, les cocos et les gâteaux. Le comptoir n'est pas concerné.`;
+      }
+    }
+    if (chemin === "dateLimiteWeekend.jour") {
+      const jour = NOMS_JOURS[Number(valeurs[chemin])];
+      const heure = String(valeurs["dateLimiteWeekend.heure"] ?? "");
+      if (jour && /^([01]\d|2[0-3]):[0-5]\d$/.test(heure)) {
+        return `Les sorties du samedi et du dimanche se réservent au plus tard le ${jour} à ${heureEnClair(heure)}.`;
+      }
     }
     if (chemin === "retard.penaliteParMinuteXof") {
       const tolerance = lu("retard.toleranceMinutes");

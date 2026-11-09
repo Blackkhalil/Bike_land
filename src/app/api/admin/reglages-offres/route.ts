@@ -11,7 +11,8 @@ import { champsEnErreur, erreursEnFrancais, schemaPrenom } from "@/lib/saisie-ad
 /**
  * Enregistrer les réglages des offres de groupe, depuis la rubrique
  * « Réglages des offres » : les prix, les frais, les horaires, les
- * minimums, la date limite du week-end, la règle de retard.
+ * minimums, ce qui est offert (cocos, eau), le délai minimum et la date
+ * limite de la réservation en ligne, la règle de retard.
  *
  * Tout le jeu de réglages arrive d'un coup et passe le schéma du contrat
  * (`schemaReglagesOffres`) avant d'être rangé : un prix ou une heure

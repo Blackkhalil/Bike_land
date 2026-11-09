@@ -124,6 +124,42 @@ verifier(
 const sansPrenom = await appeler(routeReglages, "/api/admin/reglages-offres", { reglages: plus });
 verifier("sans prénom : refusé, la case « prenom » le dit", [sansPrenom.statut, sansPrenom.donnees.champs?.prenom], [422, "Indiquez votre prénom."]);
 verifier("rien n'a changé après les refus", (await lireReglagesOffres()).reglages.roadTrip.prixPersonneXof, 3200);
+// Les quatre réglages ajoutés après la relecture du moteur : chacun a sa
+// case, s'enregistre, se relit et se nomme en clair au journal.
+const ajoutes = {
+  ...plus,
+  accompagnateur: { ...plus.accompagnateur, personnesIncluses: 6 },
+  gbashi: { ...plus.gbashi, cocosGrandsParPersonne: 2, eauxParPersonne: 2 },
+  delaiMinimumMinutes: 90,
+};
+const quatre = await appeler(routeReglages, "/api/admin/reglages-offres", { reglages: ajoutes, prenom: "Koffi" });
+verifier("personnes comprises, cocos et eau de Gbashi, délai en ligne : enregistrés (200), quatre changements", [quatre.statut, quatre.donnees.changements], [200, 4]);
+const reluAjoutes = (await lireReglagesOffres()).reglages;
+verifier(
+  "relus tels quels",
+  [reluAjoutes.accompagnateur.personnesIncluses, reluAjoutes.gbashi.cocosGrandsParPersonne, reluAjoutes.gbashi.eauxParPersonne, reluAjoutes.delaiMinimumMinutes],
+  [6, 2, 2, 90],
+);
+verifier(
+  "le journal les nomme en clair, dans l'ordre de la page",
+  journal.resumeEvenement((await depot.listerJournal({ type: "reglages-offres" }))[0]).lignes.map(espaces),
+  [
+    "Accompagnateur · Personnes comprises dans le prix minimum : 5 personnes → 6 personnes",
+    "Gbashi Bike · Cocos grand format par personne : 1 → 2",
+    "Gbashi Bike · Bouteilles d'eau par personne : 1 → 2",
+    "Réservation en ligne · Délai minimum avant le départ : 120 min → 90 min",
+  ],
+);
+const horsLimites = await appeler(routeReglages, "/api/admin/reglages-offres", {
+  reglages: { ...ajoutes, delaiMinimumMinutes: -15, accompagnateur: { ...ajoutes.accompagnateur, personnesIncluses: 2.5 } },
+  prenom: "Koffi",
+});
+verifier(
+  "délai négatif, personnes décimales : refusés, chaque case le dit en français",
+  [horsLimites.statut, horsLimites.donnees.champs?.delaiMinimumMinutes, horsLimites.donnees.champs?.["accompagnateur.personnesIncluses"]],
+  [422, "0 au moins.", "Nombre entier attendu."],
+);
+verifier("rien n'a changé après ce refus", (await lireReglagesOffres()).reglages.delaiMinimumMinutes, 90);
 await depot.ecrireParametreAdmin(CLE, "{oups");
 const casse = await lireReglagesOffres();
 verifier("enregistrement cassé : « illisible », avec le problème", [casse.source, typeof casse.probleme], ["illisible", "string"]);

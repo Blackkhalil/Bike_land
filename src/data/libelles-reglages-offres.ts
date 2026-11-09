@@ -33,6 +33,9 @@ export interface RubriqueReglages {
   champs: ChampReglage[];
 }
 
+/** Sous les cocos d'une sortie : ils sont offerts, et Bike Land les prépare et les paie. */
+const AIDE_CONSOMMABLES_COMPRIS = "Compris dans le prix, comme l'eau. Comptés pour préparer la sortie et pour l'encaissé net.";
+
 /** Les rubriques de la page, dans l'ordre où elles s'affichent. */
 export const RUBRIQUES_REGLAGES_OFFRES: RubriqueReglages[] = [
   {
@@ -67,7 +70,18 @@ export const RUBRIQUES_REGLAGES_OFFRES: RubriqueReglages[] = [
     description: "En option sur Bike for All : un membre de l'équipe roule avec le groupe.",
     champs: [
       { chemin: "accompagnateur.minXof", libelle: "Prix minimum", unite: "F" },
-      { chemin: "accompagnateur.parPersonneXof", libelle: "Par personne au-delà de 5", unite: "F" },
+      {
+        chemin: "accompagnateur.personnesIncluses",
+        libelle: "Personnes comprises dans le prix minimum",
+        unite: "personnes",
+        aide: "Le prix minimum les couvre ; au-delà, chaque personne en plus se paie à part.",
+      },
+      {
+        chemin: "accompagnateur.parPersonneXof",
+        libelle: "Par personne en plus",
+        unite: "F",
+        aide: "Pour chaque personne au-delà de celles comprises dans le prix minimum.",
+      },
       { chemin: "accompagnateur.parHeureXof", libelle: "Par heure entamée après la première", unite: "F" },
       { chemin: "accompagnateur.plafondXof", libelle: "Plafond", unite: "F" },
     ],
@@ -92,7 +106,12 @@ export const RUBRIQUES_REGLAGES_OFFRES: RubriqueReglages[] = [
       { chemin: "roadTrip.prixPersonneXof", libelle: "Prix par personne, avant les frais de paiement", unite: "F" },
       { chemin: "roadTrip.reduction", libelle: "Réduction (abonné à nos réseaux)", unite: "%", aide: "Une seule par groupe, sur le prix avant les frais." },
       { chemin: "roadTrip.personnesMin", libelle: "Personnes au minimum", unite: "personnes" },
-      { chemin: "roadTrip.cocosGrandsParPersonne", libelle: "Grands cocos par personne", unite: "nombre" },
+      {
+        chemin: "roadTrip.cocosGrandsParPersonne",
+        libelle: "Cocos grand format par personne",
+        unite: "nombre",
+        aide: AIDE_CONSOMMABLES_COMPRIS,
+      },
       { chemin: "roadTrip.eauxParPersonne", libelle: "Bouteilles d'eau par personne", unite: "nombre" },
       { chemin: "roadTrip.distanceKm", libelle: "Distance", unite: "km" },
       { chemin: "roadTrip.jours", libelle: "Jours de départ", unite: "jours" },
@@ -109,6 +128,13 @@ export const RUBRIQUES_REGLAGES_OFFRES: RubriqueReglages[] = [
       { chemin: "gbashi.prixXof.PREMIUM", libelle: "Premium, avant les frais de paiement", unite: "F" },
       { chemin: "gbashi.prixXof.PRESTIGE", libelle: "Prestige, avant les frais de paiement", unite: "F" },
       { chemin: "gbashi.personnesMin", libelle: "Personnes au minimum", unite: "personnes" },
+      {
+        chemin: "gbashi.cocosGrandsParPersonne",
+        libelle: "Cocos grand format par personne",
+        unite: "nombre",
+        aide: AIDE_CONSOMMABLES_COMPRIS,
+      },
+      { chemin: "gbashi.eauxParPersonne", libelle: "Bouteilles d'eau par personne", unite: "nombre" },
       { chemin: "gbashi.jours", libelle: "Jours de départ", unite: "jours" },
       { chemin: "gbashi.depart", libelle: "Départ", unite: "heure" },
       { chemin: "gbashi.retour", libelle: "Retour", unite: "heure" },
@@ -121,12 +147,26 @@ export const RUBRIQUES_REGLAGES_OFFRES: RubriqueReglages[] = [
     champs: [{ chemin: "paiement.fraisParPersonneXof", libelle: "Frais de paiement électronique, par personne", unite: "F" }],
   },
   {
-    id: "date-limite",
-    titre: "Date limite du week-end",
-    description: "Les réservations du samedi et du dimanche se font au plus tard ce jour-là, à cette heure, pour les trois offres.",
+    // Le délai et la date limite ne valent que sur le site : au comptoir, une
+    // sortie se vend tant que son jour n'est pas passé (décisions techniques,
+    // docs/bike-land/SUIVI.md).
+    id: "reservation-en-ligne",
+    titre: "Réservation en ligne",
+    description: "Pour les trois offres, sur le site seulement. Le comptoir n'est concerné ni par le délai ni par la date limite.",
     champs: [
-      { chemin: "dateLimiteWeekend.jour", libelle: "Jour", unite: "jour" },
-      { chemin: "dateLimiteWeekend.heure", libelle: "Heure", unite: "heure" },
+      {
+        chemin: "delaiMinimumMinutes",
+        libelle: "Délai minimum avant le départ",
+        unite: "min",
+        aide: "Le temps de préparer les vélos, les cocos et les gâteaux. Le comptoir n'est pas concerné.",
+      },
+      {
+        chemin: "dateLimiteWeekend.jour",
+        libelle: "Date limite du week-end, jour",
+        unite: "jour",
+        aide: "Les sorties du samedi et du dimanche se réservent au plus tard ce jour-là.",
+      },
+      { chemin: "dateLimiteWeekend.heure", libelle: "Date limite du week-end, heure", unite: "heure" },
     ],
   },
   {
