@@ -181,6 +181,15 @@ export interface Refus {
    * budget proposé.
    */
   budgetMinimumXof?: number;
+  /**
+   * BUDGET_INSUFFISANT dans le trou du seuil des frais (avec les réglages de
+   * départ : 33 et 34 personnes, de 15 000 F à 15 199 F ou 15 599 F) : un
+   * budget plus petit que celui proposé marche aussi, sous le seuil, avec
+   * les petits frais. C'est le plus petit budget accepté pour ce groupe
+   * (14 600 F pour 34 personnes) ; `budgetMinimumXof` donne l'autre choix,
+   * au-dessus (15 600 F). Absent hors du trou.
+   */
+  budgetInferieurXof?: number;
   /** PARC et STOCK_GAMME : le nombre de vélos qu'on peut encore prendre. */
   maximum?: number;
   /** STOCK_GAMME : la gamme en cause. */

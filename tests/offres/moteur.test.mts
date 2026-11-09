@@ -348,18 +348,55 @@ verifier("coco qui empêche les 30 min : retiré, durée recalculée (part des c
 verifier("budget minimum : 5 000 F (10 pers.), 5 400 F (11), 8 200 F (18)", [10, 11, 18].map((n) => m.budgetMinimumBikeForAllXof(n, R)), [5000, 5400, 8200]);
 verifier("le trou du seuil : 34 pers., 14 600 F ; au-delà de 15 000 F, 15 600 F ; 35 pers., 16 000 F", [m.budgetMinimumBikeForAllXof(34, R), m.budgetMinimumBikeForAllXof(34, R, 15000), m.budgetMinimumBikeForAllXof(35, R)], [14600, 15600, 16000]);
 const trou = refus(bfaBudget(34, 15000, {}, { velosDisponibles: 40 }));
-verifier("34 pers., 15 000 F : refusé, on propose 15 600 F", [trou.code, trou.budgetMinimumXof], ["BUDGET_INSUFFISANT", 15600]);
+verifier(
+  "34 pers., 15 000 F : refusé, sans nier qu'un budget plus petit marche : 14 600 F, ou 15 600 F et plus",
+  [trou.code, trou.champ, trou.budgetInferieurXof, trou.budgetMinimumXof, trou.message],
+  [
+    "BUDGET_INSUFFISANT",
+    "budgetXof",
+    14600,
+    15600,
+    "Avec 15 000 F, votre groupe de 34 personnes ne peut pas rouler les 30 minutes du minimum : dès 15 000 F, les frais d'organisation passent de 1 000 F à 2 000 F. Choisissez 14 600 F, ou 15 600 F et plus.",
+  ],
+);
+const finDuTrou = refus(bfaBudget(34, 15599, {}, { velosDisponibles: 40 }));
+verifier("34 pers., 15 599 F : les mêmes deux choix", [finDuTrou.budgetInferieurXof, finDuTrou.budgetMinimumXof], [14600, 15600]);
 verifier("34 pers., 14 600 F et 15 600 F : acceptés", [code(bfaBudget(34, 14600, {}, { velosDisponibles: 40 })), code(bfaBudget(34, 15600, {}, { velosDisponibles: 40 }))], ["accepté", "accepté"]);
+const sousLeTrou = refus(bfaBudget(34, 14000, {}, { velosDisponibles: 40 }));
+verifier(
+  "34 pers., 14 000 F : sous le trou, un seul montant, le minimum",
+  [sousLeTrou.code, sousLeTrou.budgetInferieurXof, sousLeTrou.budgetMinimumXof, sousLeTrou.message],
+  ["BUDGET_INSUFFISANT", undefined, 14600, "Avec 14 000 F, votre groupe de 34 personnes ne peut pas rouler les 30 minutes du minimum. Il faut un budget de 14 600 F au moins."],
+);
+const trou33 = refus(bfaBudget(33, 15000, {}, { velosDisponibles: 40 }));
+verifier("33 pers., 15 000 F : 14 200 F, ou 15 200 F et plus", [trou33.budgetInferieurXof, trou33.budgetMinimumXof], [14200, 15200]);
+verifier("18 pers., 5 000 F : hors du trou, pas de budget plus petit à proposer", refus(bfaBudget(18, 5000)).budgetInferieurXof, undefined);
 let desaccords = 0;
 let essais = 0;
+let propositionsFausses = 0;
+let refusDansLeTrou = 0;
+const accepte = (personnes: number, budget: number) =>
+  m.calculerBikeForAllBudget({ personnes, budgetXof: budget, depart: "08:00" }, R, contexte({ velosDisponibles: 60 }));
 for (let personnes = 10; personnes <= 40; personnes += 1) {
   for (let budget = 5000; budget <= 20000; budget += 50) {
     essais += 1;
-    const accepte = m.calculerBikeForAllBudget({ personnes, budgetXof: budget, depart: "08:00" }, R, contexte({ velosDisponibles: 60 })).ok;
-    if (accepte !== (m.budgetMinimumBikeForAllXof(personnes, R, budget) === budget)) desaccords += 1;
+    const issue = accepte(personnes, budget);
+    if (issue.ok !== (m.budgetMinimumBikeForAllXof(personnes, R, budget) === budget)) desaccords += 1;
+    if (issue.ok || issue.refus.code !== "BUDGET_INSUFFISANT") continue;
+    // Chaque montant proposé est vraiment accepté, de son côté du budget refusé ;
+    // le plus petit n'est proposé que s'il existe un budget accepté en dessous.
+    const { budgetMinimumXof: auDessus, budgetInferieurXof: enDessous } = issue.refus;
+    if (!(auDessus > budget && accepte(personnes, auDessus).ok)) propositionsFausses += 1;
+    if (enDessous !== undefined) {
+      refusDansLeTrou += 1;
+      if (!(enDessous < budget && accepte(personnes, enDessous).ok)) propositionsFausses += 1;
+    }
+    if ((m.budgetMinimumBikeForAllXof(personnes, R) < budget) !== (enDessous !== undefined)) propositionsFausses += 1;
   }
 }
 verifier(`budget minimum annoncé = budget accepté, sur ${essais} essais (10 à 40 pers., 5 000 à 20 000 F)`, desaccords, 0);
+verifier("chaque budget proposé dans un refus est accepté, du bon côté du budget refusé", propositionsFausses, 0);
+verifier("le trou du seuil : 16 budgets refusés au pas de 50 F (4 à 33 personnes, 12 à 34), tous avec les deux choix", refusDansLeTrou, 4 + 12);
 
 console.log("\n— Au comptoir, en espèces (décision 12) : mêmes réglages, sans les 125 F, ni date limite, ni délai");
 const comptoir = resultat(bfaBudget(10, 10000, {}, COMPTOIR));

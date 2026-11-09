@@ -130,7 +130,10 @@ export function prixAccompagnateurXof(personnes: number, minutes: number, reglag
  * (2 000 F de frais, il ne reste plus de quoi rouler 30 minutes), 15 600 F
  * de nouveau. D'où `auMoinsXof` : le plus petit budget accepté à partir de
  * ce montant, celui qu'on propose au client qui vient d'en proposer un.
- * Dès 35 personnes, le minimum est 2 000 F + le temps (16 000 F pour 35).
+ * Dans le trou, le refus lui propose aussi le plus petit budget accepté
+ * (sans `auMoinsXof`), en dessous du sien : « 14 600 F, ou 15 600 F et
+ * plus ». Dès 35 personnes, le minimum est 2 000 F + le temps (16 000 F
+ * pour 35).
  */
 export function budgetMinimumBikeForAllXof(
   personnes: number,
@@ -216,16 +219,28 @@ export function calculerBikeForAllBudget(demande: DemandeBikeForAllBudget, regla
     minutes = minutesAchetees(B - fraisXof, N, reglages);
   }
   if (minutes < bfa.dureeMinMinutes) {
-    const minimum = budgetMinimumBikeForAllXof(N, reglages, B);
-    return {
-      ok: false,
-      refus: {
-        code: "BUDGET_INSUFFISANT",
-        champ: "budgetXof",
-        message: `Avec ${formatMontant(B)}, votre groupe de ${compte(N, "personne")} ne peut pas rouler les ${compte(bfa.dureeMinMinutes, "minute")} du minimum. Il faut un budget de ${formatMontant(minimum)} au moins.`,
-        budgetMinimumXof: minimum,
-      },
-    };
+    // Le plus petit budget accepté au-dessus de celui proposé, et le plus petit accepté tout court.
+    const auDessus = budgetMinimumBikeForAllXof(N, reglages, B);
+    const plusPetit = budgetMinimumBikeForAllXof(N, reglages);
+    const constat = `Avec ${formatMontant(B)}, votre groupe de ${compte(N, "personne")} ne peut pas rouler les ${compte(bfa.dureeMinMinutes, "minute")} du minimum`;
+    // Dans le trou du seuil, un budget plus petit marche : on ne le cache pas,
+    // on propose les deux, et on dit pourquoi.
+    const refus: Refus =
+      plusPetit < B
+        ? {
+            code: "BUDGET_INSUFFISANT",
+            champ: "budgetXof",
+            message: `${constat} : dès ${formatMontant(bfa.seuilGrosBudgetXof)}, les frais d'organisation passent de ${formatMontant(bfa.fraisOrganisationXof)} à ${formatMontant(bfa.fraisOrganisationGrosXof)}. Choisissez ${formatMontant(plusPetit)}, ou ${formatMontant(auDessus)} et plus.`,
+            budgetMinimumXof: auDessus,
+            budgetInferieurXof: plusPetit,
+          }
+        : {
+            code: "BUDGET_INSUFFISANT",
+            champ: "budgetXof",
+            message: `${constat}. Il faut un budget de ${formatMontant(auDessus)} au moins.`,
+            budgetMinimumXof: auDessus,
+          };
+    return { ok: false, refus };
   }
 
   const retour = controlerRetour(demande.depart, minutes, "budget", reglages, contexte);
