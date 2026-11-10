@@ -118,6 +118,39 @@ export const schemaChampsPreuve = z.object({
 export const TYPES_CAPTURE = ["image/jpeg", "image/png", "image/webp"] as const;
 export const TAILLE_MAX_CAPTURE_OCTETS = 5 * 1024 * 1024;
 
+/**
+ * Vente au comptoir, depuis l'administration (ajout du lot 5b) : la même
+ * demande, plus le client (l'email reçoit la facture ; le téléphone est
+ * facultatif, rien n'est poussé dessus), qui a reçu l'argent, le montant vu
+ * donc encaissé, et la clé de la saisie (une vente envoyée deux fois n'est
+ * enregistrée qu'une fois). Le canal « comptoir » est fixé par la route.
+ * Avec `action: "devis"`, la route rend seulement le prix (ReponseDevis).
+ */
+export const schemaVenteComptoirGroupe = schemaDemandeDevis.and(
+  z.object({
+    action: z.literal("enregistrer").optional(),
+    client: z.object({
+      prenom: z.string().trim().min(1, "Indiquez le prénom du client.").max(60),
+      nom: z.string().trim().min(1, "Indiquez le nom du client.").max(60),
+      email: z.string().trim().email("Adresse email invalide : la facture part à cette adresse.").max(120),
+      telephone: z
+        .union([z.literal(""), z.string().trim().regex(/^[+0-9 ().-]{8,20}$/, "Numéro de téléphone invalide.")])
+        .optional(),
+    }),
+    encaissePar: z
+      .string()
+      .trim()
+      .min(2, "Indiquez qui a reçu l'argent.")
+      .max(40, "Prénom trop long.")
+      .regex(/^[\p{L}\p{N} .'’-]+$/u, "Lettres, chiffres, espaces et tirets seulement."),
+    attendu: z.object({ totalXof: entier(0, 100_000_000) }),
+    cleVente: z.string().regex(/^[A-Za-z0-9-]{8,64}$/, "Saisie invalide : rechargez la page."),
+    cgvAcceptees: z.literal(true, { errorMap: () => ({ message: "Le client doit accepter les conditions générales." }) }),
+    message: z.string().trim().max(500).optional(),
+  }),
+);
+export type VenteComptoirGroupe = z.infer<typeof schemaVenteComptoirGroupe>;
+
 /* ------------------------------------------------------------- Réponses */
 
 /** Les vélos libres sur tout le créneau demandé. */
@@ -158,7 +191,8 @@ export type CodeErreurOffresGroupe =
   | "SAISIE" // demande mal formée : 400
   | "TROP_DE_DEMANDES" // limite de débit : 429
   | "EN_ATTENTE" // une demande du même client attend déjà son paiement : 409
-  | "PAIEMENT"; // le paiement n'a pas pu être lancé : 502
+  | "PAIEMENT" // le paiement n'a pas pu être lancé : 502 (503 sans moyen de payer configuré)
+  | "SERVEUR"; // panne imprévue (base injoignable…) : 500, réessayer un peu plus tard (ajout du lot 5b)
 
 export interface ReponseErreur {
   ok: false;
@@ -183,6 +217,28 @@ export type ReponseReservation =
   /** 409 : les vélos viennent d'être pris ; le créneau libre le plus proche. */
   | { ok: false; code: "DISPO"; message: string; prochainCreneau: ProchainCreneau | null }
   /** 422 : refus du moteur (minimum, date limite, délai…). */
+  | { ok: false; code: "REFUS"; refus: Refus }
+  | ReponseErreur;
+
+/**
+ * POST comptoir (ajout du lot 5b) : la vente enregistrée, déjà payée en
+ * espèces (201), ou déjà enregistrée par un envoi précédent de la même
+ * saisie (200, `deja`). Les refus ont les mêmes formes que la réservation.
+ */
+export type ReponseVenteComptoir =
+  | {
+      ok: true;
+      reference: string;
+      /** La page de suivi du client, envoyée aussi avec sa confirmation et sa facture. */
+      lienSuivi: string;
+      totalXof: number;
+      /** La même saisie était déjà enregistrée : rien de plus n'a été écrit ni encaissé. */
+      deja?: boolean;
+      /** La confirmation et la facture sont parties ; faux : à renvoyer. */
+      emailEnvoye?: boolean;
+    }
+  | { ok: false; code: "REGLAGES"; message: string; devis: ReponseDevis }
+  | { ok: false; code: "DISPO"; message: string; prochainCreneau: ProchainCreneau | null }
   | { ok: false; code: "REFUS"; refus: Refus }
   | ReponseErreur;
 
