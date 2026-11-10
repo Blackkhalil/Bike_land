@@ -82,7 +82,8 @@ export function CompositeurChat({
             onChange={(evenement) => {
               if (mode) setSaisie({ cle: mode.cle, texte: evenement.target.value });
             }}
-            className="saisie-chat h-11 w-full min-w-0 bg-transparent text-[1rem] text-noir-piste placeholder:text-gris-cadre disabled:cursor-not-allowed"
+            // 16 px pour le texte tapé (sinon l'iPhone agrandit la page) ; l'indication, plus petite, tient dès 320 px.
+            className="saisie-chat h-11 w-full min-w-0 text-ellipsis bg-transparent text-[1rem] text-noir-piste placeholder:text-[0.875rem] placeholder:text-gris-cadre disabled:cursor-not-allowed"
           />
         </div>
         <button

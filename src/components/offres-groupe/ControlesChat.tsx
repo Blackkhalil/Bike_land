@@ -154,7 +154,7 @@ export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: numbe
       return {
         cle: "personnes",
         etiquette: "Nombre de personnes",
-        indication: "Ou tapez le nombre de personnes",
+        indication: "Ou tapez un nombre",
         type: "text",
         inputMode: "numeric",
         autoComplete: "off",
@@ -184,7 +184,7 @@ export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: numbe
       return {
         cle: "budget",
         etiquette: "Un autre montant, en francs",
-        indication: "Un autre montant, en francs",
+        indication: "Un autre montant",
         type: "text",
         inputMode: "numeric",
         autoComplete: "off",
@@ -211,7 +211,7 @@ export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: numbe
 
 /** Ce que dit la barre du bas quand on répond en touchant une réponse. */
 export function indicationInactive(etat: EtatChat): string {
-  if (etat.etape === "attente") return "Validez le paiement sur votre téléphone";
+  if (etat.etape === "attente") return "Validez sur votre téléphone";
   if (botEcrit(etat)) return "Bike Land écrit…";
   return "Touchez une réponse ci-dessus";
 }

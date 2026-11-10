@@ -26,7 +26,7 @@ import { lienWhatsApp } from "@/lib/site";
 import { CompositeurChat } from "./CompositeurChat";
 import { CarteDeLEtape, indicationInactive, modeSaisieDe, ReponsesDeLEtape, type ActionsChat } from "./ControlesChat";
 import { IconeFermer, IconeRecommencer, IconeWhatsApp } from "./IconesChat";
-import { BulleEcrit, FilMessages } from "./MessagesChat";
+import { BulleEcrit, FilMessages, JourDeLaDiscussion } from "./MessagesChat";
 
 /** Le temps laissé au client pour finir de choisir avant de demander le prix au serveur. */
 const ATTENTE_DEVIS_MS = 350;
@@ -186,7 +186,8 @@ export function PanneauChatGroupe({
     const zone = defilement.current;
     if (!zone) return;
     const derniere = zone.querySelector<HTMLElement>("[data-bulle]:last-of-type");
-    const haut = derniere ? Math.max(0, derniere.offsetTop - 12) : 0;
+    // Assez de marge pour que la pastille du jour, collée en haut, ne cache pas le début de la bulle.
+    const haut = derniere ? Math.max(0, derniere.offsetTop - 40) : 0;
     const doux = !premierDefilement.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     premierDefilement.current = false;
     zone.scrollTo({ top: haut, behavior: doux ? "smooth" : "auto" });
@@ -353,6 +354,7 @@ export function PanneauChatGroupe({
         </header>
 
         <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-5 pt-3">
+          <JourDeLaDiscussion messages={etat.messages} maintenant={maintenant} />
           {/* Le rôle « log » sur un conteneur : la liste garde son rôle de liste. */}
           <div role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion">
             <FilMessages messages={etat.messages} maintenant={maintenant} />

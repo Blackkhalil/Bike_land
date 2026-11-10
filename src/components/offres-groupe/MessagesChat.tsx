@@ -2,11 +2,29 @@ import type { MessageChat } from "@/lib/offres-groupe/conversation";
 import { heureDuMessage, jourDuMessage, memeJourAuBenin } from "@/lib/offres-groupe/heure-chat";
 import { insecables } from "@/lib/offres-groupe/textes-chat";
 
+/** La pastille du jour, au-dessus des bulles. */
+const PASTILLE_JOUR =
+  "rounded-full bg-white/90 px-3 py-1 text-[0.72rem] font-semibold text-gris-cadre shadow-[0_1px_0.5px_rgba(14,14,14,0.12)]";
+
+/**
+ * Le jour de la discussion (« Aujourd'hui »), collé en haut de la zone qui
+ * défile, comme sur un téléphone : il reste visible quand on remonte ou
+ * descend dans les bulles. Décoratif pour les lecteurs d'écran.
+ */
+export function JourDeLaDiscussion({ messages, maintenant }: { messages: MessageChat[]; maintenant: number }) {
+  return (
+    <div aria-hidden="true" className="pointer-events-none sticky top-0 z-10 -mt-1 mb-2 flex justify-center">
+      <span className={PASTILLE_JOUR}>{jourDuMessage(messages[0]?.a, maintenant)}</span>
+    </div>
+  );
+}
+
 /**
  * Les bulles de la discussion, comme sur un téléphone : Bike Land à gauche
  * en blanc, le client à droite en orange, l'heure dans chaque bulle. Les
  * bulles qui se suivent du même côté forment un groupe : plus serrées, la
- * pointe sur la dernière seulement. Le jour (« Aujourd'hui ») en haut.
+ * pointe sur la dernière seulement. Une discussion qui passe minuit montre
+ * le nouveau jour entre ses bulles.
  *
  * Le texte sur l'orange est noir (5,8:1) : le blanc n'y tiendrait pas le
  * contraste AA. Rien n'est calculé ici, tout vient de la machine.
@@ -17,18 +35,13 @@ export function FilMessages({ messages, maintenant }: { messages: MessageChat[];
       {messages.map((message, rang) => {
         const avant = messages[rang - 1];
         const apres = messages[rang + 1];
-        const nouveauJour = !avant || !memeJourAuBenin(avant.a, message.a);
-        const premier = nouveauJour || avant.de !== message.de;
+        const nouveauJour = Boolean(avant) && !memeJourAuBenin(avant.a, message.a);
+        const premier = !avant || nouveauJour || avant.de !== message.de;
         const dernier = !apres || apres.de !== message.de || !memeJourAuBenin(message.a, apres.a);
         return (
           <li key={message.id} data-bulle className={`flex flex-col ${rang === 0 ? "" : premier ? "mt-3" : "mt-1"}`}>
             {nouveauJour && (
-              <span
-                aria-hidden="true"
-                className={`self-center rounded-full bg-white/85 px-3 py-1 text-[0.72rem] font-semibold text-gris-cadre shadow-[0_1px_0.5px_rgba(14,14,14,0.12)] ${
-                  rang === 0 ? "mb-3" : "mb-3 mt-1"
-                }`}
-              >
+              <span aria-hidden="true" className={`mb-3 mt-1 self-center ${PASTILLE_JOUR}`}>
                 {jourDuMessage(message.a, maintenant)}
               </span>
             )}
