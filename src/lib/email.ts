@@ -10,10 +10,12 @@
 import { itineraires } from "@/data/contenus";
 import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/data/octobre-rose";
 import { formatHeureMinute } from "@/data/reglages";
-import { creneauDuDepart, estOffreGroupe, EXIGENCES, exigencesOctobreRose, OFFRES_GROUPE } from "@/data/offres";
+import { creneauDuDepart, estOffreGroupe, EXIGENCES, exigencesOctobreRose, nomDeGamme, OFFRES_GROUPE } from "@/data/offres";
 
 import { site, urlDuSite } from "./site";
 import { numeroDeFacture } from "./facture";
+import { formatMontant, formatPourcentage as formatTaux } from "./offres/montants";
+import { fraisEncaissement, TAUX_ENCAISSEMENT } from "./tarifs-paiement";
 import {
   formatCreneau,
   formatDateAvecJour,
@@ -27,7 +29,7 @@ import {
   resumeOffre,
 } from "./format";
 import { aPreparerOffreGroupe, cocosDe, paiementPrincipal } from "./reservations";
-import type { Reservation } from "./types";
+import type { GammeVelo, Reservation } from "./types";
 
 /** Le rose d'Octobre rose, celui du site (--color-rose-octobre). */
 const ROSE = "#e8458b";
@@ -51,22 +53,6 @@ function compte(n: number, singulier: string, pluriel = `${singulier}s`): string
 /** « 3 personnes », « 1 personne ». */
 function personnes(n: number): string {
   return compte(n, "personne");
-}
-
-/**
- * « Prévoir 10 cocos, 10 gâteaux et 20 bouteilles d'eau. » : ce que le
- * calcul d'une offre de groupe a prévu, pour l'email de l'équipe. Rien s'il
- * n'a rien prévu.
- */
-function texteAPreparerGroupe(aPreparer: { cocos: number; gateaux: number; eaux: number }): string {
-  const elements = [
-    aPreparer.cocos > 0 ? compte(aPreparer.cocos, "coco") : null,
-    aPreparer.gateaux > 0 ? compte(aPreparer.gateaux, "gâteau", "gâteaux") : null,
-    aPreparer.eaux > 0 ? compte(aPreparer.eaux, "bouteille d'eau", "bouteilles d'eau") : null,
-  ].filter((element): element is string => element !== null);
-  if (elements.length === 0) return "";
-  const liste = elements.length > 1 ? `${elements.slice(0, -1).join(", ")} et ${elements[elements.length - 1]}` : elements[0];
-  return ` Prévoir ${liste}.`;
 }
 
 /** « Référence : BL-4F2K9Q », une ligne de la version texte. */
@@ -500,6 +486,8 @@ async function envoyerConfirmationOctobreRose(reservation: Reservation, lienSuiv
 
 export async function envoyerConfirmation(reservation: Reservation, lienSuivi: string) {
   if (enRose(reservation)) return envoyerConfirmationOctobreRose(reservation, lienSuivi);
+  // Une offre de groupe : son récapitulatif, le détail du prix et la règle de retard.
+  if (estOffreGroupe(reservation.offre)) return envoyerConfirmationGroupe(reservation, lienSuivi);
   const velos = nomsDesVelos(reservation);
   const prevoir = aPrevoir(reservation);
   const rendezVous = rendezVousDe(reservation);
@@ -748,6 +736,8 @@ export async function envoyerFacture(reservation: Reservation, numeroFacture: st
  * publique du site plutôt que de rester silencieux.
  */
 export async function envoyerNotificationAdmin(reservation: Reservation) {
+  // Une offre de groupe : tout ce qu'il faut préparer pour le groupe.
+  if (estOffreGroupe(reservation.offre)) return envoyerAlerteGroupeAdmin(reservation);
   const destinataire = process.env.ADMIN_EMAIL || site.email;
   const velos = reservation.lignes.map((ligne) => ligne.veloNom).join(", ") || "non précisé";
   const contact = reservation.client.telephone || reservation.client.email;
@@ -779,11 +769,8 @@ export async function envoyerNotificationAdmin(reservation: Reservation) {
         : reservation.offre === "padel-bike"
           ? // Padel bike ne promet ni eau ni coco : les vélos et les casques.
             `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}) et ${n} casque${n > 1 ? "s" : ""}, pour Padel bike.`
-          : estOffreGroupe(reservation.offre)
-            ? // Une offre de groupe : ce que son calcul a prévu, figé à la réservation.
-              `À préparer : ${n} vélo${n > 1 ? "s" : ""} (${velos}) et ${n} casque${n > 1 ? "s" : ""}, pour ${OFFRES_GROUPE[reservation.offre].nom}.` +
-              texteAPreparerGroupe(aPreparerOffreGroupe(reservation))
-            : `À prévoir : ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
+          : // Les offres de groupe ont leur propre alerte (envoyerAlerteGroupeAdmin).
+            `À prévoir : ${cocos} coco${cocos > 1 ? "s" : ""} et ${n} eau${n > 1 ? "x" : ""}.`;
 
   return envoyer({
     destinataire,
@@ -1039,6 +1026,377 @@ export async function envoyerAlertePlafondContact() {
   });
 }
 
+/* ------------------------------------------------ Offres de groupe (lot 5b) */
+
+/** Une ligne du prix d'une offre de groupe, telle que le moteur l'a donnée. */
+interface LignePrixGroupe {
+  libelle: string;
+  detail?: string;
+  montantXof: number;
+}
+
+/**
+ * L'instantané du calcul d'une offre de groupe (offreDetails), lu prudemment :
+ * une réservation ancienne, ou écrite au comptoir, peut ne pas tout porter.
+ */
+function detailsGroupe(reservation: Reservation) {
+  const d = reservation.offreDetails ?? {};
+  const nombre = (valeur: unknown) => (typeof valeur === "number" && Number.isFinite(valeur) ? valeur : null);
+  const lignes = (Array.isArray(d.lignes) ? (d.lignes as unknown[]) : []).filter(
+    (ligne): ligne is LignePrixGroupe =>
+      typeof ligne === "object" &&
+      ligne !== null &&
+      typeof (ligne as LignePrixGroupe).libelle === "string" &&
+      nombre((ligne as LignePrixGroupe).montantXof) !== null,
+  );
+  const retard = d.retard && typeof d.retard === "object" ? (d.retard as Record<string, unknown>) : null;
+  const tolerance = nombre(retard?.toleranceMinutes);
+  const parMinute = nombre(retard?.penaliteParMinuteXof);
+  return {
+    recapitulatif: typeof d.recapitulatif === "string" && d.recapitulatif.trim() ? d.recapitulatif : null,
+    lignes,
+    retard: tolerance !== null && parMinute !== null ? { tolerance, parMinute } : null,
+    accompagnateur: d.accompagnateur === true,
+    coco: d.coco === "petit" || d.coco === "grand" ? d.coco : null,
+    gammes: d.gammes && typeof d.gammes === "object" ? (d.gammes as Partial<Record<GammeVelo, number>>) : null,
+  };
+}
+
+/** La règle du retour, avec les chiffres figés à la réservation quand ils y sont. */
+function regleDeRetard(retard: { tolerance: number; parMinute: number } | null): string {
+  return retard
+    ? `Le retour des vélos se fait à l'heure prévue : vous avez une marge de ${compte(retard.tolerance, "minute")} ; ` +
+        `au-delà, le groupe paie ${formatMontant(retard.parMinute)} par minute de retard, en espèces au retour.`
+    : "Le retour des vélos se fait à l'heure prévue : au-delà de la marge de retard, chaque minute se paie, pour tout le groupe, en espèces au retour.";
+}
+
+/** « 2 Classique, 2 Premium et 1 Prestige » : les vélos d'un groupe Gbashi Bike, gamme par gamme. */
+function gammesEnClair(gammes: Partial<Record<GammeVelo, number>>): string {
+  const morceaux = (["CLASSIQUE", "PREMIUM", "PRESTIGE"] as GammeVelo[])
+    .filter((gamme) => (gammes[gamme] ?? 0) > 0)
+    .map((gamme) => `${gammes[gamme]}${INSECABLE}${nomDeGamme(gamme)}`);
+  return morceaux.length > 1 ? `${morceaux.slice(0, -1).join(", ")} et ${morceaux[morceaux.length - 1]}` : (morceaux[0] ?? "");
+}
+
+/**
+ * La confirmation d'une offre de groupe payée : le lieu, la sortie, le
+ * récapitulatif du moteur tel quel (le texte modèle du tableur, décision 21),
+ * le détail du prix ligne par ligne avec la commission du paiement Mobile
+ * Money (décision 3), la règle du retard et la facture.
+ */
+async function envoyerConfirmationGroupe(reservation: Reservation, lienSuivi: string) {
+  const offre = estOffreGroupe(reservation.offre) ? OFFRES_GROUPE[reservation.offre].nom : "Offre de groupe";
+  const details = detailsGroupe(reservation);
+  const prevoir = aPrevoir(reservation);
+  const rendezVous = rendezVousDe(reservation);
+  const facture = numeroDeFacture(reservation);
+  const paiement = paiementPrincipal(reservation);
+  const especes = paiement?.moyen === "ESPECES";
+  const reglement = paiement ? libelleReglement(paiement.moyen) : null;
+  // SasPay ajoute sa commission au moment de payer : elle s'affiche à part.
+  const commission = especes ? 0 : fraisEncaissement(reservation.totalXof);
+  const lignesPrix: [string, string][] = [
+    ...details.lignes.map((ligne): [string, string] => [
+      ligne.detail ? `${ligne.libelle} (${ligne.detail})` : ligne.libelle,
+      formatMontant(ligne.montantXof),
+    ]),
+    ["Total", formatMontant(reservation.totalXof)],
+    ...(commission > 0
+      ? ([
+          [`Commission du paiement Mobile Money (${formatTaux(TAUX_ENCAISSEMENT)})`, formatMontant(commission)],
+          ["Débité de votre téléphone", formatMontant(reservation.totalXof + commission)],
+        ] as [string, string][])
+      : []),
+    ...(reglement ? ([["Règlement", reglement]] as [string, string][]) : []),
+  ];
+  const recap = details.recapitulatif
+    ? details.recapitulatif
+        .split(/\n+/)
+        .map((paragraphe) => paragraphe.trim())
+        .filter(Boolean)
+    : [];
+  const retard = regleDeRetard(details.retard);
+  const constat = especes
+    ? "Votre règlement en espèces est reçu : la sortie de votre groupe est confirmée."
+    : "Votre paiement est reçu : la sortie de votre groupe est confirmée.";
+  const n = reservation.nombrePersonnes;
+
+  const texte = [
+    `Bonjour ${reservation.client.prenom},`,
+    "",
+    constat,
+    "",
+    `Où nous trouver : ${rendezVous.lieu}.`,
+    rendezVous.indication,
+    `Carte : ${rendezVous.carte}`,
+    "",
+    `Référence : ${reservation.reference}`,
+    `Formule : ${offre}`,
+    `Date : ${formatCreneau(reservation)}`,
+    `Groupe : ${personnes(n)}`,
+    "",
+    ...(recap.length ? ["Votre récapitulatif :", ...recap, ""] : []),
+    `Le détail du prix, facture ${facture} :`,
+    ...lignesPrix.map(([libelle, valeur]) => `  ${libelle} : ${valeur}`),
+    "",
+    retard,
+    "",
+    "À prévoir au départ :",
+    ...prevoir.map((ligne) => `  - ${ligne}`),
+    "",
+    "Une question, un retard ? Écrivez-nous sur WhatsApp :",
+    ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
+    "",
+    "Votre réservation et sa facture, à tout moment :",
+    lienSuivi,
+    "Ce lien vous est personnel, gardez-le.",
+    "",
+    "À bientôt sur la route,",
+    `L'équipe ${site.nom}, ${site.telephone}`,
+  ].join("\n");
+
+  return envoyer({
+    destinataire: reservation.client.email,
+    sujet: `${offre} : réservation ${reservation.reference} confirmée, rendez-vous à ${rendezVous.lieu}`,
+    texte,
+    html: gabarit({
+      titre: "Sortie confirmée",
+      intro: `Bonjour ${reservation.client.prenom}, ${constat.charAt(0).toLowerCase()}${constat.slice(1)}`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ["Formule", offre],
+        ["Date", formatCreneau(reservation)],
+        ["Groupe", personnes(n)],
+      ],
+      action: { libelle: "Voir ma réservation", url: lienSuivi },
+      rendezVous,
+      ...(recap.length ? { encadre: { titre: "Votre récapitulatif", paragraphes: recap } } : {}),
+      facture: { numero: facture, lignes: lignesPrix, url: `${lienSuivi}#facture` },
+      pied: `${retard} À prévoir au départ : ${prevoir.join(" ")}`,
+    }),
+  });
+}
+
+/**
+ * L'alerte à Bike Land pour une offre de groupe payée : ce qu'il faut
+ * préparer (vélos, casques, cocos, eau, gâteaux, accompagnateur), pour qui et
+ * quand, figé par le calcul à la réservation.
+ */
+async function envoyerAlerteGroupeAdmin(reservation: Reservation) {
+  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const offre = estOffreGroupe(reservation.offre) ? OFFRES_GROUPE[reservation.offre].nom : "Offre de groupe";
+  const details = detailsGroupe(reservation);
+  const aPreparer = aPreparerOffreGroupe(reservation);
+  const n = reservation.nombrePersonnes;
+  const paiement = paiementPrincipal(reservation);
+  const especes = paiement?.moyen === "ESPECES";
+  const encaissePar = paiement?.encaissePar ?? "non renseigné";
+  const referencePaiement = paiement?.referenceFournisseur ?? "non communiquée";
+  const lienAdmin = `${site.urlAdmin}/admin/reservations?reference=${reservation.reference}`;
+  const noms = reservation.lignes.map((ligne) => ligne.veloNom).filter(Boolean).join(", ");
+  const velos = details.gammes && gammesEnClair(details.gammes) ? gammesEnClair(details.gammes) : `${compte(n, "vélo")}, toutes gammes`;
+  const format = details.coco === "petit" ? ", petit format" : details.coco === "grand" ? ", grand format" : "";
+  const preparer: [string, string][] = [
+    ["Vélos", noms ? `${velos} (${noms})` : velos],
+    ["Casques", compte(n, "casque")],
+    ["Cocos", aPreparer.cocos > 0 ? `${compte(aPreparer.cocos, "coco")}${format}` : "aucun"],
+    ["Eau", aPreparer.eaux > 0 ? compte(aPreparer.eaux, "bouteille") : "aucune"],
+    ["Gâteaux", aPreparer.gateaux > 0 ? compte(aPreparer.gateaux, "gâteau", "gâteaux") : "aucun"],
+    ["Accompagnateur", details.accompagnateur ? "oui, il part avec le groupe" : "non"],
+  ];
+  const telephone = reservation.client.telephone || "non renseigné";
+
+  return envoyer({
+    destinataire,
+    sujet: especes
+      ? `Vente en espèces ${reservation.reference} : ${offre}, ${personnes(n)}, ${formatMontant(reservation.totalXof)}`
+      : `Réservation payée ${reservation.reference} : ${offre}, ${personnes(n)}`,
+    texte: [
+      especes
+        ? `Vente au comptoir : ${formatMontant(reservation.totalXof)} reçus en espèces par ${encaissePar}.`
+        : "Réservation de groupe confirmée : le paiement est encaissé.",
+      "",
+      `Référence : ${reservation.reference}`,
+      especes ? `Encaissé par : ${encaissePar}` : `Référence paiement : ${referencePaiement}`,
+      `Formule : ${offre}`,
+      `Date : ${formatCreneau(reservation)}`,
+      `Groupe : ${personnes(n)}`,
+      "",
+      "À préparer :",
+      ...preparer.map(([libelle, valeur]) => `  ${libelle} : ${valeur}`),
+      "",
+      `Client : ${reservation.client.prenom} ${reservation.client.nom}`,
+      `Téléphone : ${telephone}`,
+      `Email : ${reservation.client.email}`,
+      `Montant : ${formatMontant(reservation.totalXof)}`,
+      reservation.message ? `Message du client : ${reservation.message}` : "",
+      "",
+      `Voir dans l'administration : ${lienAdmin}`,
+    ]
+      .filter((ligne, i, lignes) => ligne !== "" || lignes[i - 1] !== "")
+      .join("\n"),
+    html: gabarit({
+      titre: especes ? "Vente en espèces" : "Réservation de groupe",
+      intro: `${reservation.client.prenom} ${reservation.client.nom} : ${offre}, ${personnes(n)}, ${formatCreneau(reservation)}.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ["Départ", formatCreneau(reservation)],
+        ...preparer,
+        ["Client", `${reservation.client.prenom} ${reservation.client.nom}`],
+        ["Téléphone", telephone],
+        ["Montant payé", formatMontant(reservation.totalXof)],
+        especes ? ["Encaissé par", encaissePar] : ["Référence paiement", referencePaiement],
+      ],
+      action: { libelle: "Voir la réservation", url: lienAdmin },
+      pied: reservation.message ? `Message du client : « ${reservation.message} »` : undefined,
+    }),
+  });
+}
+
+/**
+ * Prévient le client que son paiement, arrivé après les 30 minutes où ses
+ * vélos lui étaient gardés, sera remboursé : un autre groupe les a pris
+ * entre-temps (décisions 6 et 7, remboursement sous 48 heures).
+ */
+export async function envoyerRemboursementGroupe(reservation: Reservation, montantXof: number) {
+  const offre = estOffreGroupe(reservation.offre) ? OFFRES_GROUPE[reservation.offre].nom : "votre sortie";
+  const montant = formatMontant(montantXof);
+  return envoyer({
+    destinataire: reservation.client.email,
+    sujet: `Votre paiement ${reservation.reference} vous sera remboursé`,
+    texte: [
+      `Bonjour ${reservation.client.prenom},`,
+      "",
+      `Votre paiement de ${montant} est bien arrivé, mais après le délai de 30 minutes pendant lequel vos vélos vous étaient gardés.`,
+      `Entre-temps, un autre groupe a réservé les vélos de ce créneau : nous ne pouvons pas confirmer ${offre} le ${formatCreneau(reservation)}.`,
+      "",
+      `Nous vous remboursons ${montant} sous 48 heures, sur votre numéro Mobile Money. Toutes nos excuses pour ce contretemps.`,
+      "",
+      "Vous voulez un autre créneau ou un autre jour ? Écrivez-nous sur WhatsApp, nous vous aidons à réserver :",
+      ...site.whatsapp.map((ligne) => `  ${ligne.numero} : ${ligne.lien}`),
+      "",
+      `Référence : ${reservation.reference}`,
+      `L'équipe ${site.nom}, ${site.telephone}`,
+    ].join("\n"),
+    html: gabarit({
+      titre: "Paiement remboursé",
+      intro:
+        `Bonjour ${reservation.client.prenom}, votre paiement est bien arrivé, mais après le délai de 30 minutes : ` +
+        `un autre groupe a réservé les vélos de ce créneau entre-temps. Nous vous remboursons ${montant} sous 48 heures, sur votre numéro Mobile Money.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ["Sortie prévue", formatCreneau(reservation)],
+        ["À vous rembourser", montant],
+      ],
+      pied: `Un autre créneau ou un autre jour ? Écrivez-nous sur WhatsApp, ou appelez-nous au ${site.telephone}. Toutes nos excuses pour ce contretemps.`,
+    }),
+  });
+}
+
+/** Prévient Bike Land qu'un remboursement est à faire, avec de quoi le faire. */
+export async function envoyerRemboursementGroupeAdmin(reservation: Reservation, montantXof: number, transaction: string) {
+  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const lien = `${site.urlAdmin}/admin/remboursements`;
+  const telephone = reservation.client.telephone || "non renseigné";
+  const montant = formatMontant(montantXof);
+  return envoyer({
+    destinataire,
+    sujet: `Remboursement à faire ${reservation.reference} : ${montant}`,
+    texte: [
+      `Le paiement ${transaction} de la réservation ${reservation.reference} est arrivé après l'expiration de la demande,`,
+      "et les vélos de son créneau avaient été repris par un autre groupe : la réservation n'est pas confirmée.",
+      "",
+      `Remboursez ${montant} à ${reservation.client.prenom} ${reservation.client.nom}, sur SasPay ou en Mobile Money, sous 48 heures, puis notez-le dans l'administration.`,
+      "",
+      `Téléphone : ${telephone}`,
+      `Email : ${reservation.client.email}`,
+      `Sortie prévue : ${formatCreneau(reservation)}`,
+      "",
+      `Les remboursements : ${lien}`,
+    ].join("\n"),
+    html: gabarit({
+      titre: "Remboursement à faire",
+      intro: `Le paiement de ${reservation.client.prenom} ${reservation.client.nom} est arrivé trop tard : les vélos avaient été repris. ${montant} à rendre sous 48 heures.`,
+      lignes: [
+        ["Référence", reservation.reference],
+        ["Paiement", transaction],
+        ["À rendre", montant],
+        ["Téléphone", telephone],
+        ["Email", reservation.client.email],
+        ["Sortie prévue", formatCreneau(reservation)],
+      ],
+      action: { libelle: "Voir les remboursements", url: lien },
+      pied: "Remboursez sur SasPay ou en Mobile Money, puis notez-le dans l'administration.",
+    }),
+  });
+}
+
+/**
+ * La réponse au client dont la capture de réduction a été vérifiée à la main
+ * (décision 21) : validée, avec le lien qui rouvre le chatbot sur le road
+ * trip et cette preuve ; refusée, un mot poli et ce qu'il peut faire.
+ */
+export async function envoyerDecisionPreuve(champs: {
+  email: string;
+  statut: "validee" | "refusee";
+  /** Le lien qui rouvre la discussion sur le road trip en groupe avec cette preuve. */
+  lienReprise: string;
+  /** « 4 % », lu dans les réglages ; absent, on dit « la réduction ». */
+  reduction?: string;
+  motif?: string;
+}) {
+  const reduction = champs.reduction ? `la réduction de ${champs.reduction}` : "la réduction";
+  if (champs.statut === "validee") {
+    return envoyer({
+      destinataire: champs.email,
+      sujet: `Bonne nouvelle : ${reduction} est validée`,
+      texte: [
+        "Bonjour,",
+        "",
+        `Merci pour votre capture : elle est validée. ${majuscule(reduction)} s'applique à votre road trip en groupe, une fois pour le groupe.`,
+        "",
+        "Reprenez votre réservation ici, la réduction est déjà comptée :",
+        champs.lienReprise,
+        "",
+        `À bientôt sur la route,`,
+        `L'équipe ${site.nom}, ${site.telephone}`,
+      ].join("\n"),
+      html: gabarit({
+        titre: "Réduction validée",
+        intro: `Bonjour, merci pour votre capture : elle est validée. ${majuscule(reduction)} s'applique à votre road trip en groupe, une fois pour le groupe.`,
+        lignes: [],
+        action: { libelle: "Reprendre ma réservation", url: champs.lienReprise },
+        pied: "La réduction est déjà comptée quand vous reprenez la discussion depuis ce bouton.",
+      }),
+    });
+  }
+  const motif = champs.motif?.trim();
+  return envoyer({
+    destinataire: champs.email,
+    sujet: "Votre capture pour la réduction du road trip",
+    texte: [
+      "Bonjour,",
+      "",
+      "Merci pour votre capture. Nous n'avons pas pu y voir l'abonnement à l'un de nos comptes, ni une story qui nous identifie : la réduction ne peut pas s'appliquer avec celle-ci.",
+      ...(motif ? ["", `Ce que nous avons vu : ${motif}`] : []),
+      "",
+      "Vous pouvez nous envoyer une autre capture depuis la discussion, ou réserver votre road trip sans la réduction :",
+      champs.lienReprise,
+      "",
+      `Une question ? Écrivez-nous sur WhatsApp ou appelez-nous au ${site.telephone}.`,
+      `L'équipe ${site.nom}`,
+    ].join("\n"),
+    html: gabarit({
+      titre: "Votre capture",
+      intro:
+        "Bonjour, merci pour votre capture. Nous n'avons pas pu y voir l'abonnement à l'un de nos comptes, ni une story qui nous identifie : la réduction ne peut pas s'appliquer avec celle-ci.",
+      lignes: motif ? [["Ce que nous avons vu", motif]] : [],
+      action: { libelle: "Reprendre la discussion", url: champs.lienReprise },
+      pied: `Vous pouvez envoyer une autre capture, ou réserver sans la réduction. Une question ? ${site.telephone}.`,
+    }),
+  });
+}
+
 /**
  * Neutralise le HTML d'un texte inséré dans un email.
  *
@@ -1076,6 +1434,8 @@ function gabarit(contenu: {
   rendezVous?: RendezVous;
   itineraire?: { titre: string; detail: string; url: string };
   facture?: { numero: string; lignes: [string, string][]; url: string };
+  /** Un texte en paragraphes, dans un encadré : le récapitulatif d'une offre de groupe. */
+  encadre?: { titre: string; paragraphes: string[] };
   pied?: string;
   theme?: "rose";
 }): string {
@@ -1115,6 +1475,17 @@ function gabarit(contenu: {
           <p style="margin:10px 0 0;font-size:16px;line-height:1.4;font-weight:700;color:#0e0e0e">${echapper(contenu.itineraire.titre)}</p>
           <p style="margin:6px 0 0;font-size:14px;line-height:1.6;color:#6b6b6b">${echapper(contenu.itineraire.detail)}</p>
           <a href="${echapper(contenu.itineraire.url)}" style="display:inline-block;margin-top:16px;border:1px solid #0e0e0e;color:#0e0e0e;text-decoration:none;padding:10px 20px;border-radius:999px;font-weight:600;font-size:14px">Voir l'itinéraire</a>
+        </td></tr>
+      </table>`
+    : "";
+
+  const encadre = contenu.encadre
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:28px;border:2px solid ${accent};border-radius:14px">
+        <tr><td style="padding:22px 24px">
+          <p style="margin:0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#6b6b6b;font-weight:700">${echapper(contenu.encadre.titre)}</p>
+          ${contenu.encadre.paragraphes
+            .map((paragraphe) => `<p style="margin:10px 0 0;font-size:15px;line-height:1.6;color:#0e0e0e">${echapper(paragraphe)}</p>`)
+            .join("")}
         </td></tr>
       </table>`
     : "";
@@ -1187,6 +1558,7 @@ function gabarit(contenu: {
           ${lieu}
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${lignes}</table>
           ${action}
+          ${encadre}
           ${itineraire}
           ${contacts}
           ${facture}

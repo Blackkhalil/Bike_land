@@ -119,9 +119,13 @@ export async function POST(requete: Request) {
     case "creneau-perdu":
       return NextResponse.json(
         {
-          erreur:
-            `Votre paiement a bien été reçu, mais le vélo a été repris entre-temps. ` +
-            `Appelez-nous au ${site.telephone} : nous vous remboursons ou nous vous trouvons un autre vélo.`,
+          // Une offre de groupe : le remboursement est déjà noté, et un
+          // email l'a dit au client (décisions 6 et 7).
+          erreur: resultat.remboursementListe
+            ? "Votre paiement est bien arrivé, mais après les 30 minutes où vos vélos vous étaient gardés : " +
+              "un autre groupe les a réservés entre-temps. Nous vous remboursons sous 48 heures, un email vous le confirme."
+            : `Votre paiement a bien été reçu, mais le vélo a été repris entre-temps. ` +
+              `Appelez-nous au ${site.telephone} : nous vous remboursons ou nous vous trouvons un autre vélo.`,
           code: "CRENEAU_PERDU",
         },
         { status: 409 },
