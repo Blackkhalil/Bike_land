@@ -45,6 +45,7 @@ import {
   heureDeMinutes,
   heuresCouvrantes,
   minutesDeLigne,
+  remplacantsDesVelosRepris,
   seChevauchent,
   type ParcDuJourDe,
 } from "../disponibilite";
@@ -1439,8 +1440,10 @@ const depotDirect: Depot = {
               id: true,
               status: true,
               createdAt: true,
+              offer: true,
               items: {
                 select: {
+                  id: true,
                   bikeId: true,
                   startDate: true,
                   endDate: true,
@@ -1448,7 +1451,7 @@ const depotDirect: Depot = {
                   endHour: true,
                   startMinute: true,
                   endMinute: true,
-                  bike: { select: { status: true } },
+                  bike: { select: { status: true, tier: true } },
                 },
               },
             },
@@ -1464,7 +1467,27 @@ const depotDirect: Depot = {
             existante.status === "EN_ATTENTE_PAIEMENT" &&
             panierExpire(existante.createdAt.toISOString())
           ) {
-            for (const ligne of existante.items) {
+            // Une offre de groupe porte ses minutes : ses vélos repris
+            // entre-temps se remplacent par d'autres libres sur tout le
+            // créneau, relus ici même (décision 6). Plus assez de vélos :
+            // rien n'est confirmé, le paiement sera remboursé.
+            const premiere = existante.items[0];
+            const aLaMinute =
+              existante.items.length > 0 && existante.items.every((l) => l.startMinute !== null && l.endMinute !== null);
+            if (aLaMinute && premiere.startMinute !== null && premiere.endMinute !== null) {
+              const remplacants = remplacantsDesVelosRepris(
+                await lireParcDuJour(tx, versISO(premiere.startDate)),
+                { debutMinute: premiere.startMinute, finMinute: premiere.endMinute },
+                existante.items.map((l) => ({ veloId: l.bikeId, gamme: l.bike.tier })),
+                existante.offer === "GBASHI_GROUPE",
+              );
+              if (!remplacants) throw new ConflitDisponibiliteError();
+              for (const { veloId, remplacant } of remplacants) {
+                const ligne = existante.items.find((l) => l.bikeId === veloId);
+                if (ligne) await tx.bookingItem.update({ where: { id: ligne.id }, data: { bikeId: remplacant.id } });
+              }
+            }
+            for (const ligne of aLaMinute ? [] : existante.items) {
               // Passé à l'atelier ou retiré entre-temps : plus libre non plus
               // (même règle qu'`estDisponible`).
               if (ligne.bike.status === "RETIRE" || ligne.bike.status === "MAINTENANCE") {

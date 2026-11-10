@@ -30,6 +30,7 @@ import {
   heureDeMinutes,
   heuresCouvrantes,
   minutesDeLigne,
+  remplacantsDesVelosRepris,
   seChevauchent,
 } from "../disponibilite";
 import { penaliteRetardXof } from "../offres/retard";
@@ -853,7 +854,28 @@ export const depotDemo: Depot = {
       // réservation (mêmes jours et heures pleines, puis mêmes minutes : un
       // groupe de 8 h 30 ne reprend pas les vélos d'un groupe de 8 h à
       // 8 h 30), ou déclaré indisponible entre-temps un jour de la sortie.
-      for (const ligne of reservation.lignes) {
+      // Une offre de groupe : ses vélos repris entre-temps se remplacent par
+      // d'autres libres sur tout le créneau, comme en base (décision 6).
+      const aLaMinute = reservation.minuteDebut !== undefined && reservation.minuteFin !== undefined;
+      if (aLaMinute) {
+        const remplacants = remplacantsDesVelosRepris(
+          parcDemo(reservation.dateDebut),
+          { debutMinute: reservation.minuteDebut!, finMinute: reservation.minuteFin! },
+          reservation.lignes.map((l) => ({ veloId: l.veloId, gamme: velos.find((v) => v.id === l.veloId)?.gamme ?? "CLASSIQUE" })),
+          reservation.offre === "gbashi-groupe",
+        );
+        if (!remplacants) throw new ConflitDisponibiliteError();
+        for (const { veloId, remplacant } of remplacants) {
+          const ligne = reservation.lignes.find((l) => l.veloId === veloId);
+          const velo = velos.find((v) => v.id === remplacant.id);
+          if (ligne && velo) {
+            ligne.veloId = velo.id;
+            ligne.veloNom = velo.nom;
+            ligne.veloSlug = velo.slug;
+          }
+        }
+      }
+      for (const ligne of aLaMinute ? [] : reservation.lignes) {
         // Passé à l'atelier ou retiré entre-temps : plus libre non plus
         // (même règle qu'`estDisponible`).
         const velo = velos.find((v) => v.id === ligne.veloId);

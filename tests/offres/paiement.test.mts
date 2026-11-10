@@ -150,6 +150,7 @@ function fauxConfirmation(reservation: Record<string, unknown>, options: { occup
     confirmations: [] as string[],
     remboursements: [] as Record<string, unknown>[],
     demandesRemboursement: [] as Record<string, unknown>[],
+    appelsConfirmation: 0,
   };
   const compteurs = new Map<string, number>();
   const depot = {
@@ -158,12 +159,16 @@ function fauxConfirmation(reservation: Record<string, unknown>, options: { occup
     },
     async marquerTransactionRecue(_reference: string, transaction: string) {
       etat.marquees.push(transaction);
+      // Comme le dépôt : la transaction est notée sur le paiement de la réservation.
+      const paiement = (reservation.paiements as { estCaution: boolean; referenceFournisseur?: string }[]).find((p) => !p.estCaution);
+      if (paiement && !paiement.referenceFournisseur) paiement.referenceFournisseur = transaction;
     },
     async estDisponible() {
       return options.estDisponible ?? true;
     },
     async confirmerPaiement(_reference: string, transaction: string) {
       if (options.conflit) throw new ConflitDisponibiliteError();
+      etat.appelsConfirmation += 1;
       if (reservation.statut !== "EN_ATTENTE_PAIEMENT") return { reservation: structuredClone(reservation), dejaConfirmee: true };
       reservation.statut = "CONFIRMEE";
       etat.confirmations.push(transaction);
@@ -223,20 +228,17 @@ console.log("\n— Paiement d'une offre de groupe : payée une seule fois");
 console.log("\n— Paiement d'une offre de groupe après les 30 minutes");
 {
   const libre = fauxConfirmation(reservationGroupe(45));
-  verifier("vélos encore libres : confirmée (décision 6)", (await confirmer(libre)).issue, "confirmee");
+  verifier("le dépôt trouve assez de vélos libres : confirmée (décision 6)", (await confirmer(libre)).issue, "confirmee");
 
-  const siens = fauxConfirmation(reservationGroupe(45), {
-    occupations: ["v1", "v2", "v3"].map((veloId) => ({ veloId, debutMinute: 480, finMinute: 525 })),
-  });
-  verifier("ses propres créneaux ne la gênent pas : confirmée", (await confirmer(siens)).issue, "confirmee");
-
-  const apres = fauxConfirmation(reservationGroupe(45), { occupations: [{ veloId: "v2", debutMinute: 525, finMinute: 600 }] });
-  verifier("un groupe qui part à 8 h 45, au retour du sien : confirmée", (await confirmer(apres)).issue, "confirmee");
+  // Plus de premier contrôle sur les vélos attribués : un vélo repris ne suffit
+  // plus à rembourser, le dépôt le remplace s'il en reste d'autres.
+  const unRepris = fauxConfirmation(reservationGroupe(45), { occupations: [{ veloId: "v2", debutMinute: 495, finMinute: 540 }] });
+  verifier("un de ses vélos repris, d'autres libres : le dépôt décide, confirmée", [(await confirmer(unRepris)).issue, unRepris.etat.appelsConfirmation], ["confirmee", 1]);
 
   const r = reservationGroupe(45);
-  const reprise = fauxConfirmation(r, { occupations: [{ veloId: "v2", debutMinute: 495, finMinute: 540 }] });
+  const reprise = fauxConfirmation(r, { conflit: true });
   const perdu = await confirmer(reprise);
-  verifier("un vélo repris par un groupe de 8 h 15 : créneau perdu, remboursement listé", [perdu.issue, perdu.remboursementListe], ["creneau-perdu", true]);
+  verifier("plus assez de vélos, vu par la transaction du dépôt : créneau perdu, remboursement listé", [perdu.issue, perdu.remboursementListe], ["creneau-perdu", true]);
   verifier("rien n'est confirmé", [r.statut, reprise.etat.confirmations], ["EN_ATTENTE_PAIEMENT", []]);
   const remboursement = reprise.etat.remboursements[0] ?? {};
   verifier(
@@ -251,9 +253,19 @@ console.log("\n— Paiement d'une offre de groupe après les 30 minutes");
   verifier("rejoué deux fois : un seul remboursement, emails une seule fois", [reprise.etat.remboursements.length, reprise.etat.emails.length], [1, 2]);
   verifier("chaque demande rejouée porte la même clé", reprise.etat.demandesRemboursement.map((d) => d.cleIdempotence), ["pay_A", "pay_A", "pay_A"]);
 
-  const transaction = fauxConfirmation(reservationGroupe(45), { conflit: true });
-  const vuParLeDepot = await confirmer(transaction);
-  verifier("vélos repris vus par la transaction du dépôt : remboursement aussi", [vuParLeDepot.issue, vuParLeDepot.remboursementListe, transaction.etat.remboursements.length], ["creneau-perdu", true, 1]);
+  // Le paiement repasse après que des vélos se sont libérés (notification
+  // renvoyée, suivi du chatbot) : le remboursement est décidé, on n'y revient pas.
+  const options = { conflit: true };
+  const rejouee = fauxConfirmation(reservationGroupe(45), options);
+  await confirmer(rejouee);
+  options.conflit = false;
+  const encore = await confirmer(rejouee);
+  verifier(
+    "rejouée après que des vélos se sont libérés : toujours remboursée, jamais confirmée",
+    [encore.issue, encore.remboursementListe, rejouee.etat.confirmations, rejouee.etat.remboursements.length],
+    ["creneau-perdu", true, [], 1],
+  );
+  verifier("aucun email de confirmation, le remboursement annoncé une seule fois", rejouee.etat.emails, ["remboursement-client:11616", "remboursement-admin:11616:pay_A"]);
 }
 
 console.log("\n— Les autres offres ne changent pas");

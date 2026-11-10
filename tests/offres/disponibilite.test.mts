@@ -369,9 +369,12 @@ const V: Resa = await reserverGroupe(S5, 780, 810, 5);
 vieillir(V.reference, 31);
 await depot.majVelo(V.lignes[0].veloId, { statut: "MAINTENANCE" });
 verifier(
-  "payée en retard, mais un de ses vélos est passé à l'atelier entre-temps : rien de confirmé, comme les autres offres",
-  [(await erreurDe(depot.confirmerPaiement(V.reference, "TX-ESSAI-V")))?.name, (await depot.trouverReservationParReference(V.reference))?.statut],
-  ["ConflitDisponibiliteError", "EN_ATTENTE_PAIEMENT"],
+  "payée en retard, un de ses vélos passé à l'atelier entre-temps : confirmée, avec un autre vélo à sa place",
+  [
+    (await depot.confirmerPaiement(V.reference, "TX-ESSAI-V"))?.reservation.statut,
+    ids((await depot.trouverReservationParReference(V.reference)) as Resa).includes(V.lignes[0].veloId),
+  ],
+  ["CONFIRMEE", false],
 );
 await depot.majVelo(V.lignes[0].veloId, { statut: "DISPONIBLE" });
 
@@ -647,6 +650,31 @@ verifier(
 );
 const tardReprise = await confirmerParSasPay({ reference: reprise.reference, paiement: paiementDe(reprise, "TX-ESSAI-REPRISE"), lienSuivi: "http://localhost/suivi" });
 verifier("… et ce paiement, s'il arrive quand même, est à rembourser", tardReprise.issue, "annulee");
+
+console.log("\n— Paiement tardif d'un groupe : les vélos repris remplacés");
+// Un seul de ses vélos repris, d'autres libres : le groupe garde les siens et
+// en reçoit un autre à la place (décision 6 : confirmé si les vélos sont libres).
+const S8 = ajouterJours(samedi, 49);
+const W: Resa = await reserverGroupe(S8, 600, 645, 10);
+vieillir(W.reference, 31);
+const veloRepris = W.lignes[0].veloId;
+await location(veloRepris, S8, 10);
+const tardW = await confirmerParSasPay({ reference: W.reference, paiement: paiementDe(W, "TX-ESSAI-W"), lienSuivi: "http://localhost/suivi" });
+const apresW = (await depot.trouverReservationParReference(W.reference)) as Resa;
+verifier(
+  "payée en retard, un seul vélo repris par une location : confirmée, avec un autre vélo à sa place",
+  [tardW.issue, apresW.statut, apresW.lignes.length, ids(apresW).includes(veloRepris), new Set(ids(apresW)).size],
+  ["confirmee", "CONFIRMEE", 10, false, 10],
+);
+verifier("ses 9 autres vélos sont gardés", ids(W).filter((id) => id !== veloRepris).every((id) => ids(apresW).includes(id)), true);
+const gbashiTard: Resa = await reserverGroupe(S8, 840, 1080, { PRESTIGE: 2 }, { offre: "gbashi-groupe" });
+vieillir(gbashiTard.reference, 31);
+await location(gbashiTard.lignes[0].veloId, S8, 14);
+verifier(
+  "Gbashi payé en retard, un de ses 2 Prestige repris : pas d'autre Prestige, rien de confirmé (remboursé)",
+  [(await erreurDe(depot.confirmerPaiement(gbashiTard.reference, "TX-ESSAI-G")))?.name, (await depot.trouverReservationParReference(gbashiTard.reference))?.statut],
+  ["ConflitDisponibiliteError", "EN_ATTENTE_PAIEMENT"],
+);
 
 console.log("\n— Remboursements sans doublon");
 const motif = "Paiement reçu après l'expiration de la demande (transaction TX-ESSAI-9)";

@@ -165,6 +165,41 @@ export function construireParcDuJour<T extends VeloDuParc & { statut: string }>(
 }
 
 /**
+ * Le paiement tardif d'un groupe (décision 6) : ses vélos encore libres sur
+ * tout le créneau sont gardés, ceux repris entre-temps (autre réservation,
+ * atelier, indisponibilité) sont remplacés par d'autres libres, de la même
+ * gamme quand le groupe a choisi ses gammes (Gbashi Bike), toutes gammes
+ * sinon. Le parc ne doit pas compter ce groupe (sa demande a expiré).
+ * `null` s'il n'y a plus assez de vélos ; sinon le remplaçant de chaque vélo
+ * repris (une liste vide quand rien n'a été repris).
+ */
+export function remplacantsDesVelosRepris<T extends VeloDuParc>(
+  parc: ParcDuJourDe<T>,
+  creneau: CreneauMinutes,
+  lignes: { veloId: string; gamme: GammeVelo }[],
+  parGamme: boolean,
+): { veloId: string; remplacant: T }[] | null {
+  const libres = new Set(velosLibresSurCreneau(parc, creneau).ids);
+  const gardes = new Set(lignes.filter((ligne) => libres.has(ligne.veloId)).map((ligne) => ligne.veloId));
+  const reprises = lignes.filter((ligne) => !gardes.has(ligne.veloId));
+  if (reprises.length === 0) return [];
+  const besoin: BesoinVelos = parGamme
+    ? reprises.reduce<Partial<Record<GammeVelo, number>>>(
+        (compte, ligne) => ({ ...compte, [ligne.gamme]: (compte[ligne.gamme] ?? 0) + 1 }),
+        {},
+      )
+    : reprises.length;
+  const { velos } = attribuerVelos({ ...parc, velos: parc.velos.filter((velo) => !gardes.has(velo.id)) }, creneau, besoin);
+  if (!velos) return null;
+  const restants = [...velos];
+  return reprises.map((ligne) => {
+    const index = parGamme ? restants.findIndex((velo) => velo.gamme === ligne.gamme) : 0;
+    const [remplacant] = restants.splice(index, 1);
+    return { veloId: ligne.veloId, remplacant };
+  });
+}
+
+/**
  * L'écart, en minutes, entre le créneau et l'occupation la plus proche d'un
  * vélo ce jour-là : celle qui finit avant le départ, ou commence après le
  * retour. L'infini quand le vélo n'a rien d'autre ce jour-là.

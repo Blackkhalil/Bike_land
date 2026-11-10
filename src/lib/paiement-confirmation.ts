@@ -35,11 +35,8 @@ import {
   envoyerRemboursementGroupeAdmin,
 } from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
-import {
-  creneauGroupeEncoreLibre,
-  rembourserPaiementTardif,
-  type DependancesRemboursement,
-} from "@/lib/offres-groupe/paiement";
+import { rembourserPaiementTardif, type DependancesRemboursement } from "@/lib/offres-groupe/paiement";
+import { paiementARembourser } from "@/lib/reservations";
 import { controlerPaiement, type PaiementSasPay } from "@/lib/saspay";
 import type { Reservation } from "@/lib/types";
 
@@ -162,37 +159,40 @@ export async function confirmerParSasPay(
     return { issue: "creneau-perdu", reservation, remboursementListe: true };
   };
 
+  // Une offre de groupe déjà jugée payée trop tard : le remboursement est
+  // décidé, et la décision ne se défait plus, même si des vélos se sont
+  // libérés depuis (notification renvoyée, suivi rouvert par le chatbot).
+  // La transaction notée sur la réservation en est la trace.
+  if (estOffreGroupe(reservation.offre) && paiementARembourser(reservation)) return creneauPerduGroupe();
+
   // Un panier abandonné cesse de bloquer le vélo au bout de 30 minutes.
   // Si le client paie après ce délai, le vélo a pu être repris par
   // quelqu'un d'autre : confirmer ici créerait une double réservation.
   // Ce premier contrôle épargne une transaction ; celui qui fait foi est
-  // refait par `confirmerPaiement`, dans la transaction qui confirme.
-  if (panierExpire(reservation.creeLe, d.maintenant())) {
-    // Une offre de groupe se revérifie au quart d'heure, sur le parc du jour.
-    if (estOffreGroupe(reservation.offre)) {
-      if (!(await creneauGroupeEncoreLibre(reservation, d.depot))) return creneauPerduGroupe();
-    } else {
-      // Tous les vélos de la réservation : une inscription à Octobre rose en
-      // retient un par participant.
-      const disponibles = await Promise.all(
-        reservation.lignes.map((ligne) =>
-          d.depot.estDisponible(
-            ligne.veloId,
-            reservation.dateDebut,
-            reservation.dateFin,
-            reservation.heureDebut,
-            reservation.heureFin,
-          ),
+  // refait par `confirmerPaiement`, dans la transaction qui confirme. Une
+  // offre de groupe n'a que ce dernier : ses vélos repris y sont remplacés
+  // par d'autres libres sur tout le créneau, s'il en reste (décision 6).
+  if (panierExpire(reservation.creeLe, d.maintenant()) && !estOffreGroupe(reservation.offre)) {
+    // Tous les vélos de la réservation : une inscription à Octobre rose en
+    // retient un par participant.
+    const disponibles = await Promise.all(
+      reservation.lignes.map((ligne) =>
+        d.depot.estDisponible(
+          ligne.veloId,
+          reservation.dateDebut,
+          reservation.dateFin,
+          reservation.heureDebut,
+          reservation.heureFin,
         ),
+      ),
+    );
+    const libre = disponibles.length > 0 && disponibles.every(Boolean);
+    if (!libre) {
+      console.error(
+        `[paiement] ${reference} : paiement ${paiement.id} encaissé hors délai, le vélo n'est plus disponible. Remboursement à faire.`,
       );
-      const libre = disponibles.length > 0 && disponibles.every(Boolean);
-      if (!libre) {
-        console.error(
-          `[paiement] ${reference} : paiement ${paiement.id} encaissé hors délai, le vélo n'est plus disponible. Remboursement à faire.`,
-        );
-        await d.depot.marquerTransactionRecue(reference, paiement.id);
-        return { issue: "creneau-perdu", reservation };
-      }
+      await d.depot.marquerTransactionRecue(reference, paiement.id);
+      return { issue: "creneau-perdu", reservation };
     }
   }
 

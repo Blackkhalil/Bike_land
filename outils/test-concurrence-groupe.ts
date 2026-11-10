@@ -19,7 +19,9 @@
  * Deux manches de plus pour les paiements tardifs (decision 6) : deux
  * paiements arrives au meme instant pour deux demandes expirees sur les
  * memes velos (un seul confirme), puis un paiement tardif croise avec une
- * nouvelle demande sur ses velos (un seul des deux passe).
+ * nouvelle demande sur ses velos (un seul des deux passe). Une derniere : un
+ * paiement tardif dont un velo a ete declare indisponible entre-temps est
+ * confirme avec un autre velo a sa place.
  *
  * Precautions :
  *  - il refuse de tourner sans DATABASE_URL, et sur toute autre base que
@@ -276,6 +278,26 @@ async function main(): Promise<void> {
         .map((p) => ["ConflitDisponibiliteError", "CapaciteInsuffisanteError"].includes((p as PromiseRejectedResult).reason?.name)),
       [true],
     );
+
+    console.log("\nManche 6 : un paiement tardif, un de ses velos declare indisponible entre-temps");
+    const seize = { debutMinute: 960, finMinute: 990 };
+    const a6 = (await depot.creerReservationGroupe(demande(date, seize, 5, "a6"))).reservation;
+    references.push(a6.reference);
+    await vieillir(a6.reference);
+    const indisponible = a6.lignes[0].veloId;
+    const jour = new Date(`${date}T00:00:00Z`);
+    await prisma.indisponibiliteVelo.create({ data: { bikeId: indisponible, date: jour, creePar: `test-concurrence ${passage}` } });
+    try {
+      const confirmee6 = await depot.confirmerPaiement(a6.reference, `TX-ESSAI-${passage}-A6`);
+      const relue6 = await depot.trouverReservationParReference(a6.reference);
+      verifier(
+        "confirmee, avec un autre velo a la place de celui declare indisponible",
+        [confirmee6?.reservation.statut, relue6?.lignes.length, relue6?.lignes.some((l) => l.veloId === indisponible)],
+        ["CONFIRMEE", 5, false],
+      );
+    } finally {
+      await prisma.indisponibiliteVelo.deleteMany({ where: { bikeId: indisponible, date: jour } });
+    }
 
     const final = await depot.parcDuJour(date);
     verifier("jamais un velo pris deux fois sur les memes minutes", sansDoubleReservation(final), true);
