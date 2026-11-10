@@ -1101,6 +1101,11 @@ verifier("typographie à l'affichage : espace insécable avant ? ! : ; » et apr
   AVEC_INSECABLES.includes("« Abonné(e) »"),
   AVEC_INSECABLES.includes("08:00"),
 ], [true, true, true, true, true, true]);
+verifier("une référence ne se coupe pas à son tiret ; le nombre de personnes reste collé à son mot", [
+  t.insecables("Votre référence : BL-T2K9QX.").includes(`BL-${String.fromCharCode(0x2060)}T2K9QX`),
+  t.insecables("Donnez-le-moi").includes(String.fromCharCode(0x2060)),
+  t.personnesEnClair(10).includes("10 personnes"),
+], [true, false, true]);
 
 type Recap = { detail?: string; lignes: { libelle: string; valeur: string }[] };
 const textes = traverses.flatMap((etat) => [

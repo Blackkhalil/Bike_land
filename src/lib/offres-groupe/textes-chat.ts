@@ -54,13 +54,22 @@ const FORMAT_JOUR_COURT = new Intl.DateTimeFormat("fr-FR", {
   timeZone: "UTC",
 });
 
+/** Le liant invisible (U+2060, « word joiner ») : aucune coupure de ligne à cet endroit. */
+const LIANT = String.fromCharCode(0x2060);
+
 /**
  * La typographie française à l'affichage : une espace insécable avant « ? »,
  * « ! », « : », « ; » et « » », et après « « ». Sur un téléphone étroit, le
- * point d'interrogation ne part plus seul à la ligne.
+ * point d'interrogation ne part plus seul à la ligne. Une référence de
+ * réservation (« BL-T2K9QX ») ne se coupe pas non plus à son tiret.
  */
 export function insecables(texte: string): string {
-  return texte.replace(/ ([?!:;»])/g, " $1").replace(/« /g, "« ");
+  return (
+    texte
+      .replace(/ ([?!:;»])/g, " $1")
+      .replace(/« /g, "« ")
+      .replace(/\b([A-Z]{2})-(?=[A-Z0-9]{4,}\b)/g, `$1-${LIANT}`)
+  );
 }
 
 /** « Samedi », « samedi » : la première lettre en capitale. */
@@ -78,9 +87,9 @@ export function jourCourt(date: DateISO): string {
   return FORMAT_JOUR_COURT.format(new Date(`${date}T12:00:00.000Z`));
 }
 
-/** « 1 personne », « 12 personnes ». */
+/** « 1 personne », « 12 personnes », le nombre jamais séparé de son mot (espace insécable). */
 export function personnesEnClair(nombre: number): string {
-  return `${nombre} personne${nombre > 1 ? "s" : ""}`;
+  return `${nombre} personne${nombre > 1 ? "s" : ""}`;
 }
 
 /** « petit coco », « grand coco », « sans coco ». */
