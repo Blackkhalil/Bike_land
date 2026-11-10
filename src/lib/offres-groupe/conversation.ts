@@ -43,13 +43,14 @@ import {
 } from "@/lib/offres";
 import type { MoyenPaiement } from "@/lib/types";
 
-import type {
-  CodeErreurOffresGroupe,
-  DemandeDevis,
-  DemandeReservation,
-  ProchainCreneau,
-  ReponseDevis,
-  StatutPreuve,
+import {
+  schemaClient,
+  type CodeErreurOffresGroupe,
+  type DemandeDevis,
+  type DemandeReservation,
+  type ProchainCreneau,
+  type ReponseDevis,
+  type StatutPreuve,
 } from "./api";
 import {
   alternativesDuRefus,
@@ -63,23 +64,34 @@ import {
 import {
   cocoEnClair,
   consignesPreuve,
+  CORRECTIONS_CHAMPS,
+  correctionPersonnesMax,
+  correctionPersonnesMin,
   departEnClair,
   dureeEnClair,
   estCodeOffreGroupe,
   gateauxEnClair,
   jourEnClair,
+  ligneDeLOffre,
   majuscule,
   MESSAGE_ACCUEIL,
+  MESSAGE_ACCUEIL_OFFRES,
+  MESSAGE_RECOMMENCER,
+  MESSAGE_REPRISE_COORDONNEES,
   NOMS_OFFRES,
+  ORDRE_OFFRES,
   personnesEnClair,
+  personnesMinDe,
   presentationOffre,
   QUESTION_COORDONNEES,
   QUESTION_DUREE,
   QUESTION_MODE,
   QUESTION_MOYEN,
+  QUESTION_OFFRE,
   QUESTION_PAYER,
   questionAccompagnateur,
   questionBudget,
+  questionChamp,
   questionCoco,
   questionDate,
   questionGateaux,
@@ -87,8 +99,12 @@ import {
   questionPersonnes,
   questionReduction,
   questionVelos,
+  rappelCoordonnees,
   velosEnClair,
+  type ChampCoordonnees,
 } from "./textes-chat";
+
+export type { ChampCoordonnees };
 
 /* ------------------------------------------------------------------ Types */
 
@@ -206,11 +222,25 @@ export interface Alternative {
 
 export type TonMessage = "alerte" | "succes";
 
+/** Une ligne d'une liste dans une bulle : les trois sorties de l'accueil, chacune avec sa présentation. */
+export interface PointMessage {
+  titre: string;
+  texte: string;
+}
+
 export interface MessageChat {
   id: number;
   de: "bot" | "client";
   texte: string;
   ton?: TonMessage;
+  /**
+   * L'instant où la bulle est arrivée (millisecondes) : son heure s'affiche
+   * dessous, comme sur un téléphone. Posé par `reduire` avec l'instant de
+   * l'action ; absent des conversations rangées avant, qui s'affichent sans heure.
+   */
+  a?: number;
+  /** Une liste sous le texte de la bulle (l'accueil présente ainsi les trois sorties). */
+  points?: PointMessage[];
 }
 
 /** Ce que le navigateur doit savoir pour suivre un paiement en cours (comme src/lib/paiement.ts). */
@@ -282,7 +312,33 @@ const CHOIX_VIDES: Choix = {
 
 const CLIENT_VIDE: Coordonnees = { prenom: "", nom: "", email: "", telephone: "" };
 
-export function etatInitial(client: Coordonnees = CLIENT_VIDE): EtatChat {
+/**
+ * L'accueil quand la discussion s'ouvre sans offre choisie (la bulle) ou
+ * repart de zéro : les trois sorties avec leur présentation, aux chiffres
+ * des réglages en vigueur, puis la question.
+ */
+function messagesAccueil(reglages: ReglagesOffres, recommence: boolean): Omit<MessageChat, "id">[] {
+  return [
+    {
+      de: "bot",
+      texte: recommence ? MESSAGE_RECOMMENCER : MESSAGE_ACCUEIL_OFFRES,
+      points: ORDRE_OFFRES.map((offre) => ({ titre: NOMS_OFFRES[offre], texte: ligneDeLOffre(offre, reglages) })),
+    },
+    { de: "bot", texte: QUESTION_OFFRE },
+  ];
+}
+
+/**
+ * La discussion au départ. Avec les faits du serveur, l'accueil présente
+ * les trois sorties ; avec l'instant, ses bulles portent leur heure.
+ */
+export function etatInitial(client: Coordonnees = CLIENT_VIDE, faits?: FaitsChat, maintenant?: number): EtatChat {
+  const accueil: Omit<MessageChat, "id">[] = faits ? messagesAccueil(faits.reglages, false) : [{ de: "bot", texte: MESSAGE_ACCUEIL }];
+  const messages = accueil.map((message, index) => ({
+    ...message,
+    id: index + 1,
+    ...(typeof maintenant === "number" ? { a: maintenant } : {}),
+  }));
   return {
     version: VERSION_CONVERSATION,
     etape: "offre",
@@ -290,8 +346,8 @@ export function etatInitial(client: Coordonnees = CLIENT_VIDE): EtatChat {
     client,
     moyen: null,
     cgv: false,
-    messages: [{ id: 1, de: "bot", texte: MESSAGE_ACCUEIL }],
-    prochainId: 2,
+    messages,
+    prochainId: messages.length + 1,
     devis: null,
     devisEnEchec: null,
     capacite: null,
@@ -334,6 +390,10 @@ export type ActionChat = Horodatee<
   | { type: "appliquer"; alternative: Alternative }
   | { type: "reserver" }
   | { type: "saisir-coordonnees"; client: Coordonnees }
+  /** Une coordonnée tapée dans la barre du bas, en réponse à la question posée (`champDemande`). */
+  | { type: "saisir-champ"; champ: ChampCoordonnees; valeur: string }
+  /** Revenir sur des coordonnées déjà données, avant de payer. */
+  | { type: "modifier-coordonnees" }
   | { type: "choisir-moyen"; moyen: MoyenPaiement }
   | { type: "accepter-cgv"; acceptees: boolean }
   | { type: "reservation-envoi" }
@@ -530,10 +590,70 @@ function avecChangement(choix: Choix, changement: Partial<Choix>): Choix {
   return suivant;
 }
 
+/* ------------------------------------------------------------- L'heure des bulles */
+
+/**
+ * Donne leur heure aux bulles arrivées avec cette action : celles qui
+ * n'étaient pas dans la discussion d'avant (la même bulle garde le même
+ * objet d'une étape à l'autre) et n'ont pas encore d'heure. Les bulles
+ * d'une conversation rangée avant l'ajout des heures restent sans heure.
+ */
+function horodater(avant: readonly MessageChat[], etat: EtatChat, maintenant: number): EtatChat {
+  if (etat.messages === avant || !Number.isFinite(maintenant)) return etat;
+  const connues = new Set(avant);
+  let changees = 0;
+  const messages = etat.messages.map((message) => {
+    if (connues.has(message) || typeof message.a === "number") return message;
+    changees += 1;
+    return { ...message, a: maintenant };
+  });
+  return changees ? { ...etat, messages } : etat;
+}
+
 /* ------------------------------------------------------------------ Machine */
 
-/** La machine : l'état suivant, après une action du client ou une réponse du serveur. */
+/**
+ * La machine : l'état suivant, après une action du client ou une réponse du
+ * serveur. Chaque bulle ajoutée par l'action reçoit l'heure de l'action.
+ */
 export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatChat {
+  const suivant = transition(etat, action, faits);
+  return suivant === etat ? etat : horodater(etat.messages, suivant, action.maintenant);
+}
+
+/* ------------------------------------------------------- Les coordonnées */
+
+const ORDRE_CHAMPS: readonly ChampCoordonnees[] = ["prenom", "nom", "email", "telephone"];
+
+/**
+ * Une coordonnée passe-t-elle les règles du contrat (`schemaClient`, celles
+ * que le serveur applique à la réservation) ? Le téléphone ne garde que des
+ * chiffres, des espaces et + ( ) . -, comme avant.
+ */
+export function champValide(champ: ChampCoordonnees, valeur: string): boolean {
+  if (typeof valeur !== "string" || !schemaClient.shape[champ].safeParse(valeur).success) return false;
+  return champ !== "telephone" || /^[+0-9 ().-]+$/.test(valeur.trim());
+}
+
+/** La coordonnée à demander maintenant : la première qui manque ou ne passe pas, ou `null` quand tout est là. */
+export function champDemande(client: Coordonnees): ChampCoordonnees | null {
+  return ORDRE_CHAMPS.find((champ) => !champValide(champ, client[champ])) ?? null;
+}
+
+/** Pose la question de la coordonnée qui manque, ou passe au réseau Mobile Money quand tout est là. */
+function demanderCoordonnees(etat: EtatChat, faits: FaitsChat, maintenant: number, ...avant: Omit<MessageChat, "id">[]): EtatChat {
+  const champ = champDemande(etat.client);
+  if (!champ) return poser(ajouter(etat, ...avant), "moyen", faits, maintenant);
+  return {
+    ...ajouter(etat, ...avant, bot(questionChamp(champ, etat.client.prenom))),
+    etape: "coordonnees",
+    refus: null,
+    alternatives: [],
+  };
+}
+
+/** La machine elle-même, sans l'heure des bulles. */
+function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatChat {
   const { maintenant } = action;
   const reglages = faits.reglages;
 
@@ -561,7 +681,8 @@ export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): E
     }
 
     case "recommencer":
-      return ajouter(etatInitial(etat.client), bot("On recommence : quelle sortie vous tente ?"));
+      // Tout repart de zéro, les coordonnées restent : l'accueil présente de nouveau les trois sorties.
+      return ajouter({ ...etatInitial(etat.client), messages: [], prochainId: 1 }, ...messagesAccueil(reglages, true));
 
     case "choisir-offre": {
       if (!estCodeOffreGroupe(action.offre)) return etat;
@@ -579,6 +700,19 @@ export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): E
     case "choisir-personnes": {
       if (!Number.isSafeInteger(action.personnes) || action.personnes < 1) return etat;
       const suivant = ajouter(etat, duClient(personnesEnClair(action.personnes)));
+      // Un nombre tapé hors des bornes : le minimum de l'offre, les vélos en
+      // état. Le chatbot le dit et repose la question.
+      const offre = etat.choix.offre;
+      if (offre) {
+        const minimum = personnesMinDe(offre, reglages);
+        const correction =
+          action.personnes < minimum
+            ? correctionPersonnesMin(offre, minimum)
+            : faits.velosEnEtat >= minimum && action.personnes > faits.velosEnEtat
+              ? correctionPersonnesMax(faits.velosEnEtat)
+              : null;
+        if (correction) return { ...ajouter(suivant, bot(correction)), etape: "personnes", refus: null, alternatives: [] };
+      }
       // La répartition des vélos de Gbashi Bike suit le nombre de personnes.
       return continuer({ ...suivant, choix: { ...suivant.choix, personnes: action.personnes, velos: null } }, faits, maintenant);
     }
@@ -729,7 +863,12 @@ export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): E
 
     case "reserver": {
       if (!devisConfirme(etat)) return etat;
-      return poser(ajouter(etat, duClient("Je réserve")), "coordonnees", faits, maintenant);
+      const suivant = ajouter(etat, duClient("Je réserve"));
+      // Les coordonnées déjà connues (une réservation précédente, la capture
+      // de la réduction) ne sont pas redemandées : tout est connu, on les
+      // rappelle ; sinon, les autres une par une.
+      if (!champDemande(suivant.client)) return demanderCoordonnees(suivant, faits, maintenant, bot(rappelCoordonnees(suivant.client)));
+      return demanderCoordonnees(suivant, faits, maintenant, bot(QUESTION_COORDONNEES));
     }
 
     case "saisir-coordonnees": {
@@ -741,6 +880,30 @@ export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): E
       };
       if (!coordonneesValides(client)) return etat;
       return poser({ ...ajouter(etat, duClient(`${client.prenom} ${client.nom}`)), client }, "moyen", faits, maintenant);
+    }
+
+    case "saisir-champ": {
+      // Seulement en réponse à la question posée : une réponse en retard (deux
+      // envois rapides) ne remplit pas un autre champ.
+      if (etat.etape !== "coordonnees" || typeof action.valeur !== "string") return etat;
+      const champ = champDemande(etat.client);
+      const valeur = action.valeur.trim();
+      if (!champ || action.champ !== champ || !valeur) return etat;
+      const suivant = ajouter(etat, duClient(valeur));
+      if (!champValide(champ, valeur)) {
+        // Une correction chaleureuse, puis la même question.
+        return ajouter(suivant, bot(CORRECTIONS_CHAMPS[champ]), bot(questionChamp(champ, etat.client.prenom)));
+      }
+      return demanderCoordonnees({ ...suivant, client: { ...suivant.client, [champ]: valeur } }, faits, maintenant);
+    }
+
+    case "modifier-coordonnees": {
+      if ((etat.etape !== "moyen" && etat.etape !== "payer") || etat.envoi) return etat;
+      return demanderCoordonnees(
+        { ...ajouter(etat, duClient("Je modifie mes coordonnées")), client: CLIENT_VIDE, moyen: null },
+        faits,
+        maintenant,
+      );
     }
 
     case "choisir-moyen":
@@ -912,6 +1075,23 @@ function devisCourant(etat: EtatChat): ReponseDevis | null {
 /** Le serveur a confirmé le prix des réponses actuelles : on peut réserver. */
 export function devisConfirme(etat: EtatChat): boolean {
   return devisCourant(etat)?.issue.ok === true;
+}
+
+/**
+ * Les étapes où l'écran attend le devis pour avancer : le stock des gammes
+ * (Gbashi Bike), l'offre chiffrée, le montant à payer. Ailleurs, le devis
+ * se vérifie en silence, pendant que la question attend sa réponse.
+ */
+const ETAPES_DEVIS_ATTENDU: readonly Etape[] = ["velos", "proposition", "negociation", "payer"];
+
+/**
+ * Bike Land « écrit » : une réponse du serveur est attendue et l'écran en
+ * dépend (le devis à ces étapes, l'envoi d'une capture ou de la réservation,
+ * l'état d'une capture). La vue montre alors les trois petits points.
+ */
+export function botEcrit(etat: EtatChat): boolean {
+  if (etat.envoi !== null || etat.choix.reduction.etat === "a-verifier") return true;
+  return ETAPES_DEVIS_ATTENDU.includes(etat.etape) && demandeDevisAttendue(etat) !== null;
 }
 
 /**
@@ -1333,7 +1513,11 @@ function recevoirReservation(etat: EtatChat, statut: number, corps: unknown, fai
       if (lecture.code === "FERME" || lecture.code === "REGLAGES_ILLISIBLES") {
         return { ...ajouter(etat, texte), etape: "ferme" };
       }
-      if (lecture.code === "SAISIE") return poser(ajouter(etat, texte), "coordonnees", faits, maintenant);
+      // Le serveur refuse les coordonnées (ses règles sont celles de champValide,
+      // c'est rare) : on les reprend toutes, une par une.
+      if (lecture.code === "SAISIE") {
+        return demanderCoordonnees({ ...etat, client: CLIENT_VIDE }, faits, maintenant, texte, bot(MESSAGE_REPRISE_COORDONNEES));
+      }
       if (lecture.code === "EN_ATTENTE") return { ...ajouter(etat, texte), etape: "echec" };
       return { ...ajouter(etat, texte), etape: "payer" };
     }
@@ -1349,19 +1533,9 @@ function messageConfirmation(reservation: ReservationCreee, client: Coordonnees)
 
 /* ------------------------------------------------------- La réservation */
 
-const MOTIF_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** Les coordonnées passent les règles du contrat (`schemaClient`). */
+/** Les coordonnées passent les règles du contrat (`schemaClient`), champ par champ (`champValide`). */
 export function coordonneesValides(client: Coordonnees): boolean {
-  const longueur = (texte: string, min: number, max: number) => texte.trim().length >= min && texte.trim().length <= max;
-  return (
-    longueur(client.prenom, 1, 60) &&
-    longueur(client.nom, 1, 60) &&
-    longueur(client.email, 3, 120) &&
-    MOTIF_EMAIL.test(client.email.trim()) &&
-    longueur(client.telephone, 8, 20) &&
-    /^[+0-9 ().-]+$/.test(client.telephone.trim())
-  );
+  return champDemande(client) === null;
 }
 
 export const NOMS_MOYENS: Record<MoyenPaiement, string> = {
@@ -1497,6 +1671,30 @@ function estChoix(valeur: unknown): valeur is Choix {
 }
 
 /**
+ * Les bulles rangées, remises d'aplomb : une bulle illisible est écartée,
+ * une heure ou une liste mal formée est retirée (l'heure ne s'affiche pas).
+ */
+function messagesLisibles(brut: unknown[]): MessageChat[] {
+  const messages: MessageChat[] = [];
+  for (const valeur of brut) {
+    if (!estObjet(valeur) || typeof valeur.id !== "number" || typeof valeur.texte !== "string") continue;
+    if (valeur.de !== "bot" && valeur.de !== "client") continue;
+    const points = Array.isArray(valeur.points)
+      ? valeur.points.filter((point): point is PointMessage => estObjet(point) && typeof point.titre === "string" && typeof point.texte === "string")
+      : [];
+    messages.push({
+      id: valeur.id,
+      de: valeur.de,
+      texte: valeur.texte,
+      ...(valeur.ton === "alerte" || valeur.ton === "succes" ? { ton: valeur.ton } : {}),
+      ...(typeof valeur.a === "number" && Number.isFinite(valeur.a) ? { a: valeur.a } : {}),
+      ...(points.length ? { points: points.map(({ titre, texte }) => ({ titre, texte })) } : {}),
+    });
+  }
+  return messages.slice(-MESSAGES_MAX);
+}
+
+/**
  * La conversation rangée, relue et remise d'aplomb, ou `null` si elle est
  * illisible, d'une autre version, ou trop ancienne. Le prix sera confirmé de
  * nouveau par le serveur : le devis rangé n'est pas gardé.
@@ -1516,7 +1714,8 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
   if (typeof etat.etape !== "string" || !(ETAPES as readonly string[]).includes(etat.etape)) return null;
   if (!estChoix(etat.choix) || !Array.isArray(etat.messages) || typeof etat.prochainId !== "number" || !estObjet(etat.client)) return null;
 
-  let relu: EtatChat = { ...(etat as unknown as EtatChat), devis: null, devisEnEchec: null, capacite: null };
+  const lus = messagesLisibles(etat.messages);
+  let relu: EtatChat = { ...(etat as unknown as EtatChat), messages: lus, devis: null, devisEnEchec: null, capacite: null };
   // Un envoi interrompu par le rechargement.
   if (relu.envoi === "preuve" || relu.choix.reduction.etat === "envoi") {
     relu = {
@@ -1543,5 +1742,6 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
   if (relu.etape === "attente" && maintenant - demandeLe > EXPIRATION_PANIER_MINUTES * 60_000) {
     relu = { ...ajouter(relu, bot(MESSAGE_PAIEMENT_EXPIRE, "alerte")), etape: "echec" };
   }
-  return { etat: relu, ouvert: brut.ouvert === true };
+  // Les bulles ajoutées ici (envoi interrompu, attente expirée) portent l'heure de la relecture.
+  return { etat: horodater(lus, relu, maintenant), ouvert: brut.ouvert === true };
 }

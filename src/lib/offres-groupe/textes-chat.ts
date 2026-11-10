@@ -145,6 +145,16 @@ export function ligneDeLOffre(offre: CodeOffreGroupe, reglages: ReglagesOffres):
 export const MESSAGE_ACCUEIL =
   "Bonjour ! Je calcule le prix de votre sortie en groupe et je la réserve avec vous, en quelques questions. Quelle sortie vous tente ?";
 
+/** L'accueil quand la discussion s'ouvre sans offre choisie : la liste des trois sorties suit. */
+export const MESSAGE_ACCUEIL_OFFRES =
+  "Bonjour ! Je calcule le prix de votre sortie en groupe et je la réserve avec vous, en quelques questions. Voici nos trois sorties :";
+
+/** Après « Recommencer » : la liste des trois sorties suit. */
+export const MESSAGE_RECOMMENCER = "On recommence ! Voici nos trois sorties :";
+
+/** La question qui suit la liste des trois sorties. */
+export const QUESTION_OFFRE = "Laquelle vous tente ?";
+
 /** Ce que le chatbot dit de l'offre choisie, avant la première question. */
 export function presentationOffre(offre: CodeOffreGroupe, reglages: ReglagesOffres): string {
   if (offre === "bike-for-all") {
@@ -172,6 +182,16 @@ export function questionPersonnes(offre: CodeOffreGroupe, reglages: ReglagesOffr
   return `Vous serez combien ? Un vélo par personne, ${minimum} personnes au moins.`;
 }
 
+/** Un groupe plus petit que le minimum de l'offre, tapé par le client. */
+export function correctionPersonnesMin(offre: CodeOffreGroupe, minimum: number): string {
+  return `Il faut au moins ${minimum} personnes pour ${NOMS_OFFRES[offre]}, un vélo par personne. Vous serez combien ?`;
+}
+
+/** Un groupe plus grand que les vélos en état, tapé par le client. */
+export function correctionPersonnesMax(maximum: number): string {
+  return `Nous avons ${maximum} vélos en état en ce moment, donc ${maximum} personnes au plus. Pour un groupe plus grand, écrivez-nous sur WhatsApp. Vous serez combien ?`;
+}
+
 export function questionDate(offre: CodeOffreGroupe, reglages: ReglagesOffres): string {
   const limite = reglages.dateLimiteWeekend;
   const weekend = `Pour le week-end, on réserve au plus tard le ${NOMS_JOURS[limite.jour]} à ${heureEnClair(limite.heure)}.`;
@@ -189,7 +209,8 @@ export function questionHeure(reglages: ReglagesOffres): string {
   return `À quelle heure partez-vous ? Départs de ${heureEnClair(bfa.premierDepart)} à ${heureEnClair(bfa.dernierDepart)}, retour des vélos à ${heureEnClair(bfa.retourAuPlusTard)} au plus tard.`;
 }
 
-export const QUESTION_MODE = "Vous avez un budget en tête ?";
+export const QUESTION_MODE =
+  "Vous avez un budget en tête ? Donnez-le-moi et je calcule votre temps de vélo. Sinon, choisissez la durée et je vous donne le prix.";
 
 export function questionBudget(personnes: number, minimumXof: number): string {
   return `Quel budget pour tout le groupe ? Pour ${personnesEnClair(personnes)}, il commence à ${formatMontant(minimumXof)}.`;
@@ -241,8 +262,40 @@ export function questionVelos(personnes: number): string {
   return `Sur quels vélos ? Répartissez vos ${personnesEnClair(personnes)} entre les gammes, un vélo par personne.`;
 }
 
-export const QUESTION_COORDONNEES =
-  "Parfait ! Il me faut vos coordonnées pour la réservation. L'email reçoit le récapitulatif, la facture et le lien de suivi.";
+export const QUESTION_COORDONNEES = "Parfait ! Il me faut quelques coordonnées pour la réservation, une par une.";
+
+/** Les coordonnées, dans l'ordre où le chatbot les demande. */
+export type ChampCoordonnees = "prenom" | "nom" | "email" | "telephone";
+
+/** La question de chaque coordonnée, posée seule, comme dans une vraie discussion. */
+export const QUESTIONS_CHAMPS: Record<ChampCoordonnees, string> = {
+  prenom: "Votre prénom ?",
+  nom: "Votre nom ?",
+  email: "Votre email ? (pour le récapitulatif, la facture et le lien de suivi)",
+  telephone: "Votre numéro Mobile Money ? (la demande de paiement part sur ce numéro)",
+};
+
+/** Ce que dit le chatbot quand une coordonnée ne passe pas, avant de reposer la question. */
+export const CORRECTIONS_CHAMPS: Record<ChampCoordonnees, string> = {
+  prenom: "Ce prénom est un peu long pour notre fiche : 60 lettres au plus, s'il vous plaît.",
+  nom: "Ce nom est un peu long pour notre fiche : 60 lettres au plus, s'il vous plaît.",
+  email: "Il manque quelque chose dans cette adresse, je crois. Elle s'écrit comme nom@exemple.com.",
+  telephone: "Ce numéro ne passe pas. Écrivez-le en chiffres, par exemple 01 97 00 00 00.",
+};
+
+/** Après le prénom, la question du nom remercie le client par son prénom. */
+export function questionChamp(champ: ChampCoordonnees, prenom = ""): string {
+  if (champ === "nom" && prenom.trim()) return `Merci ${prenom.trim()} ! ${QUESTIONS_CHAMPS.nom}`;
+  return QUESTIONS_CHAMPS[champ];
+}
+
+/** Les coordonnées déjà connues (une réservation précédente, la capture de la réduction), rappelées avant de payer. */
+export function rappelCoordonnees(client: Record<ChampCoordonnees, string>): string {
+  return `Je reprends vos coordonnées : ${client.prenom.trim()} ${client.nom.trim()}, ${client.email.trim()}, ${client.telephone.trim()}.`;
+}
+
+/** Quand le serveur refuse les coordonnées : on les reprend toutes. */
+export const MESSAGE_REPRISE_COORDONNEES = "Reprenons vos coordonnées, une par une.";
 
 export const QUESTION_MOYEN = "Avec quel réseau Mobile Money payez-vous ?";
 

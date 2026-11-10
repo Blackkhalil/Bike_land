@@ -97,7 +97,10 @@ const departsSamedi = n.departsProposes(SAMEDI, FAITS, LUNDI_10H);
 verifier("départs du samedi : au quart d'heure, de 8 h à 21 h 30", [departsSamedi.length, departsSamedi[0], departsSamedi[1], departsSamedi.at(-1)], [55, "08:00", "08:15", "21:30"]);
 verifier("départs d'aujourd'hui : pas avant 2 h de délai (12 h à 10 h)", n.departsProposes(LUNDI, FAITS, LUNDI_10H)[0], "12:00");
 e = agir(e, { type: "choisir-heure", depart: "08:00" });
-verifier("la question du budget", [e.etape, derniers(e)], ["mode", "Vous avez un budget en tête ?"]);
+verifier("la question du budget, qui dit à quoi servent les deux réponses", [e.etape, derniers(e)], [
+  "mode",
+  "Vous avez un budget en tête ? Donnez-le-moi et je calcule votre temps de vélo. Sinon, choisissez la durée et je vous donne le prix.",
+]);
 e = agir(e, { type: "choisir-mode", mode: "budget" });
 verifier("le budget commence au minimum du moteur pour ce groupe", [e.etape, derniers(e)], [
   "budget",
@@ -132,6 +135,7 @@ verifier("offre du moteur dans le navigateur, à confirmer (cas 2 : 11 250 F, ba
   offre.resultat.lignes.map((l: { code: string }) => l.code),
 ], [false, 11250, 17250, ["budget", "frais-paiement"]]);
 verifier("pas de réservation avant la confirmation du serveur", [c.devisConfirme(e), c.reduire(e, { type: "reserver", maintenant: LUNDI_10H }, FAITS).etape], [false, "proposition"]);
+verifier("le prix attend la confirmation du serveur : Bike Land « écrit »", c.botEcrit(e), true);
 const demandeBudget = c.demandeDevisAttendue(e);
 verifier("la demande de devis suit le contrat commun", demandeBudget, {
   offre: "bike-for-all",
@@ -149,6 +153,7 @@ verifier("le serveur confirme : commission de l'opérateur et montant débité (
   c.devisConfirme(e),
   c.demandeDevisAttendue(e),
 ], [true, 366, 11616, true, null]);
+verifier("le prix confirmé : Bike Land n'écrit plus", c.botEcrit(e), false);
 verifier("ce que comprend l'offre", c.inclusDans(offre.resultat, R), [
   "Toute notre gamme de vélos (Classique, Premium, Prestige) et nos casques",
   "Un petit coco par personne (10 cocos)",
@@ -156,6 +161,68 @@ verifier("ce que comprend l'offre", c.inclusDans(offre.resultat, R), [
 verifier("la règle de retard des réglages", t.regleRetard(R), "Merci de rendre les vélos à l'heure : 7 minutes de marge, puis 1 000 F par minute de retard pour le groupe, à régler en espèces au retour.");
 e = agir(e, { type: "reserver" });
 verifier("les coordonnées", e.etape, "coordonnees");
+verifier("les coordonnées, une question à la fois : d'abord le prénom", [c.champDemande(e.client), derniers(e, 3)], [
+  "prenom",
+  "Je réserve | Parfait ! Il me faut quelques coordonnées pour la réservation, une par une. | Votre prénom ?",
+]);
+{
+  // Chaque réponse se tape dans la barre du bas et devient une bulle du client.
+  let un = agir(e, { type: "saisir-champ", champ: "prenom", valeur: "  Awa " });
+  verifier("le prénom devient une bulle du client, puis le nom, avec un merci", [un.client.prenom, derniers(un, 2), c.champDemande(un.client)], [
+    "Awa",
+    "Awa | Merci Awa ! Votre nom ?",
+    "nom",
+  ]);
+  verifier("une réponse pour un autre champ que celui demandé est ignorée", agir(un, { type: "saisir-champ", champ: "email", valeur: "awa@example.com" }), un);
+  verifier("une réponse vide est ignorée", agir(un, { type: "saisir-champ", champ: "nom", valeur: "   " }), un);
+  un = agir(un, { type: "saisir-champ", champ: "nom", valeur: "Houngbo" });
+  verifier("puis l'email, avec à quoi il sert", derniers(un), "Votre email ? (pour le récapitulatif, la facture et le lien de suivi)");
+  const emailIncomplet = agir(un, { type: "saisir-champ", champ: "email", valeur: "awa@exemple" });
+  verifier("un email incomplet : sa bulle, une correction chaleureuse, puis la même question", [
+    emailIncomplet.etape,
+    c.champDemande(emailIncomplet.client),
+    derniers(emailIncomplet, 3),
+  ], [
+    "coordonnees",
+    "email",
+    "awa@exemple | Il manque quelque chose dans cette adresse, je crois. Elle s'écrit comme nom@exemple.com. | Votre email ? (pour le récapitulatif, la facture et le lien de suivi)",
+  ]);
+  verifier(
+    "les règles de l'email sont celles du serveur (schemaClient)",
+    ["awa@exemple.c", "awa..test@example.com", "awa test@example.com", "awa.test@example.com"].map((x) => [c.champValide("email", x), api.schemaClient.shape.email.safeParse(x).success]),
+    [[false, false], [false, false], [false, false], [true, true]],
+  );
+  un = agir(emailIncomplet, { type: "saisir-champ", champ: "email", valeur: "awa.test@example.com" });
+  verifier("puis le numéro Mobile Money, qui reçoit la demande de paiement", derniers(un, 2), "awa.test@example.com | Votre numéro Mobile Money ? (la demande de paiement part sur ce numéro)");
+  const numeroCourt = agir(un, { type: "saisir-champ", champ: "telephone", valeur: "97 00" });
+  verifier("un numéro trop court : corrigé avec un exemple, même question", [numeroCourt.etape, derniers(numeroCourt, 2)], [
+    "coordonnees",
+    "Ce numéro ne passe pas. Écrivez-le en chiffres, par exemple 01 97 00 00 00. | Votre numéro Mobile Money ? (la demande de paiement part sur ce numéro)",
+  ]);
+  verifier("des lettres dans le numéro : refusées", [c.champValide("telephone", "+229 97 AB 00 00"), c.champValide("telephone", "01 97 00 00 00")], [false, true]);
+  un = agir(numeroCourt, { type: "saisir-champ", champ: "telephone", valeur: "+229 97 00 00 00" });
+  verifier("tout est là : le réseau Mobile Money, comme après le formulaire", [un.etape, un.client, derniers(un, 2)], [
+    "moyen",
+    CLIENT,
+    "+229 97 00 00 00 | Avec quel réseau Mobile Money payez-vous ?",
+  ]);
+  verifier("saisir-champ hors de l'étape des coordonnées : ignoré", agir(un, { type: "saisir-champ", champ: "prenom", valeur: "Zoé" }), un);
+  const tropLong = agir(e, { type: "saisir-champ", champ: "prenom", valeur: "A".repeat(61) });
+  verifier("un prénom de plus de 60 lettres : corrigé, pas gardé", [tropLong.client.prenom, derniers(tropLong, 2)], [
+    "",
+    "Ce prénom est un peu long pour notre fiche : 60 lettres au plus, s'il vous plaît. | Votre prénom ?",
+  ]);
+  const modifie = agir(un, { type: "modifier-coordonnees" });
+  verifier("modifier ses coordonnées avant de payer : on les reprend depuis le prénom", [modifie.etape, modifie.client, modifie.moyen, derniers(modifie, 2)], [
+    "coordonnees",
+    { prenom: "", nom: "", email: "", telephone: "" },
+    null,
+    "Je modifie mes coordonnées | Votre prénom ?",
+  ]);
+  verifier("modifier ses coordonnées pendant qu'on les donne : ignoré", agir(e, { type: "modifier-coordonnees" }), e);
+  const parLeChat = c.demandeReservationDe(agir(agir(un, { type: "choisir-moyen", moyen: "MTN_MONEY" }), { type: "accepter-cgv", acceptees: true }));
+  verifier("les coordonnées tapées une par une partent dans la demande de réservation", [parLeChat?.client, api.schemaDemandeReservation.safeParse(parLeChat).success], [CLIENT, true]);
+}
 verifier("email obligatoire : sans lui, rien ne passe", agir(e, { type: "saisir-coordonnees", client: { ...CLIENT, email: "" } }).etape, "coordonnees");
 verifier("téléphone trop court refusé", agir(e, { type: "saisir-coordonnees", client: { ...CLIENT, telephone: "97 00" } }).etape, "coordonnees");
 e = agir(e, { type: "saisir-coordonnees", client: CLIENT });
@@ -341,6 +408,26 @@ verifier("une capture déjà utilisée : sans réduction, et on le dit", [dejaUt
   { etat: "sans" },
   "Cette capture a déjà servi pour une réservation : la réduction vaut une fois par groupe.",
 ]);
+{
+  // Le téléphone et l'email donnés avec la capture ne sont pas redemandés.
+  const rtConfirme = devisRecu(validee, reponseDevis(m.calculerRoadTrip({ personnes: 10, reductionValidee: true }, R, ctx(SAMEDI)), { preuve: "validee" }));
+  let connu = agir(rtConfirme, { type: "reserver" });
+  verifier("road trip avec capture : seuls le prénom et le nom sont demandés", [c.devisConfirme(rtConfirme), connu.etape, c.champDemande(connu.client), derniers(connu)], [
+    true,
+    "coordonnees",
+    "prenom",
+    "Votre prénom ?",
+  ]);
+  connu = suite([
+    { type: "saisir-champ", champ: "prenom", valeur: "Awa" },
+    { type: "saisir-champ", champ: "nom", valeur: "Houngbo" },
+  ], LUNDI_10H, connu);
+  verifier("prénom et nom suffisent : on passe au réseau Mobile Money", [connu.etape, connu.client, derniers(connu, 2)], [
+    "moyen",
+    CLIENT,
+    "Houngbo | Avec quel réseau Mobile Money payez-vous ?",
+  ]);
+}
 
 /* ------------------------------------------------ Gbashi Bike */
 
@@ -620,6 +707,11 @@ verifier("409 REGLAGES : la nouvelle offre, à confirmer de nouveau au nouveau p
   c.offreAffichee(reglages409, FAITS, LUNDI_10H).resultat.totalXof,
 ], ["proposition", null, "Le prix vient de changer. Voici l'offre à jour : 11 500 F. Confirmez pour réserver à ce prix.", 11500]);
 verifier("confirmer après 409 REGLAGES envoie le nouveau total", c.demandeReservationDe(agir(reglages409, { type: "reserver" }))?.attendu ?? c.demandeReservationDe(reglages409).attendu, { totalXof: 11500 });
+const toutConnu = agir(reglages409, { type: "reserver" });
+verifier("coordonnées déjà toutes connues : rappelées, pas redemandées, puis le réseau", [toutConnu.etape, derniers(toutConnu, 3)], [
+  "moyen",
+  "Je réserve | Je reprends vos coordonnées : Awa Houngbo, awa.test@example.com, +229 97 00 00 00. | Avec quel réseau Mobile Money payez-vous ?",
+]);
 const dispo = recue(409, { ok: false, code: "DISPO", message: "Ces vélos viennent d'être réservés.", prochainCreneau: { date: SAMEDI, depart: "10:00" } });
 verifier("409 DISPO : le créneau libre le plus proche", [dispo.etape, dispo.alternatives[0]?.libelle, dispo.messages.at(-2).texte], [
   "refus",
@@ -642,6 +734,12 @@ verifier("502 : la demande de paiement n'est pas partie, rien n'est prélevé", 
   "La demande de paiement n'a pas pu partir. Aucun montant n'a été prélevé : réessayez dans un instant.",
 ]);
 verifier("400 SAISIE : retour aux coordonnées", recue(400, { ok: false, code: "SAISIE", message: "Email invalide." }).etape, "coordonnees");
+const saisie400 = recue(400, { ok: false, code: "SAISIE", message: "Email invalide." });
+verifier("400 SAISIE : le message du serveur, puis toutes les coordonnées reprises une par une", [saisie400.client, c.champDemande(saisie400.client), derniers(saisie400, 3)], [
+  { prenom: "", nom: "", email: "", telephone: "" },
+  "prenom",
+  "Email invalide. | Reprenons vos coordonnées, une par une. | Votre prénom ?",
+]);
 verifier("201 REUSSI (démonstration) : confirmé tout de suite", recue(201, reponse201({ statut: "REUSSI" })).etape, "confirmee");
 const partiePas = recue(201, reponse201({ statut: "ECHOUE", message: "Numéro de téléphone invalide pour ce pays" }));
 verifier("201 ECHOUE : reprise depuis le lien de suivi, avec le diagnostic", [partiePas.etape, c.lienRepriseDuPaiement(partiePas.reservation)], [
@@ -651,6 +749,17 @@ verifier("201 ECHOUE : reprise depuis le lien de suivi, avec le diagnostic", [pa
 verifier("201 sans jeton dans le lien : pas d'attente impossible à suivre", recue(201, reponse201({ statut: "EN_ATTENTE", suivi: { paiementId: "p", moyen: "MTN_MONEY", telephone: "97" } }, { lienSuivi: "https://bike-land.vercel.app/reservation/suivi" })).etape, "echec");
 const sansReseau = agir(pret, { type: "reservation-echec" });
 verifier("coupure pendant l'envoi : on prévient avant de réessayer", [sansReseau.etape, sansReseau.envoi, derniers(sansReseau).includes("email de Bike Land")], ["payer", null, true]);
+verifier("Bike Land « écrit » pendant l'envoi de la réservation, d'une capture, ou la vérification d'une capture", [
+  c.botEcrit(pret),
+  c.botEcrit(p),
+  c.botEcrit(verification),
+  c.botEcrit(sansReseau),
+], [true, true, true, false]);
+verifier("une question qui attend sa réponse : pas de petits points, même si le prix se vérifie en silence", [r.etape, c.demandeDevisAttendue(r) !== null, c.botEcrit(r)], [
+  "reduction",
+  true,
+  false,
+]);
 verifier("le jeton d'un lien de suivi", [c.jetonDuLien(lienSuivi), c.jetonDuLien("/reservation/suivi"), c.jetonDuLien("https://x.test/reservation/a%20b/"), c.jetonDuLien("pas un lien")], [
   "jeton-abc_123",
   null,
@@ -689,6 +798,107 @@ verifier("rechargé pendant l'envoi de la réservation : on prévient, on revien
 const rechargeAttente = c.relireSauvegarde(c.sauvegarder(enAttente, true, LUNDI_10H), LUNDI_10H + 40 * 60_000);
 verifier("attente de paiement plus vieille que la garde des vélos : expirée", rechargeAttente.etat.etape, "echec");
 verifier("attente de paiement récente : le suivi reprend", c.relireSauvegarde(c.sauvegarder(enAttente, true, LUNDI_10H), LUNDI_10H + 60_000).etat.etape, "attente");
+verifier("rechargé pendant l'envoi : l'avertissement porte l'heure de la relecture", rechargeEnvoi.etat.messages.at(-1).a, LUNDI_10H + 1000);
+
+/* ------------------------------------------------ Comme sur un téléphone */
+
+const h = await charger("src/lib/offres-groupe/heure-chat.ts");
+const accueil = c.etatInitial(undefined, FAITS, LUNDI_10H);
+verifier("accueil depuis la bulle : les trois sorties et leur présentation des réglages, puis la question", [
+  accueil.etape,
+  accueil.messages.length,
+  accueil.messages[0].texte,
+  accueil.messages[0].points.map((point: { titre: string }) => point.titre),
+  accueil.messages[0].points.map((point: { texte: string }) => point.texte),
+  accueil.messages[1].texte,
+  accueil.prochainId,
+], [
+  "offre",
+  2,
+  "Bonjour ! Je calcule le prix de votre sortie en groupe et je la réserve avec vous, en quelques questions. Voici nos trois sorties :",
+  ["Bike for All", "Road trip en groupe", "Gbashi Bike"],
+  t.ORDRE_OFFRES.map((offreCode: string) => t.ligneDeLOffre(offreCode, R)),
+  "Laquelle vous tente ?",
+  3,
+]);
+verifier("les bulles de l'accueil portent l'heure de l'ouverture", accueil.messages.map((message: { a?: number }) => message.a), [LUNDI_10H, LUNDI_10H]);
+const CINQ_MINUTES_PLUS_TARD = LUNDI_10H + 5 * 60_000;
+const choisie = agir(accueil, { type: "choisir-offre", offre: "road-trip-groupe" }, CINQ_MINUTES_PLUS_TARD);
+verifier("chaque nouvelle bulle porte l'heure de l'action, les anciennes gardent la leur", [
+  choisie.messages.slice(0, 2).map((message: { a?: number }) => message.a),
+  choisie.messages.length > 2,
+  choisie.messages.slice(2).every((message: { a?: number }) => message.a === CINQ_MINUTES_PLUS_TARD),
+], [[LUNDI_10H, LUNDI_10H], true, true]);
+const sansHeures = { ...c.etatInitial(), messages: [{ id: 1, de: "bot", texte: "Bonjour, ancienne discussion." }] };
+const apresSansHeures = agir(sansHeures, { type: "choisir-offre", offre: "bike-for-all" }, CINQ_MINUTES_PLUS_TARD);
+verifier("une discussion rangée avant les heures : ses bulles restent sans heure, les nouvelles en ont une", [
+  "a" in apresSansHeures.messages[0],
+  apresSansHeures.messages.at(-1).a,
+], [false, CINQ_MINUTES_PLUS_TARD]);
+const UNE_MINUTE_APRES = CINQ_MINUTES_PLUS_TARD + 60_000;
+const recommenceTel = agir(choisie, { type: "recommencer" }, UNE_MINUTE_APRES);
+verifier("recommencer : les trois sorties de nouveau, à l'heure du clic", [
+  recommenceTel.messages.length,
+  recommenceTel.messages[0].texte,
+  recommenceTel.messages[0].points.length,
+  recommenceTel.messages[1].texte,
+  recommenceTel.messages.map((message: { a?: number }) => message.a),
+], [2, "On recommence ! Voici nos trois sorties :", 3, "Laquelle vous tente ?", [UNE_MINUTE_APRES, UNE_MINUTE_APRES]]);
+const rangee = c.relireSauvegarde(c.sauvegarder(choisie, true, CINQ_MINUTES_PLUS_TARD), CINQ_MINUTES_PLUS_TARD + 1000);
+verifier("rechargement : les heures et la liste des sorties reviennent", [
+  rangee.etat.messages.map((message: { a?: number }) => message.a),
+  rangee.etat.messages[0].points,
+], [choisie.messages.map((message: { a?: number }) => message.a), choisie.messages[0].points]);
+const abimee = JSON.parse(c.sauvegarder(choisie, true, CINQ_MINUTES_PLUS_TARD));
+abimee.etat.messages.push(
+  { id: 90, de: "bot", texte: "Heure abîmée", a: "midi" },
+  { id: 91, de: "robot", texte: "Auteur inconnu" },
+  null,
+  { id: 92, de: "client", texte: "Liste abîmée", points: [{ titre: 3 }], ton: "rouge" },
+);
+verifier("bulles rangées abîmées : écartées, ou sans leur heure, leur liste ou leur ton", c.relireSauvegarde(JSON.stringify(abimee), CINQ_MINUTES_PLUS_TARD + 1000).etat.messages.slice(-2), [
+  { id: 90, de: "bot", texte: "Heure abîmée" },
+  { id: 92, de: "client", texte: "Liste abîmée" },
+]);
+
+// L'heure sous chaque bulle, à l'heure du Bénin ; le jour au-dessus.
+verifier("l'heure d'une bulle, à l'heure du Bénin", [
+  h.heureDuMessage(LUNDI_10H),
+  h.heureDuMessage(heureBenin(LUNDI, "09:05")),
+  h.heureDuMessage(heureBenin(LUNDI, "23:59")),
+  h.heureDuMessage(heureBenin("2026-11-10", "00:30")),
+  h.heureDuMessage(undefined),
+  h.heureDuMessage(Number.NaN),
+  h.heureDuMessage("10:00"),
+], ["10:00", "09:05", "23:59", "00:30", null, null, null]);
+verifier("le jour au-dessus des bulles", [
+  h.jourDuMessage(LUNDI_10H, LUNDI_10H + 3600_000),
+  h.jourDuMessage(heureBenin("2026-11-08", "23:30"), LUNDI_10H),
+  h.jourDuMessage(heureBenin("2026-11-07", "12:00"), LUNDI_10H),
+  h.jourDuMessage(undefined, LUNDI_10H),
+], ["Aujourd'hui", "Hier", "Samedi 7 novembre", "Aujourd'hui"]);
+verifier("deux bulles du même jour au Bénin (minuit à Cotonou, pas à Londres)", [
+  h.memeJourAuBenin(heureBenin(LUNDI, "00:10"), heureBenin(LUNDI, "23:50")),
+  h.memeJourAuBenin(heureBenin("2026-11-08", "23:50"), heureBenin(LUNDI, "00:10")),
+  h.memeJourAuBenin(undefined, LUNDI_10H),
+], [true, false, true]);
+
+// Le nombre de personnes tapé dans la barre du bas.
+const groupeBfa = agir(c.etatInitial(), { type: "choisir-offre", offre: "bike-for-all" });
+const tropPeu = agir(groupeBfa, { type: "choisir-personnes", personnes: 4 });
+verifier("4 personnes tapées pour Bike for All : leur bulle, le minimum rappelé, la question reste", [tropPeu.etape, tropPeu.choix.personnes, derniers(tropPeu, 2)], [
+  "personnes",
+  null,
+  "4 personnes | Il faut au moins 10 personnes pour Bike for All, un vélo par personne. Vous serez combien ?",
+]);
+const tropNombreux = agir(groupeBfa, { type: "choisir-personnes", personnes: 25 });
+verifier("25 personnes pour 18 vélos en état : on le dit, WhatsApp pour un groupe plus grand", [tropNombreux.etape, tropNombreux.choix.personnes, derniers(tropNombreux)], [
+  "personnes",
+  null,
+  "Nous avons 18 vélos en état en ce moment, donc 18 personnes au plus. Pour un groupe plus grand, écrivez-nous sur WhatsApp. Vous serez combien ?",
+]);
+verifier("Gbashi Bike, 3 personnes (minimum 5) : corrigé aussi", derniers(agir(agir(c.etatInitial(), { type: "choisir-offre", offre: "gbashi-groupe" }), { type: "choisir-personnes", personnes: 3 })), "Il faut au moins 5 personnes pour Gbashi Bike, un vélo par personne. Vous serez combien ?");
+verifier("un nombre correct après une correction : la discussion continue", agir(tropPeu, { type: "choisir-personnes", personnes: 12 }).etape, "date");
 
 /* ------------------------------------------------ Le ton des textes */
 
@@ -704,9 +914,16 @@ verifier("typographie à l'affichage : espace insécable avant ? ! : ; » et apr
 
 const textes = traverses.flatMap((etat) => [
   ...etat.messages.map((message: { texte: string }) => message.texte),
+  ...etat.messages.flatMap((message: { points?: { titre: string; texte: string }[] }) => (message.points ?? []).flatMap((point) => [point.titre, point.texte])),
   ...etat.alternatives.map((alternative: { libelle: string }) => alternative.libelle),
 ]);
-textes.push(...t.ORDRE_OFFRES.map((offreCode: string) => t.ligneDeLOffre(offreCode, R)), t.consignesPreuve(), t.regleRetard(R));
+textes.push(
+  ...t.ORDRE_OFFRES.map((offreCode: string) => t.ligneDeLOffre(offreCode, R)),
+  t.consignesPreuve(),
+  t.regleRetard(R),
+  ...Object.values(t.QUESTIONS_CHAMPS as Record<string, string>),
+  ...Object.values(t.CORRECTIONS_CHAMPS as Record<string, string>),
+);
 verifier("aucun tiret long dans les textes du chatbot", textes.filter((x: string) => /—|–|--/.test(x)), []);
 verifier("montants écrits avec une espace : 11 250 F, jamais 11250 F", textes.filter((x: string) => /\d{4,} ?F\b/.test(x.replace(ESPACES_INSECABLES, " ").replace(/\d{1,3}( \d{3})+/g, "N"))), []);
 verifier("aucune tournure d'assistant artificiel", textes.filter((x: string) => /en tant qu'|intelligence artificielle|je suis (un|votre) assistant|n'hésitez pas/i.test(x)), []);
