@@ -854,6 +854,12 @@ export const depotDemo: Depot = {
       // groupe de 8 h 30 ne reprend pas les vélos d'un groupe de 8 h à
       // 8 h 30), ou déclaré indisponible entre-temps un jour de la sortie.
       for (const ligne of reservation.lignes) {
+        // Passé à l'atelier ou retiré entre-temps : plus libre non plus
+        // (même règle qu'`estDisponible`).
+        const velo = velos.find((v) => v.id === ligne.veloId);
+        if (!velo || velo.statut === "RETIRE" || velo.statut === "MAINTENANCE") {
+          throw new ConflitDisponibiliteError();
+        }
         const repris = etat().reservations.some(
           (autre) =>
             autre.id !== reservation.id &&
@@ -1553,9 +1559,9 @@ export const depotDemo: Depot = {
     if (!attribues) throw new CapaciteInsuffisanteError(libres.total, libres.parGamme);
 
     const preuve = demande.preuveId ? (donnees.preuves.find((p) => p.id === demande.preuveId) ?? null) : null;
+    const lieeAvant = preuve?.reference ? trouver(preuve.reference) : undefined;
     if (demande.preuveId) {
-      const liee = preuve?.reference ? trouver(preuve.reference) : undefined;
-      const raison = raisonPreuveInutilisable(preuve, liee ? { statut: liee.statut, creeLe: liee.creeLe } : null);
+      const raison = raisonPreuveInutilisable(preuve, lieeAvant ? { statut: lieeAvant.statut, creeLe: lieeAvant.creeLe } : null);
       if (raison) throw new PreuveReductionInutilisableError(raison);
     }
 
@@ -1638,7 +1644,14 @@ export const depotDemo: Depot = {
       creeLe: maintenant,
     };
     donnees.reservations.push(reservation);
-    if (preuve) preuve.reference = reference;
+    if (preuve) {
+      // Reprise à une demande impayée expirée : annulée, comme en base.
+      if (lieeAvant?.statut === "EN_ATTENTE_PAIEMENT") {
+        lieeAvant.statut = "ANNULEE";
+        lieeAvant.annuleLe = maintenant;
+      }
+      preuve.reference = reference;
+    }
     ecrireAuJournal({
       type: "reservation-groupe",
       reference,

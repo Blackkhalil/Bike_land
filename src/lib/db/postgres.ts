@@ -855,6 +855,18 @@ const depotDirect: Depot = {
     const booking = await avecRepriseConnexion(() =>
       client().$transaction(
         async (tx) => {
+          // La même vente au comptoir renvoyée (réponse perdue) : reconnue
+          // avant de relire les vélos, sinon le vélo qu'elle a pris la ferait
+          // passer pour un créneau perdu. Le P2002 plus bas couvre deux envois
+          // simultanés.
+          if (encaissement?.reference) {
+            const dejaVendue = await tx.payment.findUnique({
+              where: { providerReference: encaissement.reference },
+              select: { id: true },
+            });
+            if (dejaVendue) throw new TransactionDejaUtiliseeError("Cette vente est déjà enregistrée.");
+          }
+
           // Relecture du conflit *à l'intérieur* de la transaction : c'est
           // elle que le niveau Serializable protège d'une écriture concurrente.
           //
@@ -1436,6 +1448,7 @@ const depotDirect: Depot = {
                   endHour: true,
                   startMinute: true,
                   endMinute: true,
+                  bike: { select: { status: true } },
                 },
               },
             },
@@ -1452,6 +1465,11 @@ const depotDirect: Depot = {
             panierExpire(existante.createdAt.toISOString())
           ) {
             for (const ligne of existante.items) {
+              // Passé à l'atelier ou retiré entre-temps : plus libre non plus
+              // (même règle qu'`estDisponible`).
+              if (ligne.bike.status === "RETIRE" || ligne.bike.status === "MAINTENANCE") {
+                throw new ConflitDisponibiliteError();
+              }
               // Les réservations qui recouvrent ses jours et ses heures
               // pleines, puis celles qui recouvrent vraiment ses minutes
               // (src/lib/disponibilite) : un groupe parti à 8 h 30 n'a pas
@@ -2548,6 +2566,18 @@ const depotDirect: Depot = {
     const booking = await avecRepriseConnexion(() =>
       client().$transaction(
         async (tx) => {
+          // La même vente au comptoir renvoyée (réponse perdue) : reconnue
+          // avant de relire le parc, sinon les vélos qu'elle a pris la feraient
+          // passer pour un créneau perdu. Le P2002 plus bas couvre deux envois
+          // simultanés.
+          if (encaissement?.reference) {
+            const dejaVendue = await tx.payment.findUnique({
+              where: { providerReference: encaissement.reference },
+              select: { id: true },
+            });
+            if (dejaVendue) throw new TransactionDejaUtiliseeError("Cette vente est déjà enregistrée.");
+          }
+
           // Le parc relu ici même, dans la transaction qui écrit : les vélos
           // libres sur tout le créneau, toutes offres confondues.
           const parc = await lireParcDuJour(tx, demande.date);
@@ -2579,6 +2609,15 @@ const depotDirect: Depot = {
               data: { reference },
             });
             if (count !== 1) throw new PreuveReductionInutilisableError("deja-utilisee");
+            // Reprise à une demande impayée expirée : celle-ci est annulée ici
+            // même. Son paiement, s'il arrivait quand même, serait remboursé
+            // (chemin « annulée ») au lieu de donner une seconde réduction.
+            if (preuve?.reference && liee?.status === "EN_ATTENTE_PAIEMENT") {
+              await tx.booking.updateMany({
+                where: { reference: preuve.reference, status: "EN_ATTENTE_PAIEMENT" },
+                data: { status: "ANNULEE", cancelledAt: new Date() },
+              });
+            }
           }
 
           // Le client, comme `creerReservation` : une fiche existante n'est

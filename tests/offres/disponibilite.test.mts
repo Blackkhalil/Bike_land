@@ -349,6 +349,15 @@ verifier("le paiement est noté réussi, avec sa transaction", [paiementR.statut
 const U: Resa = await reserverGroupe(S5, 720, 750, 5);
 vieillir(U.reference, 45);
 verifier("payée 45 minutes après, personne n'a pris ses vélos : confirmée", (await depot.confirmerPaiement(U.reference, "TX-ESSAI-U"))?.reservation.statut, "CONFIRMEE");
+const V: Resa = await reserverGroupe(S5, 780, 810, 5);
+vieillir(V.reference, 31);
+await depot.majVelo(V.lignes[0].veloId, { statut: "MAINTENANCE" });
+verifier(
+  "payée en retard, mais un de ses vélos est passé à l'atelier entre-temps : rien de confirmé, comme les autres offres",
+  [(await erreurDe(depot.confirmerPaiement(V.reference, "TX-ESSAI-V")))?.name, (await depot.trouverReservationParReference(V.reference))?.statut],
+  ["ConflitDisponibiliteError", "EN_ATTENTE_PAIEMENT"],
+);
+await depot.majVelo(V.lignes[0].veloId, { statut: "DISPONIBLE" });
 
 console.log("\n— Gbashi Bike, gamme par gamme");
 const G: Resa = (
@@ -605,6 +614,13 @@ verifier("le premier groupe annulé : sa preuve resservit au groupe qui recommen
 vieillir(reprise.reference, 31);
 const apresExpiration = (await roadTrip(8, "preuve-validee")).reservation as Resa;
 verifier("une demande jamais payée, expirée : sa preuve resservit aussi", etatDemo().preuves.find((p) => p.id === "preuve-validee")?.reference, apresExpiration.reference);
+verifier(
+  "la demande expirée qui la retenait est annulée : son paiement tardif ne donnera pas une seconde réduction",
+  (await depot.trouverReservationParReference(reprise.reference))?.statut,
+  "ANNULEE",
+);
+const tardReprise = await confirmerParSasPay({ reference: reprise.reference, paiement: paiementDe(reprise, "TX-ESSAI-REPRISE"), lienSuivi: "http://localhost/suivi" });
+verifier("… et ce paiement, s'il arrive quand même, est à rembourser", tardReprise.issue, "annulee");
 
 console.log("\n— Remboursements sans doublon");
 const motif = "Paiement reçu après l'expiration de la demande (transaction TX-ESSAI-9)";
