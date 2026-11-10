@@ -23,6 +23,7 @@ import {
   formatXof,
   resumeOffre,
 } from "@/lib/format";
+import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { lireReglages } from "@/lib/reglages";
 import { estEnAttente, estPayee, estVenteEspeces, montantARendre, paiementPrincipal } from "@/lib/reservations";
 import { construirePeriode, dateEncaissement } from "@/lib/statistiques";
@@ -62,10 +63,13 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
   const demande = typeof parametres.jour === "string" ? parametres.jour : "";
   const jour = estDateISOValide(demande) && demande <= ajd ? demande : ajd;
 
-  const [parc, reservations, reglages] = await Promise.all([
+  const [parc, reservations, reglages, groupe] = await Promise.all([
     depot.listerVelos(),
     depot.listerReservations(),
     lireReglages(),
+    // Les offres de groupe se vendent aussi au comptoir (décision 12), quand
+    // l'interrupteur est ouvert et que leurs réglages se lisent.
+    offresGroupeEnVente(),
   ]);
 
   const velos: VeloComptoir[] = parc.map((velo) => ({
@@ -75,6 +79,22 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
     statut: velo.statut,
     photo: velo.photo,
   }));
+
+  // Le parc en état, toutes gammes et gamme par gamme : le plafond affiché
+  // au comptoir pour un groupe. Le serveur recompte les vélos libres du
+  // créneau à l'enregistrement.
+  const enEtat = parc.filter((velo) => velo.statut !== "MAINTENANCE" && velo.statut !== "RETIRE");
+  const offresGroupe = groupe
+    ? {
+        reglages: groupe.reglages,
+        velosEnEtat: enEtat.length,
+        parGamme: {
+          CLASSIQUE: enEtat.filter((velo) => velo.gamme === "CLASSIQUE").length,
+          PREMIUM: enEtat.filter((velo) => velo.gamme === "PREMIUM").length,
+          PRESTIGE: enEtat.filter((velo) => velo.gamme === "PRESTIGE").length,
+        },
+      }
+    : null;
 
   // Les créneaux déjà pris, pour griser au comptoir un vélo occupé. Mêmes
   // règles que la base : une réservation payée, ou un panier encore dans
@@ -154,7 +174,13 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
       </header>
 
       <div className="mt-8 max-w-3xl">
-        <VenteEspeces velos={velos} occupes={occupes} instant={maintenant.getTime()} reglages={reglages} />
+        <VenteEspeces
+          velos={velos}
+          occupes={occupes}
+          instant={maintenant.getTime()}
+          reglages={reglages}
+          offresGroupe={offresGroupe}
+        />
       </div>
 
       <section aria-labelledby="titre-suivi" className="mt-12">
