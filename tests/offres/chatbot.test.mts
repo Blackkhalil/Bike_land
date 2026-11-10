@@ -774,6 +774,11 @@ const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.re
     c.botEcrit(lien0),
   ], ["personnes", { etat: "sans" }, false, false]);
   verifier(
+    "réduction à 0 % : une réponse « validée » qui arriverait quand même ne dit jamais « 0 % »",
+    agir(lien0, { type: "preuve-recue", statut: 200, corps: { ok: true, preuveId: "pr_9", statut: "validee", message: "" } }, LUNDI_10H, FAITS0),
+    lien0,
+  );
+  verifier(
     "réduction à 0 % : revenir au road trip avec une capture en cours ne la regarde pas non plus",
     agir(agir(attente, { type: "recommencer" }, LUNDI_10H, FAITS0), { type: "choisir-offre", offre: "road-trip-groupe" }, LUNDI_10H, FAITS0).choix.reduction,
     { etat: "sans" },

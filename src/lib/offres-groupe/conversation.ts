@@ -1708,6 +1708,9 @@ function texteEnvoiRate(statut: number, messageServeur: string): string {
 
 /** Le serveur a répondu à l'envoi d'une capture, ou à la question de son état. */
 function recevoirPreuve(etat: EtatChat, statut: number, corps: unknown, faits: FaitsChat, maintenant: number): EtatChat {
+  // Une réponse que plus rien n'attend (ni envoi ni vérification en cours, par
+  // exemple la réduction réglée à 0 %) ne compte plus.
+  if (etat.envoi !== "preuve" && etat.choix.reduction.etat !== "a-verifier") return etat;
   const lecture = lireReponsePreuve(statut, corps);
   const sans = { ...etat, envoi: null };
   const pourcentage = formatPourcentage(faits.reglages.roadTrip.reduction);
