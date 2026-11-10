@@ -106,6 +106,29 @@ export const site = {
 } as const;
 
 /**
+ * L'adresse du site pour les liens envoyés par email (suivi, itinéraire,
+ * reprise d'une réservation). Sur un aperçu Vercel du site, c'est celle de
+ * la branche (VERCEL_BRANCH_URL) : un aperçu travaille sur la base de test,
+ * et un lien vers le site de production n'y retrouverait pas la
+ * réservation (décision 17). Partout ailleurs, `site.url`.
+ *
+ * Le projet de l'administration garde `site.url` : sa branche n'est pas
+ * celle du site, et ses pages publiques renvoient vers le site. Pour ses
+ * aperçus, NEXT_PUBLIC_SITE_URL s'y règle sur l'aperçu du site.
+ *
+ * Fonction du serveur : dans le navigateur, ces variables n'existent pas et
+ * l'adresse reste `site.url`.
+ */
+export function urlDuSite(): string {
+  const branche = process.env.VERCEL_BRANCH_URL?.trim().replace(/\/+$/, "");
+  const role = process.env.BIKELAND_ROLE?.trim().toLowerCase();
+  if (process.env.VERCEL_ENV === "preview" && branche && role !== "admin") {
+    return /^https?:\/\//.test(branche) ? branche : `https://${branche}`;
+  }
+  return site.url;
+}
+
+/**
  * Une discussion WhatsApp avec l'équipe, message déjà écrit.
  *
  * Sur la seconde ligne, celle que le site public donne partout (voir

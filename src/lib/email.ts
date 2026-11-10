@@ -12,7 +12,7 @@ import { formatHoraire, sortieDeLaReservation, texteOffertOctobreRose } from "@/
 import { formatHeureMinute } from "@/data/reglages";
 import { creneauDuDepart, estOffreGroupe, EXIGENCES, exigencesOctobreRose, OFFRES_GROUPE } from "@/data/offres";
 
-import { site } from "./site";
+import { site, urlDuSite } from "./site";
 import { numeroDeFacture } from "./facture";
 import {
   formatCreneau,
@@ -112,7 +112,7 @@ function detailsSortie(reservation: Reservation) {
           // Sans la durée habituelle du circuit : celle de la sortie se lit
           // dans ses heures, du départ au retour, juste au-dessus.
           detail: `${circuit.distanceKm}${INSECABLE}km aller-retour, niveau ${circuit.niveau.toLowerCase()}. ${circuit.resume}`,
-          url: `${site.url}/itineraires/${circuit.slug}`,
+          url: `${urlDuSite()}/itineraires/${circuit.slug}`,
         }
       : undefined,
   };

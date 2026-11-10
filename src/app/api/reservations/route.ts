@@ -33,7 +33,7 @@ import { numeroDeFacture } from "@/lib/facture";
 import { formatDateAvecJour } from "@/lib/format";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
 import { estEnAttente } from "@/lib/reservations";
-import { site } from "@/lib/site";
+import { site, urlDuSite } from "@/lib/site";
 import { TarifIntrouvableError } from "@/lib/tarification";
 import {
   erreursParChamp,
@@ -674,7 +674,8 @@ async function creerEtEncaisser(demande: DemandeReservation) {
       client: demande.client,
     });
 
-    const lienSuivi = `${site.url}/reservation/${token}`;
+    // Sur un aperçu, l'adresse de la branche (base de test) : voir urlDuSite.
+    const lienSuivi = `${urlDuSite()}/reservation/${token}`;
     const facture = numeroDeFacture(reservation);
 
     // La réservation vient d'être créée EN ATTENTE DE PAIEMENT. Elle

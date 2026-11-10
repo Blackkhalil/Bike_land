@@ -36,7 +36,7 @@ import { rafraichirSitePublic } from "@/lib/rafraichir";
 import { blocPadel } from "@/data/reglages";
 import { lireReglages } from "@/lib/reglages";
 import { estPayee, estVenteEspeces, montantARendre } from "@/lib/reservations";
-import { site } from "@/lib/site";
+import { urlDuSite } from "@/lib/site";
 import { calculerDevis, TarifIntrouvableError, type Devis } from "@/lib/tarification";
 import type { Reservation, Velo } from "@/lib/types";
 import {
@@ -493,7 +493,7 @@ async function enregistrer(corps: Record<string, unknown>) {
 
   // La vente est enregistrée : plus rien ne doit la faire échouer. Les
   // emails sont tentés, et l'écran dit franchement s'ils sont partis.
-  const lienSuivi = `${site.url}/reservation/${token}`;
+  const lienSuivi = `${urlDuSite()}/reservation/${token}`;
   const [confirmation, envoiFacture] = await Promise.allSettled([
     sansTrainer(envoyerConfirmation(reservation, lienSuivi)),
     sansTrainer(envoyerFacture(reservation, numeroDeFacture(reservation), lienSuivi)),

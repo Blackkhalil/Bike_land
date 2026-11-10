@@ -8,12 +8,13 @@
  */
 
 import { depot } from "@/lib/db";
-import { site } from "@/lib/site";
+import { urlDuSite } from "@/lib/site";
 import { genererToken } from "@/lib/tokens";
 
 export async function lienDeSuivi(reference: string): Promise<string> {
   const jeton = genererToken(reference);
+  // Sur un aperçu, la branche : c'est elle qui a la réservation (base de test).
   return (await depot.trouverReservationParToken(jeton))
-    ? `${site.url}/reservation/${jeton}`
-    : `${site.url}/reservation/suivi`;
+    ? `${urlDuSite()}/reservation/${jeton}`
+    : `${urlDuSite()}/reservation/suivi`;
 }

@@ -4,7 +4,7 @@ import { depot } from "@/lib/db";
 import { fournisseurActif } from "@/lib/paiement";
 import { confirmerParSasPay } from "@/lib/paiement-confirmation";
 import { verifierPaiement } from "@/lib/saspay";
-import { site } from "@/lib/site";
+import { site, urlDuSite } from "@/lib/site";
 import { erreursParChamp, schemaSuiviPaiement } from "@/lib/validation";
 
 /**
@@ -99,7 +99,7 @@ export async function POST(requete: Request) {
   const resultat = await confirmerParSasPay({
     reference: reservation.reference,
     paiement,
-    lienSuivi: `${site.url}/reservation/${token}`,
+    lienSuivi: `${urlDuSite()}/reservation/${token}`,
   });
 
   switch (resultat.issue) {
