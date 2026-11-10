@@ -44,6 +44,12 @@ export const COTE_MAX_PIXELS = 2576;
 export const PIXELS_MAX = 40_000_000;
 /** Un fichier de preuve ne vit pas plus longtemps. */
 export const JOURS_CONSERVATION_MAX = 30;
+/**
+ * Au-delà de tant de captures qui attendent d'être vérifiées, les nouvelles
+ * sont refusées pour un temps : un garde-fou contre qui enverrait des images
+ * à la chaîne depuis beaucoup d'adresses (elles pèsent dans la base).
+ */
+export const PREUVES_EN_ATTENTE_MAX = 200;
 
 /* ------------------------------------------------------------- Image */
 
@@ -93,7 +99,13 @@ export async function reencoderCapture(octets: Uint8Array): Promise<CaptureReenc
 export interface DependancesPreuves {
   depot: Pick<
     Depot,
-    "compterEssai" | "creerPreuve" | "trouverPreuve" | "deciderPreuve" | "effacerFichierPreuve" | "listerFichiersPreuvesAEffacer"
+    | "compterEssai"
+    | "creerPreuve"
+    | "trouverPreuve"
+    | "listerPreuves"
+    | "deciderPreuve"
+    | "effacerFichierPreuve"
+    | "listerFichiersPreuvesAEffacer"
   >;
   stockage: StockagePreuves;
   lireOuverture: () => Promise<{ offresGroupeActives: boolean }>;
@@ -203,6 +215,14 @@ export async function recevoirPreuve(
   const parNumero = numero ? await compter(deps, `preuve-numero:${numero}`, 24 * 60 * 60) : 0;
   if (parAdresse > PREUVES_PAR_HEURE_ADRESSE || parNumero > PREUVES_PAR_JOUR_NUMERO) {
     return erreur(429, "TROP_DE_DEMANDES", "Trop de captures envoyées. Réessayez plus tard, ou écrivez-nous sur WhatsApp.");
+  }
+  if ((await deps.depot.listerPreuves({ statut: "en_attente", limite: PREUVES_EN_ATTENTE_MAX })).length >= PREUVES_EN_ATTENTE_MAX) {
+    console.error(`[offres-groupe] ${PREUVES_EN_ATTENTE_MAX} captures attendent d'être vérifiées : les nouvelles sont refusées.`);
+    return erreur(
+      429,
+      "TROP_DE_DEMANDES",
+      "Nous avons beaucoup de captures à vérifier en ce moment. Réessayez un peu plus tard, ou réservez sans la réduction.",
+    );
   }
 
   const fichier = formulaire.get("capture");

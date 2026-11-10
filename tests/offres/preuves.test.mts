@@ -89,6 +89,8 @@ console.log("\n— Réencodage : tournée, réduite, sans métadonnées");
 interface Options {
   actives?: boolean;
   mode?: "base" | "blob";
+  /** Combien de captures attendent déjà d'être vérifiées. */
+  enAttente?: number;
   analyser?: (entree: { image: Uint8Array; typeMime: string }) => Promise<Record<string, unknown>>;
 }
 function fauxDecor(options: Options = {}) {
@@ -127,6 +129,10 @@ function fauxDecor(options: Options = {}) {
     async trouverPreuve(id: string) {
       const preuve = etat.preuves.get(id);
       return preuve ? { ...preuve } : null;
+    },
+    async listerPreuves(filtre?: { statut?: string; limite?: number }) {
+      const attente = [...etat.preuves.values()].filter((p) => !filtre?.statut || p.statut === filtre.statut);
+      return attente.length ? attente : Array.from({ length: options.enAttente ?? 0 }, (_, i) => ({ id: `ancienne-${i}`, statut: "en_attente" }));
     },
     async deciderPreuve(id: string, decision: Record<string, any>) {
       const preuve = etat.preuves.get(id);
@@ -225,6 +231,8 @@ console.log("\n— Réception d'une capture : limite de débit");
   const autre = fauxDecor();
   for (let i = 0; i < 6; i += 1) dernier = await preuves.recevoirPreuve(formulaire(petitPng), { ip: `10.2.2.${i}` }, autre.deps);
   verifier("6e capture du même numéro dans la journée : 429", dernier.statut, 429);
+  const debordee = await envoyer(formulaire(petitPng), { enAttente: 200 });
+  verifier("200 captures déjà à vérifier : les nouvelles attendent (429), rien d'enregistré", [debordee.statut, debordee.etat.creees.length], [429, 0]);
 }
 
 console.log("\n— Sans agent IA (décision 21) : vérifiée à la main");
