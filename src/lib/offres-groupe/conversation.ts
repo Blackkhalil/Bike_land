@@ -113,6 +113,7 @@ import {
   questionVelos,
   rappelCoordonnees,
   refusCreneauPlein,
+  refusJourPlein,
   sansCoupure,
   velosEnClair,
   type ChampCoordonnees,
@@ -323,8 +324,12 @@ export interface EtatChat {
   devis: { signature: string; reponse: ReponseDevis } | null;
   /** La demande dont le devis n'a pas pu être obtenu : on attend que le client relance. */
   devisEnEchec: string | null;
-  /** Les vélos libres mesurés par le serveur pour une offre et un jour (road trip et Gbashi Bike partent à heure fixe). */
-  capacite: { offre: CodeOffreGroupe; date: DateISO; velosLibres: number; parGamme: Record<GammeVelo, number> } | null;
+  /**
+   * Les vélos libres mesurés par le serveur pour une offre et un jour (road
+   * trip et Gbashi Bike partent à heure fixe). `cle` : le jour, ou le créneau
+   * de Bike for All, que ce compte vaut (`cleDuCreneau`).
+   */
+  capacite: { offre: CodeOffreGroupe; date: DateISO; velosLibres: number; parGamme: Record<GammeVelo, number>; cle: string } | null;
   refus: { refus: Refus; prochainCreneau: ProchainCreneau | null } | null;
   /** Les choix proposés en ce moment : après un refus, ou pour payer moins. */
   alternatives: Alternative[];
@@ -345,6 +350,15 @@ export interface EtatChat {
    * question de la réduction. Absente des conversations rangées avant.
    */
   preuveEnCours?: PreuveEnCours | null;
+  /**
+   * La question de l'étape (ou l'annonce de l'offre), retenue le temps que
+   * le serveur compte les vélos libres d'un jour, ou d'un créneau, qu'il n'a
+   * pas encore comptés : posée à sa réponse, ou remplacée par son refus
+   * (« Je viens de vérifier : … »). Un jour plein n'est donc jamais annoncé
+   * après la question suivante. Une chaîne vide : rien à poser, mais les
+   * réponses attendent aussi. Absente, ou `null` : rien n'est retenu.
+   */
+  retenue?: string | null;
 }
 
 /** Une capture connue de la discussion, qui peut encore servir. */
@@ -599,13 +613,63 @@ function question(etape: Etape, etat: EtatChat, faits: FaitsChat, maintenant: nu
   }
 }
 
-/** Passe à une étape en posant sa question. */
-function poser(etat: EtatChat, etape: Etape, faits: FaitsChat, maintenant: number): EtatChat {
-  const texte = question(etape, etat, faits, maintenant);
-  return { ...ajouter(etat, ...(texte ? [bot(texte)] : [])), etape, refus: null, alternatives: [] };
+/* ------------------------------------------- Les vélos libres, comptés d'abord */
+
+/**
+ * Ce que le serveur compte pour une demande : les vélos libres du jour
+ * (road trip, Gbashi Bike), ou du créneau de Bike for All (son départ et sa
+ * durée, que fixent le budget et le groupe). Les gâteaux, le coco et
+ * l'accompagnateur n'y changent rien.
+ */
+function cleDuCreneau(demande: DemandeDevis): string {
+  if (demande.offre !== "bike-for-all") return `${demande.offre}|${demande.date}`;
+  const { saisie } = demande;
+  const duree = saisie.mode === "budget" ? `budget:${saisie.budgetXof}` : `minutes:${saisie.minutes}`;
+  return `${demande.offre}|${demande.date}|${saisie.depart}|${saisie.personnes}|${duree}`;
 }
 
-/** Le moteur refuse : son message, et les autres choix qui passent. */
+/**
+ * Le serveur doit-il compter les vélos libres avant que Bike Land parle ?
+ * Oui quand la demande de devis de cette étape part maintenant, et que ce
+ * jour (ou ce créneau) n'a pas encore été compté. Ensuite, le moteur du
+ * navigateur connaît ce compte (`parcConnu`) et refuse lui-même, tout de suite.
+ */
+function jourACompter(etat: EtatChat): boolean {
+  const demande = demandeDevisAttendue(etat);
+  return demande !== null && etat.capacite?.cle !== cleDuCreneau(demande);
+}
+
+/**
+ * Bike Land attend que le serveur compte les vélos libres avant de poser sa
+ * question : la vue montre « Bike Land écrit… », sans réponses ni carte.
+ */
+export function verificationDuJour(etat: EtatChat): boolean {
+  return typeof etat.retenue === "string";
+}
+
+/** La bulle de l'étape : dite tout de suite, ou retenue le temps que le serveur compte les vélos libres. */
+function direOuRetenir(etat: EtatChat, texte: string | null): EtatChat {
+  if (jourACompter(etat)) return { ...etat, retenue: texte ?? "" };
+  return { ...ajouter(etat, ...(texte ? [bot(texte)] : [])), retenue: null };
+}
+
+/** La bulle retenue, dite maintenant : le serveur a répondu, ou n'a pas pu. */
+function liberer(etat: EtatChat): EtatChat {
+  if (!verificationDuJour(etat)) return etat;
+  return { ...ajouter(etat, ...(etat.retenue ? [bot(etat.retenue)] : [])), retenue: null };
+}
+
+/** Passe à une étape en posant sa question (retenue tant que le jour n'est pas compté). */
+function poser(etat: EtatChat, etape: Etape, faits: FaitsChat, maintenant: number): EtatChat {
+  const texte = question(etape, etat, faits, maintenant);
+  return direOuRetenir({ ...etat, etape, refus: null, alternatives: [] }, texte);
+}
+
+/**
+ * Le moteur refuse : son message, et les autres choix qui passent. Une
+ * question retenue ne viendra pas : le refus la remplace. Un message qui
+ * finit par « : » amène lui-même les choix proposés.
+ */
 function versRefus(
   etat: EtatChat,
   refus: Refus,
@@ -614,16 +678,17 @@ function versRefus(
   maintenant: number,
 ): EtatChat {
   const alternatives = alternativesDuRefus(etat.choix, refus, prochainCreneau, faits, maintenant);
-  const suite = alternatives.length > 0 ? "Voici ce que je peux vous proposer :" : "";
+  const suite = alternatives.length > 0 && !/:\s*$/.test(refus.message) ? "Voici ce que je peux vous proposer :" : "";
   return {
     ...ajouter(etat, bot(refus.message, "alerte"), ...(suite ? [bot(suite)] : [])),
     etape: "refus",
     refus: { refus, prochainCreneau },
     alternatives,
+    retenue: null,
   };
 }
 
-/** Tout est là : l'offre chiffrée. */
+/** Tout est là : l'offre chiffrée (annoncée quand le jour est compté). */
 function versProposition(etat: EtatChat, precedentXof: number | null, faits: FaitsChat, maintenant: number): EtatChat {
   const issue = evaluer(etat.choix, faits, maintenant, parcConnu(etat, faits));
   const total = issue?.ok ? issue.resultat.totalXof : null;
@@ -631,7 +696,7 @@ function versProposition(etat: EtatChat, precedentXof: number | null, faits: Fai
     precedentXof !== null && total !== null && total !== precedentXof
       ? `Voici la nouvelle offre : ${formatMontant(total)} au lieu de ${formatMontant(precedentXof)}.`
       : "Voici votre offre, ligne par ligne :";
-  return { ...ajouter(etat, bot(texte)), etape: "proposition", refus: null, alternatives: [] };
+  return direOuRetenir({ ...etat, etape: "proposition", refus: null, alternatives: [] }, texte);
 }
 
 /**
@@ -738,9 +803,30 @@ function horodater(avant: readonly MessageChat[], etat: EtatChat, maintenant: nu
  * serveur. Chaque bulle ajoutée par l'action reçoit l'heure de l'action.
  */
 export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatChat {
-  const suivant = transition(etat, action, faits);
-  return suivant === etat ? etat : horodater(etat.messages, suivant, action.maintenant);
+  // Une réponse du client arrive pendant que le serveur compte les vélos
+  // libres (la vue n'en montre aucune à ce moment-là) : la question retenue
+  // est dite d'abord, au-dessus de la réponse.
+  const depart = verificationDuJour(etat) && !ACTIONS_SANS_REPONSE.has(action.type) ? liberer(etat) : etat;
+  const suivant = transition(depart, action, faits);
+  return suivant === depart ? etat : horodater(etat.messages, suivant, action.maintenant);
 }
+
+/** Les actions qui ne sont pas une réponse du client à la question posée : elles ne libèrent pas la question retenue. */
+const ACTIONS_SANS_REPONSE: ReadonlySet<ActionChat["type"]> = new Set<ActionChat["type"]>([
+  "demarrer",
+  "recommencer",
+  "proposer-recommencer",
+  "annuler-recommencer",
+  "preuve-recue",
+  "devis-recu",
+  "devis-echec",
+  "relancer-devis",
+  "reservation-recue",
+  "reservation-echec",
+  "paiement-confirme",
+  "paiement-echoue",
+  "paiement-expire",
+]);
 
 /* ------------------------------------------------------- Les coordonnées */
 
@@ -1022,13 +1108,15 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
 
     case "devis-echec": {
       if (etat.devisEnEchec === action.signature) return etat;
-      return {
+      // Les vélos libres n'ont pas pu être comptés : la question retenue vient
+      // quand même, après ce message ; le prix se confirmera plus loin.
+      return liberer({
         ...ajouter(
           etat,
           bot("La connexion est instable : je n'arrive pas à confirmer le prix auprès de Bike Land. Réessayez dans un instant.", "alerte"),
         ),
         devisEnEchec: action.signature,
-      };
+      });
     }
 
     case "relancer-devis":
@@ -1333,10 +1421,11 @@ const ETAPES_DEVIS_ATTENDU: readonly Etape[] = ["proposition", "negociation", "p
 /**
  * Bike Land « écrit » : une réponse du serveur est attendue et l'écran en
  * dépend (le devis à ces étapes, l'envoi d'une capture ou de la réservation,
- * l'état d'une capture). La vue montre alors les trois petits points.
+ * l'état d'une capture, les vélos libres d'un jour pas encore compté). La vue
+ * montre alors les trois petits points.
  */
 export function botEcrit(etat: EtatChat): boolean {
-  if (etat.envoi !== null || etat.choix.reduction.etat === "a-verifier") return true;
+  if (etat.envoi !== null || etat.choix.reduction.etat === "a-verifier" || verificationDuJour(etat)) return true;
   return ETAPES_DEVIS_ATTENDU.includes(etat.etape) && demandeDevisAttendue(etat) !== null;
 }
 
@@ -1590,10 +1679,11 @@ function recevoirDevis(
 
   if (lecture.type === "erreur") {
     if (lecture.code === "FERME" || lecture.code === "REGLAGES_ILLISIBLES") {
-      return { ...ajouter(etat, bot(lecture.message, "alerte")), etape: "ferme", alternatives: [], refus: null };
+      return { ...ajouter(etat, bot(lecture.message, "alerte")), etape: "ferme", alternatives: [], refus: null, retenue: null };
     }
     if (etat.devisEnEchec === signature) return etat;
-    return { ...ajouter(etat, bot(lecture.message, "alerte")), devisEnEchec: signature };
+    // Les vélos libres n'ont pas pu être comptés : la question retenue vient quand même, après ce message.
+    return liberer({ ...ajouter(etat, bot(lecture.message, "alerte")), devisEnEchec: signature });
   }
 
   const reponse = lecture.reponse;
@@ -1602,18 +1692,25 @@ function recevoirDevis(
     ...etat,
     devis: { signature, reponse },
     devisEnEchec: null,
-    capacite: { offre, date: demande.date, velosLibres: reponse.capacite.velosLibres, parGamme: reponse.capacite.parGamme },
+    capacite: {
+      offre,
+      date: demande.date,
+      velosLibres: reponse.capacite.velosLibres,
+      parGamme: reponse.capacite.parGamme,
+      cle: cleDuCreneau(demande),
+    },
   };
 
   // À l'étape des vélos, seul compte ce qu'il reste de chaque gamme : le refus
   // de la demande provisoire (tout en Classique) est ignoré. Sauf s'il ne reste
   // même plus le minimum du groupe ce jour-là : le refus du serveur et son
-  // créneau libre le plus proche s'appliquent alors, comme pour les autres offres.
+  // créneau libre le plus proche s'appliquent alors, comme pour les autres
+  // offres, à la place de la question des vélos.
   if (etat.etape === "velos") {
     if (!reponse.issue.ok && reponse.capacite.velosLibres < faits.reglages.gbashi.personnesMin) {
-      return versRefus(suivant, reponse.issue.refus, reponse.prochainCreneau, faits, maintenant);
+      return versRefus(suivant, refusDuCreneau(reponse.issue.refus, suivant.choix, reponse.prochainCreneau, faits), reponse.prochainCreneau, faits, maintenant);
     }
-    return suivant;
+    return liberer(suivant);
   }
 
   // La capture du road trip : le serveur dit où elle en est vraiment.
@@ -1661,12 +1758,19 @@ function recevoirDevis(
     if (!reponse.issue.ok) {
       return versRefus(suivant, refusDuCreneau(reponse.issue.refus, suivant.choix, reponse.prochainCreneau, faits), reponse.prochainCreneau, faits, maintenant);
     }
-    return continuer(suivant, faits, maintenant);
+    // La question retenue vient après cette nouvelle, si l'étape reste la même.
+    const retenue = suivant.retenue;
+    const apres = continuer({ ...suivant, retenue: null }, faits, maintenant);
+    const memeEtape = apres.etape === suivant.etape && apres.prochainId === suivant.prochainId;
+    return typeof retenue === "string" && retenue && memeEtape ? ajouter(apres, bot(retenue)) : apres;
   }
 
+  // Un refus du serveur (le jour plein, le plus souvent) : à la place de la
+  // question retenue, jamais après elle.
   if (!reponse.issue.ok) {
     return versRefus(suivant, refusDuCreneau(reponse.issue.refus, etat.choix, reponse.prochainCreneau, faits), reponse.prochainCreneau, faits, maintenant);
   }
+  suivant = liberer(suivant);
 
   // Le moteur du navigateur et celui du serveur ne donnent pas le même prix :
   // les réglages ont changé depuis l'ouverture de la page. Le serveur fait foi.
@@ -1680,15 +1784,21 @@ function recevoirDevis(
 }
 
 /**
- * Le refus du serveur tel que le chatbot le dit. Bike for All : le serveur
- * compte les vélos libres sur le créneau demandé (le départ et la durée).
- * Quand il propose un autre départ le même jour, le « ce jour-là » du moteur
- * tromperait : le chatbot parle de l'heure (le moteur n'est pas touché).
+ * Le refus du parc venu du serveur, tel que le chatbot le dit (le moteur
+ * n'est pas touché) : « Je viens de vérifier : », puis le jour et le groupe
+ * du client. Le moteur dit « ce jour-là » et cite le minimum de l'offre, ce
+ * qui se lirait comme une erreur sur la taille du groupe. Bike for All : le
+ * serveur compte les vélos libres sur le créneau demandé (le départ et la
+ * durée) ; quand il propose un autre départ le même jour, le chatbot parle
+ * de l'heure.
  */
 function refusDuCreneau(refus: Refus, choix: Choix, prochainCreneau: ProchainCreneau | null, faits: FaitsChat): Refus {
-  const memeJour = Boolean(choix.date) && prochainCreneau?.date === choix.date;
-  if (choix.offre !== "bike-for-all" || refus.code !== "PARC" || !choix.depart || !memeJour) return refus;
-  return { ...refus, message: refusCreneauPlein(choix.depart, refus.maximum ?? 0, faits.reglages.bikeForAll.personnesMin) };
+  if (refus.code !== "PARC" || !choix.offre || !choix.date) return refus;
+  const libres = refus.maximum ?? 0;
+  if (choix.offre === "bike-for-all" && choix.depart && prochainCreneau?.date === choix.date) {
+    return { ...refus, message: refusCreneauPlein(choix.depart, libres, faits.reglages.bikeForAll.personnesMin) };
+  }
+  return { ...refus, message: refusJourPlein(choix.date, libres, choix.personnes, personnesMinDe(choix.offre, faits.reglages)) };
 }
 
 /**
@@ -1853,7 +1963,8 @@ function recevoirReservation(etat: EtatChat, statut: number, corps: unknown, fai
         devisEnEchec: null,
       };
       if (!lecture.devis.issue.ok) {
-        return versRefus(ajouter(suivant, bot(lecture.message, "alerte")), lecture.devis.issue.refus, lecture.devis.prochainCreneau, faits, maintenant);
+        const refus = refusDuCreneau(lecture.devis.issue.refus, base.choix, lecture.devis.prochainCreneau, faits);
+        return versRefus(ajouter(suivant, bot(lecture.message, "alerte")), refus, lecture.devis.prochainCreneau, faits, maintenant);
       }
       return {
         ...ajouter(
@@ -2152,7 +2263,11 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
     capacite: null,
     confirmerRecommencer: etat.confirmerRecommencer === true,
     preuveEnCours: preuveEnCoursLisible(etat.preuveEnCours),
+    retenue: null,
   };
+  // Une question retenue pendant le compte des vélos libres (la page s'est
+  // rechargée juste là) : elle est dite tout de suite, le prix se confirmera.
+  if (typeof etat.retenue === "string" && etat.retenue) relu = ajouter(relu, bot(etat.retenue.slice(0, 600)));
   // Un envoi interrompu par le rechargement.
   if (relu.envoi === "preuve" || relu.choix.reduction.etat === "envoi") {
     relu = {

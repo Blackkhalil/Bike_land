@@ -395,6 +395,24 @@ export function refusCreneauPlein(depart: HeureMinute, velosLibres: number, pers
   return `Je viens de vérifier : il n'y a plus assez de vélos libres pour un départ à ${heure}.`;
 }
 
+/**
+ * Un jour plein, d'après les vélos libres que le serveur vient de compter
+ * (road trip, Gbashi Bike ; Bike for All quand le créneau libre le plus
+ * proche est un autre jour). Bike Land dit le jour et parle du groupe du
+ * client, jamais du minimum de l'offre. Quand aucun groupe ne tient ce
+ * jour-là, la phrase amène les autres jours proposés (« Choisissez un autre
+ * jour : ») ; sinon, un groupe plus petit est aussi proposé.
+ */
+export function refusJourPlein(date: DateISO, velosLibres: number, personnes: number | null, personnesMin: number): string {
+  const jour = jourEnClair(date);
+  if (velosLibres <= 0) return `Je viens de vérifier : tous nos vélos sont déjà pris le ${jour}. Choisissez un autre jour :`;
+  const libres = velosLibres === 1 ? "il ne reste qu'un vélo libre" : `il ne reste que ${velosLibres} vélos libres`;
+  if (velosLibres < personnesMin || personnes === null || personnes <= velosLibres) {
+    return `Je viens de vérifier : ${libres} le ${jour}, pas assez pour votre groupe. Choisissez un autre jour :`;
+  }
+  return `Je viens de vérifier : ${libres} le ${jour}, pas assez pour votre groupe de ${personnesEnClair(personnes)}.`;
+}
+
 export const QUESTION_MOYEN = "Avec quel réseau Mobile Money payez-vous ?";
 
 /** Le paiement lancé : la bulle du client, avec le montant débité quand le serveur l'a donné. */

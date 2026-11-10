@@ -44,9 +44,47 @@ const FAITS = { reglages: R, velosEnEtat: 18, parGamme: PAR_GAMME };
 type Etat = Record<string, any>;
 // Tous les états traversés, pour contrôler les textes à la fin.
 const traverses: Etat[] = [];
+/**
+ * Le serveur du décor : quand Bike Land attend que les vélos libres d'un
+ * jour soient comptés avant de poser sa question (L2), la route du devis
+ * répond tout de suite, comme le ferait le vrai serveur, avec le même
+ * moteur et tous les vélos en état libres. `sansServeur` coupe cette
+ * réponse, pour essayer à cet instant une autre réponse du serveur.
+ */
+let serveurAutomatique = true;
+const sansServeur = <T,>(faire: () => T): T => {
+  serveurAutomatique = false;
+  try {
+    return faire();
+  } finally {
+    serveurAutomatique = true;
+  }
+};
+const issueDuServeur = (demande: Record<string, any>, maintenant: number, faits: typeof FAITS) => {
+  const contexte = { canal: "en-ligne", date: demande.date, maintenant, velosDisponibles: faits.velosEnEtat, stockParGamme: faits.parGamme };
+  const s = demande.saisie;
+  if (demande.offre === "road-trip-groupe") {
+    return m.calculerRoadTrip({ personnes: s.personnes, gateauxParPersonne: s.gateauxParPersonne, reductionValidee: Boolean(s.preuveId) }, faits.reglages, contexte);
+  }
+  if (demande.offre === "gbashi-groupe") return m.calculerGbashi(s, faits.reglages, contexte);
+  return s.mode === "budget" ? m.calculerBikeForAllBudget(s, faits.reglages, contexte) : m.calculerBikeForAllDuree(s, faits.reglages, contexte);
+};
 const agir = (etat: Etat, action: Record<string, unknown>, maintenant = LUNDI_10H, faits = FAITS): Etat => {
-  const suivant = c.reduire(etat, { ...action, maintenant }, faits);
+  let suivant = c.reduire(etat, { ...action, maintenant }, faits);
   traverses.push(suivant);
+  if (serveurAutomatique && c.verificationDuJour(suivant)) {
+    const demande = c.demandeDevisCourante(suivant);
+    const issue = issueDuServeur(demande, maintenant, faits);
+    const corps = {
+      ok: true,
+      issue,
+      capacite: { velosLibres: faits.velosEnEtat, parGamme: faits.parGamme },
+      prochainCreneau: null,
+      ...(issue.ok ? { commissionXof: Math.ceil(issue.resultat.totalXof * 0.0325), montantADebiterXof: issue.resultat.totalXof + Math.ceil(issue.resultat.totalXof * 0.0325) } : {}),
+    };
+    suivant = c.reduire(suivant, { type: "devis-recu", signature: c.signatureDe(demande), statut: 200, corps, maintenant }, faits);
+    traverses.push(suivant);
+  }
   return suivant;
 };
 const suite = (actions: Record<string, unknown>[], maintenant = LUNDI_10H, depart: Etat = c.etatInitial(), faits = FAITS): Etat =>
@@ -129,6 +167,13 @@ verifier("l'accompagnateur, avec son prix du moteur (10 personnes, 45 min : 2 50
 ]);
 e = agir(e, { type: "choisir-accompagnateur", accompagnateur: false });
 verifier("l'offre", [e.etape, derniers(e)], ["proposition", "Voici votre offre, ligne par ligne :"]);
+verifier(
+  "le devis du créneau, demandé avant la question des gâteaux, vaut pour ces réponses : l'offre est déjà confirmée",
+  [c.offreAffichee(e, FAITS, LUNDI_10H).confirme, c.devisConfirme(e)],
+  [true, true],
+);
+// Le devis de ces réponses pas encore arrivé (le client a choisi d'autres options, par exemple).
+e = { ...e, devis: null };
 let offre = c.offreAffichee(e, FAITS, LUNDI_10H);
 verifier("offre du moteur dans le navigateur, à confirmer (cas 2 : 11 250 F, barré 17 250 F)", [
   offre.confirme,
@@ -138,6 +183,7 @@ verifier("offre du moteur dans le navigateur, à confirmer (cas 2 : 11 250 F, ba
 ], [false, 11250, 17250, ["budget", "frais-paiement"]]);
 verifier("pas de réservation avant la confirmation du serveur", [c.devisConfirme(e), c.reduire(e, { type: "reserver", maintenant: LUNDI_10H }, FAITS).etape], [false, "proposition"]);
 verifier("le prix attend la confirmation du serveur : Bike Land « écrit »", c.botEcrit(e), true);
+verifier("le créneau est déjà compté : l'offre ne se retient pas, elle attend seulement son prix", c.verificationDuJour(e), false);
 const demandeBudget = c.demandeDevisAttendue(e);
 verifier("la demande de devis suit le contrat commun", demandeBudget, {
   offre: "bike-for-all",
@@ -413,9 +459,25 @@ let r = suite([
   { type: "choisir-personnes", personnes: 10 },
 ]);
 verifier("road trip : les jours proposés sont le samedi et le dimanche", n.joursProposes("road-trip-groupe", FAITS, LUNDI_10H, 3), [SAMEDI, DIMANCHE, "2026-11-21"]);
-r = agir(r, { type: "choisir-date", date: SAMEDI });
-verifier("road trip : pas d'heure à choisir, les gâteaux tout de suite", r.etape, "gateaux");
-verifier("le serveur vérifie déjà le parc du jour", c.demandeDevisAttendue(r), { offre: "road-trip-groupe", date: SAMEDI, saisie: { personnes: 10, gateauxParPersonne: 0 } });
+r = sansServeur(() => agir(r, { type: "choisir-date", date: SAMEDI }));
+verifier("road trip : pas d'heure à choisir, les gâteaux ensuite", r.etape, "gateaux");
+verifier("le serveur compte d'abord les vélos libres du jour (L2) : la demande part aussitôt", c.demandeDevisAttendue(r), {
+  offre: "road-trip-groupe",
+  date: SAMEDI,
+  saisie: { personnes: 10, gateauxParPersonne: 0 },
+});
+verifier("pendant ce temps, la question des gâteaux est retenue : Bike Land « écrit », aucune réponse à toucher", [
+  c.verificationDuJour(r),
+  c.botEcrit(r),
+  derniers(r),
+  r.messages.some((message: { texte: string }) => /gâteau/.test(message.texte)),
+], [true, true, "Samedi 14 novembre", false]);
+r = devisRecu(r, reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(SAMEDI))));
+verifier("le jour a assez de vélos : la question des gâteaux vient, juste après la réponse du client", [c.verificationDuJour(r), c.botEcrit(r), derniers(r, 2)], [
+  false,
+  false,
+  "Samedi 14 novembre | Des gâteaux pour le groupe ? 150 F le gâteau.",
+]);
 r = agir(r, { type: "choisir-gateaux", gateauxParPersonne: 0 });
 verifier("la question de la réduction, celle du cahier, une fois par client (décision 25)", [r.etape, derniers(r)], [
   "reduction",
@@ -808,30 +870,64 @@ let g = suite([
   { type: "choisir-personnes", personnes: 5 },
 ]);
 verifier("Gbashi Bike : seulement le dimanche", n.joursProposes("gbashi-groupe", FAITS, LUNDI_10H, 2), [DIMANCHE, "2026-11-22"]);
-g = agir(g, { type: "choisir-date", date: DIMANCHE });
-verifier("puis les vélos par gamme", [g.etape, derniers(g)], ["velos", "Sur quels vélos ? Répartissez vos 5 personnes entre les gammes, un vélo par personne."]);
+g = sansServeur(() => agir(g, { type: "choisir-date", date: DIMANCHE }));
 verifier("une demande provisoire pour connaître ce qu'il reste", c.demandeDevisAttendue(g), {
   offre: "gbashi-groupe",
   date: DIMANCHE,
   saisie: { velos: { CLASSIQUE: 5 }, gateauxParPersonne: 0 },
 });
-verifier("avant la réponse : le parc en état, à confirmer", c.stockGbashi(g, FAITS), { stock: PAR_GAMME, confirme: false });
-verifier("pas de petits points sous la carte des vélos : elle dit déjà qu'elle vérifie", [c.demandeDevisAttendue(g) !== null, c.botEcrit(g)], [true, false]);
+verifier("avant la réponse : la question des vélos est retenue, Bike Land « écrit », le parc en état à confirmer", [
+  g.etape,
+  derniers(g),
+  c.verificationDuJour(g),
+  c.botEcrit(g),
+  c.stockGbashi(g, FAITS),
+], ["velos", "Dimanche 15 novembre", true, true, { stock: PAR_GAMME, confirme: false }]);
 g = devisRecu(g, reponseDevis(m.calculerGbashi({ velos: { CLASSIQUE: 5 } }, R, { ...ctx(DIMANCHE), stockParGamme: { CLASSIQUE: 3, PREMIUM: 6, PRESTIGE: 2 } }), {
   capacite: { velosLibres: 11, parGamme: { CLASSIQUE: 3, PREMIUM: 6, PRESTIGE: 2 } },
 }));
-verifier("ce qu'il reste ce dimanche, confirmé par le serveur ; le refus provisoire est ignoré", [c.stockGbashi(g, FAITS), g.etape], [
+verifier("puis les vélos par gamme, quand le serveur a compté", [g.etape, derniers(g)], ["velos", "Sur quels vélos ? Répartissez vos 5 personnes entre les gammes, un vélo par personne."]);
+verifier("ce qu'il reste ce dimanche, confirmé par le serveur ; le refus provisoire est ignoré", [c.stockGbashi(g, FAITS), g.etape, c.botEcrit(g)], [
   { stock: { CLASSIQUE: 3, PREMIUM: 6, PRESTIGE: 2 }, confirme: true },
   "velos",
+  false,
 ]);
+{
+  // Le compte n'a pas pu se faire : la question vient quand même, la carte propose de réessayer.
+  const sansReseau = sansServeur(() =>
+    agir(
+      suite([
+        { type: "choisir-offre", offre: "gbashi-groupe" },
+        { type: "choisir-personnes", personnes: 5 },
+      ]),
+      { type: "choisir-date", date: DIMANCHE },
+    ),
+  );
+  const echec = agir(sansReseau, { type: "devis-echec", signature: c.signatureDe(c.demandeDevisCourante(sansReseau)) });
+  verifier("compte impossible (réseau) : le message, puis la question des vélos, et plus rien de retenu", [
+    derniers(echec, 2),
+    c.verificationDuJour(echec),
+  ], [
+    "La connexion est instable : je n'arrive pas à confirmer le prix auprès de Bike Land. Réessayez dans un instant. | Sur quels vélos ? Répartissez vos 5 personnes entre les gammes, un vélo par personne.",
+    false,
+  ]);
+  const relance = agir(echec, { type: "relancer-devis" });
+  verifier("« Réessayer » : la carte des vélos dit elle-même qu'elle vérifie, sans petits points en plus", [c.demandeDevisAttendue(relance) !== null, c.botEcrit(relance), c.verificationDuJour(relance)], [
+    true,
+    false,
+    false,
+  ]);
+}
 verifier("répartition proposée : les moins chers d'abord, dans le stock", n.repartitionParDefaut(5, { CLASSIQUE: 3, PREMIUM: 6, PRESTIGE: 2 }, FAITS), { CLASSIQUE: 3, PREMIUM: 2, PRESTIGE: 0 });
 {
   // Dimanche presque plein : moins de vélos libres que le minimum du groupe.
-  let plein = suite([
-    { type: "choisir-offre", offre: "gbashi-groupe" },
-    { type: "choisir-personnes", personnes: 6 },
-    { type: "choisir-date", date: DIMANCHE },
-  ]);
+  let plein = sansServeur(() =>
+    suite([
+      { type: "choisir-offre", offre: "gbashi-groupe" },
+      { type: "choisir-personnes", personnes: 6 },
+      { type: "choisir-date", date: DIMANCHE },
+    ]),
+  );
   plein = devisRecu(
     plein,
     reponseDevis(m.calculerGbashi({ velos: { CLASSIQUE: 6 } }, R, { ...ctx(DIMANCHE, LUNDI_10H, 3), stockParGamme: { CLASSIQUE: 2, PREMIUM: 1, PRESTIGE: 0 } }), {
@@ -843,6 +939,15 @@ verifier("répartition proposée : les moins chers d'abord, dans le stock", n.re
     "3 vélos libres pour un minimum de 5 : le refus du serveur, et le dimanche suivant proposé",
     [plein.etape, plein.alternatives.some((a: { libelle: string }) => /22 novembre/.test(a.libelle))],
     ["refus", true],
+  );
+  verifier(
+    "L2, Gbashi Bike : « Je viens de vérifier », le jour et le groupe du client, juste après sa réponse, à la place de la question des vélos",
+    [derniers(plein, 2), plein.messages.some((message: { texte: string }) => /Sur quels vélos/.test(message.texte)), plein.alternatives.at(-1).libelle],
+    [
+      "Dimanche 15 novembre | Je viens de vérifier : il ne reste que 3 vélos libres le dimanche 15 novembre, pas assez pour votre groupe. Choisissez un autre jour :",
+      false,
+      "Choisir une autre date",
+    ],
   );
 }
 g = agir(g, { type: "choisir-velos", velos: { CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 } });
@@ -944,19 +1049,22 @@ const autreDate = agir(rt(MERCREDI), { type: "appliquer", alternative: { cle: "a
 verifier("« Choisir une autre date » repose la question du jour", autreDate.etape, "date");
 
 // Le parc du jour, mesuré par le serveur (décision 10).
-let parc = suite([
-  { type: "choisir-offre", offre: "bike-for-all" },
-  { type: "choisir-personnes", personnes: 16 },
-  { type: "choisir-date", date: SAMEDI },
-  { type: "choisir-heure", depart: "08:00" },
-  { type: "choisir-mode", mode: "budget" },
-  { type: "choisir-budget", budgetXof: 10000 },
-]);
+let parc = sansServeur(() =>
+  suite([
+    { type: "choisir-offre", offre: "bike-for-all" },
+    { type: "choisir-personnes", personnes: 16 },
+    { type: "choisir-date", date: SAMEDI },
+    { type: "choisir-heure", depart: "08:00" },
+    { type: "choisir-mode", mode: "budget" },
+    { type: "choisir-budget", budgetXof: 10000 },
+  ]),
+);
 parc = devisRecu(parc, reponseDevis(m.calculerBikeForAllBudget({ personnes: 16, budgetXof: 10000, depart: "08:00" }, R, ctx(SAMEDI, LUNDI_10H, 15)), {
   capacite: { velosLibres: 15, parGamme: { CLASSIQUE: 8, PREMIUM: 5, PRESTIGE: 2 } },
   prochainCreneau: { date: SAMEDI, depart: "09:30" },
 }));
 verifier("parc de 15 vélos à 8 h, un départ libre le même jour : le chatbot parle de l'heure, pas du jour", parc.messages.at(-2).texte, "Je viens de vérifier : il reste 15 vélos libres pour un départ à 8 h, donc 15 personnes au plus.");
+verifier("le refus vient avant toute question des gâteaux, jamais après", parc.messages.some((message: { texte: string }) => /gâteau/.test(message.texte)), false);
 verifier("parc de 15 vélos, groupe de 16 : moins de personnes, le créneau libre le plus proche, un autre jour", refusDe(parc), [
   "refus",
   "PARC",
@@ -971,11 +1079,11 @@ verifier("parc de 15 vélos, groupe de 16 : moins de personnes, le créneau libr
 const creneau = agir(parc, { type: "appliquer", alternative: parc.alternatives[1] });
 verifier("prendre le créneau libre le plus proche", [creneau.choix.date, creneau.choix.depart, creneau.etape], [SAMEDI, "09:30", "gateaux"]);
 {
-  // Le créneau de 8 h complet (la question des gâteaux attend encore) : le serveur propose 9 h 30 le même jour.
-  const complet = (prochainCreneau: Record<string, string> | null) =>
-    devisRecu(bfa(10, 10000), reponseDevis(
-      { ok: false, refus: { code: "PARC", champ: "personnes", maximum: 0, message: "Tous nos vélos sont déjà pris ce jour-là : choisissez un autre jour." } },
-      { capacite: { velosLibres: 0, parGamme: { CLASSIQUE: 0, PREMIUM: 0, PRESTIGE: 0 } }, prochainCreneau },
+  // Le créneau de 8 h complet (la question des gâteaux est retenue) : le serveur propose 9 h 30 le même jour.
+  const complet = (prochainCreneau: Record<string, string> | null, libres = 0, personnes = 10) =>
+    devisRecu(sansServeur(() => bfa(personnes, 10000)), reponseDevis(
+      { ok: false, refus: { code: "PARC", champ: "personnes", maximum: libres, message: "Tous nos vélos sont déjà pris ce jour-là : choisissez un autre jour." } },
+      { capacite: { velosLibres: libres, parGamme: { CLASSIQUE: libres, PREMIUM: 0, PRESTIGE: 0 } }, prochainCreneau },
     ));
   const memeJour = complet({ date: SAMEDI, depart: "09:30" });
   verifier("tous les vélos pris à 8 h, libres à 9 h 30 : « Je viens de vérifier », l'heure, puis le même jour proposé", [
@@ -987,7 +1095,92 @@ verifier("prendre le créneau libre le plus proche", [creneau.choix.date, crenea
     "Je viens de vérifier : il n'y a plus assez de vélos libres pour un départ à 8 h. | Voici ce que je peux vous proposer :",
     "Samedi 14 novembre à 9 h 30 : 11 250 F",
   ]);
-  verifier("libres seulement un autre jour : le message du moteur, tel quel", complet({ date: DIMANCHE, depart: "08:00" }).messages.at(-2).texte, "Tous nos vélos sont déjà pris ce jour-là : choisissez un autre jour.");
+  // L2 : libres seulement un autre jour. Le jour et le groupe du client, jamais le minimum de l'offre.
+  const autreJour = complet({ date: DIMANCHE, depart: "08:00" });
+  verifier("L2, Bike for All, libre seulement un autre jour : « Je viens de vérifier », le jour, puis les autres jours", [
+    derniers(autreJour, 2),
+    autreJour.alternatives[0].libelle,
+  ], [
+    "Avec 10 000 F, votre groupe roule 45 minutes, de 8 h à 8 h 45, avec un petit coco chacun. Prix habituel : 17 250 F. | Je viens de vérifier : tous nos vélos sont déjà pris le samedi 14 novembre. Choisissez un autre jour :",
+    "Dimanche 15 novembre à 8 h : 11 250 F",
+  ]);
+  verifier(
+    "L2, Bike for All : 3 vélos libres pour un minimum de 10, « pas assez pour votre groupe »",
+    complet({ date: DIMANCHE, depart: "08:00" }, 3).messages.at(-1).texte,
+    "Je viens de vérifier : il ne reste que 3 vélos libres le samedi 14 novembre, pas assez pour votre groupe. Choisissez un autre jour :",
+  );
+  verifier(
+    "L2, Bike for All : un seul vélo libre, au singulier",
+    complet(null, 1).messages.at(-1).texte,
+    "Je viens de vérifier : il ne reste qu'un vélo libre le samedi 14 novembre, pas assez pour votre groupe. Choisissez un autre jour :",
+  );
+}
+{
+  // L2 : le road trip un dimanche presque plein. Le refus du serveur arrive à
+  // la place de la question des gâteaux, jamais après elle.
+  const avant = sansServeur(() => rt(DIMANCHE));
+  verifier("road trip, le dimanche choisi : Bike Land compte d'abord les vélos libres, rien n'est encore demandé", [
+    avant.etape,
+    c.verificationDuJour(avant),
+    derniers(avant),
+  ], ["gateaux", true, "Dimanche 15 novembre"]);
+  const pleinRt = devisRecu(
+    avant,
+    reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(DIMANCHE, LUNDI_10H, 9)), {
+      capacite: { velosLibres: 9, parGamme: { CLASSIQUE: 5, PREMIUM: 4, PRESTIGE: 0 } },
+      prochainCreneau: { date: "2026-11-21", depart: "08:00" },
+    }),
+  );
+  verifier("L2, road trip : 9 vélos libres le dimanche, l'exemple du responsable, mot pour mot, juste après le jour choisi", [
+    pleinRt.etape,
+    derniers(pleinRt, 2),
+    pleinRt.messages.some((message: { texte: string }) => /gâteau/.test(message.texte)),
+    c.verificationDuJour(pleinRt),
+  ], [
+    "refus",
+    "Dimanche 15 novembre | Je viens de vérifier : il ne reste que 9 vélos libres le dimanche 15 novembre, pas assez pour votre groupe. Choisissez un autre jour :",
+    false,
+    false,
+  ]);
+  verifier("L2, road trip : les autres jours suivent, le créneau libre du serveur d'abord", pleinRt.alternatives.map((a: { libelle: string }) => a.libelle), [
+    "Samedi 21 novembre : 31 250 F",
+    "Dimanche 22 novembre : 31 250 F",
+    "Choisir une autre date",
+  ]);
+  // Un groupe plus grand que les vélos libres, qui tiendrait à moins : le groupe du client, et « Passer à… ».
+  const grand = devisRecu(
+    sansServeur(() => rt(DIMANCHE, LUNDI_10H, 15)),
+    reponseDevis(m.calculerRoadTrip({ personnes: 15 }, R, ctx(DIMANCHE, LUNDI_10H, 12)), {
+      capacite: { velosLibres: 12, parGamme: { CLASSIQUE: 8, PREMIUM: 4, PRESTIGE: 0 } },
+      prochainCreneau: { date: "2026-11-21", depart: "08:00" },
+    }),
+  );
+  verifier("L2, road trip : 12 vélos libres pour un groupe de 15, le groupe du client, puis les choix", [derniers(grand, 2), grand.alternatives[0].libelle], [
+    "Je viens de vérifier : il ne reste que 12 vélos libres le dimanche 15 novembre, pas assez pour votre groupe de 15 personnes. | Voici ce que je peux vous proposer :",
+    "Passer à 12 personnes : 37 500 F",
+  ]);
+  // Le jour a assez de vélos : la question vient, une seule fois, puis la suite comme avant.
+  const assez = devisRecu(avant, reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(DIMANCHE))));
+  verifier("le dimanche a assez de vélos : la question des gâteaux, une seule fois", [
+    assez.etape,
+    assez.messages.filter((message: { texte: string }) => /gâteau/.test(message.texte)).length,
+    derniers(assez),
+  ], ["gateaux", 1, "Des gâteaux pour le groupe ? 150 F le gâteau."]);
+  // Une réponse touchée pendant le compte (la vue n'en montre pas) : la question d'abord, au-dessus d'elle.
+  const tot = agir(avant, { type: "choisir-gateaux", gateauxParPersonne: 0 });
+  verifier("une réponse arrivée pendant le compte : la question retenue est dite d'abord", derniers(tot, 3).split(" | ").slice(0, 2), [
+    "Des gâteaux pour le groupe ? 150 F le gâteau.",
+    "Sans gâteau",
+  ]);
+  // La page rechargée pendant le compte : la question est dite tout de suite.
+  verifier(
+    "rechargée pendant le compte : la question retenue est dite, plus rien n'attend",
+    (() => {
+      const relu = c.relireSauvegarde(c.sauvegarder(avant, true, LUNDI_10H), LUNDI_10H + 1000).etat;
+      return [c.verificationDuJour(relu), relu.messages.at(-1).texte];
+    })(),
+    [false, "Des gâteaux pour le groupe ? 150 F le gâteau."],
+  );
 }
 const minimum = agir(c.etatInitial(), { type: "choisir-offre", offre: "bike-for-all" });
 const refusMin = n.alternativesDuRefus({ ...minimum.choix, personnes: 8, date: SAMEDI, depart: "08:00", mode: "budget", budgetXof: 10000 }, { code: "PERSONNES_MIN", message: "Bike for All se réserve pour 10 personnes au moins, un vélo par personne." }, null, FAITS, LUNDI_10H);
@@ -1158,7 +1351,9 @@ verifier("Bike Land « écrit » pendant l'envoi de la réservation, d'une captu
   c.botEcrit(verification),
   c.botEcrit(sansReseau),
 ], [true, true, true, false]);
-verifier("une question qui attend sa réponse : pas de petits points, même si le prix se vérifie en silence", [r.etape, c.demandeDevisAttendue(r) !== null, c.botEcrit(r)], [
+// Le prix de ces réponses se revérifie (le jour est déjà compté) : en silence.
+const silencieux = { ...r, devis: null };
+verifier("une question qui attend sa réponse : pas de petits points, même si le prix se vérifie en silence", [silencieux.etape, c.demandeDevisAttendue(silencieux) !== null, c.botEcrit(silencieux)], [
   "reduction",
   true,
   false,
