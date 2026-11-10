@@ -133,12 +133,13 @@ export function evaluer(choix: Choix, faits: FaitsChat, maintenant: number, parc
 /* ------------------------------------------------------- Jours et heures */
 
 /**
- * Le jour se réserve-t-il en ligne pour cette offre ? On le demande au
- * moteur lui-même, avec le plus petit groupe et un parc sans limite : seul
- * le calendrier peut alors refuser (jour de départ, jour passé, date limite
- * du week-end, délai avant le départ).
+ * Pourquoi ce jour ne se réserve pas en ligne pour cette offre, ou `null`
+ * s'il se réserve. On le demande au moteur lui-même, avec le plus petit
+ * groupe et un parc sans limite : seul le calendrier peut alors refuser (jour
+ * de départ, jour passé, date limite du week-end, délai avant le départ). Le
+ * refus est celui du moteur, son message compris.
  */
-export function jourOuvert(offre: CodeOffreGroupe, date: DateISO, faits: FaitsChat, maintenant: number): boolean {
+export function refusDuJour(offre: CodeOffreGroupe, date: DateISO, faits: FaitsChat, maintenant: number): Refus | null {
   const reglages = faits.reglages;
   const parc: ParcConnu = {
     velosDisponibles: PARC_ILLIMITE,
@@ -146,17 +147,29 @@ export function jourOuvert(offre: CodeOffreGroupe, date: DateISO, faits: FaitsCh
   };
   const ctx = contexte(date, maintenant, parc);
   const minimum = personnesMinDe(offre, reglages);
-  if (offre === "road-trip-groupe") return calculerRoadTrip({ personnes: minimum }, reglages, ctx).ok;
-  if (offre === "gbashi-groupe") return calculerGbashi({ velos: { CLASSIQUE: minimum } }, reglages, ctx).ok;
+  if (offre === "road-trip-groupe") {
+    const issue = calculerRoadTrip({ personnes: minimum }, reglages, ctx);
+    return issue.ok ? null : issue.refus;
+  }
+  if (offre === "gbashi-groupe") {
+    const issue = calculerGbashi({ velos: { CLASSIQUE: minimum } }, reglages, ctx);
+    return issue.ok ? null : issue.refus;
+  }
   const bfa = reglages.bikeForAll;
   const issue = calculerBikeForAllDuree(
     { personnes: minimum, minutes: bfa.dureeMinMinutes, depart: bfa.premierDepart, coco: "aucun" },
     reglages,
     ctx,
   );
-  if (issue.ok) return true;
+  if (issue.ok) return null;
   // Le premier départ est passé ou trop proche, mais un départ plus tard le peut.
-  return Boolean(issue.refus.premierDepartPossible) && (issue.refus.code === "DELAI" || issue.refus.code === "DATE_PASSEE");
+  const plusTard = Boolean(issue.refus.premierDepartPossible) && (issue.refus.code === "DELAI" || issue.refus.code === "DATE_PASSEE");
+  return plusTard ? null : issue.refus;
+}
+
+/** Le jour se réserve-t-il en ligne pour cette offre ? (voir `refusDuJour`) */
+export function jourOuvert(offre: CodeOffreGroupe, date: DateISO, faits: FaitsChat, maintenant: number): boolean {
+  return refusDuJour(offre, date, faits, maintenant) === null;
 }
 
 /** Le jour d'aujourd'hui au Bénin. */

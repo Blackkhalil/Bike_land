@@ -204,6 +204,13 @@ verifier("201 : le paiement attend dans le chat, avec le jeton du lien de suivi"
   "La demande de paiement de 11 616 F est partie sur le +229 97 00 00 00. Validez-la avec votre code secret. Vos vélos sont gardés 30 minutes.",
 ]);
 verifier("un paiement en cours ne s'interrompt pas", agir(enAttente, { type: "demarrer", offre: "gbashi-groupe" }).etape, "attente");
+const apresReservation = agir(agir(enAttente, { type: "paiement-confirme" }), { type: "demarrer", offre: "bike-for-all" });
+verifier("après une réservation, un bouton de page repart de zéro, même sur la même offre", [
+  apresReservation.etape,
+  apresReservation.choix.personnes,
+  apresReservation.reservation,
+  apresReservation.client.email,
+], ["personnes", null, null, CLIENT.email]);
 const confirmee = agir(enAttente, { type: "paiement-confirme" });
 verifier("paiement validé : bulle de confirmation", [confirmee.etape, derniers(confirmee)], [
   "confirmee",
@@ -437,6 +444,22 @@ verifier("après le vendredi 19 h : le week-end suivant", refusDe(rt(SAMEDI, VEN
   "DATE_LIMITE",
   ["Samedi 21 novembre : 31 250 F", "Dimanche 22 novembre : 31 250 F", "Choisir une autre date"],
 ]);
+const gbashiSamedi = suite([
+  { type: "choisir-offre", offre: "gbashi-groupe" },
+  { type: "choisir-personnes", personnes: 5 },
+  { type: "choisir-date", date: SAMEDI },
+]);
+verifier("Gbashi Bike un samedi : refusé dès le jour, avant les vélos, les dimanches proposés", refusDe(gbashiSamedi), [
+  "refus",
+  "JOUR",
+  ["Dimanche 15 novembre", "Dimanche 22 novembre", "Choisir une autre date"],
+]);
+const bfaApresLimite = suite([
+  { type: "choisir-offre", offre: "bike-for-all" },
+  { type: "choisir-personnes", personnes: 10 },
+  { type: "choisir-date", date: SAMEDI },
+], VENDREDI_20H);
+verifier("Bike for All un samedi après le vendredi 19 h : refusé dès le jour, avant l'heure et le budget", [bfaApresLimite.etape, bfaApresLimite.refus?.refus.code], ["refus", "DATE_LIMITE"]);
 const autreDate = agir(rt(MERCREDI), { type: "appliquer", alternative: { cle: "autre-date", libelle: "Choisir une autre date", changement: { date: null } } });
 verifier("« Choisir une autre date » repose la question du jour", autreDate.etape, "date");
 

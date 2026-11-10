@@ -55,6 +55,7 @@ import {
   alternativesDuRefus,
   evaluer,
   parcDesFaits,
+  refusDuJour,
   totalVelos,
   variantesMoinsCheres,
   type ParcConnu,
@@ -529,7 +530,10 @@ export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): E
       // Un paiement en cours ne s'interrompt jamais.
       if (etat.etape === "attente" || etat.envoi) return etat;
       let suivant = etat;
-      if (action.offre && action.offre !== etat.choix.offre) {
+      // Une discussion terminée (réservée, en échec, fermée) repart de zéro,
+      // même sur la même offre.
+      const terminee = etat.etape === "confirmee" || etat.etape === "echec" || etat.etape === "ferme";
+      if (action.offre && (action.offre !== etat.choix.offre || terminee)) {
         suivant = reduire(etatInitial(etat.client), { type: "choisir-offre", offre: action.offre, maintenant }, faits);
       }
       if (action.preuveId && (action.offre ?? suivant.choix.offre) === "road-trip-groupe") {
@@ -569,7 +573,13 @@ export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): E
 
     case "choisir-date": {
       const suivant = ajouter(etat, duClient(majuscule(jourEnClair(action.date))));
-      return continuer({ ...suivant, choix: { ...suivant.choix, date: action.date } }, faits, maintenant);
+      const avecDate = { ...suivant, choix: { ...suivant.choix, date: action.date } };
+      // Un jour qui ne se réserve pas en ligne est refusé tout de suite, avant
+      // les vélos ou le budget : le moteur dit pourquoi, les jours qui
+      // marchent sont proposés.
+      const refusJour = avecDate.choix.offre ? refusDuJour(avecDate.choix.offre, action.date, faits, maintenant) : null;
+      if (refusJour) return versRefus(avecDate, refusJour, null, faits, maintenant);
+      return continuer(avecDate, faits, maintenant);
     }
 
     case "choisir-heure": {
