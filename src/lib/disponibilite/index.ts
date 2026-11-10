@@ -13,7 +13,8 @@
  */
 
 import { GAMMES, type GammeVelo } from "@/data/offres";
-import type { ParcDuJour } from "@/lib/db/contrat";
+import { ordreAttribution, type ParcDuJour } from "@/lib/db/contrat";
+import type { DateISO } from "@/lib/dates";
 
 /** Les codes des gammes, dans l'ordre du catalogue. */
 const CODES_GAMMES: GammeVelo[] = GAMMES.map((gamme) => gamme.code);
@@ -96,4 +97,94 @@ export function minutesDeHeure(heure: string): number {
 /** 495 devient « 08:15 ». */
 export function heureDeMinutes(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/* ------------------------------------------- Le parc d'un jour, par le dépôt */
+
+/**
+ * Les minutes qu'une ligne de réservation occupe dans sa journée : exactes
+ * quand elles sont notées (offres de groupe, au quart d'heure), sinon de
+ * heureDebut × 60 à heureFin × 60. Une réservation sur plusieurs jours garde
+ * le sens de `creneauxSeChevauchent` : les mêmes heures, chaque jour.
+ */
+export function minutesDeLigne(ligne: {
+  heureDebut: number;
+  heureFin: number;
+  minuteDebut?: number | null;
+  minuteFin?: number | null;
+}): CreneauMinutes {
+  if (
+    typeof ligne.minuteDebut === "number" &&
+    typeof ligne.minuteFin === "number" &&
+    ligne.minuteDebut < ligne.minuteFin
+  ) {
+    return { debutMinute: ligne.minuteDebut, finMinute: ligne.minuteFin };
+  }
+  return { debutMinute: ligne.heureDebut * 60, finMinute: ligne.heureFin * 60 };
+}
+
+/** Les heures pleines qui couvrent un créneau en minutes : 8 h 15 - 9 h 15 prend 8 h - 10 h. */
+export function heuresCouvrantes(creneau: CreneauMinutes): { heureDebut: number; heureFin: number } {
+  return { heureDebut: Math.floor(creneau.debutMinute / 60), heureFin: Math.ceil(creneau.finMinute / 60) };
+}
+
+/** Un vélo du parc tel que le dépôt le lit, avec ce qu'il lui faut en plus pour écrire. */
+export type VeloDuParc = ParcDuJour["velos"][number];
+
+/** Le parc d'un jour, ses vélos portant ce que le dépôt y a mis en plus. */
+export interface ParcDuJourDe<T extends VeloDuParc> extends ParcDuJour {
+  velos: T[];
+}
+
+/**
+ * Le parc d'un jour, à partir de ce que le dépôt a lu (en base ou en
+ * démonstration, pour que les deux répondent pareil) : les vélos ni retirés
+ * ni à l'atelier, moins ceux déclarés indisponibles ce jour-là, dans l'ordre
+ * d'attribution ; et les créneaux que les réservations bloquantes du jour
+ * prennent sur ces vélos, toutes offres confondues. Les lignes passées ici
+ * sont déjà celles qui bloquent (payées, ou en attente de paiement depuis
+ * moins de 30 minutes) et qui couvrent ce jour.
+ */
+export function construireParcDuJour<T extends VeloDuParc & { statut: string }>(
+  date: DateISO,
+  velos: T[],
+  indisponibles: ReadonlySet<string>,
+  lignes: { veloId: string; heureDebut: number; heureFin: number; minuteDebut?: number | null; minuteFin?: number | null }[],
+): ParcDuJourDe<T> {
+  const enEtat = ordreAttribution(
+    velos.filter(
+      (velo) => velo.statut !== "RETIRE" && velo.statut !== "MAINTENANCE" && !indisponibles.has(velo.id),
+    ),
+  );
+  const duParc = new Set(enEtat.map((velo) => velo.id));
+  const occupations = lignes
+    .filter((ligne) => duParc.has(ligne.veloId))
+    .map((ligne) => ({ veloId: ligne.veloId, ...minutesDeLigne(ligne) }))
+    .sort((a, b) => a.debutMinute - b.debutMinute || a.finMinute - b.finMinute || a.veloId.localeCompare(b.veloId));
+  return { date, velos: enEtat, occupations };
+}
+
+/**
+ * Les vélos à bloquer pour un groupe, parmi ceux libres sur tout le créneau :
+ * un nombre de vélos toutes gammes confondues, pris dans l'ordre
+ * d'attribution (le Classique d'abord, comme Octobre rose et Padel bike), ou
+ * le nombre exact de chaque gamme (Gbashi Bike). `velos` vaut `null` quand il
+ * n'y en a pas assez ; `libres` dit toujours ce qui reste sur le créneau.
+ */
+export function attribuerVelos<T extends VeloDuParc>(
+  parc: ParcDuJourDe<T>,
+  creneau: CreneauMinutes,
+  besoin: BesoinVelos,
+): { velos: T[] | null; libres: VelosLibres } {
+  const libres = velosLibresSurCreneau(parc, creneau);
+  if (!suffit(libres, besoin)) return { velos: null, libres };
+  const idsLibres = new Set(libres.ids);
+  const candidats = ordreAttribution(parc.velos.filter((velo) => idsLibres.has(velo.id)));
+  if (typeof besoin === "number") return { velos: candidats.slice(0, besoin), libres };
+  return {
+    velos: CODES_GAMMES.flatMap((gamme) =>
+      candidats.filter((velo) => velo.gamme === gamme).slice(0, besoin[gamme] ?? 0),
+    ),
+    libres,
+  };
 }

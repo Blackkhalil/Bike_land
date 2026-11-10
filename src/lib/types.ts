@@ -437,6 +437,8 @@ export interface Remboursement {
   faitPar?: string;
   faitLe?: string;
   creeLe: string;
+  /** La clé qui désigne la demande (une transaction reçue, par exemple) : unique, elle empêche un second remboursement. */
+  cleIdempotence?: string;
 }
 
 /** Pourquoi un vélo réservé ne peut plus partir. */

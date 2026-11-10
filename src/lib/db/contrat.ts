@@ -14,7 +14,7 @@
 
 import { listerJours, type DateISO } from "../dates";
 import { creneauOctobreRose, sortieOctobreRoseDu } from "@/data/octobre-rose";
-import { estOffreGroupe, GAMMES, type GammeVelo } from "@/data/offres";
+import { estOffreGroupe, GAMMES, panierExpire, type GammeVelo } from "@/data/offres";
 import type { CodeParrainage, VerificationParrainage } from "../parrainage";
 import type {
   AvisClient,
@@ -494,15 +494,171 @@ export function reservationsToucheesParmi(
 
 /**
  * La même demande de remboursement, envoyée deux fois (un webhook rejoué) :
- * même réservation, même montant, même motif, encore à faire. Elle n'en crée
- * pas une seconde, l'argent ne se rend qu'une fois. Deux paiements reçus en
- * double se distinguent par leur motif (qui cite la transaction).
+ * elle n'en crée pas une seconde, l'argent ne se rend qu'une fois. Même clé
+ * d'idempotence quand les deux en portent une (la clé fait foi : l'index
+ * unique de la base la protège aussi de deux demandes simultanées) ; sinon
+ * même réservation, même montant, même motif. Que le premier remboursement
+ * soit encore à faire ou déjà fait n'y change rien : un remboursement noté
+ * fait puis redemandé ne se refait pas (relecture du lot 2). Deux paiements
+ * reçus en double se distinguent par leur motif (qui cite la transaction),
+ * ou par leur clé.
  */
 export function memeRemboursement(
-  a: Pick<Remboursement, "reservationId" | "montantXof" | "motif" | "statut">,
-  b: { reservationId: string; montantXof: number; motif: string },
+  a: Pick<Remboursement, "reservationId" | "montantXof" | "motif"> & { cleIdempotence?: string | null },
+  b: { reservationId: string; montantXof: number; motif: string; cleIdempotence?: string | null },
 ): boolean {
-  return a.statut === "a_faire" && a.reservationId === b.reservationId && a.montantXof === b.montantXof && a.motif === b.motif;
+  if (a.cleIdempotence && b.cleIdempotence) return a.cleIdempotence === b.cleIdempotence;
+  return a.reservationId === b.reservationId && a.montantXof === b.montantXof && a.motif === b.motif;
+}
+
+/* ------------------------------------------- Offres de groupe (lot 3) */
+
+/**
+ * La journée entière d'un vélo déclaré indisponible (IndisponibiliteVelo) :
+ * de minuit à minuit, pour toutes les offres, location libre, road trip,
+ * Octobre rose et Padel bike comprises. Rangée parmi les créneaux pris du
+ * vélo (`periodesIndisponibles`), elle se croise comme une réservation avec
+ * `creneauxSeChevauchent`, `resteUneHeureLibre` et `occupationsDeLaGamme`.
+ */
+export function journeeIndisponible(date: DateISO): CreneauOccupe {
+  return { debut: date, fin: date, heureDebut: 0, heureFin: 24 };
+}
+
+/** Le refus d'un vélo précis déclaré indisponible un jour de la période demandée. */
+export const MESSAGE_VELO_INDISPONIBLE = "Ce vélo n'est pas disponible ce jour-là : choisissez-en un autre.";
+
+/** La date au format AAAA-MM-JJ, et qui existe au calendrier. */
+export function estDateISO(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const lue = new Date(`${date}T00:00:00Z`);
+  return !Number.isNaN(lue.getTime()) && lue.toISOString().slice(0, 10) === date;
+}
+
+const entierPositif = (valeur: unknown): valeur is number => Number.isInteger(valeur) && (valeur as number) >= 0;
+
+/**
+ * Ce que le dépôt refuse d'écrire, quoi qu'ait vérifié l'appelant, pour une
+ * réservation d'offre de groupe. Écrit une fois ici pour que la
+ * démonstration et la base refusent exactement la même chose. Ne contrôle
+ * aucun prix : le serveur les a calculés (src/lib/offres), le dépôt les range.
+ */
+export function controlerDemandeGroupe(demande: DemandeReservationGroupe): void {
+  if (!estOffreGroupe(demande.offre)) throw new Error("Cette offre n'est pas une offre de groupe.");
+  if (!estDateISO(demande.date)) throw new Error("Date attendue au format AAAA-MM-JJ.");
+  const { debutMinute, finMinute } = demande;
+  if (!entierPositif(debutMinute) || !entierPositif(finMinute) || finMinute > 24 * 60 || debutMinute >= finMinute) {
+    throw new Error("Créneau impossible : départ et retour en minutes depuis minuit, le retour après le départ.");
+  }
+  if (demande.offre === "gbashi-groupe") {
+    if (typeof demande.velos !== "object" || demande.velos === null) {
+      throw new Error("Gbashi Bike se réserve gamme par gamme : le nombre de vélos de chaque gamme.");
+    }
+    const parGamme = demande.velos;
+    const inconnues = Object.keys(parGamme).filter((cle) => !GAMMES.some((gamme) => gamme.code === cle));
+    if (inconnues.length > 0) throw new Error(`Gamme inconnue : ${inconnues.join(", ")}.`);
+    const nombres = Object.values(parGamme).filter((n) => n !== undefined);
+    if (!nombres.every(entierPositif) || nombres.reduce((total, n) => total + n, 0) < 1) {
+      throw new Error("Au moins un vélo, en nombres entiers, pour chaque gamme.");
+    }
+  } else if (!Number.isInteger(demande.velos) || (demande.velos as number) < 1) {
+    throw new Error("Le nombre de vélos à bloquer, toutes gammes confondues : un entier, un au moins.");
+  }
+  if (!Number.isInteger(demande.nombrePersonnes) || demande.nombrePersonnes < 1) {
+    throw new Error("Une personne au moins.");
+  }
+  if (!entierPositif(demande.totalXof)) throw new Error("Le total doit être un montant entier en francs CFA.");
+  if (!demande.cgvAcceptees) throw new Error("Les conditions générales doivent être acceptées.");
+  // Une vente au comptoir ne se règle qu'en espèces, comme `creerReservation`.
+  if (demande.encaissement && demande.moyenPaiement !== "ESPECES") {
+    throw new Error("Une vente encaissée au comptoir se règle en espèces.");
+  }
+  // La réduction sur preuve n'existe que pour le road trip : une preuve citée
+  // ailleurs se perdrait sans rien accorder.
+  if (demande.preuveId && demande.offre !== "road-trip-groupe") throw new PreuveReductionInutilisableError("offre");
+}
+
+/**
+ * La réduction rangée sur une réservation de groupe, et le sous-total avant
+ * elle : la facture et la page de suivi lisent « sous-total, remise, total ».
+ * La réduction vient de l'instantané du calcul (`details.reductionXof`,
+ * road trip avec preuve validée) ; sans elle, le sous-total est le total.
+ */
+export function montantsDeLaDemandeGroupe(demande: Pick<DemandeReservationGroupe, "totalXof" | "details">): {
+  sousTotalXof: number;
+  remiseXof: number;
+} {
+  const reduction = demande.details?.reductionXof;
+  const remiseXof = entierPositif(reduction) ? reduction : 0;
+  return { sousTotalXof: demande.totalXof + remiseXof, remiseXof };
+}
+
+/** Le prix d'une ligne de vélo : le sous-total partagé entre les vélos, comme `creerReservation`. */
+export function prixParLigne(sousTotalXof: number, nombreDeVelos: number): number {
+  return nombreDeVelos > 1 ? Math.round(sousTotalXof / nombreDeVelos) : sousTotalXof;
+}
+
+/**
+ * Ce que le journal garde d'une réservation de groupe (type
+ * « reservation-groupe ») : de quoi la retrouver sans ouvrir sa fiche.
+ */
+export function detailsReservationGroupe(
+  demande: DemandeReservationGroupe,
+  nombreDeVelos: number,
+  depart: string,
+  retour: string,
+): Record<string, unknown> {
+  return {
+    offre: demande.offre,
+    date: demande.date,
+    depart,
+    retour,
+    personnes: demande.nombrePersonnes,
+    velos: nombreDeVelos,
+    ...(typeof demande.velos === "object" ? { gammes: { ...demande.velos } } : {}),
+    totalXof: demande.totalXof,
+    comptoir: Boolean(demande.encaissement),
+    ...(demande.preuveId ? { preuveId: demande.preuveId } : {}),
+  };
+}
+
+/**
+ * L'auteur d'une réservation au journal : « site » pour une demande en ligne,
+ * « admin (prénom) » pour une vente au comptoir, du nom de qui a reçu
+ * l'argent (même forme que `auteurAdmin` de src/lib/journal.ts).
+ */
+export function auteurAuJournal(encaissement?: { par: string }): string {
+  if (!encaissement) return "site";
+  const par = encaissement.par.trim();
+  if (/^admin( \(.+\))?$/.test(par)) return par;
+  return par ? `admin (${par})` : "admin";
+}
+
+/** Pourquoi une preuve de réduction ne peut pas servir à cette réservation. */
+export type RaisonPreuveInutilisable = "inconnue" | "en_attente" | "refusee" | "deja-utilisee" | "offre";
+
+/**
+ * La preuve de réduction peut-elle servir ? Elle doit être validée (par
+ * l'agent IA ou à la main), et ne pas retenir déjà la réduction d'une autre
+ * réservation : une par groupe. Une preuve rattachée à une réservation qui ne
+ * retient plus rien (annulée, ou jamais payée et expirée au bout de 30
+ * minutes) redevient libre : le client qui recommence après un paiement
+ * échoué garde sa réduction. `null` si elle peut servir. La même règle en
+ * démonstration et en base.
+ */
+export function raisonPreuveInutilisable(
+  preuve: { statut: string; reference?: string | null } | null,
+  reservationLiee: { statut: StatutReservation; creeLe: string } | null,
+  maintenant = Date.now(),
+): RaisonPreuveInutilisable | null {
+  if (!preuve) return "inconnue";
+  if (preuve.statut !== "validee") return preuve.statut === "refusee" ? "refusee" : "en_attente";
+  if (!preuve.reference || !reservationLiee) return null;
+  const retient =
+    reservationLiee.statut === "CONFIRMEE" ||
+    reservationLiee.statut === "EN_COURS" ||
+    reservationLiee.statut === "TERMINEE" ||
+    (reservationLiee.statut === "EN_ATTENTE_PAIEMENT" && !panierExpire(reservationLiee.creeLe, maintenant));
+  return retient ? "deja-utilisee" : null;
 }
 
 export interface Depot {
@@ -845,14 +1001,18 @@ export interface Depot {
   /**
    * Note de l'argent à rendre au client d'une réservation, et l'écrit au
    * journal. La même demande envoyée deux fois n'en crée qu'une
-   * (`memeRemboursement`) : la première est renvoyée. `null` si la
-   * réservation n'existe pas.
+   * (`memeRemboursement`), qu'elle soit encore à faire ou déjà faite : la
+   * première est renvoyée. `cleIdempotence` (facultative, unique en base,
+   * par exemple l'identifiant de la transaction reçue) la désigne à coup
+   * sûr, même pour deux demandes simultanées. `null` si la réservation
+   * n'existe pas.
    */
   creerRemboursement(champs: {
     reference: string;
     montantXof: number;
     motif: string;
     par?: string;
+    cleIdempotence?: string;
   }): Promise<Remboursement | null>;
 
   /** Les remboursements, les plus anciens d'abord quand ils sont à faire, les plus récents d'abord une fois faits. */
@@ -976,6 +1136,29 @@ export class CapaciteInsuffisanteError extends Error {
     this.name = "CapaciteInsuffisanteError";
     this.velosLibres = velosLibres;
     this.parGamme = parGamme;
+  }
+}
+
+/**
+ * La preuve de réduction citée ne peut pas servir à cette réservation (voir
+ * `raisonPreuveInutilisable`) : rien n'a été écrit. `raison` reprend les
+ * valeurs que la route du devis renvoie au client (`ReponseDevis.preuve`),
+ * plus « offre » quand la demande n'est pas un road trip.
+ */
+export class PreuveReductionInutilisableError extends Error {
+  readonly raison: RaisonPreuveInutilisable;
+  constructor(raison: RaisonPreuveInutilisable) {
+    super(
+      {
+        inconnue: "Cette preuve de réduction est introuvable.",
+        en_attente: "Cette preuve de réduction n'est pas encore vérifiée.",
+        refusee: "Cette preuve de réduction n'a pas été acceptée.",
+        "deja-utilisee": "Cette preuve de réduction a déjà servi pour une autre réservation.",
+        offre: "La réduction sur preuve ne vaut que pour le road trip en groupe.",
+      }[raison],
+    );
+    this.name = "PreuveReductionInutilisableError";
+    this.raison = raison;
   }
 }
 

@@ -22,6 +22,7 @@ import {
 } from "@/data/offres";
 import { blocPadel, lireReglagesAvec } from "@/data/reglages";
 import { lireReglagesOffresAvec } from "@/data/reglages-offres";
+import { attribuerVelos, construireParcDuJour, heureDeMinutes, heuresCouvrantes } from "../disponibilite";
 import { penaliteRetardXof } from "../offres/retard";
 import { calculerDevis } from "../tarification";
 import { genererReference, genererToken, hacherToken, lireToken } from "../tokens";
@@ -47,14 +48,25 @@ import type {
   JourFerme,
 } from "../types";
 import {
+  auteurAuJournal,
+  CapaciteInsuffisanteError,
   ConflitDisponibiliteError,
+  controlerDemandeGroupe,
   creneauOctobreRoseDemande,
   creneauxSeChevauchent,
+  detailsReservationGroupe,
+  estDateISO,
+  journeeIndisponible,
   limiteJournal,
   memeRemboursement,
+  MESSAGE_VELO_INDISPONIBLE,
   messagePlacesManquantes,
   messageVelosManquants,
+  montantsDeLaDemandeGroupe,
   ordreAttribution,
+  PreuveReductionInutilisableError,
+  prixParLigne,
+  raisonPreuveInutilisable,
   refusRetard,
   reservationsToucheesParmi,
   resteUneHeureLibre,
@@ -62,10 +74,12 @@ import {
   velosDeLaGamme,
   velosLibresDeLaGamme,
   TransactionDejaUtiliseeError,
+  type CreneauOccupe,
   type Depot,
   type DemandeReservation,
   type FiltreCatalogue,
   type NouvelEvenement,
+  type ParcDuJour,
   type ResultatReservation,
 } from "./contrat";
 import { construireHistorique } from "./historique";
@@ -109,6 +123,12 @@ interface EtatDemo {
   journal: EvenementJournal[];
   /** L'argent à rendre, rattaché à la réservation par son identifiant. */
   remboursements: Omit<Remboursement, "reference" | "offre" | "client">[];
+  /**
+   * Les preuves de réduction du road trip, réduites à ce que la réservation
+   * en lit, comme les colonnes de PreuveReduction : la décision (« validee »,
+   * « en_attente », « refusee ») et la réservation qui l'a consommée.
+   */
+  preuves: { id: string; statut: string; reference?: string; creeLe: string }[];
 }
 
 // L'état vit sur `globalThis` : en développement, le rechargement à chaud
@@ -141,6 +161,7 @@ function etat(): EtatDemo {
       indisponibilites: [],
       journal: [],
       remboursements: [],
+      preuves: [],
     };
   }
   // Un état créé avant l'ajout de ces réglages, gardé par le rechargement à chaud.
@@ -150,6 +171,7 @@ function etat(): EtatDemo {
   porteur[cle].indisponibilites ??= [];
   porteur[cle].journal ??= [];
   porteur[cle].remboursements ??= [];
+  porteur[cle].preuves ??= [];
   return porteur[cle]!;
 }
 
@@ -218,19 +240,21 @@ function trouver(reference: string) {
  * d'écrire, et deux réservations du même créneau passaient toutes deux.
  */
 
-/** Les créneaux qui bloquent ce vélo : tout sauf l'annulé et le panier abandonné. */
-function creneauxBloquants(veloId: string) {
+/** La réservation bloque-t-elle ses vélos ? Tout sauf l'annulé et le panier abandonné. */
+function bloque(reservation: Reservation, limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000): boolean {
+  return (
+    reservation.statut !== "ANNULEE" &&
+    // Un panier abandonne cesse de bloquer le velo.
+    !(reservation.statut === "EN_ATTENTE_PAIEMENT" && new Date(reservation.creeLe).getTime() < limite)
+  );
+}
+
+/** Les créneaux des réservations qui bloquent ce vélo. */
+function reservationsBloquantes(veloId: string): CreneauOccupe[] {
   const limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000;
   return etat()
     .reservations.filter(
-      (reservation) =>
-        reservation.statut !== "ANNULEE" &&
-        // Un panier abandonne cesse de bloquer le velo.
-        !(
-          reservation.statut === "EN_ATTENTE_PAIEMENT" &&
-          new Date(reservation.creeLe).getTime() < limite
-        ) &&
-        reservation.lignes.some((ligne) => ligne.veloId === veloId),
+      (reservation) => bloque(reservation, limite) && reservation.lignes.some((ligne) => ligne.veloId === veloId),
     )
     .map((reservation) => ({
       debut: reservation.dateDebut,
@@ -238,6 +262,49 @@ function creneauxBloquants(veloId: string) {
       heureDebut: reservation.heureDebut,
       heureFin: reservation.heureFin,
     }));
+}
+
+/** Le vélo est-il déclaré indisponible un jour de cette période (bornes comprises) ? */
+function indisponibleSurPeriode(veloId: string, debut: DateISO, fin: DateISO): boolean {
+  return etat().indisponibilites.some((i) => i.veloId === veloId && i.date >= debut && i.date <= fin);
+}
+
+/**
+ * Les créneaux qui bloquent ce vélo : ses réservations, sauf l'annulé et le
+ * panier abandonné, et les jours où il est déclaré indisponible, pris en
+ * entier pour toutes les offres (comme en base).
+ */
+function creneauxBloquants(veloId: string): CreneauOccupe[] {
+  return [
+    ...reservationsBloquantes(veloId),
+    ...etat()
+      .indisponibilites.filter((i) => i.veloId === veloId)
+      .map((i) => journeeIndisponible(i.date)),
+  ];
+}
+
+/**
+ * Le parc d'un jour (src/lib/disponibilite), comme en base : les vélos en
+ * état moins ceux déclarés indisponibles ce jour-là, et les créneaux que les
+ * réservations qui bloquent prennent ce jour-là, toutes offres confondues, à
+ * la minute près quand elles en portent.
+ */
+function parcDemo(date: DateISO) {
+  const limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000;
+  const donnees = etat();
+  const lignes = donnees.reservations
+    .filter((reservation) => bloque(reservation, limite) && reservation.dateDebut <= date && date <= reservation.dateFin)
+    .flatMap((reservation) =>
+      reservation.lignes.map((ligne) => ({
+        veloId: ligne.veloId,
+        heureDebut: reservation.heureDebut,
+        heureFin: reservation.heureFin,
+        minuteDebut: reservation.minuteDebut,
+        minuteFin: reservation.minuteFin,
+      })),
+    );
+  const indisponibles = new Set(donnees.indisponibilites.filter((i) => i.date === date).map((i) => i.veloId));
+  return construireParcDuJour(date, velos, indisponibles, lignes);
 }
 
 function veloLibre(
@@ -313,7 +380,8 @@ export const depotDemo: Depot = {
   },
 
   async periodesIndisponibles(veloId: string) {
-    return creneauxBloquants(veloId);
+    // Dans le même ordre qu'en base : par jour, puis par heure de départ.
+    return creneauxBloquants(veloId).sort((a, b) => a.debut.localeCompare(b.debut) || a.heureDebut - b.heureDebut);
   },
 
   async estDisponible(
@@ -423,6 +491,11 @@ export const depotDemo: Depot = {
       }
       velosAttribues = choisis;
     } else {
+      // Comme en base : un vélo déclaré indisponible un jour de la période ne
+      // roule pas, quelle que soit l'offre.
+      if (indisponibleSurPeriode(velo!.id, demande.dateDebut, demande.dateFin)) {
+        throw new ConflitDisponibiliteError(MESSAGE_VELO_INDISPONIBLE);
+      }
       if (!veloLibre(velo!.id, demande.dateDebut, demande.dateFin, heureDebut, heureFin)) {
         throw new ConflitDisponibiliteError();
       }
@@ -761,10 +834,16 @@ export const depotDemo: Depot = {
         heureDebut: reservation.heureDebut,
         heureFin: reservation.heureFin,
       };
-      const repris = reservation.lignes.some((ligne) =>
-        creneauxBloquants(ligne.veloId).some((periode) => creneauxSeChevauchent(creneau, periode)),
-      );
-      if (repris) throw new ConflitDisponibiliteError();
+      // Vélo par vélo, dans le même ordre qu'en base : repris par une autre
+      // réservation, ou déclaré indisponible entre-temps un jour de la sortie.
+      for (const ligne of reservation.lignes) {
+        if (reservationsBloquantes(ligne.veloId).some((periode) => creneauxSeChevauchent(creneau, periode))) {
+          throw new ConflitDisponibiliteError();
+        }
+        if (indisponibleSurPeriode(ligne.veloId, reservation.dateDebut, reservation.dateFin)) {
+          throw new ConflitDisponibiliteError(MESSAGE_VELO_INDISPONIBLE);
+        }
+      }
     }
 
     reservation.statut = "CONFIRMEE";
@@ -1219,12 +1298,19 @@ export const depotDemo: Depot = {
     );
   },
 
-  async creerRemboursement({ reference, montantXof, motif, par }) {
+  async creerRemboursement({ reference, montantXof, motif, par, cleIdempotence }) {
     const reservation = trouver(reference);
     if (!reservation) return null;
     const donnees = etat();
-    const demande = { reservationId: reservation.id, montantXof, motif: motif.trim() };
-    // La même demande deux fois (un webhook rejoué) : la première, rien de plus.
+    const cleNettoyee = cleIdempotence?.trim() || undefined;
+    const demande = {
+      reservationId: reservation.id,
+      montantXof,
+      motif: motif.trim(),
+      ...(cleNettoyee ? { cleIdempotence: cleNettoyee } : {}),
+    };
+    // La même demande deux fois (un webhook rejoué) : la première, rien de
+    // plus, qu'elle soit encore à faire ou déjà faite (comme en base).
     const existant = donnees.remboursements.find((r) => memeRemboursement(r, demande));
     if (existant) return copie(versRemboursement(existant));
     const ligne: EtatDemo["remboursements"][number] = {
@@ -1318,13 +1404,134 @@ export const depotDemo: Depot = {
       ),
     );
   },
-  // Offres de groupe : écrites par le lot 3 (disponibilité au quart d'heure).
-  async parcDuJour() {
-    throw new Error("parcDuJour : pas encore écrit (lot 3, disponibilité).");
+  /* ------------------------------------------- Offres de groupe (lot 3) */
+
+  async parcDuJour(date): Promise<ParcDuJour> {
+    if (!estDateISO(date)) throw new Error("Date attendue au format AAAA-MM-JJ.");
+    const parc = parcDemo(date);
+    return copie({
+      date: parc.date,
+      velos: parc.velos.map(({ id, nom, gamme }) => ({ id, nom, gamme })),
+      occupations: parc.occupations,
+    });
   },
 
-  async creerReservationGroupe() {
-    throw new Error("creerReservationGroupe : pas encore écrit (lot 3, disponibilité).");
+  async creerReservationGroupe(demande) {
+    // Les mêmes refus qu'en base, puis les mêmes règles : le parc relu, les
+    // vélos attribués, la preuve consommée et l'écriture, sans aucune
+    // attente entre eux (voir `creneauxBloquants`).
+    controlerDemandeGroupe(demande);
+    const encaissement = demande.encaissement;
+    const creneau = { debutMinute: demande.debutMinute, finMinute: demande.finMinute };
+    const { heureDebut, heureFin } = heuresCouvrantes(creneau);
+    const depart = heureDeMinutes(demande.debutMinute);
+    const retour = heureDeMinutes(demande.finMinute);
+    const { sousTotalXof, remiseXof } = montantsDeLaDemandeGroupe(demande);
+    const donnees = etat();
+
+    if (
+      encaissement?.reference &&
+      donnees.reservations.some((r) => r.paiements.some((p) => p.referenceFournisseur === encaissement.reference))
+    ) {
+      throw new TransactionDejaUtiliseeError("Cette vente est déjà enregistrée.");
+    }
+    const { velos: attribues, libres } = attribuerVelos(parcDemo(demande.date), creneau, demande.velos);
+    if (!attribues) throw new CapaciteInsuffisanteError(libres.total, libres.parGamme);
+
+    const preuve = demande.preuveId ? (donnees.preuves.find((p) => p.id === demande.preuveId) ?? null) : null;
+    if (demande.preuveId) {
+      const liee = preuve?.reference ? trouver(preuve.reference) : undefined;
+      const raison = raisonPreuveInutilisable(preuve, liee ? { statut: liee.statut, creeLe: liee.creeLe } : null);
+      if (raison) throw new PreuveReductionInutilisableError(raison);
+    }
+
+    // Le client, comme `creerReservation` : une fiche existante n'est jamais
+    // réécrite, le contact saisi reste sur la réservation.
+    const emailNormalise = demande.client.email.trim().toLowerCase();
+    let client = donnees.clients.find((c) => c.email === emailNormalise);
+    if (!client) {
+      client = {
+        id: `cli-${donnees.clients.length + 1}-${Date.now().toString(36)}`,
+        email: emailNormalise,
+        prenom: demande.client.prenom.trim(),
+        nom: demande.client.nom.trim(),
+        telephone: demande.client.telephone.trim() || undefined,
+        creeLe: new Date().toISOString(),
+      };
+      donnees.clients.push(client);
+    }
+    const contact = {
+      ...client,
+      prenom: demande.client.prenom.trim(),
+      nom: demande.client.nom.trim(),
+      telephone: demande.client.telephone.trim() || client.telephone,
+    };
+
+    const reference = genererReference();
+    const token = genererToken(reference);
+    donnees.tokens.set(reference, hacherToken(token));
+    const maintenant = new Date().toISOString();
+    const prixLigne = prixParLigne(sousTotalXof, attribues.length);
+    const reservation: Reservation = {
+      id: `res-${reference}`,
+      reference,
+      statut: encaissement ? "CONFIRMEE" : "EN_ATTENTE_PAIEMENT",
+      confirmeLe: encaissement ? maintenant : undefined,
+      offre: demande.offre,
+      nombrePersonnes: demande.nombrePersonnes,
+      clientId: client.id,
+      client: contact,
+      pointDeRetraitId: attribues[0].pointDeRetraitId,
+      dateDebut: demande.date,
+      dateFin: demande.date,
+      // Les heures pleines qui couvrent les minutes, comme en base.
+      heureDebut,
+      heureFin,
+      horaire: { depart, retour },
+      minuteDebut: demande.debutMinute,
+      minuteFin: demande.finMinute,
+      offreDetails: copie(demande.details),
+      jours: 1,
+      lignes: attribues.map((velo) => ({
+        veloId: velo.id,
+        veloNom: velo.nom,
+        veloSlug: velo.slug,
+        prixUnitaireXof: prixLigne,
+        totalLigneXof: prixLigne,
+      })),
+      options: [],
+      sousTotalXof,
+      optionsXof: 0,
+      remiseXof,
+      cautionXof: 0,
+      totalXof: demande.totalXof,
+      paiements: [
+        {
+          id: `pay-${reference}`,
+          fournisseur: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "SASPAY",
+          moyen: demande.moyenPaiement,
+          statut: encaissement ? "REUSSI" : "INITIE",
+          montantXof: demande.totalXof,
+          // Référence provisoire d'un paiement en ligne ; pour les espèces,
+          // celle de la saisie au comptoir, comme `creerReservation`.
+          referenceFournisseur: encaissement ? encaissement.reference : `TX-${reference}`,
+          estCaution: false,
+          encaissePar: encaissement?.par,
+          creeLe: maintenant,
+        },
+      ],
+      message: demande.message,
+      creeLe: maintenant,
+    };
+    donnees.reservations.push(reservation);
+    if (preuve) preuve.reference = reference;
+    ecrireAuJournal({
+      type: "reservation-groupe",
+      reference,
+      details: detailsReservationGroupe(demande, attribues.length, depart, retour),
+      auteur: auteurAuJournal(encaissement),
+    });
+    return { reservation: copie(reservation), token };
   },
 };
 

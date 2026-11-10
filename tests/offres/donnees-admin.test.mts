@@ -275,8 +275,17 @@ verifier("zéro efface la pénalité", (await retard(ref, { minutes: 0, prenom: 
 verifier("minutes décimales : refusées", [(await retard(ref, { minutes: 10.5, prenom: "Koffi" })).statut, (await retard(ref, { minutes: 10.5, prenom: "Koffi" })).donnees.champs?.minutes], [422, "Minutes entières."]);
 verifier("minutes négatives : refusées", (await retard(ref, { minutes: -1, prenom: "Koffi" })).statut, 422);
 verifier("réservation inconnue : 404", (await retard("BL-INCONNU", { minutes: 10, prenom: "Koffi" })).statut, 404);
-// Une demande en ligne, pas encore payée, sur le second vélo (libre ce mardi).
-const { reservation: enAttente } = await vendre(veloB.id, false);
+// Le second vélo est déclaré indisponible ce mardi : il ne roule ce jour-là
+// pour aucune offre, location libre comprise (lot 3).
+verifier(
+  "vélo déclaré indisponible ce jour-là : refusé, même en location libre",
+  espaces(await vendre(veloB.id, false).then(() => "créée", (e: Error) => e.message)),
+  "Ce vélo n'est pas disponible ce jour-là : choisissez-en un autre.",
+);
+// Une demande en ligne, pas encore payée, sur un vélo resté libre ce mardi.
+const veloD = libres.find((v) => ![veloA.id, veloB.id, veloC.id].includes(v.id));
+if (!veloD) throw new Error("Aucun quatrième vélo libre ce mardi dans la démonstration.");
+const { reservation: enAttente } = await vendre(veloD.id, false);
 enOffreDeGroupe(enAttente.reference, "bike-for-all");
 verifier("pas encore payée : refusée", (await retard(enAttente.reference, { minutes: 10, prenom: "Koffi" })).donnees.code, "statut");
 await depot.ecrireParametreAdmin(CLE, JSON.stringify({ retard: { toleranceMinutes: -3 } }));
@@ -373,7 +382,12 @@ const tables = ["IndisponibiliteVelo", "JournalEvenement", "PreuveReduction", "R
 verifier("chaque table : créée si absente, verrouillée (RLS), décrite dans le schéma", tables.map((t) => [sql.includes(`CREATE TABLE IF NOT EXISTS "${t}"`), sql.includes(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`), schemaPrisma.includes(`model ${t} {`)]), tables.map(() => [true, true, true]));
 verifier("trois offres ajoutées si absentes", ["BIKE_FOR_ALL", "ROAD_TRIP_GROUPE", "GBASHI_GROUPE"].map((o) => sql.includes(`ADD VALUE IF NOT EXISTS '${o}'`)), [true, true, true]);
 const colonnes = sql.split("\n").filter((l) => l.includes("ADD COLUMN"));
-verifier("huit colonnes, toutes « IF NOT EXISTS »", [colonnes.length, colonnes.every((l) => l.includes("ADD COLUMN IF NOT EXISTS"))], [8, true]);
+verifier("neuf colonnes (dont la clé d'idempotence des remboursements), toutes « IF NOT EXISTS »", [colonnes.length, colonnes.every((l) => l.includes("ADD COLUMN IF NOT EXISTS"))], [9, true]);
+verifier(
+  "la clé d'idempotence : unique en base et dans le schéma",
+  [sql.includes('CREATE UNIQUE INDEX IF NOT EXISTS "Remboursement_cleIdempotence_key"'), /cleIdempotence\s+String\?\s+@unique/.test(schemaPrisma)],
+  [true, true],
+);
 verifier("rien de supprimé ni de renommé", /\b(DROP|RENAME|DELETE|TRUNCATE|UPDATE)\b/i.test(sql.replace(/^--.*$/gm, "").replace(/ON (DELETE|UPDATE) (CASCADE|RESTRICT)/g, "")), false);
 
 console.log(echecs ? `\n${echecs} échec(s).` : "\nTout est bon.");
