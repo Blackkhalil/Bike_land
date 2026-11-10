@@ -407,6 +407,35 @@ console.log("\n— Routes, branchées au dépôt de démonstration");
   delete process.env.BIKELAND_ROLE;
 }
 
+console.log("\n— Le SQL des preuves : additif et rejouable");
+{
+  const { readFileSync } = await import("node:fs");
+  const sql = readFileSync(join(projet, "prisma/offres-groupe-preuves.sql"), "utf8");
+  const instructions = sql
+    .split("\n")
+    .filter((ligne) => !ligne.trim().startsWith("--"))
+    .join("\n")
+    .split(";")
+    .map((instruction) => instruction.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  verifier(
+    "chaque instruction vérifie d'abord que l'objet n'existe pas, ou verrouille la table",
+    instructions.every((i) => /^(ALTER TABLE "\w+" ADD COLUMN IF NOT EXISTS|CREATE TABLE IF NOT EXISTS|ALTER TABLE "\w+" ENABLE ROW LEVEL SECURITY)/.test(i)),
+    true,
+  );
+  verifier(
+    "rien n'est supprimé, vidé, réécrit ni renommé",
+    instructions.some((i) => /^(DROP|DELETE|TRUNCATE|UPDATE)\b/i.test(i) || /\b(DROP|RENAME)\b/i.test(i)),
+    false,
+  );
+  const schema = readFileSync(join(projet, "prisma/schema.prisma"), "utf8");
+  verifier(
+    "le schéma Prisma suit le SQL (email, téléphone, table FichierPreuve)",
+    [/email\s+String\?/.test(schema.split("model PreuveReduction")[1] ?? ""), schema.includes("model FichierPreuve"), sql.includes('"FichierPreuve" ENABLE ROW LEVEL SECURITY')],
+    [true, true, true],
+  );
+}
+
 console.log("\n— La tâche quotidienne efface les captures");
 {
   const { GET: tache } = await charger("src/app/api/cron/rappels/route.ts");
