@@ -462,7 +462,9 @@ async function etablirDevis(
   client?: IdentiteClient,
 ): Promise<DevisEtabli> {
   const maintenant = deps.maintenant();
-  const preuveId = demande.offre === "road-trip-groupe" ? demande.saisie.preuveId : undefined;
+  // Décision 26 : jamais de réduction au comptoir. Une capture citée dans une
+  // vente au comptoir est ignorée : ni comptée, ni consommée.
+  const preuveId = demande.offre === "road-trip-groupe" && canal === "en-ligne" ? demande.saisie.preuveId : undefined;
   const preuve = preuveId ? await etatPreuve(preuveId, deps, maintenant, client) : null;
   const contexte: ContexteCalcul = {
     canal,

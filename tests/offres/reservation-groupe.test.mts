@@ -541,6 +541,30 @@ console.log("\n— Comptoir");
     roadTripComptoir.corps.issue.resultat.prixBarreXof,
     "preuve" in roadTripComptoir.corps,
   ], [30000, 0, null, false]);
+  // Même une capture validée citée dans la demande (le formulaire n'en envoie jamais) ne compte pas au comptoir.
+  const capturePresentee = await vendre({ action: "devis", ...roadTrip({ preuveId: "ok" }) }, { preuves: { ok: { id: "ok", statut: "validee" } } });
+  verifier("décision 26 : une capture validée citée au comptoir est ignorée, 30 000 F", [
+    capturePresentee.corps.issue.resultat.totalXof,
+    capturePresentee.corps.issue.resultat.reductionXof,
+    "preuve" in capturePresentee.corps,
+  ], [30000, 0, false]);
+  const venteAvecCapture = await vendre(
+    {
+      ...roadTrip({ preuveId: "ok" }),
+      client: { prenom: "Koffi", nom: "Client", email: "koffi.capture@example.com", telephone: "" },
+      encaissePar: "Koffi",
+      attendu: { totalXof: 30000 },
+      cleVente: "vente-capture-1",
+      cgvAcceptees: true,
+    },
+    { preuves: { ok: { id: "ok", statut: "validee" } } },
+  );
+  const ecriteAvecCapture = venteAvecCapture.etat.creees[0] as Record<string, any> | undefined;
+  verifier("décision 26 : vente au comptoir avec une capture citée, au prix normal, la capture n'est pas consommée", [
+    venteAvecCapture.statut,
+    ecriteAvecCapture?.totalXof,
+    ecriteAvecCapture ? "preuveId" in ecriteAvecCapture : null,
+  ], [201, 30000, false]);
 
   const vente = {
     ...roadTrip(),

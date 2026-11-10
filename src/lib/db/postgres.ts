@@ -501,12 +501,6 @@ async function velosIndisponibles(db: Prisma.TransactionClient, debut: DateISO, 
 type VeloDuParcEnBase = { id: string; nom: string; gamme: GammeVelo; statut: string; pickupPointId: string | null };
 
 /**
- * Le parc d'un jour (src/lib/disponibilite), lu avec ce client : la base, ou
- * la transaction qui va écrire. En isolation sérialisable, ce sont ces
- * lectures que la transaction protège d'une écriture concurrente. Une
- * lecture après l'autre : une transaction interactive n'a qu'une connexion.
- */
-/**
  * Les réservations du Road trip en groupe, sans les annulées, réduites à ce
  * que regarde la règle « une réduction par client » (décision 25) : avec la
  * réduction des abonnés (`discountXof` > 0, la seule remise de cette offre)
@@ -546,6 +540,12 @@ async function lireReservationsRoadTripGroupe(
   }));
 }
 
+/**
+ * Le parc d'un jour (src/lib/disponibilite), lu avec ce client : la base, ou
+ * la transaction qui va écrire. En isolation sérialisable, ce sont ces
+ * lectures que la transaction protège d'une écriture concurrente. Une
+ * lecture après l'autre : une transaction interactive n'a qu'une connexion.
+ */
 async function lireParcDuJour(db: Prisma.TransactionClient, date: DateISO): Promise<ParcDuJourDe<VeloDuParcEnBase>> {
   const jour = new Date(`${date}T00:00:00Z`);
   const bikes = await db.bike.findMany({
