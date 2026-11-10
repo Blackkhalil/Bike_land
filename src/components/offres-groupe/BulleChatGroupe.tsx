@@ -31,6 +31,17 @@ const DUREE_CONSERVATION_MS = 12 * 60 * 60 * 1000;
 /** Les pages où la bulle flottante ne se montre pas : le tunnel et le suivi d'une réservation, paiement en cours. */
 const PAGES_SANS_BULLE = ["/reservation"];
 
+/**
+ * Les pages où une discussion restée ouverte ne se rouvre pas d'elle-même :
+ * celles que le chatbot ouvre dans un nouvel onglet (les conditions et la
+ * protection des données, qu'on veut lire tranquillement : l'onglet hérite
+ * du stockage de session) et le tunnel. Un bouton ou un lien l'ouvre quand
+ * même.
+ */
+const PAGES_SANS_REOUVERTURE = ["/reservation", "/cgv", "/donnees-personnelles", "/mentions-legales"];
+
+const correspond = (chemin: string, pages: string[]) => pages.some((page) => chemin === page || chemin.startsWith(`${page}/`));
+
 /** Le chatbot était-il ouvert avant le rechargement de la page ? Lu sans charger la machine. */
 function etaitOuvert(maintenant: number): boolean {
   try {
@@ -66,7 +77,7 @@ export function BulleChatGroupe({ faits }: { faits: FaitsChat }) {
   const [ouverture, setOuverture] = useState<{ demande: DemandeOuverture | null; jeton: number; instant: number } | null>(null);
   const [decalage, setDecalage] = useState(0);
 
-  const masquee = PAGES_SANS_BULLE.some((page) => chemin === page || chemin.startsWith(`${page}/`));
+  const masquee = correspond(chemin, PAGES_SANS_BULLE);
 
   // Les boutons des pages savent que la bulle écoute ; la discussion se
   // rouvre après un rechargement ; un lien peut porter l'offre.
@@ -88,7 +99,7 @@ export function BulleChatGroupe({ faits }: { faits: FaitsChat }) {
         ouvrirSur(demande);
         const { pathname, search, hash } = window.location;
         window.history.replaceState(window.history.state, "", adresseSansChat(pathname, search, hash));
-      } else if (etaitOuvert(Date.now())) {
+      } else if (!correspond(window.location.pathname, PAGES_SANS_REOUVERTURE) && etaitOuvert(Date.now())) {
         ouvrirSur(null);
       }
     }, 0);

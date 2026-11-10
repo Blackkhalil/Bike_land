@@ -79,7 +79,7 @@ verifier("une offre inconnue ou une preuve illisible sont ignorées", [
   lien.demandeDeLAdresse("?reserver-en-groupe="),
 ], [{}, null, {}]);
 verifier("les paramètres du chatbot quittent l'adresse, le reste demeure", lien.adresseSansChat("/produits", "?reserver-en-groupe=gbashi-groupe&preuve=p&utm=x", "#gbashi-bike"), "/produits?utm=x#gbashi-bike");
-verifier("un bouton de page ouvre sans adresse : un lien relatif à la page", lien.lienChatGroupe("gbashi-groupe", undefined, ""), "?reserver-en-groupe=gbashi-groupe");
+verifier("le repli d'un bouton de page (page pas encore chargée) suit la convention de l'accueil", [lien.lienChatGroupe("gbashi-groupe"), lien.lienChatGroupe()], ["/?reserver-en-groupe=gbashi-groupe", "/?reserver-en-groupe="]);
 
 /* ------------------------------------------------ Les conditions générales */
 

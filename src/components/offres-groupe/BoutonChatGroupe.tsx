@@ -14,8 +14,10 @@ import { lienChatGroupe, ouvrirChatGroupe } from "@/lib/offres-groupe/ouverture-
  *
  * Les pages ne le montrent que quand l'interrupteur « Offres de groupe » est
  * ouvert (décidé sur le serveur). C'est un lien : si la bulle n'écoute pas
- * encore (page pas tout à fait chargée), il mène à la même page avec
- * l'offre dans l'adresse, et la bulle s'ouvre à l'arrivée.
+ * encore (page pas tout à fait chargée), il suit la convention
+ * « /?reserver-en-groupe=<offre> », et la bulle s'ouvre à l'arrivée sur
+ * l'accueil. Une adresse relative ne suffirait pas : le tunnel renvoie
+ * ailleurs une adresse sans ses paramètres.
  */
 export function BoutonChatGroupe({
   offre,
@@ -32,7 +34,7 @@ export function BoutonChatGroupe({
 }) {
   return (
     <a
-      href={lienChatGroupe(offre, undefined, "")}
+      href={lienChatGroupe(offre)}
       aria-haspopup="dialog"
       onClick={(evenement) => {
         if (ouvrirChatGroupe(offre ? { offre } : {})) evenement.preventDefault();
