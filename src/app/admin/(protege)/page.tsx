@@ -136,9 +136,10 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
 
   // Les offres de groupe : l'interrupteur, leurs réglages (illisibles, la
   // vente est bloquée), les réservations payées dont un vélo n'est plus là,
-  // et l'argent à rendre. Une lecture qui échoue ne fait pas tomber la page.
+  // l'argent à rendre et les captures de réduction qui attendent
+  // (décision 24). Une lecture qui échoue ne fait pas tomber la page.
   const offresGroupe = offresGroupeActives(ouverture);
-  const [lectureOffres, touchees, remboursementsAFaire] = await Promise.all([
+  const [lectureOffres, touchees, remboursementsAFaire, capturesAVerifier] = await Promise.all([
     lireReglagesOffres().catch((erreur) => {
       console.error("[tableau de bord] réglages des offres illisibles", erreur);
       return null;
@@ -150,6 +151,10 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
     depot.listerRemboursements({ statut: "a_faire" }).catch((erreur) => {
       console.error("[tableau de bord] remboursements illisibles", erreur);
       return [];
+    }),
+    depot.compterPreuvesEnAttente().catch((erreur) => {
+      console.error("[tableau de bord] captures à vérifier illisibles", erreur);
+      return 0;
     }),
   ]);
   const reglagesOffresIllisibles = lectureOffres?.source === "illisible";
@@ -229,6 +234,17 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           , sous 48 heures, sur SasPay ou en Mobile Money.{" "}
           <Link href="/admin/remboursements" className="lien-souligne font-semibold">
             Voir les remboursements
+          </Link>
+        </p>
+      )}
+      {capturesAVerifier > 0 && (
+        <p className="mt-8 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-4 py-3 text-[0.86rem] leading-relaxed">
+          <strong className="font-semibold">
+            {capturesAVerifier} capture{capturesAVerifier > 1 ? "s" : ""} à vérifier
+          </strong>
+          , pour la réduction du road trip en groupe : le client attend votre réponse par email.{" "}
+          <Link href="/admin/preuves" className="lien-souligne font-semibold">
+            Voir les captures
           </Link>
         </p>
       )}

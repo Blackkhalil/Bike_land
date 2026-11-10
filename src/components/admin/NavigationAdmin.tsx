@@ -35,9 +35,12 @@ const liens = [
 export function NavigationAdmin({
   protege,
   modeDonnees,
+  preuvesAVerifier = 0,
 }: {
   protege: boolean;
   modeDonnees: "postgres" | "demo";
+  /** Les captures de réduction qui attendent : leur nombre à côté de « Preuves de réduction » (décision 24). */
+  preuvesAVerifier?: number;
 }) {
   const chemin = usePathname();
   const routeur = useRouter();
@@ -80,17 +83,28 @@ export function NavigationAdmin({
         <ul className="mt-3 space-y-1">
           {liens.map((lien) => {
             const actif = lien.exact ? chemin === lien.href : chemin.startsWith(lien.href);
+            const enAttente = lien.href === "/admin/preuves" ? preuvesAVerifier : 0;
             return (
               <li key={lien.href}>
                 <Link
                   href={lien.href}
                   onClick={() => setOuvert(false)}
                   aria-current={actif ? "page" : undefined}
-                  className={`block rounded-[var(--radius-bouton)] px-3.5 py-2.5 text-[0.9rem] font-medium transition-colors lg:py-2 ${
+                  className={`flex items-center justify-between gap-2 rounded-[var(--radius-bouton)] px-3.5 py-2.5 text-[0.9rem] font-medium transition-colors lg:py-2 ${
                     actif ? "bg-orange-signal text-noir-piste" : "text-craie/75 hover:bg-craie/10 hover:text-craie"
                   }`}
                 >
                   {lien.libelle}
+                  {enAttente > 0 && (
+                    <span
+                      className={`grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1.5 text-[0.75rem] font-bold tabular-nums ${
+                        actif ? "bg-noir-piste text-craie" : "bg-orange-signal text-noir-piste"
+                      }`}
+                    >
+                      {enAttente}
+                      <span className="sr-only"> à vérifier</span>
+                    </span>
+                  )}
                 </Link>
               </li>
             );
