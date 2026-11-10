@@ -77,10 +77,10 @@ import {
   majuscule,
   MESSAGE_ACCUEIL,
   MESSAGE_ACCUEIL_OFFRES,
-  MESSAGE_ON_CONTINUE,
   MESSAGE_RECOMMENCER,
   MESSAGE_REPRISE_COORDONNEES,
   messageJePaie,
+  messageOnContinue,
   NOMS_OFFRES,
   ORDRE_OFFRES,
   personnesEnClair,
@@ -796,11 +796,12 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
       if (!etat.confirmerRecommencer) return etat;
       // La coordonnée attendue se redemande : sans pastille, la barre du bas seule dit quoi taper.
       const champ = etat.etape === "coordonnees" ? champDemande(etat.client) : null;
+      const terminee = etat.etape === "confirmee" || etat.etape === "echec" || etat.etape === "ferme";
       return {
         ...ajouter(
           etat,
           duClient("Non, je continue"),
-          bot(MESSAGE_ON_CONTINUE),
+          bot(messageOnContinue(terminee)),
           ...(champ ? [bot(questionChamp(champ, etat.client.prenom))] : []),
         ),
         confirmerRecommencer: false,

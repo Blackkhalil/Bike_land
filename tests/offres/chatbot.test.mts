@@ -914,6 +914,11 @@ verifier(
   derniers(agir(confirmee, { type: "proposer-recommencer" })),
   "Tout recommencer ? Votre réservation reste confirmée : son lien de suivi est aussi dans votre email.",
 );
+verifier(
+  "après une réservation confirmée, « Non, je continue » : rien à continuer, Bike Land garde tout",
+  [derniers(agir(agir(confirmee, { type: "proposer-recommencer" }), { type: "annuler-recommencer" }), 2), agir(agir(confirmee, { type: "proposer-recommencer" }), { type: "annuler-recommencer" }).etape],
+  ["Non, je continue | Très bien, je garde tout.", "confirmee"],
+);
 verifier("le message WhatsApp résume les choix", c.messageWhatsApp(cher, FAITS, LUNDI_10H), [
   "Bonjour Bike Land, je prépare une sortie en groupe avec l'assistant du site.",
   "Formule : Bike for All",

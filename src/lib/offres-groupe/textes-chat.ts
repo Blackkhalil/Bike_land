@@ -330,8 +330,10 @@ export function questionRecommencer(reservee: boolean): string {
     : "Tout recommencer ? Vos réponses seront effacées.";
 }
 
-/** Le client ne recommence pas finalement. */
-export const MESSAGE_ON_CONTINUE = "Très bien, on continue.";
+/** Le client ne recommence pas finalement : la discussion continue, ou reste telle quelle une fois finie. */
+export function messageOnContinue(terminee: boolean): string {
+  return terminee ? "Très bien, je garde tout." : "Très bien, on continue.";
+}
 
 /**
  * Bike for All : plus assez de vélos libres à l'heure demandée, mais un autre
