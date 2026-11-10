@@ -32,6 +32,9 @@ import { BulleEcrit, FilMessages, JourDeLaDiscussion } from "./MessagesChat";
 /** Le temps laissé au client pour finir de choisir avant de demander le prix au serveur. */
 const ATTENTE_DEVIS_MS = 350;
 
+/** Au-delà, la question « où en est ma capture ? » est abandonnée : le client peut réessayer. */
+const DELAI_STATUT_CAPTURE_MS = 20_000;
+
 /** Ce qui prend le focus à chaque nouvelle étape : la carte qui arrive, sinon la première réponse. */
 const PREMIER_CONTROLE = "[data-focus-etape], button:not([disabled]), a[href], input:not([disabled])";
 
@@ -294,23 +297,41 @@ export function PanneauChatGroupe({
   }, [signature]);
 
   // L'état d'une capture déjà envoyée (lien de l'email, ou « Est-ce validé ? »).
+  // Sans réponse au bout de 20 secondes (réseau faible), la question est
+  // abandonnée : la machine garde la capture, et le client peut réessayer.
   const preuveAVerifier = etat.choix.reduction.etat === "a-verifier" ? etat.choix.reduction.preuveId : null;
   useEffect(() => {
     if (!preuveAVerifier) return;
     const controleur = new AbortController();
+    let delaiDepasse = false;
+    const minuteur = window.setTimeout(() => {
+      delaiDepasse = true;
+      controleur.abort();
+    }, DELAI_STATUT_CAPTURE_MS);
     fetch(ROUTES_OFFRES_GROUPE.preuve(preuveAVerifier), { signal: controleur.signal })
       .then(async (reponse) => {
         const corps: unknown = await reponse.json().catch(() => null);
         envoyer({ type: "preuve-recue", statut: reponse.status, corps, maintenant: Date.now() });
       })
       .catch(() => {
-        if (!controleur.signal.aborted) envoyer({ type: "preuve-recue", statut: 0, corps: null, maintenant: Date.now() });
-      });
-    return () => controleur.abort();
+        if (delaiDepasse || !controleur.signal.aborted) envoyer({ type: "preuve-recue", statut: 0, corps: null, maintenant: Date.now() });
+      })
+      .finally(() => window.clearTimeout(minuteur));
+    return () => {
+      window.clearTimeout(minuteur);
+      controleur.abort();
+    };
   }, [preuveAVerifier]);
 
+  // Une capture part vers le serveur : la discussion ne se ferme pas avant
+  // sa réponse (sinon la capture arrive sans que le client le sache, et il
+  // la renverrait).
+  const envoiDeCapture = etat.envoi === "preuve";
+  const fermeeParLePanneau = useRef(false);
   const fermer = () => {
+    if (envoiDeCapture) return;
     ranger(etat, false);
+    fermeeParLePanneau.current = true;
     // Fermer le dialogue natif rend le focus à ce qui l'avait ouvert.
     if (dialogue.current?.open) dialogue.current.close();
     onFermer();
@@ -362,12 +383,25 @@ export function PanneauChatGroupe({
       data-chat-groupe
       aria-labelledby="titre-chat-groupe"
       onCancel={(evenement) => {
+        // Seul Échap sur la discussion elle-même la ferme. Le champ de fichier
+        // envoie lui aussi un « cancel », qui remonte jusqu'ici, quand on
+        // reprend la même image ou qu'on ferme la galerie sans choisir :
+        // celui-là ne ferme rien.
+        if (evenement.target !== evenement.currentTarget) return;
         evenement.preventDefault();
         fermer();
       }}
       onClick={(evenement) => {
         // Un clic sur le voile, hors de la fenêtre (ordinateur), la ferme.
         if (evenement.target === evenement.currentTarget) fermer();
+      }}
+      onClose={() => {
+        // Fermée par le navigateur lui-même (le retour du téléphone touché
+        // deux fois de suite ne se retient pas) : la bulle le sait, et la
+        // discussion rangée reprend à la prochaine ouverture.
+        if (fermeeParLePanneau.current) return;
+        ranger(etat, false);
+        onFermer();
       }}
       style={zoneVisible ? { height: zoneVisible.hauteur, top: zoneVisible.haut } : undefined}
       // Sur ordinateur, le fond de la fenêtre reste transparent : l'en-tête noir et la barre du
@@ -410,7 +444,15 @@ export function PanneauChatGroupe({
           >
             <IconeRecommencer />
           </button>
-          <button type="button" onClick={fermer} aria-label="Fermer la discussion" title="Fermer" className={boutonEnTete}>
+          <button
+            type="button"
+            onClick={fermer}
+            // Pendant l'envoi d'une capture, on attend sa réponse avant de fermer.
+            disabled={envoiDeCapture}
+            aria-label="Fermer la discussion"
+            title={envoiDeCapture ? "Fermer, après l'envoi de la capture" : "Fermer"}
+            className={boutonEnTete}
+          >
             <IconeFermer />
           </button>
         </header>

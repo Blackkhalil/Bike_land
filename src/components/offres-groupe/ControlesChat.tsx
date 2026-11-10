@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 
 import { SuiviPaiementMomo } from "@/components/reservation/SuiviPaiementMomo";
 import { EXPIRATION_PANIER_MINUTES } from "@/data/offres";
@@ -874,13 +874,30 @@ function EnvoiPreuve({
   const [telephone, setTelephone] = useState(client.telephone);
   const [email, setEmail] = useState(client.email);
   const [erreur, setErreur] = useState<string | null>(null);
+  const champFichier = useRef<HTMLInputElement>(null);
+
+  // Reprendre la même image, ou fermer la galerie sans choisir : le champ de
+  // fichier envoie un « cancel » qui remonterait jusqu'à la discussion. Il
+  // s'arrête ici (la discussion, de son côté, ne ferme que sur le sien).
+  useEffect(() => {
+    const champ = champFichier.current;
+    if (!champ) return;
+    const retenir = (evenement: Event) => evenement.stopPropagation();
+    champ.addEventListener("cancel", retenir);
+    return () => champ.removeEventListener("cancel", retenir);
+  }, []);
 
   const envoyer = (evenement: FormEvent) => {
     evenement.preventDefault();
     if (!capture) return setErreur("Choisissez la capture d'écran à envoyer.");
     if (!(TYPES_CAPTURE as readonly string[]).includes(capture.type)) return setErreur("Envoyez une image JPG, PNG ou WebP.");
     if (capture.size > TAILLE_MAX_CAPTURE_OCTETS) return setErreur("Cette image dépasse 4 Mo : envoyez une capture plus légère.");
-    if (!schemaChampsPreuve.safeParse({ telephone, email }).success) return setErreur("Vérifiez votre téléphone et votre email.");
+    if (!schemaChampsPreuve.shape.telephone.safeParse(telephone).success) {
+      return setErreur("Ce numéro ne passe pas. Écrivez-le en chiffres, par exemple 01 97 00 00 00.");
+    }
+    if (!schemaChampsPreuve.shape.email.safeParse(email).success) {
+      return setErreur("Il manque quelque chose dans cette adresse, je crois. Elle s'écrit comme nom@exemple.com.");
+    }
     setErreur(null);
     void onEnvoyer(capture, telephone, email);
   };
@@ -894,11 +911,16 @@ function EnvoiPreuve({
         </span>
         <label className="mt-1.5 inline-flex min-h-11 cursor-pointer items-center rounded-full bg-noir-piste px-4 text-[0.88rem] font-semibold text-craie transition-colors hover:bg-noir-releve has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-noir-piste">
           <input
+            ref={champFichier}
             type="file"
             accept={TYPES_CAPTURE.join(",")}
             aria-labelledby="etiquette-capture"
             aria-describedby="nom-capture"
-            onChange={(evenement) => setCapture(evenement.target.files?.[0] ?? null)}
+            onChange={(evenement) => {
+              // Une image choisie (même la même) : l'erreur « choisissez la capture » n'a plus lieu d'être.
+              setCapture(evenement.target.files?.[0] ?? null);
+              setErreur(null);
+            }}
             className="sr-only"
           />
           <span aria-hidden="true">{capture ? "Changer d'image" : "Choisir une image"}</span>
@@ -908,7 +930,8 @@ function EnvoiPreuve({
         </p>
       </div>
       <label className="block">
-        <span className={ETIQUETTE}>Votre téléphone</span>
+        {/* C'est aussi le numéro qui recevra la demande de paiement : le client le sait dès ici. */}
+        <span className={ETIQUETTE}>Votre numéro Mobile Money</span>
         <input
           type="tel"
           inputMode="tel"

@@ -48,9 +48,9 @@ import {
   type CodeErreurOffresGroupe,
   type DemandeDevis,
   type DemandeReservation,
+  type EtatPreuveClient,
   type ProchainCreneau,
   type ReponseDevis,
-  type StatutPreuve,
 } from "./api";
 import {
   alternativesDuRefus,
@@ -77,14 +77,20 @@ import {
   majuscule,
   MESSAGE_ACCUEIL,
   MESSAGE_ACCUEIL_OFFRES,
+  MESSAGE_CAPTURE_INJOIGNABLE,
+  MESSAGE_CAPTURE_PAS_ENCORE,
   MESSAGE_RECOMMENCER,
   MESSAGE_REPRISE_COORDONNEES,
+  MESSAGE_RESERVER_SANS_ATTENDRE,
+  messageCaptureRecue,
   messageJePaie,
   messageOnContinue,
   NOMS_OFFRES,
   ORDRE_OFFRES,
   personnesEnClair,
   personnesMinDe,
+  PHRASE_CAPTURE_DEJA_UTILISEE,
+  phraseReductionDejaEue,
   presentationOffre,
   QUESTION_COORDONNEES,
   QUESTION_DUREE,
@@ -129,8 +135,12 @@ export interface FaitsChat {
 export type EtatReduction =
   /** Pas encore demandé. */
   | { etat: "a-demander" }
-  /** Le client réserve sans la réduction. */
-  | { etat: "sans" }
+  /**
+   * Le client réserve sans la réduction. `raison` : elle ne peut pas lui être
+   * donnée (il l'a déjà eue, décision 25, ou sa capture a déjà servi) ; elle
+   * ne lui est alors plus proposée.
+   */
+  | { etat: "sans"; raison?: "deja-eue" | "deja-utilisee" }
   /** Une capture est connue (lien de l'email), son état est à demander au serveur. */
   | { etat: "a-verifier"; preuveId: string }
   /** La capture part vers le serveur. */
@@ -327,6 +337,20 @@ export interface EtatChat {
    * conversations rangées avant : vaut non.
    */
   confirmerRecommencer?: boolean;
+  /**
+   * La capture envoyée qui attend sa vérification, ou validée et pas encore
+   * servie : gardée hors des réponses du client, elle survit à
+   * « Recommencer » et au choix d'une autre offre. Quand le client revient au
+   * road trip, Bike Land redemande où elle en est au lieu de reposer la
+   * question de la réduction. Absente des conversations rangées avant.
+   */
+  preuveEnCours?: PreuveEnCours | null;
+}
+
+/** Une capture connue de la discussion, qui peut encore servir. */
+export interface PreuveEnCours {
+  preuveId: string;
+  statut: "en_attente" | "validee";
 }
 
 /** La version de l'état rangé dans le navigateur : à changer quand sa forme change. */
@@ -551,7 +575,17 @@ function question(etape: Etape, etat: EtatChat, faits: FaitsChat, maintenant: nu
     case "preuve":
       return consignesPreuve();
     case "preuve-statut":
-      return choix.reduction.etat === "a-verifier" ? "Je regarde où en est votre capture d'écran." : null;
+      // Revenu à la réduction après d'autres questions : Bike Land rappelle où en est la capture.
+      switch (choix.reduction.etat) {
+        case "a-verifier":
+          return "Je regarde où en est votre capture d'écran.";
+        case "en_attente":
+          return "Votre capture attend encore notre vérification. Vous pouvez réserver maintenant au prix normal, ou attendre notre réponse.";
+        case "refusee":
+          return "Votre capture n'a pas été validée. Vous pouvez en envoyer une autre, ou réserver sans la réduction.";
+        default:
+          return null;
+      }
     case "velos":
       return choix.personnes === null ? null : questionVelos(choix.personnes);
     case "coordonnees":
@@ -624,6 +658,45 @@ function continuer(etatRecu: EtatChat, faits: FaitsChat, maintenant: number, pre
 /** Le total de l'offre affichée en ce moment, s'il y en a une. */
 function totalAffiche(etat: EtatChat, faits: FaitsChat, maintenant: number): number | null {
   return offreAffichee(etat, faits, maintenant)?.resultat.totalXof ?? null;
+}
+
+/** Ce que dit Bike Land quand il redemande au serveur où en est une capture déjà envoyée. */
+const MESSAGE_VERIFICATION_CAPTURE = "Je regarde où en est votre capture d'écran pour la réduction.";
+
+/**
+ * Une nouvelle discussion, les coordonnées et la capture en cours gardées :
+ * « Recommencer », ou une autre offre ouverte depuis une page.
+ */
+function repartir(etat: EtatChat): EtatChat {
+  return { ...etatInitial(etat.client), preuveEnCours: etat.preuveEnCours ?? null };
+}
+
+/** L'offre choisie : la bulle du client et la présentation de Bike Land, les réponses d'avant effacées. */
+function offreChoisie(etat: EtatChat, offre: CodeOffreGroupe, reglages: ReglagesOffres): EtatChat {
+  return {
+    ...ajouter(etat, duClient(NOMS_OFFRES[offre]), bot(presentationOffre(offre, reglages))),
+    choix: { ...CHOIX_VIDES, offre },
+    devis: null,
+    devisEnEchec: null,
+    capacite: null,
+    reservation: null,
+  };
+}
+
+/**
+ * Bike Land redemande au serveur où en est une capture déjà envoyée (lien de
+ * l'email, retour au road trip) : sa bulle, et aucune question tant que la
+ * réponse n'est pas là. La question suivante vient après le résultat,
+ * jamais au-dessus de lui.
+ */
+function verificationDeCapture(etat: EtatChat, preuveId: string): EtatChat {
+  return {
+    ...ajouter(etat, bot(MESSAGE_VERIFICATION_CAPTURE)),
+    choix: { ...etat.choix, reduction: { etat: "a-verifier", preuveId } },
+    etape: "preuve-statut",
+    refus: null,
+    alternatives: [],
+  };
 }
 
 /** Les réponses du client, avec un changement appliqué et ce qui en dépend remis à zéro. */
@@ -763,28 +836,26 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
     case "demarrer": {
       // Un paiement en cours ne s'interrompt jamais.
       if (etat.etape === "attente" || etat.envoi) return etat;
-      let suivant = etat;
       // Une discussion terminée (réservée, en échec, fermée) repart de zéro,
       // même sur la même offre.
       const terminee = etat.etape === "confirmee" || etat.etape === "echec" || etat.etape === "ferme";
+      // Le lien de l'email porte une capture : Bike Land regarde où elle en
+      // est avant toute question (la réduction réglée à 0 % : rien à regarder).
+      const offre = action.offre ?? etat.choix.offre;
+      if (action.preuveId && offre === "road-trip-groupe" && reglages.roadTrip.reduction > 0) {
+        const base = etat.choix.offre !== "road-trip-groupe" || terminee ? offreChoisie(repartir(etat), "road-trip-groupe", reglages) : etat;
+        return verificationDeCapture(base, action.preuveId);
+      }
       if (action.offre && (action.offre !== etat.choix.offre || terminee)) {
-        suivant = reduire(etatInitial(etat.client), { type: "choisir-offre", offre: action.offre, maintenant }, faits);
+        return transition(repartir(etat), { type: "choisir-offre", offre: action.offre, maintenant }, faits);
       }
-      if (action.preuveId && (action.offre ?? suivant.choix.offre) === "road-trip-groupe") {
-        if (suivant.choix.offre !== "road-trip-groupe") {
-          suivant = reduire(etatInitial(etat.client), { type: "choisir-offre", offre: "road-trip-groupe", maintenant }, faits);
-        }
-        suivant = {
-          ...ajouter(suivant, bot("Je regarde où en est votre capture d'écran pour la réduction.")),
-          choix: { ...suivant.choix, reduction: { etat: "a-verifier", preuveId: action.preuveId } },
-        };
-      }
-      return suivant;
+      return etat;
     }
 
     case "recommencer":
-      // Tout repart de zéro, les coordonnées restent : l'accueil présente de nouveau les trois sorties.
-      return ajouter({ ...etatInitial(etat.client), messages: [], prochainId: 1 }, ...messagesAccueil(reglages, true));
+      // Tout repart de zéro, les coordonnées et la capture en cours restent :
+      // l'accueil présente de nouveau les trois sorties.
+      return ajouter({ ...repartir(etat), messages: [], prochainId: 1 }, ...messagesAccueil(reglages, true));
 
     case "proposer-recommencer": {
       // Un paiement en cours ne se recommence pas ; la question est déjà posée.
@@ -812,14 +883,13 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
 
     case "choisir-offre": {
       if (!estCodeOffreGroupe(action.offre)) return etat;
-      const depart = {
-        ...ajouter(etat, duClient(NOMS_OFFRES[action.offre]), bot(presentationOffre(action.offre, reglages))),
-        choix: { ...CHOIX_VIDES, offre: action.offre },
-        devis: null,
-        devisEnEchec: null,
-        capacite: null,
-        reservation: null,
-      };
+      const depart = offreChoisie(etat, action.offre, reglages);
+      // De retour au road trip avec une capture déjà envoyée : Bike Land
+      // regarde où elle en est, au lieu de reposer la question de la réduction.
+      const enCours = etat.preuveEnCours;
+      if (action.offre === "road-trip-groupe" && enCours && reglages.roadTrip.reduction > 0) {
+        return verificationDeCapture(depart, enCours.preuveId);
+      }
       return continuer(depart, faits, maintenant);
     }
 
@@ -932,7 +1002,15 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
       return poser(ajouter(etat, duClient("J'envoie une autre capture")), "preuve", faits, maintenant);
 
     case "reduction-sans": {
-      const suivant = ajouter(etat, duClient("Je réserve sans la réduction"));
+      // Décision 24 : une capture attend sa vérification. Réserver maintenant,
+      // c'est le prix normal, et la réduction ne s'ajoutera pas ensuite :
+      // Bike Land le dit avant l'offre.
+      const captureEnAttente = etat.choix.reduction.etat === "en_attente" || etat.preuveEnCours?.statut === "en_attente";
+      const suivant = ajouter(
+        etat,
+        duClient("Je réserve sans la réduction"),
+        ...(captureEnAttente ? [bot(MESSAGE_RESERVER_SANS_ATTENDRE)] : []),
+      );
       return continuer({ ...suivant, choix: { ...suivant.choix, reduction: { etat: "sans" } } }, faits, maintenant);
     }
 
@@ -988,8 +1066,15 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
       const precedent = etat.etape === "negociation" ? totalAffiche(etat, faits, maintenant) : null;
       const libelle = action.alternative.libelle.split(" : ")[0];
       const suivant = ajouter(etat, duClient(libelle));
+      // « Avec la réduction » alors qu'une capture est déjà envoyée : Bike Land
+      // regarde où elle en est, au lieu d'en demander une nouvelle.
+      let changement = action.alternative.changement;
+      const enCours = etat.preuveEnCours;
+      if (changement.reduction?.etat === "a-demander" && enCours && etat.choix.offre === "road-trip-groupe" && reglages.roadTrip.reduction > 0) {
+        changement = { ...changement, reduction: { etat: "a-verifier", preuveId: enCours.preuveId } };
+      }
       return continuer(
-        { ...suivant, choix: avecChangement(suivant.choix, action.alternative.changement), refus: null, alternatives: [] },
+        { ...suivant, choix: avecChangement(suivant.choix, changement), refus: null, alternatives: [] },
         faits,
         maintenant,
         precedent,
@@ -1301,10 +1386,20 @@ const MESSAGES_ERREUR: Record<CodeErreurLue, string> = {
   EN_ATTENTE: `Une demande de paiement à votre nom attend déjà sur votre téléphone. Validez-la, ou attendez ${EXPIRATION_PANIER_MINUTES} minutes qu'elle expire avant d'en lancer une autre. Le lien de suivi est dans votre email.`,
   PAIEMENT: "La demande de paiement n'a pas pu partir. Aucun montant n'a été prélevé : réessayez dans un instant.",
   SERVEUR: "Un souci de notre côté a interrompu la demande. Réessayez dans un instant, ou écrivez-nous sur WhatsApp.",
+  REDUCTION_DEJA_EUE: phraseReductionDejaEue(),
   INCONNUE: "Je n'ai pas eu de réponse claire de Bike Land. Réessayez dans un instant.",
 };
 
-const CODES_ERREUR: readonly CodeErreurOffresGroupe[] = ["FERME", "REGLAGES_ILLISIBLES", "SAISIE", "TROP_DE_DEMANDES", "EN_ATTENTE", "PAIEMENT", "SERVEUR"];
+const CODES_ERREUR: readonly CodeErreurOffresGroupe[] = [
+  "FERME",
+  "REGLAGES_ILLISIBLES",
+  "SAISIE",
+  "TROP_DE_DEMANDES",
+  "EN_ATTENTE",
+  "PAIEMENT",
+  "SERVEUR",
+  "REDUCTION_DEJA_EUE",
+];
 
 const estObjet = (valeur: unknown): valeur is Record<string, unknown> => typeof valeur === "object" && valeur !== null;
 
@@ -1367,6 +1462,7 @@ const ETATS_PREUVE_DEVIS: readonly NonNullable<ReponseDevis["preuve"]>[] = [
   "refusee",
   "inconnue",
   "deja-utilisee",
+  "deja-eue",
 ];
 
 export type LectureDevis = { type: "ok"; reponse: ReponseDevis } | { type: "erreur"; code: CodeErreurLue; message: string };
@@ -1454,19 +1550,26 @@ export function lireReponseReservation(statut: number, corps: unknown): LectureR
 }
 
 export type LecturePreuve =
-  | { type: "ok"; preuveId: string; statut: StatutPreuve; message: string }
-  | { type: "erreur"; statut: number; message: string };
+  | { type: "ok"; preuveId: string; statut: EtatPreuveClient; message: string }
+  | { type: "erreur"; statut: number; code: CodeErreurLue; message: string };
 
-/** La réponse de POST preuves (201) ou de GET preuve (200). */
+const ETATS_PREUVE_CLIENT: readonly EtatPreuveClient[] = ["validee", "en_attente", "refusee", "deja-utilisee", "deja-eue"];
+
+/** La réponse de POST preuves (201, ou 200 pour la même capture déjà reçue) ou de GET preuve (200). */
 export function lireReponsePreuve(statut: number, corps: unknown): LecturePreuve {
   if (statut >= 200 && statut < 300 && estObjet(corps) && corps.ok === true && typeof corps.preuveId === "string") {
     const etat = corps.statut;
-    if (etat === "validee" || etat === "en_attente" || etat === "refusee") {
-      return { type: "ok", preuveId: corps.preuveId, statut: etat, message: typeof corps.message === "string" ? corps.message.trim() : "" };
+    if (typeof etat === "string" && (ETATS_PREUVE_CLIENT as readonly string[]).includes(etat)) {
+      return {
+        type: "ok",
+        preuveId: corps.preuveId,
+        statut: etat as EtatPreuveClient,
+        message: typeof corps.message === "string" ? corps.message.trim() : "",
+      };
     }
   }
   const message = estObjet(corps) && typeof corps.message === "string" ? corps.message.trim() : "";
-  return { type: "erreur", statut, message };
+  return { type: "erreur", statut, code: codeErreur(statut, corps), message };
 }
 
 /* --------------------------------------------------- Recevoir les réponses */
@@ -1516,26 +1619,48 @@ function recevoirDevis(
   // La capture du road trip : le serveur dit où elle en est vraiment.
   const reduction = suivant.choix.reduction;
   if (offre === "road-trip-groupe" && reduction.etat === "validee" && reponse.preuve && reponse.preuve !== "validee") {
-    const changements: Record<Exclude<NonNullable<ReponseDevis["preuve"]>, "validee">, { reduction: EtatReduction; texte: string }> = {
+    const changements: Record<
+      Exclude<NonNullable<ReponseDevis["preuve"]>, "validee">,
+      { reduction: EtatReduction; texte: string; preuveEnCours: PreuveEnCours | null }
+    > = {
       en_attente: {
         reduction: { etat: "en_attente", preuveId: reduction.preuveId },
         texte: "Votre capture est encore en vérification : le prix s'entend sans la réduction pour l'instant.",
+        preuveEnCours: { preuveId: reduction.preuveId, statut: "en_attente" },
       },
       refusee: {
         reduction: { etat: "refusee", preuveId: reduction.preuveId },
         texte: "Votre capture n'a pas été validée : le prix s'entend sans la réduction.",
+        preuveEnCours: null,
       },
       inconnue: {
         reduction: { etat: "a-demander" },
         texte: "Je ne retrouve pas votre capture d'écran : le prix s'entend sans la réduction.",
+        preuveEnCours: null,
       },
       "deja-utilisee": {
-        reduction: { etat: "sans" },
-        texte: "Cette capture a déjà servi pour une réservation : la réduction vaut une fois par groupe.",
+        reduction: { etat: "sans", raison: "deja-utilisee" },
+        texte: PHRASE_CAPTURE_DEJA_UTILISEE,
+        preuveEnCours: null,
+      },
+      // Décision 25 : ce client a déjà eu la réduction, elle vaut une fois par client.
+      "deja-eue": {
+        reduction: { etat: "sans", raison: "deja-eue" },
+        texte: phraseReductionDejaEue(formatPourcentage(faits.reglages.roadTrip.reduction)),
+        preuveEnCours: null,
       },
     };
     const changement = changements[reponse.preuve];
-    suivant = { ...ajouter(suivant, bot(changement.texte, "alerte")), choix: { ...suivant.choix, reduction: changement.reduction } };
+    suivant = {
+      ...ajouter(suivant, bot(changement.texte, "alerte")),
+      choix: { ...suivant.choix, reduction: changement.reduction },
+      preuveEnCours: changement.preuveEnCours,
+    };
+    // Le jour est plein : le devis du serveur, déjà sans la réduction, dit le
+    // créneau libre le plus proche, que les autres choix proposés reprennent.
+    if (!reponse.issue.ok) {
+      return versRefus(suivant, refusDuCreneau(reponse.issue.refus, suivant.choix, reponse.prochainCreneau, faits), reponse.prochainCreneau, faits, maintenant);
+    }
     return continuer(suivant, faits, maintenant);
   }
 
@@ -1566,54 +1691,109 @@ function refusDuCreneau(refus: Refus, choix: Choix, prochainCreneau: ProchainCre
   return { ...refus, message: refusCreneauPlein(choix.depart, refus.maximum ?? 0, faits.reglages.bikeForAll.personnesMin) };
 }
 
+/**
+ * Ce que dit Bike Land quand une capture n'a pas pu partir : le message du
+ * serveur tel quel quand il en donne un (la vraie raison : trop lourde, pas
+ * une image, trop d'envois…), sinon le nôtre. « Vérifiez votre connexion »
+ * seulement quand rien n'est revenu du serveur.
+ */
+function texteEnvoiRate(statut: number, messageServeur: string): string {
+  if (statut === 0) return "La capture n'est pas arrivée jusqu'à nous. Vérifiez votre connexion, puis réessayez.";
+  if (statut === 403) return MESSAGES_ERREUR.FERME;
+  if (messageServeur) return messageServeur;
+  if (statut === 400 || statut === 413 || statut === 415) return "Cette capture n'est pas passée. Envoyez une image JPG, PNG ou WebP de 4 Mo au plus.";
+  if (statut === 429) return "Trop de captures envoyées pour le moment. Réessayez plus tard, ou écrivez-nous sur WhatsApp.";
+  return MESSAGES_ERREUR.SERVEUR;
+}
+
 /** Le serveur a répondu à l'envoi d'une capture, ou à la question de son état. */
 function recevoirPreuve(etat: EtatChat, statut: number, corps: unknown, faits: FaitsChat, maintenant: number): EtatChat {
   const lecture = lireReponsePreuve(statut, corps);
   const sans = { ...etat, envoi: null };
   const pourcentage = formatPourcentage(faits.reglages.roadTrip.reduction);
+  const reductionAvant = etat.choix.reduction;
+  const verification = reductionAvant.etat === "a-verifier";
 
   if (lecture.type === "erreur") {
-    const verification = etat.choix.reduction.etat === "a-verifier";
-    const texte = verification
-      ? "Je ne retrouve pas votre capture d'écran. Vous pouvez en envoyer une nouvelle, ou réserver sans la réduction."
-      : statut === 413 || statut === 415 || statut === 400
-        ? `${lecture.message || "La capture n'est pas passée."} Envoyez une image JPG, PNG ou WebP de 4 Mo au plus.`
-        : statut === 429
-          ? MESSAGES_ERREUR.TROP_DE_DEMANDES
-          : statut === 403
-            ? MESSAGES_ERREUR.FERME
-            : "La capture n'est pas arrivée jusqu'à nous. Vérifiez votre connexion, puis réessayez.";
-    const suivant = { ...ajouter(sans, bot(texte, "alerte")), choix: { ...sans.choix, reduction: { etat: "a-demander" as const } } };
-    // Une capture introuvable : on reprend la question de la réduction au bon moment.
-    if (verification) return continuer(suivant, faits, maintenant);
+    // Décision 25 : ce client a déjà eu la réduction. Rien n'est gardé : il
+    // continue sans elle, et elle ne lui est plus proposée.
+    if (lecture.code === "REDUCTION_DEJA_EUE") {
+      const suivant = {
+        ...ajouter(sans, bot(lecture.message || phraseReductionDejaEue(pourcentage), "alerte")),
+        choix: { ...sans.choix, reduction: { etat: "sans" as const, raison: "deja-eue" as const } },
+        preuveEnCours: null,
+      };
+      return continuer(suivant, faits, maintenant);
+    }
+    if (reductionAvant.etat === "a-verifier") {
+      // Une capture introuvable : on reprend la question de la réduction au bon moment.
+      if (statut === 404) {
+        const suivant = {
+          ...ajouter(sans, bot("Je ne retrouve pas votre capture d'écran. Vous pouvez en envoyer une nouvelle, ou réserver sans la réduction.", "alerte")),
+          choix: { ...sans.choix, reduction: { etat: "a-demander" as const } },
+          preuveEnCours: null,
+        };
+        return continuer(suivant, faits, maintenant);
+      }
+      // Le réseau, ou une panne : la capture est gardée, « Est-ce que c'est validé ? » reste là.
+      const suivant = {
+        ...ajouter(sans, bot(MESSAGE_CAPTURE_INJOIGNABLE, "alerte")),
+        choix: { ...sans.choix, reduction: { etat: "en_attente" as const, preuveId: reductionAvant.preuveId } },
+      };
+      return continuer(suivant, faits, maintenant);
+    }
+    const suivant = {
+      ...ajouter(sans, bot(texteEnvoiRate(statut, lecture.message), "alerte")),
+      choix: { ...sans.choix, reduction: { etat: "a-demander" as const } },
+    };
     return { ...suivant, etape: "preuve" };
   }
 
-  if (lecture.statut === "validee") {
-    const suivant = {
-      ...ajouter(sans, bot(`C'est validé ! La réduction de ${pourcentage} s'applique à votre road trip.`, "succes")),
-      choix: { ...sans.choix, reduction: { etat: "validee" as const, preuveId: lecture.preuveId } },
-    };
-    return continuer(suivant, faits, maintenant);
+  switch (lecture.statut) {
+    case "validee": {
+      const suivant = {
+        ...ajouter(sans, bot(`C'est validé ! La réduction de ${pourcentage} s'applique à votre road trip.`, "succes")),
+        choix: { ...sans.choix, reduction: { etat: "validee" as const, preuveId: lecture.preuveId } },
+        preuveEnCours: { preuveId: lecture.preuveId, statut: "validee" as const },
+      };
+      return continuer(suivant, faits, maintenant);
+    }
+    case "en_attente": {
+      // Le message du serveur dit la suite (la réponse par email, le prix normal si l'on réserve tout de suite).
+      const texte = lecture.message || (verification ? MESSAGE_CAPTURE_PAS_ENCORE : messageCaptureRecue(etat.client.email));
+      const suivant: EtatChat = {
+        ...ajouter(sans, bot(texte)),
+        choix: { ...sans.choix, reduction: { etat: "en_attente", preuveId: lecture.preuveId } },
+        preuveEnCours: { preuveId: lecture.preuveId, statut: "en_attente" },
+        etape: "preuve-statut",
+      };
+      return continuer(suivant, faits, maintenant);
+    }
+    case "deja-utilisee":
+    case "deja-eue": {
+      // Validée, mais elle ne peut plus servir : jamais « C'est validé ! ».
+      const local = lecture.statut === "deja-eue" ? phraseReductionDejaEue(pourcentage) : PHRASE_CAPTURE_DEJA_UTILISEE;
+      const suivant = {
+        ...ajouter(sans, bot(lecture.message || local, "alerte")),
+        choix: { ...sans.choix, reduction: { etat: "sans" as const, raison: lecture.statut } },
+        preuveEnCours: null,
+      };
+      return continuer(suivant, faits, maintenant);
+    }
+    default: {
+      // Refusée : le message du serveur dit déjà ce que le client peut faire.
+      const suivant: EtatChat = {
+        ...ajouter(
+          sans,
+          bot(lecture.message || "Nous n'avons pas pu valider cette capture. Vous pouvez en envoyer une autre, ou réserver sans la réduction.", "alerte"),
+        ),
+        choix: { ...sans.choix, reduction: { etat: "refusee", preuveId: lecture.preuveId } },
+        preuveEnCours: null,
+        etape: "preuve-statut",
+      };
+      return continuer(suivant, faits, maintenant);
+    }
   }
-  if (lecture.statut === "en_attente") {
-    const suivant = {
-      ...ajouter(sans, bot("Nous vérifions votre capture et vous écrivons très vite. Vous pouvez aussi réserver maintenant sans la réduction.")),
-      choix: { ...sans.choix, reduction: { etat: "en_attente" as const, preuveId: lecture.preuveId } },
-    };
-    return continuer(suivant, faits, maintenant);
-  }
-  const suivant = {
-    ...ajouter(
-      sans,
-      bot(
-        `${lecture.message || "Nous n'avons pas pu valider cette capture."} Vous pouvez en envoyer une autre, ou réserver sans la réduction.`,
-        "alerte",
-      ),
-    ),
-    choix: { ...sans.choix, reduction: { etat: "refusee" as const, preuveId: lecture.preuveId } },
-  };
-  return continuer(suivant, faits, maintenant);
 }
 
 /** Le serveur a répondu à la réservation. */
@@ -1622,7 +1802,8 @@ function recevoirReservation(etat: EtatChat, statut: number, corps: unknown, fai
   switch (lecture.type) {
     case "creee": {
       const reservation = lecture.reservation;
-      const suivant = { ...etat, reservation };
+      // Une capture validée part avec cette réservation : elle ne servira plus.
+      const suivant = { ...etat, reservation, ...(etat.choix.reduction.etat === "validee" ? { preuveEnCours: null } : {}) };
       if (reservation.statutPaiement === "REUSSI") {
         return { ...ajouter(suivant, bot(messageConfirmation(reservation, etat.client), "succes")), etape: "confirmee" };
       }
@@ -1651,10 +1832,20 @@ function recevoirReservation(etat: EtatChat, statut: number, corps: unknown, fai
       };
     }
     case "reglages": {
-      const demande = demandeDevisDe(etat.choix);
+      // La capture ne compte plus au moment de réserver (le client a déjà eu
+      // la réduction, décision 25, ou elle vient de servir) : sans la
+      // réduction, et le message du serveur dit pourquoi, avant de payer.
+      const preuve = lecture.devis.preuve;
+      const sansLaCapture =
+        etat.choix.reduction.etat === "validee" && (preuve === "deja-eue" || preuve === "deja-utilisee")
+          ? { choix: { ...etat.choix, reduction: { etat: "sans" as const, raison: preuve } }, preuveEnCours: null }
+          : {};
+      const base: EtatChat = { ...etat, ...sansLaCapture };
+      const demande = demandeDevisDe(base.choix);
       if (!demande) return etat;
+      // Le devis du serveur est déjà sans la réduction : il vaut pour les réponses d'à présent.
       const suivant = {
-        ...etat,
+        ...base,
         devis: { signature: signatureDe(demande), reponse: lecture.devis },
         devisEnEchec: null,
       };
@@ -1845,6 +2036,12 @@ function estChoix(valeur: unknown): valeur is Choix {
   return valeur.offre === null || estCodeOffreGroupe(valeur.offre);
 }
 
+/** La capture en cours d'une conversation rangée, si elle se lit (un identifiant plausible, un statut connu). */
+function preuveEnCoursLisible(valeur: unknown): PreuveEnCours | null {
+  if (!estObjet(valeur) || typeof valeur.preuveId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(valeur.preuveId)) return null;
+  return valeur.statut === "en_attente" || valeur.statut === "validee" ? { preuveId: valeur.preuveId, statut: valeur.statut } : null;
+}
+
 /** Une carte figée rangée, remise d'aplomb : ses lignes illisibles écartées, `null` s'il n'en reste aucune. */
 function recapLisible(valeur: unknown): RecapMessage | null {
   if (!estObjet(valeur) || !Array.isArray(valeur.lignes)) return null;
@@ -1951,6 +2148,7 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
     devisEnEchec: null,
     capacite: null,
     confirmerRecommencer: etat.confirmerRecommencer === true,
+    preuveEnCours: preuveEnCoursLisible(etat.preuveEnCours),
   };
   // Un envoi interrompu par le rechargement.
   if (relu.envoi === "preuve" || relu.choix.reduction.etat === "envoi") {

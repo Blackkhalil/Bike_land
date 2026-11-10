@@ -578,7 +578,10 @@ export function variantesMoinsCheres(choix: Choix, faits: FaitsChat, maintenant:
     }
   }
 
-  if (choix.offre === "road-trip-groupe" && choix.reduction.etat !== "validee" && reglages.roadTrip.reduction > 0) {
+  // La réduction se propose tant qu'elle peut encore être donnée : pas à un
+  // client qui l'a déjà eue (décision 25), ni avec une capture déjà servie.
+  const reductionPossible = choix.reduction.etat !== "validee" && !(choix.reduction.etat === "sans" && choix.reduction.raison);
+  if (choix.offre === "road-trip-groupe" && reductionPossible && reglages.roadTrip.reduction > 0) {
     candidates.push({
       cle: "reduction",
       libelle: (total) =>
