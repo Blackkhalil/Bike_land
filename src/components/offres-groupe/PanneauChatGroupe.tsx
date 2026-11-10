@@ -16,6 +16,7 @@ import {
   relireSauvegarde,
   sauvegarder,
   signatureDe,
+  verificationDuJour,
   type ActionChat,
   type EtatChat,
   type FaitsChat,
@@ -26,14 +27,23 @@ import { lienWhatsApp } from "@/lib/site";
 
 import { CompositeurChat } from "./CompositeurChat";
 import { CarteDeLEtape, indicationInactive, modeSaisieDe, ReponsesDeLEtape, type ActionsChat } from "./ControlesChat";
-import { IconeFermer, IconeRecommencer, IconeWhatsApp } from "./IconesChat";
+import { IconeFermer, IconeRecommencer, IconeVersLeBas, IconeWhatsApp } from "./IconesChat";
 import { BulleEcrit, FilMessages, JourDeLaDiscussion } from "./MessagesChat";
 
 /** Le temps laissé au client pour finir de choisir avant de demander le prix au serveur. */
 const ATTENTE_DEVIS_MS = 350;
 
-/** Au-delà, la question « où en est ma capture ? » est abandonnée : le client peut réessayer. */
-const DELAI_STATUT_CAPTURE_MS = 20_000;
+/**
+ * Au-delà, une question au serveur (le prix, où en est une capture) est
+ * abandonnée : la discussion le dit et continue, le client peut réessayer.
+ */
+const DELAI_SERVEUR_MS = 20_000;
+
+/** En deçà, la discussion est « en bas » : le rond « Voir la suite » n'a pas lieu d'être. */
+const MARGE_BAS_PX = 32;
+
+/** Le rond « Voir la suite » attend un peu avant de venir : un défilement qui descend tout seul ne le fait pas clignoter. */
+const ATTENTE_ROND_MS = 300;
 
 /** Ce qui prend le focus à chaque nouvelle étape : la carte qui arrive, sinon la première réponse. */
 const PREMIER_CONTROLE = "[data-focus-etape], button:not([disabled]), a[href], input:not([disabled])";
@@ -143,6 +153,11 @@ export function PanneauChatGroupe({
   // Les bulles déjà montrées (le défilement vise les nouvelles) et l'étape qui a déjà reçu le focus.
   const bullesVues = useRef<{ messages: readonly MessageChat[]; prochainId: number } | null>(null);
   const focusVu = useRef<string | null>(null);
+  // Où la discussion vient d'être envoyée par le défilement de cette étape : un
+  // défilement doux n'y est pas encore arrivé quand le focus se décide.
+  const defilementVise = useRef<number | null>(null);
+  // La discussion est-elle descendue jusqu'en bas (les dernières bulles, les réponses) ?
+  const [enBas, setEnBas] = useState(true);
   const [etat, envoyer] = useReducer(
     (actuel: EtatChat, action: ActionChat) => reduire(actuel, action, faits),
     ouvertA,
@@ -203,6 +218,7 @@ export function PanneauChatGroupe({
     const aller = (rang: number, doux: boolean) => {
       // La première bulle de la discussion : tout en haut, avec la pastille du jour.
       const haut = rang <= 0 ? 0 : Math.max(0, (bulles[rang]?.offsetTop ?? 0) - 12);
+      defilementVise.current = haut;
       zone.scrollTo({ top: haut, behavior: doux && !reduit ? "smooth" : "auto" });
     };
     if (!avant) {
@@ -232,6 +248,7 @@ export function PanneauChatGroupe({
     const reste = zone.scrollHeight - zone.scrollTop - zone.clientHeight;
     if (reste > points.offsetHeight + 24) return;
     const reduit = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    defilementVise.current = zone.scrollHeight;
     zone.scrollTo({ top: zone.scrollHeight, behavior: reduit ? "auto" : "smooth" });
   }, [ecrit]);
 
@@ -240,19 +257,80 @@ export function PanneauChatGroupe({
   useEffect(() => {
     const zone = defilement.current;
     if (hauteurVisible === null || !zone) return;
+    defilementVise.current = zone.scrollHeight;
     zone.scrollTo({ top: zone.scrollHeight });
   }, [hauteurVisible]);
+
+  // La discussion est-elle en bas ? Mesuré quand elle défile et quand ce
+  // qu'elle contient change de taille. Pas en bas (une discussion neuve
+  // s'ouvre en haut, sur « Bonjour »), le rond « Voir la suite » apparaît en
+  // bas à droite, comme sur un téléphone, après un court instant.
+  useEffect(() => {
+    const zone = defilement.current;
+    if (!zone) return;
+    let image = 0;
+    let attente = 0;
+    const loinDuBas = () => zone.scrollHeight - zone.scrollTop - zone.clientHeight > MARGE_BAS_PX;
+    const mesurer = () => {
+      image = 0;
+      if (!loinDuBas()) {
+        window.clearTimeout(attente);
+        attente = 0;
+        setEnBas(true);
+      } else if (!attente) {
+        attente = window.setTimeout(() => {
+          attente = 0;
+          if (loinDuBas()) setEnBas(false);
+        }, ATTENTE_ROND_MS);
+      }
+    };
+    const demander = () => {
+      if (!image) image = window.requestAnimationFrame(mesurer);
+    };
+    zone.addEventListener("scroll", demander, { passive: true });
+    const observateur = new ResizeObserver(demander);
+    observateur.observe(zone);
+    for (const enfant of Array.from(zone.children)) observateur.observe(enfant);
+    demander();
+    return () => {
+      zone.removeEventListener("scroll", demander);
+      observateur.disconnect();
+      if (image) window.cancelAnimationFrame(image);
+      window.clearTimeout(attente);
+    };
+  }, []);
+
+  /** Descend jusqu'aux dernières bulles et aux réponses (le rond « Voir la suite »). */
+  const voirLaSuite = () => {
+    const zone = defilement.current;
+    if (!zone) return;
+    const reduit = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    zone.scrollTo({ top: zone.scrollHeight, behavior: reduit ? "auto" : "smooth" });
+  };
 
   // Le focus. Chaque nouvelle étape, chaque coordonnée demandée, chaque fin
   // d'envoi : le champ du bas quand la réponse se tape, sinon la carte qui
   // arrive ou la première réponse. Et s'il s'est perdu (un bouton qui
   // disparaît ou se grise, une carte qui change), il revient au même endroit
-  // au lieu de rester sur la page.
+  // au lieu de rester sur la page. Jamais sur une réponse hors de la vue (une
+  // discussion neuve s'ouvre en haut, sur « Bonjour ») : le focus va alors à
+  // la discussion elle-même, que les flèches du clavier font défiler, et Tab
+  // mène à la première réponse.
   const mode = modeSaisieDe(etat, faits, maintenant);
   const saisiePrioritaire = mode?.prioritaire === true;
   const champ = etat.etape === "coordonnees" ? champDemande(etat.client) : null;
-  const cleFocus = [etat.etape, champ ?? "", saisiePrioritaire ? "saisie" : "", etat.envoi ?? "", etat.confirmerRecommencer ? "recommencer" : ""].join("|");
+  const verification = verificationDuJour(etat);
+  const cleFocus = [
+    etat.etape,
+    champ ?? "",
+    saisiePrioritaire ? "saisie" : "",
+    etat.envoi ?? "",
+    etat.confirmerRecommencer ? "recommencer" : "",
+    verification ? "verification" : "",
+  ].join("|");
   useEffect(() => {
+    const vise = defilementVise.current;
+    defilementVise.current = null;
     const nouvelle = focusVu.current !== cleFocus;
     focusVu.current = cleFocus;
     const actif = document.activeElement;
@@ -266,16 +344,35 @@ export function PanneauChatGroupe({
     const cible = saisiePrioritaire
       ? champDuBas
       : (zoneEtape.current?.querySelector<HTMLElement>(PREMIER_CONTROLE) ?? champDuBas ?? zoneEtape.current);
-    cible?.focus({ preventScroll: true });
+    const zone = defilement.current;
+    // Dans la vue, là où la discussion est (ou va, si elle défile encore doucement) ?
+    const dansLaVue = (element: HTMLElement) => {
+      if (!zone || !zone.contains(element)) return true;
+      const haut = element.getBoundingClientRect().top - zone.getBoundingClientRect().top + zone.scrollTop;
+      const sommet = Math.min(Math.max(vise ?? zone.scrollTop, 0), Math.max(0, zone.scrollHeight - zone.clientHeight));
+      return haut >= sommet - 1 && haut + Math.min(element.offsetHeight, 44) <= sommet + zone.clientHeight + 1;
+    };
+    const visee = cible && dansLaVue(cible) ? cible : zone;
+    visee?.focus({ preventScroll: true });
   });
 
-  // Le devis : demandé au serveur dès que le prix est à confirmer.
+  // Le devis : demandé au serveur dès que le prix est à confirmer. Quand
+  // Bike Land attend le compte des vélos libres pour poser sa question, rien
+  // ne peut changer entre-temps : la demande part tout de suite. Sans réponse
+  // au bout de 20 secondes, elle est abandonnée et la discussion continue.
   const demandeDevis = demandeDevisAttendue(etat);
   const signature = demandeDevis ? signatureDe(demandeDevis) : null;
+  const attenteDevis = verification ? 0 : ATTENTE_DEVIS_MS;
   useEffect(() => {
     if (!signature) return;
     const controleur = new AbortController();
+    let delaiDepasse = false;
+    let abandon = 0;
     const minuteur = window.setTimeout(() => {
+      abandon = window.setTimeout(() => {
+        delaiDepasse = true;
+        controleur.abort();
+      }, DELAI_SERVEUR_MS);
       fetch(ROUTES_OFFRES_GROUPE.devis, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -287,14 +384,16 @@ export function PanneauChatGroupe({
           envoyer({ type: "devis-recu", signature, statut: reponse.status, corps, maintenant: Date.now() });
         })
         .catch(() => {
-          if (!controleur.signal.aborted) envoyer({ type: "devis-echec", signature, maintenant: Date.now() });
-        });
-    }, ATTENTE_DEVIS_MS);
+          if (delaiDepasse || !controleur.signal.aborted) envoyer({ type: "devis-echec", signature, maintenant: Date.now() });
+        })
+        .finally(() => window.clearTimeout(abandon));
+    }, attenteDevis);
     return () => {
       window.clearTimeout(minuteur);
+      window.clearTimeout(abandon);
       controleur.abort();
     };
-  }, [signature]);
+  }, [signature, attenteDevis]);
 
   // L'état d'une capture déjà envoyée (lien de l'email, ou « Est-ce validé ? »).
   // Sans réponse au bout de 20 secondes (réseau faible), la question est
@@ -307,7 +406,7 @@ export function PanneauChatGroupe({
     const minuteur = window.setTimeout(() => {
       delaiDepasse = true;
       controleur.abort();
-    }, DELAI_STATUT_CAPTURE_MS);
+    }, DELAI_SERVEUR_MS);
     fetch(ROUTES_OFFRES_GROUPE.preuve(preuveAVerifier), { signal: controleur.signal })
       .then(async (reponse) => {
         const corps: unknown = await reponse.json().catch(() => null);
@@ -457,26 +556,48 @@ export function PanneauChatGroupe({
           </button>
         </header>
 
-        {/* Sans ancrage automatique du défilement : la discussion ne bouge que quand le chat la fait
-            défiler (sinon le navigateur la recale d'abord, puis le chat, en deux temps). */}
-        <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-craie px-3 pb-5 pt-3 [overflow-anchor:none]">
-          <JourDeLaDiscussion messages={etat.messages} maintenant={maintenant} />
-          {/* Le rôle « log » sur un conteneur : la liste garde son rôle de liste. */}
-          <div role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion">
-            <FilMessages messages={etat.messages} maintenant={maintenant} />
-          </div>
-          <div ref={zoneEtape} tabIndex={-1}>
-            <CarteDeLEtape etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
-            <div ref={zonePoints} role="status">
-              {ecrit && <BulleEcrit />}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {/* Sans ancrage automatique du défilement : la discussion ne bouge que quand le chat la fait
+              défiler (sinon le navigateur la recale d'abord, puis le chat, en deux temps). Elle reçoit
+              le focus quand la réponse à toucher est plus bas : les flèches du clavier la font défiler. */}
+          <div
+            ref={defilement}
+            tabIndex={-1}
+            role="region"
+            aria-label="Discussion avec Bike Land"
+            data-discussion
+            className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-craie px-3 pb-5 pt-3 [overflow-anchor:none]"
+          >
+            <JourDeLaDiscussion messages={etat.messages} maintenant={maintenant} />
+            {/* Le rôle « log » sur un conteneur : la liste garde son rôle de liste. */}
+            <div role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion">
+              <FilMessages messages={etat.messages} maintenant={maintenant} />
             </div>
-            <div role="group" aria-label="Vos réponses">
-              <ReponsesDeLEtape etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
+            <div ref={zoneEtape} tabIndex={-1}>
+              <CarteDeLEtape etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
+              <div ref={zonePoints} role="status">
+                {ecrit && <BulleEcrit />}
+              </div>
+              <div role="group" aria-label="Vos réponses">
+                <ReponsesDeLEtape etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
+              </div>
             </div>
           </div>
+          {/* Plus bas, la suite (les dernières bulles, les réponses) : le rond y descend, comme sur un téléphone. */}
+          {!enBas && (
+            <button
+              type="button"
+              onClick={voirLaSuite}
+              aria-label="Voir la suite"
+              title="Voir la suite"
+              className="rond-suite absolute bottom-3 right-3 grid h-11 w-11 place-items-center rounded-full bg-white text-noir-piste shadow-[0_2px_10px_rgba(14,14,14,0.22)] ring-1 ring-noir-piste/10 transition-colors hover:bg-craie"
+            >
+              <IconeVersLeBas />
+            </button>
+          )}
         </div>
 
-        <CompositeurChat mode={mode} indicationInactive={indicationInactive(etat)} champ={saisie} onEnvoyer={actions.envoyer} />
+        <CompositeurChat mode={mode} indicationInactive={indicationInactive(etat, !enBas)} champ={saisie} onEnvoyer={actions.envoyer} />
       </div>
     </dialog>
   );

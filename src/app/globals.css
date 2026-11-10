@@ -134,6 +134,33 @@ dialog[data-chat-groupe] [tabindex="-1"]:focus-visible,
 dialog[data-chat-groupe] .saisie-chat:focus-visible {
   outline: none;
 }
+/* Sauf la discussion elle-même, quand elle reçoit le focus au clavier (la
+   réponse à toucher est plus bas) : un fin contour noir, à l'intérieur,
+   montre où l'on est ; les flèches la font défiler, Tab mène aux réponses. */
+dialog[data-chat-groupe] [data-discussion]:focus-visible {
+  outline: 2px solid var(--color-noir-piste);
+  outline-offset: -2px;
+}
+
+/* Le rond « Voir la suite » arrive en douceur, en bas à droite de la discussion. */
+@keyframes rond-suite-entree {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rond-suite {
+  animation: rond-suite-entree 0.18s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rond-suite {
+    animation: none;
+  }
+}
 
 /* « Bike Land écrit… » : trois points qui sautillent l'un après l'autre. */
 @keyframes point-ecriture {

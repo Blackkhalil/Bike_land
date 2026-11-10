@@ -18,6 +18,7 @@ import {
   NOMS_MOYENS,
   offreAffichee,
   stockGbashi,
+  verificationDuJour,
   type ActionChat,
   type ChampCoordonnees,
   type Coordonnees,
@@ -156,8 +157,9 @@ const CHAMPS_SAISIE: Record<ChampCoordonnees, Pick<ModeSaisie, "etiquette" | "in
  */
 export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: number): ModeSaisie | null {
   const { etape, choix } = etat;
-  // Un envoi en cours, ou « Tout recommencer ? » qui attend sa réponse : rien à taper.
-  if (etat.envoi || etat.confirmerRecommencer) return null;
+  // Un envoi en cours, « Tout recommencer ? » qui attend sa réponse, ou les
+  // vélos libres du jour pas encore comptés : rien à taper.
+  if (etat.envoi || etat.confirmerRecommencer || verificationDuJour(etat)) return null;
   switch (etape) {
     case "personnes": {
       if (!choix.offre || faits.velosEnEtat < personnesMinDe(choix.offre, faits.reglages)) return null;
@@ -219,10 +221,15 @@ export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: numbe
   }
 }
 
-/** Ce que dit la barre du bas quand on répond en touchant une réponse. */
-export function indicationInactive(etat: EtatChat): string {
+/**
+ * Ce que dit la barre du bas quand on répond en touchant une réponse.
+ * `reponsesPlusBas` : la discussion n'est pas descendue jusqu'aux réponses
+ * (elle s'ouvre en haut, sur « Bonjour ») ; la barre dit de faire défiler.
+ */
+export function indicationInactive(etat: EtatChat, reponsesPlusBas = false): string {
   if (etat.etape === "attente") return "Validez sur votre téléphone";
   if (botEcrit(etat)) return "Bike Land écrit…";
+  if (reponsesPlusBas) return "Faites défiler pour choisir";
   return "Touchez une réponse ci-dessus";
 }
 
@@ -255,6 +262,9 @@ export function ReponsesDeLEtape({ etat, faits, maintenant, actions }: Propriete
       </Puces>
     );
   }
+
+  // Les vélos libres du jour se comptent : les réponses viennent avec la question.
+  if (verificationDuJour(etat)) return null;
 
   switch (etape) {
     case "offre":
@@ -573,8 +583,9 @@ function LienWhatsApp({ href }: { href: string }) {
 export function CarteDeLEtape({ etat, faits, maintenant, actions }: ProprietesEtape) {
   const { choix } = etat;
   const reglages = faits.reglages;
-  // « Tout recommencer ? » attend sa réponse : la carte revient avec « Non, je continue ».
-  if (etat.confirmerRecommencer) return null;
+  // « Tout recommencer ? » attend sa réponse : la carte revient avec « Non, je
+  // continue ». Les vélos libres du jour se comptent : la carte vient avec la question.
+  if (etat.confirmerRecommencer || verificationDuJour(etat)) return null;
   switch (etat.etape) {
     case "preuve":
       return (

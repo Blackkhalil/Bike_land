@@ -63,6 +63,26 @@ export function IconeRecommencer() {
   );
 }
 
+/** Une flèche vers le bas : « Voir la suite » de la discussion. */
+export function IconeVersLeBas() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="22"
+      height="22"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d="M12 5v14M6.5 13.5 12 19l5.5-5.5" />
+    </svg>
+  );
+}
+
 /** Une croix : « Fermer ». */
 export function IconeFermer({ taille = 22 }: { taille?: number }) {
   return (
