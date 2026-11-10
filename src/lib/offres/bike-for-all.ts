@@ -40,6 +40,7 @@ import {
   controlerOptions,
   controlerPersonnes,
   controlerRetour,
+  departsQuiRentrent,
   estEntierPositif,
   lireCanal,
   refusSaisie,
@@ -204,10 +205,6 @@ export function calculerBikeForAllBudget(demande: DemandeBikeForAllBudget, regla
     return { ok: false, refus: { code: "BUDGET_MIN", champ: "budgetXof", message, budgetMinimumXof: minimum } };
   }
 
-  const calendrier =
-    controlerCalendrier("bike-for-all", contexte, demande.depart, null, reglages, bfa) ?? controlerDepart(demande.depart, reglages);
-  if (calendrier) return { ok: false, refus: calendrier };
-
   // Le pseudo-code du cahier, dans son ordre.
   const fraisXof = fraisOrganisationXof(B, reglages);
   let coco = cocoDuBudget(B, N, reglages);
@@ -218,6 +215,18 @@ export function calculerBikeForAllBudget(demande: DemandeBikeForAllBudget, regla
     cocosXof = 0;
     minutes = minutesAchetees(B - fraisXof, N, reglages);
   }
+
+  // S'il est trop tard pour son départ, le client se voit proposer un départ
+  // qui rentre aussi à l'heure avec la durée que son budget achète. Si aucun
+  // départ de la journée ne rentre à l'heure, c'est le budget qu'il faut
+  // changer : on le dit d'abord.
+  const departs = departsQuiRentrent(minutes, reglages);
+  const calendrier =
+    (departs ? null : controlerRetour(demande.depart, minutes, "budget", reglages, contexte)) ??
+    controlerCalendrier("bike-for-all", contexte, demande.depart, null, reglages, departs ?? bfa) ??
+    controlerDepart(demande.depart, reglages);
+  if (calendrier) return { ok: false, refus: calendrier };
+
   if (minutes < bfa.dureeMinMinutes) {
     // Le plus petit budget accepté au-dessus de celui proposé, et le plus petit accepté tout court.
     const auDessus = budgetMinimumBikeForAllXof(N, reglages, B);
@@ -336,8 +345,14 @@ export function calculerBikeForAllDuree(demande: DemandeBikeForAllDuree, reglage
     };
   }
 
+  // S'il est trop tard pour son départ, le client se voit proposer un départ
+  // qui rentre aussi à l'heure avec cette durée. Si aucun départ de la
+  // journée ne rentre à l'heure, c'est la durée qu'il faut changer : on le
+  // dit d'abord.
+  const departs = departsQuiRentrent(minutes, reglages);
   const refus =
-    controlerCalendrier("bike-for-all", contexte, demande.depart, null, reglages, bfa) ??
+    (departs ? null : controlerRetour(demande.depart, minutes, "duree", reglages, contexte)) ??
+    controlerCalendrier("bike-for-all", contexte, demande.depart, null, reglages, departs ?? bfa) ??
     controlerDepart(demande.depart, reglages) ??
     controlerRetour(demande.depart, minutes, "duree", reglages, contexte);
   if (refus) return { ok: false, refus };

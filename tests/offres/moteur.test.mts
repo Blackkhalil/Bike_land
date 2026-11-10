@@ -255,6 +255,26 @@ verifier(
   [code(bfaBudget(10, 10000, { depart: "10:15" }, { date: LUNDI }, sansDelai)), pile.code, pile.premierDepartPossible, pile.message],
   ["accepté", "DATE_PASSEE", "10:15", "Cette heure de départ est déjà passée. Aujourd'hui, le premier départ encore possible est à 10 h 15."],
 );
+const quatreHeures = refus(bfaDuree(10, 240, "aucun", { depart: "17:00" }, { date: LUNDI, maintenant: lundi("16:00") }));
+const quatreHeuresUnQuart = refus(bfaDuree(10, 255, "aucun", { depart: "17:00" }, { date: LUNDI, maintenant: lundi("16:00") }));
+verifier(
+  "17 h demandé à 16 h : 4 h de vélo, on propose 18 h (retour 22 h) ; 4 h 15, 18 h rentrerait trop tard, on ne le propose pas",
+  [quatreHeures.code, quatreHeures.premierDepartPossible, quatreHeuresUnQuart.code, quatreHeuresUnQuart.champ, quatreHeuresUnQuart.premierDepartPossible],
+  ["DELAI", "18:00", "DELAI", "date", undefined],
+);
+const budgetTroisQuarts = refus(bfaBudget(10, 36000, { depart: "17:00" }, { date: LUNDI, maintenant: lundi("16:00") }));
+const budgetQuatreUnQuart = refus(bfaBudget(10, 39000, { depart: "17:00" }, { date: LUNDI, maintenant: lundi("16:00") }));
+verifier(
+  "par budget aussi : 36 000 F (3 h 45), on propose 18 h ; 39 000 F (4 h 15), on ne propose pas 18 h",
+  [budgetTroisQuarts.code, budgetTroisQuarts.premierDepartPossible, budgetQuatreUnQuart.code, budgetQuatreUnQuart.premierDepartPossible],
+  ["DELAI", "18:00", "DELAI", undefined],
+);
+const tropLong = refus(bfaDuree(10, 855, "aucun", { depart: "17:00" }, { date: LUNDI, maintenant: lundi("16:00") }));
+verifier(
+  "14 h 15 de vélo, trop tard pour 17 h : aucun départ ne rentre à l'heure, on demande d'abord une durée plus courte",
+  [tropLong.code, tropLong.champ],
+  ["HEURE", "minutes"],
+);
 verifier("samedi 8 h demandé samedi 7 h : la date limite du vendredi l'emporte sur le délai", code(bfaBudget(10, 5000, {}, { maintenant: heureBenin(SAMEDI, "07:00") })), "DATE_LIMITE");
 const retourTard = refus(bfaBudget(10, 10000, { depart: "21:30" }, { date: LUNDI, maintenant: lundi("19:00") }));
 verifier("21 h 30 et 45 min, demandés à 19 h : retour trop tard, on propose 21 h 15, encore réservable", [retourTard.code, retourTard.dernierDepartPossible], ["HEURE", "21:15"]);

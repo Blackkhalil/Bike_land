@@ -307,6 +307,17 @@ export function dernierDepartPour(
 }
 
 /**
+ * La grille des départs d'un Bike for All, réduite aux départs qui rentrent
+ * à l'heure pour cette durée de vélo : le premier départ proposé au client
+ * respecte ainsi aussi l'heure de retour. `null` si aucun départ de la
+ * journée ne rentre à l'heure.
+ */
+export function departsQuiRentrent(minutesDeVelo: number, reglages: Pick<ReglagesOffres, "bikeForAll">): GrilleDeparts | null {
+  const dernier = dernierDepartPour(minutesDeVelo, reglages);
+  return dernier === null ? null : { ...reglages.bikeForAll, dernierDepart: dernier };
+}
+
+/**
  * Le retour d'un Bike for All : au plus tard à l'heure réglée (22 h). Le
  * message propose le dernier départ possible, ou une demande plus courte.
  * En ligne, ce départ doit aussi respecter le délai minimum : s'il est déjà
