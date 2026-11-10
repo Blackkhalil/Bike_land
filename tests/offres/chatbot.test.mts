@@ -314,7 +314,7 @@ const tropLourde = agir(p, { type: "preuve-recue", statut: 413, corps: { ok: fal
 verifier("capture refusée par la route (taille) : on reste à l'envoi", [tropLourde.etape, tropLourde.envoi, derniers(tropLourde)], [
   "preuve",
   null,
-  "Image trop lourde. Envoyez une image JPG, PNG ou WebP de 5 Mo au plus.",
+  "Image trop lourde. Envoyez une image JPG, PNG ou WebP de 4 Mo au plus.",
 ]);
 
 // Le lien de l'email après une vérification à la main : /?reserver-en-groupe=road-trip-groupe&preuve=<id>.

@@ -2,7 +2,7 @@
 // sans email, sans agent IA réels : de faux dépôts, un faux stockage, un
 // faux agent ; sharp, lui, réencode pour de vrai des images fabriquées ici.
 //  - type lu dans le fichier, taille, limite de débit ;
-//  - réencodage : tournée, réduite à 2 576 pixels, sans EXIF ;
+//  - réencodage : tournée, réduite à 1 600 pixels, 1 Mo au plus, sans EXIF ;
 //  - sans agent IA : « en_attente », vérifiée à la main ; avec lui :
 //    décidée, et la capture effacée aussitôt ;
 //  - administration : décision signée, capture effacée, email au client
@@ -69,7 +69,8 @@ console.log("\n— Réencodage : tournée, réduite, sans métadonnées");
   verifier("l'image d'origine porte bien un EXIF", Boolean((await sharp(grandeAvecExif).metadata()).exif), true);
   const reencodee = await preuves.reencoderCapture(grandeAvecExif);
   const lue = await sharp(Buffer.from(reencodee.octets)).metadata();
-  verifier("WebP, plus grand côté ramené à 2 576 pixels", [reencodee.typeMime, lue.format, lue.width, lue.height], ["image/webp", "webp", 2576, 644]);
+  verifier("WebP, plus grand côté ramené à 1 600 pixels", [reencodee.typeMime, lue.format, lue.width, lue.height], ["image/webp", "webp", 1600, 400]);
+  verifier("1 Mo au plus après réencodage", reencodee.octets.byteLength <= preuves.TAILLE_MAX_REENCODEE_OCTETS, true);
   verifier("ni EXIF, ni XMP, ni ICC après réencodage", [lue.exif, lue.xmp, lue.icc], [undefined, undefined, undefined]);
   const droite = await preuves.reencoderCapture(tournee);
   verifier("photo tournée : remise droite (50 × 100)", [droite.largeur, droite.hauteur], [50, 100]);
@@ -231,8 +232,12 @@ console.log("\n— Réception d'une capture : limite de débit");
   const autre = fauxDecor();
   for (let i = 0; i < 6; i += 1) dernier = await preuves.recevoirPreuve(formulaire(petitPng), { ip: `10.2.2.${i}` }, autre.deps);
   verifier("6e capture du même numéro dans la journée : 429", dernier.statut, 429);
-  const debordee = await envoyer(formulaire(petitPng), { enAttente: 200 });
-  verifier("200 captures déjà à vérifier : les nouvelles attendent (429), rien d'enregistré", [debordee.statut, debordee.etat.creees.length], [429, 0]);
+  const debordee = await envoyer(formulaire(petitPng), { enAttente: 100 });
+  verifier("100 captures déjà à vérifier : les nouvelles attendent (429), rien d'enregistré", [debordee.statut, debordee.etat.creees.length], [429, 0]);
+  const lourde = fauxDecor();
+  lourde.deps.reencoder = async () => ({ octets: new Uint8Array(preuves.TAILLE_MAX_REENCODEE_OCTETS + 1), typeMime: "image/webp", largeur: 1600, hauteur: 1600 });
+  const tropChargee = (await preuves.recevoirPreuve(formulaire(petitPng), { ip: "10.3.3.3" }, lourde.deps)) as { statut: number };
+  verifier("plus de 1 Mo même réduite : refusée (413), rien d'enregistré", [tropChargee.statut, lourde.etat.creees.length], [413, 0]);
 }
 
 console.log("\n— Sans agent IA (décision 21) : vérifiée à la main");
@@ -242,7 +247,7 @@ console.log("\n— Sans agent IA (décision 21) : vérifiée à la main");
   verifier("le message dit qu'on répond par email, sans parler d'IA", [r.corps.message.includes("par email"), /IA|intelligence/i.test(r.corps.message)], [true, false]);
   const creee = r.etat.creees[0];
   const lue = await sharp(Buffer.from(creee.octets)).metadata();
-  verifier("rangée en base : la capture réencodée (WebP, 2 576 px, sans EXIF)", [creee.typeMime, lue.format, lue.width, lue.exif], ["image/webp", "webp", 2576, undefined]);
+  verifier("rangée en base : la capture réencodée (WebP, 1 600 px, sans EXIF)", [creee.typeMime, lue.format, lue.width, lue.exif], ["image/webp", "webp", 1600, undefined]);
   verifier("avec l'email et le téléphone du client, pour lui répondre", [creee.email, creee.telephone], ["awa.test@example.com", "+229 01 97 00 00 00"]);
   verifier("aucune décision, aucun effacement", [r.etat.decisions.length, r.etat.effaces.length], [0, 0]);
   const blob = await envoyer(formulaire(petitPng), { mode: "blob" });

@@ -9,7 +9,7 @@
 -- Le fichier va dans la base tant qu'aucun stockage privé de fichiers n'est
 -- configuré (BLOB_PREUVES_READ_WRITE_TOKEN, un magasin Vercel Blob privé) :
 -- il n'a ainsi jamais d'adresse publique. Il est déjà réencodé (tourné,
--- réduit à 2 576 pixels au plus, sans métadonnées), effacé dès la décision
+-- réduit à 1 600 pixels au plus, 1 Mo au plus, sans métadonnées), effacé dès la décision
 -- et 30 jours au plus tard ; il disparaît avec sa preuve.
 --
 -- Rejouable : chaque instruction vérifie d'abord que l'objet n'existe pas.

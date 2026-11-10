@@ -124,6 +124,12 @@ export interface Reponse<T> {
 export const RESERVATIONS_PAR_HEURE_ADRESSE = 12;
 /** Réservations en ligne acceptées par heure pour un même numéro. */
 export const RESERVATIONS_PAR_HEURE_NUMERO = 6;
+/**
+ * Devis acceptés par heure depuis une même adresse : large, la négociation en
+ * demande beaucoup et plusieurs clients partagent l'adresse d'un opérateur
+ * mobile ; assez pour qu'une boucle n'occupe pas la base de tout le site.
+ */
+export const DEVIS_PAR_HEURE_ADRESSE = 300;
 /** Road trip et Gbashi Bike : jusqu'où chercher une date libre, en jours. */
 export const JOURS_RECHERCHE_DATE = 60;
 /** Bike for All : le jour demandé, puis jusqu'à tant de jours après. */
@@ -338,6 +344,9 @@ function estPlein(issue: IssueOffre): boolean {
  * vélos, dans les 60 jours.
  */
 async function chercherProchainCreneau(demande: DemandeDevis, contexte: ContexteCalcul): Promise<ProchainCreneau | null> {
+  // Plus de vélos que le parc n'en compte ce jour-là (déjà lu pour le devis) :
+  // aucune date ne conviendra, inutile de relire des dizaines de parcs.
+  if (depasseLeParc(demande, await parcDu(demande.date, contexte))) return null;
   if (demande.offre === "bike-for-all") {
     const bfa = contexte.reglages.bikeForAll;
     const saisie = demande.saisie;
@@ -378,6 +387,16 @@ async function chercherProchainCreneau(demande: DemandeDevis, contexte: Contexte
     if ((await calculerSur(demande, date, contexte)).issue.ok) return { date, depart: horaire.depart };
   }
   return null;
+}
+
+/** Le groupe veut plus de vélos que le parc n'en a en état, au total ou dans une gamme (Gbashi Bike). */
+function depasseLeParc(demande: DemandeDevis, parc: ParcDuJour): boolean {
+  if (demande.offre === "gbashi-groupe") {
+    return Object.entries(demande.saisie.velos).some(
+      ([gamme, nombre]) => (nombre ?? 0) > parc.velos.filter((velo) => velo.gamme === gamme).length,
+    );
+  }
+  return demande.saisie.personnes > parc.velos.length;
 }
 
 /* ---------------------------------------------------- Preuve de réduction */
@@ -459,11 +478,16 @@ async function etablirDevis(
 export async function devisOffreGroupe(
   corps: unknown,
   deps: DependancesOffresGroupe,
+  appelant?: { ip: string },
 ): Promise<Reponse<ReponseDevis | ReponseErreur>> {
   const analyse = schemaDemandeDevis.safeParse(corps);
   if (!analyse.success) return erreur(400, "SAISIE", MESSAGE_SAISIE);
   const prealable = await verifierPrealable(deps, "en-ligne");
   if ("statut" in prealable) return prealable;
+  // Le devis est public : limité par adresse, largement (la route donne l'adresse).
+  if (appelant && (await compter(deps, `offres-groupe-devis:${appelant.ip}`)) > DEVIS_PAR_HEURE_ADRESSE) {
+    return erreur(429, "TROP_DE_DEMANDES", "Beaucoup de calculs en peu de temps : patientez quelques minutes, puis réessayez.");
+  }
   const devis = await etablirDevis(analyse.data, "en-ligne", prealable, deps);
   return { statut: 200, corps: devis.reponse };
 }
@@ -725,11 +749,14 @@ export async function reserverOffreGroupe(
     // vérification du paiement : jamais d'ici sans preuve.
     const confirmation = await deps.depot.confirmerPaiement(reservation.reference, paiement.referenceTransaction);
     if (confirmation && !confirmation.dejaConfirmee) await emailsDeConfirmation(deps, confirmation.reservation, lienSuivi);
-  } else if (paiement.statut === "EN_ATTENTE") {
-    // Le seul moment où le jeton de suivi existe en clair : le lien part tout de suite.
-    await Promise.allSettled([deps.emails.reception(reservation, lienSuivi)]);
   } else {
-    console.warn(`[offres-groupe] ${reservation.reference} : paiement non lancé (${paiement.message ?? "sans détail"}).`);
+    if (paiement.statut !== "EN_ATTENTE") {
+      console.warn(`[offres-groupe] ${reservation.reference} : paiement non lancé (${paiement.message ?? "sans détail"}).`);
+    }
+    // Le seul moment où le jeton de suivi existe en clair : le lien part tout
+    // de suite, même si la demande de paiement n'a pas pu partir (le client
+    // la relance depuis ce lien, comme dans le tunnel).
+    await Promise.allSettled([deps.emails.reception(reservation, lienSuivi)]);
   }
 
   const message =

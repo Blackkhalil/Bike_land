@@ -1194,7 +1194,7 @@ function recevoirPreuve(etat: EtatChat, statut: number, corps: unknown, faits: F
     const texte = verification
       ? "Je ne retrouve pas votre capture d'écran. Vous pouvez en envoyer une nouvelle, ou réserver sans la réduction."
       : statut === 413 || statut === 415 || statut === 400
-        ? `${lecture.message || "La capture n'est pas passée."} Envoyez une image JPG, PNG ou WebP de 5 Mo au plus.`
+        ? `${lecture.message || "La capture n'est pas passée."} Envoyez une image JPG, PNG ou WebP de 4 Mo au plus.`
         : statut === 429
           ? MESSAGES_ERREUR.TROP_DE_DEMANDES
           : statut === 403

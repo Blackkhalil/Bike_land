@@ -769,7 +769,7 @@ function EnvoiPreuve({
     evenement.preventDefault();
     if (!capture) return setErreur("Choisissez la capture d'écran à envoyer.");
     if (!(TYPES_CAPTURE as readonly string[]).includes(capture.type)) return setErreur("Envoyez une image JPG, PNG ou WebP.");
-    if (capture.size > TAILLE_MAX_CAPTURE_OCTETS) return setErreur("Cette image dépasse 5 Mo : envoyez une capture plus légère.");
+    if (capture.size > TAILLE_MAX_CAPTURE_OCTETS) return setErreur("Cette image dépasse 4 Mo : envoyez une capture plus légère.");
     if (!schemaChampsPreuve.safeParse({ telephone, email }).success) return setErreur("Vérifiez votre téléphone et votre email.");
     setErreur(null);
     void onEnvoyer(capture, telephone, email);
@@ -778,7 +778,7 @@ function EnvoiPreuve({
   return (
     <form onSubmit={envoyer} noValidate className="space-y-3">
       <label className="block">
-        <span className={ETIQUETTE}>Votre capture d&apos;écran (JPG, PNG ou WebP, 5 Mo au plus)</span>
+        <span className={ETIQUETTE}>Votre capture d&apos;écran (JPG, PNG ou WebP, 4 Mo au plus)</span>
         <input
           type="file"
           accept={TYPES_CAPTURE.join(",")}

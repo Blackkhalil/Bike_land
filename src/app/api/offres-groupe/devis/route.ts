@@ -1,3 +1,4 @@
+import { identifiantAppelant } from "@/lib/anti-force-brute";
 import { dependancesOffresGroupe, panne, repondre } from "@/lib/offres-groupe/dependances";
 import { devisOffreGroupe } from "@/lib/offres-groupe/service";
 
@@ -15,7 +16,7 @@ import { devisOffreGroupe } from "@/lib/offres-groupe/service";
 export async function POST(requete: Request) {
   const corps: unknown = await requete.json().catch(() => null);
   try {
-    return repondre(await devisOffreGroupe(corps, dependancesOffresGroupe()));
+    return repondre(await devisOffreGroupe(corps, dependancesOffresGroupe(), { ip: identifiantAppelant(requete) }));
   } catch (e) {
     return panne("devis impossible", e);
   }

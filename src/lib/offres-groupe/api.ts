@@ -116,7 +116,7 @@ export const schemaChampsPreuve = z.object({
 });
 /** Ce que la route des preuves accepte. */
 export const TYPES_CAPTURE = ["image/jpeg", "image/png", "image/webp"] as const;
-export const TAILLE_MAX_CAPTURE_OCTETS = 5 * 1024 * 1024;
+export const TAILLE_MAX_CAPTURE_OCTETS = 4 * 1024 * 1024;
 
 /**
  * Vente au comptoir, depuis l'administration (ajout du lot 5b) : la même

@@ -38,8 +38,14 @@ import type { StockagePreuves } from "./stockage-preuves";
 export const PREUVES_PAR_HEURE_ADRESSE = 10;
 /** Captures acceptées par jour pour un même numéro. */
 export const PREUVES_PAR_JOUR_NUMERO = 5;
-/** Le plus long côté d'une capture réencodée, en pixels. */
-export const COTE_MAX_PIXELS = 2576;
+/** Le plus long côté d'une capture réencodée, en pixels : assez pour lire un profil. */
+export const COTE_MAX_PIXELS = 1600;
+/**
+ * Le poids d'une capture réencodée, au plus : elle est gardée dans la base
+ * quand aucun magasin privé n'est réglé. Une capture d'écran ordinaire pèse
+ * bien moins ; une image de bruit envoyée pour remplir la base est refusée.
+ */
+export const TAILLE_MAX_REENCODEE_OCTETS = 1024 * 1024;
 /** Au-delà, l'image n'est pas décodée (une image piège qui gonflerait en mémoire). */
 export const PIXELS_MAX = 40_000_000;
 /** Un fichier de preuve ne vit pas plus longtemps. */
@@ -47,9 +53,10 @@ export const JOURS_CONSERVATION_MAX = 30;
 /**
  * Au-delà de tant de captures qui attendent d'être vérifiées, les nouvelles
  * sont refusées pour un temps : un garde-fou contre qui enverrait des images
- * à la chaîne depuis beaucoup d'adresses (elles pèsent dans la base).
+ * à la chaîne depuis beaucoup d'adresses (elles pèsent dans la base : 100 Mo
+ * au plus avec TAILLE_MAX_REENCODEE_OCTETS).
  */
-export const PREUVES_EN_ATTENTE_MAX = 200;
+export const PREUVES_EN_ATTENTE_MAX = 100;
 
 /* ------------------------------------------------------------- Image */
 
@@ -79,19 +86,25 @@ export interface CaptureReencodee {
 
 /**
  * La capture réencodée par sharp : tournée selon son orientation, réduite à
- * 2 576 pixels au plus sur son plus grand côté, en WebP. Le réencodage ne
+ * 1 600 pixels au plus sur son plus grand côté, en WebP, de moins en moins
+ * fine tant qu'elle dépasse TAILLE_MAX_REENCODEE_OCTETS. Le réencodage ne
  * garde aucune métadonnée (sharp n'en recopie aucune sans qu'on le lui
  * demande) : ni EXIF, ni XMP, ni position GPS. Lève une erreur si l'image ne
  * se décode pas.
  */
 export async function reencoderCapture(octets: Uint8Array): Promise<CaptureReencodee> {
   const { default: sharp } = await import("sharp");
-  const { data, info } = await sharp(octets, { limitInputPixels: PIXELS_MAX, failOn: "error" })
-    .autoOrient()
-    .resize({ width: COTE_MAX_PIXELS, height: COTE_MAX_PIXELS, fit: "inside", withoutEnlargement: true })
-    .webp({ quality: 82 })
-    .toBuffer({ resolveWithObject: true });
-  return { octets: new Uint8Array(data), typeMime: "image/webp", largeur: info.width, hauteur: info.height };
+  let capture: CaptureReencodee | null = null;
+  for (const quality of [82, 60, 40]) {
+    const { data, info } = await sharp(octets, { limitInputPixels: PIXELS_MAX, failOn: "error" })
+      .autoOrient()
+      .resize({ width: COTE_MAX_PIXELS, height: COTE_MAX_PIXELS, fit: "inside", withoutEnlargement: true })
+      .webp({ quality })
+      .toBuffer({ resolveWithObject: true });
+    capture = { octets: new Uint8Array(data), typeMime: "image/webp", largeur: info.width, hauteur: info.height };
+    if (capture.octets.byteLength <= TAILLE_MAX_REENCODEE_OCTETS) break;
+  }
+  return capture!;
 }
 
 /* ------------------------------------------------------- Dépendances */
@@ -229,11 +242,11 @@ export async function recevoirPreuve(
   if (!fichier || typeof fichier === "string") return erreur(400, "SAISIE", "Joignez la capture d'écran, puis réessayez.");
   if (fichier.size === 0) return erreur(400, "SAISIE", "Cette image est vide : envoyez une autre capture.");
   if (fichier.size > TAILLE_MAX_CAPTURE_OCTETS) {
-    return erreur(413, "SAISIE", "Cette image est trop lourde : 5 Mo au plus. Envoyez une capture d'écran, sans la retoucher.");
+    return erreur(413, "SAISIE", "Cette image est trop lourde : 4 Mo au plus. Envoyez une capture d'écran, sans la retoucher.");
   }
   const octets = new Uint8Array(await fichier.arrayBuffer());
   if (octets.byteLength > TAILLE_MAX_CAPTURE_OCTETS) {
-    return erreur(413, "SAISIE", "Cette image est trop lourde : 5 Mo au plus. Envoyez une capture d'écran, sans la retoucher.");
+    return erreur(413, "SAISIE", "Cette image est trop lourde : 4 Mo au plus. Envoyez une capture d'écran, sans la retoucher.");
   }
   // Le type se lit dans le fichier lui-même : un nom ou un type annoncé ne prouvent rien.
   if (!typeDeLImage(octets)) return erreur(400, "SAISIE", "Envoyez une capture d'écran en JPEG, PNG ou WebP.");
@@ -243,6 +256,10 @@ export async function recevoirPreuve(
     capture = await deps.reencoder(octets);
   } catch {
     return erreur(400, "SAISIE", "Cette image ne se lit pas : envoyez une autre capture d'écran.");
+  }
+  // Même réduite, trop lourde : ce n'est pas une capture d'écran ordinaire.
+  if (capture.octets.byteLength > TAILLE_MAX_REENCODEE_OCTETS) {
+    return erreur(413, "SAISIE", "Cette image est trop chargée : envoyez une simple capture d'écran de votre profil.");
   }
 
   // Rangée en privé : dans le magasin privé s'il est réglé, sinon dans la base, avec la preuve.

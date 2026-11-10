@@ -13,7 +13,7 @@ export const maxDuration = 60;
  * La capture envoyée depuis le chatbot pour la réduction du road trip en
  * groupe (formulaire multipart : « capture », « telephone », « email »).
  * Limite par adresse et par numéro ; type lu dans le fichier (JPEG, PNG,
- * WebP), 5 Mo au plus ; réencodée sans métadonnées et rangée en privé ;
+ * WebP), 4 Mo au plus ; réencodée sans métadonnées et rangée en privé ;
  * vérifiée par l'agent IA s'il est activé, sinon à la main dans
  * l'administration, qui répond au client par email (décision 21).
  */
@@ -24,7 +24,7 @@ export async function POST(requete: Request) {
     const corps: ReponseErreur = {
       ok: false,
       code: "SAISIE",
-      message: "Cette image est trop lourde : 5 Mo au plus. Envoyez une capture d'écran, sans la retoucher.",
+      message: "Cette image est trop lourde : 4 Mo au plus. Envoyez une capture d'écran, sans la retoucher.",
     };
     return NextResponse.json(corps, { status: 413 });
   }

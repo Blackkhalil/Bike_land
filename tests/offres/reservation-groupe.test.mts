@@ -286,6 +286,9 @@ console.log("\n— Devis : plein, et le créneau libre le plus proche");
   const stock = await devis(gbashi({ PRESTIGE: 3, PREMIUM: 2 }));
   verifier("Gbashi : 3 Prestige pour 2 au parc, refus STOCK_GAMME", [stock.corps.issue.refus.code, stock.corps.issue.refus.gamme, stock.corps.issue.refus.maximum], ["STOCK_GAMME", "PRESTIGE", 2]);
   verifier("aucun dimanche n'a 3 Prestige : pas de proposition", stock.corps.prochainCreneau, null);
+  verifier("3 Prestige pour 2 au parc : aucune autre date relue, la recherche s'arrête", stock.etat.parcsLus.length, 1);
+  const enorme = await devis(roadTrip({ personnes: 40 }));
+  verifier("road trip de 40 pour 18 vélos : pas de proposition, un seul parc lu", [enorme.corps.prochainCreneau, enorme.etat.parcsLus.length], [null, 1]);
 
   const ferme = await devis(roadTrip(), { joursFermes: [{ id: "f", date: SAMEDI, formule: "toutes", creeLe: "" }] });
   verifier("jour fermé à toutes les formules : aucun vélo en ligne, refus PARC", [ferme.corps.issue.refus.code, ferme.corps.capacite.velosLibres], ["PARC", 0]);
@@ -294,6 +297,18 @@ console.log("\n— Devis : plein, et le créneau libre le plus proche");
   verifier("jour fermé au road trip : Bike for All reste ouvert", fermeRoadTrip.corps.issue.ok, true);
   const rtFerme = await devis(roadTrip(), { joursFermes: [{ id: "f", date: SAMEDI, formule: "road-trip", creeLe: "" }] });
   verifier("jour fermé au road trip : le road trip en groupe aussi (décision 1)", rtFerme.corps.issue.refus?.code, "PARC");
+}
+
+console.log("\n— Devis : limite par adresse");
+{
+  const f = faux();
+  let dernier = { statut: 0, corps: {} as Record<string, any> };
+  for (let i = 0; i <= service.DEVIS_PAR_HEURE_ADRESSE; i += 1) {
+    dernier = await service.devisOffreGroupe(bikeForAll(), f.deps, { ip: "10.9.9.9" });
+  }
+  verifier(`${service.DEVIS_PAR_HEURE_ADRESSE + 1}e devis de la même adresse en une heure : 429`, [dernier.statut, dernier.corps.code], [429, "TROP_DE_DEMANDES"]);
+  const autre = await service.devisOffreGroupe(bikeForAll(), f.deps, { ip: "10.9.9.8" });
+  verifier("une autre adresse : 200", autre.statut, 200);
 }
 
 /* ------------------------------------------------------- Réservation */
@@ -397,6 +412,7 @@ console.log("\n— Réservation : succès, au bon montant et au bon canal");
     paiement: { statut: "ECHOUE", fournisseur: "saspay", referenceTransaction: "", message: "Solde insuffisant" },
   });
   verifier("paiement refusé : 201, statut ECHOUE et un message pour le client, réservation gardée 30 min", [echec.statut, echec.corps.paiement.statut, typeof echec.corps.paiement.message, echec.etat.creees.length], [201, "ECHOUE", "string", 1]);
+  verifier("paiement refusé : le lien de suivi part quand même par email, pour relancer le paiement", echec.etat.emails, ["reception:BL-T22221"]);
 
   // Le navigateur ne décide de rien : canal, réduction et total glissés dans la demande sont ignorés.
   const triche = await reserver({
