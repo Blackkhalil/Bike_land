@@ -39,9 +39,14 @@ import {
   type ReglagesProduits,
 } from "@/data/reglages";
 import { jourProgrammePadel } from "@/data/padel-bike";
+import { VenteComptoirGroupe } from "@/components/offres-groupe/VenteComptoirGroupe";
 import { ajouterJours } from "@/lib/dates";
 import { creneauxSeChevauchent, type CreneauOccupe } from "@/lib/db/contrat";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
+import { estOffreGroupe } from "@/data/offres";
+import { formatMontant, heureEnClair } from "@/lib/offres";
+import { joursEnClair } from "@/lib/offres/calendrier";
+import type { FaitsChat } from "@/lib/offres-groupe/conversation";
 import { calculerDevis } from "@/lib/tarification";
 import type { CodeOffre, StatutVelo } from "@/lib/types";
 
@@ -307,6 +312,7 @@ export function VenteEspeces({
   occupes,
   instant,
   reglages,
+  offresGroupe = null,
 }: {
   velos: VeloComptoir[];
   /** Créneaux déjà pris, par vélo. Le serveur revérifie à l'enregistrement. */
@@ -315,6 +321,13 @@ export function VenteEspeces({
   instant: number;
   /** Les réglages des produits (Padel bike : son heure, son prix), lus par le serveur. */
   reglages: ReglagesProduits;
+  /**
+   * Les offres de groupe (Bike for All, Road trip en groupe, Gbashi Bike),
+   * quand elles se vendent : interrupteur ouvert, réglages des offres
+   * lisibles (décision 12 : aussi au comptoir, sans les 125 F). `null` :
+   * le comptoir d'avant, à l'identique.
+   */
+  offresGroupe?: FaitsChat | null;
 }) {
   const routeur = useRouter();
   const [, demarrerTransition] = useTransition();
@@ -462,7 +475,11 @@ export function VenteEspeces({
   // Le road trip du samedi se roule en Premium ou Prestige : un Classique
   // choisi pour ce départ n'a pas de prix, et ne se vend pas.
   const veloHorsGamme = roadTrip && velo !== undefined && !roadTripPossible(velo.gamme, date);
-  const devisLocal = octobreRose
+  // Une offre de groupe se vend avec son propre formulaire (VenteComptoirGroupe).
+  const offreDeGroupe = estOffreGroupe(offre);
+  const devisLocal = offreDeGroupe
+    ? null
+    : octobreRose
     ? calculerDevis({ offre: "octobre-rose", date, nombrePersonnes: personnes, especes: true })
     : padel
       ? calculerDevis({ offre: "padel-bike", nombrePersonnes: personnes, especes: true }, reglages)
@@ -771,6 +788,26 @@ export function VenteEspeces({
     ...(sortiesRose.length > 0
       ? ([["octobre-rose", "Octobre rose", detailFormuleRose(sortiesRose)]] as const)
       : []),
+    // Les offres de groupe, interrupteur ouvert : les chiffres des réglages des offres.
+    ...(offresGroupe
+      ? ([
+          [
+            "bike-for-all",
+            "Bike for All",
+            `${offresGroupe.reglages.bikeForAll.personnesMin} personnes et plus, au budget ou à la durée`,
+          ],
+          [
+            "road-trip-groupe",
+            "Road trip en groupe",
+            `${joursEnClair(offresGroupe.reglages.roadTrip.jours)}, ${heureEnClair(offresGroupe.reglages.roadTrip.depart)} : ${formatMontant(offresGroupe.reglages.roadTrip.prixPersonneXof)} par personne`,
+          ],
+          [
+            "gbashi-groupe",
+            "Gbashi Bike",
+            `${joursEnClair(offresGroupe.reglages.gbashi.jours)}, ${heureEnClair(offresGroupe.reglages.gbashi.depart)} : ${GAMMES.map((g) => formatMontant(offresGroupe.reglages.gbashi.prixXof[g.code])).join(" / ")}`,
+          ],
+        ] as const)
+      : []),
   ];
 
   return (
@@ -822,6 +859,24 @@ export function VenteEspeces({
         </div>
       </fieldset>
 
+      {offreDeGroupe && offresGroupe ? (
+        <VenteComptoirGroupe
+          key={offre}
+          offre={offre}
+          faits={offresGroupe}
+          maintenant={maintenant}
+          encaissePar={encaissePar}
+          onEncaisseParChange={setEncaissePar}
+          onEnregistree={() => {
+            try {
+              window.localStorage.setItem(CLE_ENCAISSEUR, encaissePar.trim());
+            } catch {
+              // Sans stockage, le nom sera simplement à retaper.
+            }
+          }}
+        />
+      ) : (
+      <>
       {/* 2. Le créneau */}
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">2. Le créneau</legend>
@@ -1392,6 +1447,8 @@ export function VenteEspeces({
             : "Enregistrer la vente"}
       </button>
       {obstacle && !envoi && <p className="mt-2 text-center text-[0.8rem] text-gris-cadre">{obstacle}</p>}
+      </>
+      )}
     </section>
   );
 }

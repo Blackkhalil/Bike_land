@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { BoutonChatGroupe } from "@/components/offres-groupe/BoutonChatGroupe";
 import { TunnelReservation } from "@/components/reservation/TunnelReservation";
 import { Section, TitreSection } from "@/components/ui";
 import { optionsLocation } from "@/data/catalogue";
@@ -23,6 +24,7 @@ import { depot } from "@/lib/db";
 import { aujourdhui, estDateISOValide } from "@/lib/dates";
 import { departsDeLaGamme, lireOuverture, motifDeRefus } from "@/lib/ouverture";
 import { formatDate } from "@/lib/format";
+import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { lienWhatsApp, site } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -87,9 +89,12 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   // est un composant client, et y appeler `new Date()` donnerait une
   // valeur différente de celle du rendu serveur.
   const ouverture = await lireOuverture();
-  const creneaux = creneauxDisponibles(maintenant, ouverture);
+  // Offres de groupe ouvertes (décision 1) : le road trip par gamme et
+  // Gbashi bike sur commande passent au chatbot. Coupé : le tunnel d'avant.
+  const enGroupe = (await offresGroupeEnVente(ouverture)) !== null;
+  const creneaux = enGroupe ? [] : creneauxDisponibles(maintenant, ouverture);
   // Les départs fermés depuis l'admin s'affichent « Sold out », sans se réserver.
-  const complets = departsComplets(maintenant, ouverture);
+  const complets = enGroupe ? [] : departsComplets(maintenant, ouverture);
   // Un jour fermé depuis l'admin, arrivé par un lien ou une page restée
   // ouverte : on le dit tout de suite, plutôt qu'au moment de payer.
   const refusLocation =
@@ -134,9 +139,12 @@ export default async function PageReservation({ searchParams }: { searchParams: 
   // l'explication, pas au tunnel.
   // Seulement un jour de départ : un autre jour (ancien lien sans formule),
   // le tunnel propose lui-même les départs de la gamme.
+  // Offres de groupe ouvertes : un ancien lien vers le road trip par gamme
+  // mène au road trip en groupe, avec le chatbot (décision 1).
+  const roadTripRemplace = enGroupe && offre === "road-trip" && !surCommande;
   const horsGamme =
-    offre === "road-trip" && creneauDuJour(debut) ? motifRoadTripGamme(gamme.code, debut) : null;
-  if (surCommande || horsGamme) {
+    !roadTripRemplace && offre === "road-trip" && creneauDuJour(debut) ? motifRoadTripGamme(gamme.code, debut) : null;
+  if (surCommande || horsGamme || roadTripRemplace) {
     disponible = false;
   } else if (offre === "road-trip") {
     disponible = await gammeLibreA(heureDebut, DUREE_ROAD_TRIP_HEURES);
@@ -195,6 +203,47 @@ export default async function PageReservation({ searchParams }: { searchParams: 
           >
             Choisir une autre date
           </Link>
+        </div>
+      ) : surCommande && enGroupe ? (
+        // Gbashi Bike repasse en ligne, sur réservation, avec le chatbot (décision 1).
+        <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
+          <p className="titre-editorial text-[1.4rem]">Gbashi Bike se réserve avec notre assistant</p>
+          <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
+            Il se réserve maintenant en ligne, pour tout le groupe&nbsp;: notre assistant vous demande votre
+            dimanche et vos vélos, calcule le prix et vous fait payer en Mobile Money. Aucun montant n&apos;a
+            été prélevé.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <BoutonChatGroupe offre="gbashi-groupe" variante="sombre">
+              Réserver Gbashi Bike
+            </BoutonChatGroupe>
+            <Link
+              href={lienGamme}
+              className="inline-flex rounded-full border border-noir-piste/30 px-6 py-3 text-sm font-semibold text-noir-piste"
+            >
+              Réserver un vélo {gamme.nom}
+            </Link>
+          </div>
+        </div>
+      ) : roadTripRemplace ? (
+        <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
+          <p className="titre-editorial text-[1.4rem]">Le road trip se réserve maintenant en groupe</p>
+          <p className="mt-4 text-[0.95rem] leading-relaxed text-gris-cadre">
+            Il ne se réserve plus par gamme&nbsp;: le road trip en groupe roule sur toute notre gamme de vélos.
+            Notre assistant calcule le prix de votre groupe et réserve avec vous. Aucun montant n&apos;a été
+            prélevé.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <BoutonChatGroupe offre="road-trip-groupe" variante="sombre">
+              Road trip en groupe
+            </BoutonChatGroupe>
+            <Link
+              href={lienGamme}
+              className="inline-flex rounded-full border border-noir-piste/30 px-6 py-3 text-sm font-semibold text-noir-piste"
+            >
+              Louer un vélo {gamme.nom} à l&apos;heure
+            </Link>
+          </div>
         </div>
       ) : surCommande ? (
         <div className="mt-12 max-w-xl rounded-[var(--radius-bloc)] bg-white p-8">
@@ -270,6 +319,7 @@ export default async function PageReservation({ searchParams }: { searchParams: 
             complets={departs.complets}
             instant={maintenant.getTime()}
             optionsInitiales={optionsDemandees}
+            roadTripEnGroupe={enGroupe}
           />
         </div>
       ) : (

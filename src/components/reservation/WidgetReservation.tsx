@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { Bouton } from "@/components/Bouton";
+import { RoadTripEnGroupe } from "@/components/offres-groupe/RoadTripEnGroupe";
 import {
   creneauDuJour,
   formatHeure,
@@ -46,6 +47,7 @@ export function WidgetReservation({
   complets,
   velosEnEtat,
   aucunVelo = false,
+  roadTripEnGroupe = false,
 }: {
   gamme: GammeVelo;
   /** Les heures où plus aucun vélo de la gamme n'est libre (`occupationsDeLaGamme`). */
@@ -58,6 +60,12 @@ export function WidgetReservation({
   velosEnEtat: number;
   /** Tous les vélos de la gamme sont à l'atelier : rien à réserver. */
   aucunVelo?: boolean;
+  /**
+   * Interrupteur « Offres de groupe » ouvert (décision 1) : le road trip ne
+   * se réserve plus par gamme ; un mot et un bouton ouvrent le chatbot sur
+   * le road trip en groupe. Faux : l'encart d'avant, à l'identique.
+   */
+  roadTripEnGroupe?: boolean;
 }) {
   const routeur = useRouter();
   const nom = GAMMES.find((entree) => entree.code === gamme)?.nom ?? gamme;
@@ -74,8 +82,8 @@ export function WidgetReservation({
   const jourDemande = parametres.get("debut");
   // La sortie encadrée que la gamme réserve en ligne : le road trip du
   // samedi ; aucune pour le Classique (Gbashi bike se commande sur WhatsApp).
-  const sortie = sortieEncadreeDe(gamme, velosEnEtat);
-  const horsGamme = noteDepartsHorsGamme(gamme, velosEnEtat);
+  const sortie = roadTripEnGroupe ? null : sortieEncadreeDe(gamme, velosEnEtat);
+  const horsGamme = roadTripEnGroupe ? null : noteDepartsHorsGamme(gamme, velosEnEtat);
   // Un jour demandé qui tombe sur un départ encadré en ligne le
   // présélectionne. S'il n'est plus proposé (complet, ou clos la veille à
   // 22 h), c'est le même créneau la semaine suivante, et non le premier de
@@ -210,6 +218,8 @@ export function WidgetReservation({
             </div>
             {/* Le Classique : le road trip du samedi n'est pas pour lui. */}
             {horsGamme && <p className="mt-2.5 text-[0.78rem] leading-relaxed text-gris-cadre">{horsGamme}</p>}
+            {/* Décision 1 : le road trip du week-end se réserve en groupe, toutes gammes. */}
+            {roadTripEnGroupe && <RoadTripEnGroupe />}
           </fieldset>
 
           {/* ------------------------------- Road trip : créneaux fixes */}

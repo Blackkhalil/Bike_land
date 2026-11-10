@@ -59,6 +59,11 @@ import { formatDateAvecJour, formatXof } from "@/lib/format";
 import { etatsSortiesOctobreRose, lireOuverture, padelBikeOuvertEnLigne } from "@/lib/ouverture";
 import { lienWhatsApp, site } from "@/lib/site";
 import { DonneesStructurees } from "@/components/DonneesStructurees";
+import { BoutonChatGroupe } from "@/components/offres-groupe/BoutonChatGroupe";
+import type { ReglagesOffres } from "@/data/reglages-offres";
+import { formatMontant, formatPourcentage, heureEnClair } from "@/lib/offres";
+import { joursEnClair, NOMS_JOURS } from "@/lib/offres/calendrier";
+import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { filDAriane } from "@/lib/donnees-structurees";
 import { metadonneesPage } from "@/lib/seo";
 
@@ -67,15 +72,23 @@ const PRIX_HEURE_MINIMUM = Math.min(...Object.values(GRILLE_HORAIRE).map((grille
 
 /** Le prix de Padel bike du moment, réglé dans l'administration. */
 export async function generateMetadata(): Promise<Metadata> {
-  const padel = await lireReglages()
-    .then((reglages) => reglages.padel)
-    .catch(() => REGLAGES_PADEL_PAR_DEFAUT);
+  const [padel, groupe] = await Promise.all([
+    lireReglages()
+      .then((reglages) => reglages.padel)
+      .catch(() => REGLAGES_PADEL_PAR_DEFAUT),
+    offresGroupeEnVente(),
+  ]);
+  // Offres de groupe ouvertes (décision 1) : le road trip en groupe et Gbashi
+  // Bike sur réservation remplacent le road trip par gamme et la commande.
+  const description = groupe
+    ? `Road trip en groupe le week-end, Bike for All et Gbashi Bike sur réservation, Padel bike à ${formatXof(padel.prixXof)}, ` +
+      `location à l'heure dès ${formatXof(PRIX_HEURE_MINIMUM)} à Cotonou.`
+    : `Road trip le week-end dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}, location à l'heure dès ` +
+      `${formatXof(PRIX_HEURE_MINIMUM)}, Padel bike à ${formatXof(padel.prixXof)} à Cotonou. ` +
+      `Sur commande : Gbashi bike dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}.`;
   return metadonneesPage({
     titre: "Road trip, Padel bike, Gbashi bike et location",
-    description:
-      `Road trip le week-end dès ${formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)}, location à l'heure dès ` +
-      `${formatXof(PRIX_HEURE_MINIMUM)}, Padel bike à ${formatXof(padel.prixXof)} à Cotonou. ` +
-      `Sur commande : Gbashi bike dès ${formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)}.`,
+    description,
     chemin: "/produits",
   });
 }
@@ -205,6 +218,147 @@ function PhotoProduit({
   );
 }
 
+/** « 2 cocos et 2 bouteilles d'eau » : ce qui est offert à chacun, d'après les réglages des offres. */
+function offertsParPersonne(cocos: number, eaux: number): string {
+  const morceaux = [
+    ...(cocos > 0 ? [`${cocos} coco${cocos > 1 ? "s" : ""}`] : []),
+    ...(eaux > 0 ? [`${eaux} bouteille${eaux > 1 ? "s" : ""} d'eau`] : []),
+  ];
+  return morceaux.join(" et ");
+}
+
+/**
+ * Le road trip en groupe (décision 1 du responsable), quand l'interrupteur
+ * « Offres de groupe » est ouvert : il remplace le road trip par gamme.
+ * Toute la gamme de vélos, le samedi ou le dimanche, aux chiffres des
+ * réglages des offres ; il se réserve avec le chatbot.
+ */
+function RoadTripEnGroupe({ reglages }: { reglages: ReglagesOffres }) {
+  const rt = reglages.roadTrip;
+  const limite = reglages.dateLimiteWeekend;
+  const offerts = offertsParPersonne(rt.cocosGrandsParPersonne, rt.eauxParPersonne);
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2">
+        <Pastille ton="succes">Samedi et dimanche</Pastille>
+        <Pastille ton="neutre">En groupe</Pastille>
+      </div>
+      <TitreSection className="mt-5">Road trip en groupe</TitreSection>
+      <p className="mt-3 font-display text-[1.4rem] leading-tight">{rt.distanceKm} km ensemble, au rythme du groupe</p>
+      <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-craie/75">
+        Une balade sur la route des Pêches, avec un coordinateur qui ouvre la route, sur toute notre gamme de
+        vélos&nbsp;: {rt.personnesMin} personnes au moins. Aucune caution n&apos;est demandée.
+      </p>
+      <dl className="mt-8 max-w-md">
+        <Repere terme="Départ">
+          {majuscule(joursEnClair(rt.jours))}, de {heureEnClair(rt.depart)} à {heureEnClair(rt.retour)}
+        </Repere>
+        <Repere terme="Groupe">{rt.personnesMin} personnes minimum</Repere>
+        <Repere terme="Tarif">
+          <span className="font-display text-[1.2rem] text-orange-signal">{formatMontant(rt.prixPersonneXof)}</span> par personne
+          <span className="block text-[0.82rem] font-normal opacity-80">
+            plus {formatMontant(reglages.paiement.fraisParPersonneXof)} de frais de paiement en ligne
+          </span>
+        </Repere>
+        {rt.reduction > 0 && (
+          <Repere terme="Réduction">{formatPourcentage(rt.reduction)} pour qui nous suit sur nos réseaux</Repere>
+        )}
+        <Repere terme="Vélos">Toute la gamme, un par personne</Repere>
+        <Repere terme="Compris">Vélo, casque{offerts ? `, ${offerts} par personne` : ""}</Repere>
+        <Repere terme="Réservation">
+          En ligne, au plus tard le {NOMS_JOURS[limite.jour]} à {heureEnClair(limite.heure)} pour le week-end
+        </Repere>
+      </dl>
+      <ul className="mt-6 max-w-md space-y-2 text-[0.88rem] text-craie/75">
+        {itineraires.map((itineraire) => (
+          <li key={itineraire.slug}>
+            <Link href={`/itineraires/${itineraire.slug}`} className="lien-souligne cible-elargie font-semibold text-craie">
+              {itineraire.titre}
+            </Link>
+            {` · ${itineraire.distanceKm} km · ${itineraire.duree.toLowerCase()}`}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-8 flex flex-wrap gap-3">
+        <BoutonChatGroupe offre="road-trip-groupe" variante="primaire" taille="lg">
+          Réserver le road trip en groupe
+        </BoutonChatGroupe>
+        <BoutonLien href="/itineraires" variante="contour" taille="lg" className="text-craie">
+          Voir les circuits
+        </BoutonLien>
+      </div>
+      <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/75">
+        Notre assistant vous demande votre groupe et votre jour, calcule le prix et vous fait payer en Mobile
+        Money, sans quitter la page.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Gbashi Bike sur réservation (décision 1), quand l'interrupteur « Offres
+ * de groupe » est ouvert : il repasse en ligne le dimanche, avec le chatbot,
+ * à la place de la commande sur WhatsApp. La carte du cahier des charges :
+ * « Uniquement sur réservation : minimum 5 personnes, réservation au plus
+ * tard le vendredi à 19 h », aux chiffres des réglages.
+ */
+function GbashiSurReservation({ reglages }: { reglages: ReglagesOffres }) {
+  const gb = reglages.gbashi;
+  const limite = reglages.dateLimiteWeekend;
+  const offerts = offertsParPersonne(gb.cocosGrandsParPersonne, gb.eauxParPersonne);
+  const prixDepart = Math.min(...GAMMES.map((gamme) => gb.prixXof[gamme.code]));
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2">
+        <Pastille ton="neutre">Sur réservation</Pastille>
+      </div>
+      <TitreSection className="mt-5">Gbashi bike</TitreSection>
+      <p className="mt-3 font-display text-[1.4rem] leading-tight">Le road trip version sport</p>
+      <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-craie/85">
+        On roule ensemble jusqu&apos;au bord de mer, un coordinateur en tête. À l&apos;arrivée, séance de muscu
+        encadrée par nos coachs. Puis eau et coco frais pour tout le monde, et retour en groupe.
+      </p>
+      <dl className="mt-8 max-w-md">
+        <Repere terme="Quand">
+          {majuscule(joursEnClair(gb.jours))}, de {heureEnClair(gb.depart)} à {heureEnClair(gb.retour)}
+        </Repere>
+        <Repere terme="Réservation">
+          Uniquement sur réservation&nbsp;: minimum {gb.personnesMin} personnes, réservation au plus tard le{" "}
+          {NOMS_JOURS[limite.jour]} à {heureEnClair(limite.heure)}
+        </Repere>
+        <Repere terme="Tarif">
+          <span className="font-display text-[1.2rem]">dès {formatMontant(prixDepart)}</span> par personne
+          <span className="block text-[0.82rem] font-normal opacity-80">
+            {GAMMES.map((gamme, index) => (
+              <Fragment key={gamme.code}>
+                {index > 0 && " · "}
+                <span className="whitespace-nowrap">
+                  {gamme.nom} {formatMontant(gb.prixXof[gamme.code])}
+                </span>
+              </Fragment>
+            ))}
+            , plus {formatMontant(reglages.paiement.fraisParPersonneXof)} de frais de paiement en ligne
+          </span>
+        </Repere>
+        <Repere terme="Compris">Vélo, casque{offerts ? `, ${offerts}` : ""} et la séance encadrée</Repere>
+        <Repere terme="À prévoir">Une tenue de sport, et quinze minutes d&apos;avance</Repere>
+        <Repere terme="WhatsApp">
+          <NumeroWhatsApp message={MESSAGES_WHATSAPP.gbashiBike} />
+        </Repere>
+      </dl>
+      <div className="mt-8">
+        <BoutonChatGroupe offre="gbashi-groupe" variante="clair" taille="lg">
+          Réserver Gbashi Bike
+        </BoutonChatGroupe>
+        <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-craie/85">
+          Choisissez votre dimanche et vos vélos avec notre assistant&nbsp;: il calcule le prix, vous payez en
+          Mobile Money.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Nos produits : les façons de rouler, côte à côte (voir src/data/produits.ts).
  *
@@ -219,6 +373,10 @@ function PhotoProduit({
 export default async function PageProduits() {
   const [ouverture, parc, reglages] = await Promise.all([lireOuverture(), depot.listerVelos(), lireReglages()]);
   const padel = reglages.padel;
+  // Les offres de groupe, quand l'interrupteur est ouvert (décision 1) : le
+  // road trip en groupe remplace le road trip par gamme, Gbashi Bike passe
+  // sur réservation, les deux avec le chatbot. Coupé : la page d'avant.
+  const groupe = await offresGroupeEnVente(ouverture);
   // Le road trip du week-end se fait en groupe de dix au moins, un vélo par
   // personne, tous de la gamme choisie : seules les gammes qui ont ce prix
   // et assez de vélos en état le proposent (le Premium ; le Prestige n'a
@@ -308,6 +466,19 @@ export default async function PageProduits() {
             </a>
           ))}
         </nav>
+        {groupe && (
+          <div className="mt-10 max-w-2xl rounded-[var(--radius-carte)] border border-craie/15 bg-noir-releve p-5 sm:p-6">
+            <p className="font-display text-[1.3rem] leading-tight">Vous venez en groupe&nbsp;?</p>
+            <p className="mt-2 text-[0.95rem] leading-relaxed text-craie/75">
+              Bike for All, Road trip en groupe ou Gbashi Bike&nbsp;: notre assistant calcule votre prix en
+              quelques questions, vous propose d&apos;autres choix si c&apos;est trop juste, et vous réservez
+              avec lui, paiement Mobile Money compris.
+            </p>
+            <BoutonChatGroupe variante="primaire" taille="lg" className="mt-5">
+              Réserver en groupe avec notre assistant
+            </BoutonChatGroupe>
+          </div>
+        )}
       </Section>
 
       {/* ------------------------------------------------ Octobre rose */}
@@ -516,6 +687,9 @@ export default async function PageProduits() {
       <Section id="gbashi-bike" fond="lagune" className="scroll-mt-[72px] py-20 sm:py-24">
         <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
           <GalerieAffiches affiches={AFFICHES_GBASHI} titre="Les affiches de Gbashi bike" />
+          {groupe ? (
+            <GbashiSurReservation reglages={groupe.reglages} />
+          ) : (
           <div>
             <div className="flex flex-wrap gap-2">
               <Pastille ton="neutre">Sur commande</Pastille>
@@ -569,6 +743,7 @@ export default async function PageProduits() {
               </p>
             </div>
           </div>
+          )}
         </div>
       </Section>
 
@@ -578,6 +753,9 @@ export default async function PageProduits() {
           <div className="min-w-0 lg:order-last">
             <GalerieAffiches affiches={AFFICHES_ROAD_TRIP} titre="Les affiches du road trip" />
           </div>
+          {groupe ? (
+            <RoadTripEnGroupe reglages={groupe.reglages} />
+          ) : (
           <div>
             <div className="flex flex-wrap gap-2">
               <Pastille ton="succes">Samedi et dimanche</Pastille>
@@ -664,6 +842,7 @@ export default async function PageProduits() {
               </p>
             )}
           </div>
+          )}
         </div>
       </Section>
 
@@ -731,11 +910,19 @@ export default async function PageProduits() {
               Appeler le {site.telephone}
             </BoutonLien>
           </div>
-          <p className="mt-10 text-[0.8rem] leading-relaxed text-craie/60">
-            Tarifs de la réservation en ligne&nbsp;: le montant exact à régler s&apos;affiche avant le
-            paiement. Padel bike se réserve sur sa page&nbsp;; Gbashi bike se commande sur WhatsApp, au{" "}
-            <span className="whitespace-nowrap">{site.whatsapp[1].numero}</span>.
-          </p>
+          {groupe ? (
+            <p className="mt-10 text-[0.8rem] leading-relaxed text-craie/60">
+              Tarifs de la réservation en ligne&nbsp;: le montant exact à régler s&apos;affiche avant le
+              paiement. Padel bike se réserve sur sa page&nbsp;; Bike for All, le road trip en groupe et
+              Gbashi Bike, avec notre assistant, en bas à droite de l&apos;écran.
+            </p>
+          ) : (
+            <p className="mt-10 text-[0.8rem] leading-relaxed text-craie/60">
+              Tarifs de la réservation en ligne&nbsp;: le montant exact à régler s&apos;affiche avant le
+              paiement. Padel bike se réserve sur sa page&nbsp;; Gbashi bike se commande sur WhatsApp, au{" "}
+              <span className="whitespace-nowrap">{site.whatsapp[1].numero}</span>.
+            </p>
+          )}
         </div>
       </Section>
     </>

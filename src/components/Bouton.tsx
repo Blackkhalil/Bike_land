@@ -31,6 +31,15 @@ const base =
   "uppercase tracking-[0.06em] transition-colors duration-200 " +
   "disabled:pointer-events-none disabled:opacity-45";
 
+/**
+ * Les classes d'un bouton, pour un élément qui n'est ni `Bouton` ni
+ * `BoutonLien` mais doit leur ressembler (le lien qui ouvre le chatbot des
+ * offres de groupe).
+ */
+export function classesBouton(variante: Variante = "primaire", taille: Taille = "md", className = ""): string {
+  return `${base} ${variantes[variante]} ${tailles[taille]} ${className}`;
+}
+
 export function Bouton({
   variante = "primaire",
   taille = "md",

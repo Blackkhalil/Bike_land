@@ -107,6 +107,16 @@ dialog[data-annonce]::backdrop {
   background-color: rgb(14 14 14 / 0.75);
 }
 
+/* Le chatbot des offres de groupe ouvert : la page derrière ne défile plus
+   (plein écran sur téléphone, panneau sur le côté sur ordinateur), et le
+   voile la fonce, avec la même couleur écrite en dur que l'annonce. */
+html:has(dialog[data-chat-groupe][open]) {
+  overflow: hidden;
+}
+dialog[data-chat-groupe]::backdrop {
+  background-color: rgb(14 14 14 / 0.55);
+}
+
 /* ------------------------------------------------------------------
    Primitives typographiques
    ------------------------------------------------------------------ */

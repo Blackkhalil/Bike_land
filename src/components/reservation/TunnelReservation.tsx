@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { Bouton } from "@/components/Bouton";
+import { RoadTripEnGroupe } from "@/components/offres-groupe/RoadTripEnGroupe";
 import { VeloIllustration } from "@/components/VeloIllustration";
 import { Pastille } from "@/components/ui";
 import { optionsLocation } from "@/data/catalogue";
@@ -117,6 +118,12 @@ interface Props {
    */
   instant: number;
   optionsInitiales: string[];
+  /**
+   * Interrupteur « Offres de groupe » ouvert (décision 1) : le road trip ne
+   * se réserve plus par gamme (la page n'envoie alors aucun départ) ; un mot
+   * et un bouton ouvrent le chatbot sur le road trip en groupe.
+   */
+  roadTripEnGroupe?: boolean;
 }
 
 export function TunnelReservation({
@@ -134,6 +141,7 @@ export function TunnelReservation({
   complets,
   instant,
   optionsInitiales,
+  roadTripEnGroupe = false,
 }: Props) {
   const routeur = useRouter();
   const [etape, setEtape] = useState<Etape>(1);
@@ -704,9 +712,11 @@ export function TunnelReservation({
                 })}
               </div>
               {/* Le Classique : le road trip du samedi n'est pas pour lui. */}
-              {horsGamme && (
+              {horsGamme && !roadTripEnGroupe && (
                 <p className="mt-3 text-[0.82rem] leading-relaxed text-gris-cadre">{horsGamme}</p>
               )}
+              {/* Décision 1 : le road trip du week-end se réserve en groupe, toutes gammes. */}
+              {roadTripEnGroupe && <RoadTripEnGroupe />}
             </fieldset>
 
             {/* --------------------------------- Durée (location libre) */}
