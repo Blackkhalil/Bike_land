@@ -2,14 +2,14 @@
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
-import { Bouton, classesBouton } from "@/components/Bouton";
 import { SuiviPaiementMomo } from "@/components/reservation/SuiviPaiementMomo";
 import { EXPIRATION_PANIER_MINUTES } from "@/data/offres";
-import { ajouterJours, type DateISO } from "@/lib/dates";
-import { formatMontant, heureEnClair, NOMS_GAMMES, ORDRE_GAMMES, type Coco, type CodeOffreGroupe, type GammeVelo } from "@/lib/offres";
+import { ajouterJours } from "@/lib/dates";
+import { formatMontant, heureEnClair, NOMS_GAMMES, ORDRE_GAMMES, type Coco, type GammeVelo, type HeureMinute } from "@/lib/offres";
 import { schemaChampsPreuve, TAILLE_MAX_CAPTURE_OCTETS, TYPES_CAPTURE } from "@/lib/offres-groupe/api";
 import {
-  coordonneesValides,
+  botEcrit,
+  champDemande,
   demandeReservationDe,
   devisConfirme,
   lienRepriseDuPaiement,
@@ -19,6 +19,7 @@ import {
   offreAffichee,
   stockGbashi,
   type ActionChat,
+  type ChampCoordonnees,
   type Coordonnees,
   type EtatChat,
   type FaitsChat,
@@ -32,16 +33,7 @@ import {
   repartitionParDefaut,
   totalVelos,
 } from "@/lib/offres-groupe/negociation";
-import {
-  insecables,
-  jourCourt,
-  ligneDeLOffre,
-  majuscule,
-  NOMS_OFFRES,
-  ORDRE_OFFRES,
-  personnesEnClair,
-  personnesMinDe,
-} from "@/lib/offres-groupe/textes-chat";
+import { insecables, jourCourt, majuscule, NOMS_OFFRES, ORDRE_OFFRES, personnesEnClair, personnesMinDe } from "@/lib/offres-groupe/textes-chat";
 import { lienWhatsApp } from "@/lib/site";
 
 import { CarteOffreChat } from "./CarteOffreChat";
@@ -57,47 +49,182 @@ export interface ActionsChat {
   fermer: () => void;
 }
 
+interface ProprietesEtape {
+  etat: EtatChat;
+  faits: FaitsChat;
+  maintenant: number;
+  actions: ActionsChat;
+}
+
 /* ---------------------------------------------------------------- Styles */
 
+/** Une réponse rapide : une pastille blanche bordée d'orange, 44 px de haut au moins. */
 const PUCE =
-  "min-h-11 rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white px-3 py-2 text-left text-[0.88rem] font-semibold leading-tight text-noir-piste transition-colors hover:border-noir-piste/50 disabled:opacity-40";
-const PUCE_CENTREE = `${PUCE} text-center`;
+  "inline-flex min-h-11 max-w-full items-center justify-center rounded-[22px] border-2 border-orange-signal bg-white px-4 py-2 text-left text-[0.9rem] font-semibold leading-tight text-noir-piste transition-colors hover:bg-orange-signal/10 active:bg-orange-signal/20 disabled:cursor-not-allowed disabled:border-noir-piste/15 disabled:text-noir-piste/45 disabled:hover:bg-white";
+/** La réponse qui fait avancer (« Je réserve ») : la seule pleine, en orange. */
+const PUCE_PLEINE =
+  "inline-flex min-h-11 max-w-full items-center justify-center rounded-[22px] border-2 border-orange-signal bg-orange-signal px-5 py-2 text-left text-[0.92rem] font-bold leading-tight text-noir-piste transition-colors hover:border-orange-vif hover:bg-orange-vif disabled:cursor-not-allowed disabled:opacity-50";
+/** Une réponse de côté (« Garder cette offre », « Plus d'horaires ») : soulignée, sans bord. */
+const PUCE_DISCRETE =
+  "inline-flex min-h-11 items-center rounded-[22px] px-3 text-[0.88rem] font-semibold text-noir-piste underline decoration-noir-piste/35 underline-offset-4 transition-colors hover:decoration-noir-piste";
+/** Le grand bouton d'une carte (« Payer 11 616 F », « Valider les vélos »). */
+const BOUTON_CARTE =
+  "flex min-h-12 w-full items-center justify-center rounded-full bg-orange-signal px-5 py-2 text-center text-[1rem] font-bold text-noir-piste transition-colors hover:bg-orange-vif disabled:cursor-not-allowed disabled:opacity-50";
+/** Une carte de Bike Land dans la discussion (l'offre chiffrée, le paiement…). */
+const CARTE =
+  "mt-3 w-full rounded-2xl rounded-bl-md bg-white p-4 text-[0.88rem] text-noir-piste shadow-[0_1px_0.5px_rgba(14,14,14,0.13)]";
 const CHAMP =
-  "mt-1 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white px-3.5 py-2.5 text-[1rem] text-noir-piste outline-none transition-colors focus:border-noir-piste aria-[invalid=true]:border-orange-signal";
+  "mt-1 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white px-3.5 py-2.5 text-[1rem] text-noir-piste transition-colors focus:border-noir-piste";
 const ETIQUETTE = "block text-[0.8rem] text-gris-cadre";
-const AIDE = "mt-1.5 text-[0.78rem] leading-snug text-gris-cadre";
+const AIDE = "text-[0.8rem] leading-snug text-gris-cadre";
 
-/** « 30 min », « 1 h », « 1 h 15 » : une durée, sur une puce. */
+/** Les réponses rapides d'une étape, en pastilles qui passent à la ligne. */
+function Puces({ children }: { children: ReactNode }) {
+  return <div className="mt-3 flex flex-wrap gap-2">{children}</div>;
+}
+
+/** « 30 min », « 1 h », « 1 h 15 » : une durée, sur une pastille. */
 function dureeCourte(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;
   const reste = minutes % 60;
   return `${Math.floor(minutes / 60)} h${reste ? ` ${String(reste).padStart(2, "0")}` : ""}`;
 }
 
-/** Une colonne de grands boutons de réponse. */
-function Reponses({ children }: { children: ReactNode }) {
-  return <div className="flex flex-col gap-2">{children}</div>;
+/** Les tailles de groupe proposées : le minimum, quelques tailles courantes, sans dépasser les vélos en état. */
+function taillesProposees(minimum: number, maximum: number): number[] {
+  const tailles = [minimum, minimum + 2, minimum + 5, minimum + 10, minimum + 20].filter((taille) => taille <= maximum);
+  if (maximum < minimum + 20 && !tailles.includes(maximum)) tailles.push(maximum);
+  return tailles;
 }
 
-/* ---------------------------------------------------------- Les contrôles */
+/** Les chiffres d'un nombre tapé (« 12 000 » vaut 12000), ou `null`. */
+function entierTape(texte: string): number | null {
+  const chiffres = texte.replace(/\D/g, "");
+  return chiffres && chiffres.length <= 9 ? Number(chiffres) : null;
+}
+
+/* ------------------------------------------------------- La barre du bas */
+
+/** Ce que la barre du bas attend quand l'étape veut une réponse tapée. */
+export interface ModeSaisie {
+  /** Change à chaque question : le champ repart vide. */
+  cle: string;
+  /** Le nom du champ, lu par les lecteurs d'écran. */
+  etiquette: string;
+  indication: string;
+  /** Une légende visible au-dessus du champ (une date ne montre pas d'indication). */
+  legende?: string;
+  type: "text" | "email" | "tel" | "date";
+  inputMode?: "text" | "numeric" | "email" | "tel";
+  autoComplete: string;
+  autoCapitalize?: "none" | "words";
+  min?: string;
+  max?: string;
+  /** La réponse ne se donne qu'en tapant (les coordonnées) : le champ prend le focus. */
+  prioritaire: boolean;
+  /** L'action que vaut le texte tapé, ou `null` tant qu'il ne vaut rien. */
+  lire: (texte: string) => ActionSansHeure | null;
+}
+
+const CHAMPS_SAISIE: Record<ChampCoordonnees, Pick<ModeSaisie, "etiquette" | "indication" | "type" | "inputMode" | "autoComplete" | "autoCapitalize">> = {
+  prenom: { etiquette: "Votre prénom", indication: "Votre prénom", type: "text", inputMode: "text", autoComplete: "given-name", autoCapitalize: "words" },
+  nom: { etiquette: "Votre nom", indication: "Votre nom", type: "text", inputMode: "text", autoComplete: "family-name", autoCapitalize: "words" },
+  email: { etiquette: "Votre email", indication: "Votre email", type: "email", inputMode: "email", autoComplete: "email", autoCapitalize: "none" },
+  telephone: {
+    etiquette: "Votre numéro Mobile Money",
+    indication: "Votre numéro Mobile Money",
+    type: "tel",
+    inputMode: "tel",
+    autoComplete: "tel",
+    autoCapitalize: "none",
+  },
+};
 
 /**
- * Les réponses possibles à l'étape en cours : des boutons et des puces, des
- * compteurs pour les nombres, un champ seulement là où il le faut (un
- * montant, les coordonnées). Tout ce qui est proposé vient de la machine et
- * du moteur ; rien n'est calculé ici.
+ * La barre du bas de l'étape : le nombre de personnes, une autre date, un
+ * autre montant, ou la coordonnée demandée ; `null` quand on répond en
+ * touchant une réponse.
  */
-export function ControlesChat({
-  etat,
-  faits,
-  maintenant,
-  actions,
-}: {
-  etat: EtatChat;
-  faits: FaitsChat;
-  maintenant: number;
-  actions: ActionsChat;
-}) {
+export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: number): ModeSaisie | null {
+  const { etape, choix } = etat;
+  if (etat.envoi) return null;
+  switch (etape) {
+    case "personnes": {
+      if (!choix.offre || faits.velosEnEtat < personnesMinDe(choix.offre, faits.reglages)) return null;
+      return {
+        cle: "personnes",
+        etiquette: "Nombre de personnes",
+        indication: "Ou tapez le nombre de personnes",
+        type: "text",
+        inputMode: "numeric",
+        autoComplete: "off",
+        prioritaire: false,
+        lire: (texte) => {
+          const personnes = entierTape(texte);
+          return personnes !== null && personnes >= 1 && personnes <= 500 ? { type: "choisir-personnes", personnes } : null;
+        },
+      };
+    }
+    case "date": {
+      const aujourdhui = aujourdhuiAuBenin(maintenant);
+      return {
+        cle: "date",
+        etiquette: "Une autre date",
+        indication: "Une autre date",
+        legende: "Ou choisissez une autre date :",
+        type: "date",
+        autoComplete: "off",
+        min: aujourdhui,
+        max: ajouterJours(aujourdhui, 90),
+        prioritaire: false,
+        lire: (texte) => (/^\d{4}-\d{2}-\d{2}$/.test(texte) ? { type: "choisir-date", date: texte } : null),
+      };
+    }
+    case "budget":
+      return {
+        cle: "budget",
+        etiquette: "Un autre montant, en francs",
+        indication: "Un autre montant, en francs",
+        type: "text",
+        inputMode: "numeric",
+        autoComplete: "off",
+        prioritaire: false,
+        lire: (texte) => {
+          const budgetXof = entierTape(texte);
+          return budgetXof !== null && budgetXof > 0 && budgetXof <= 10_000_000 ? { type: "choisir-budget", budgetXof } : null;
+        },
+      };
+    case "coordonnees": {
+      const champ = champDemande(etat.client);
+      if (!champ) return null;
+      return {
+        cle: `champ-${champ}`,
+        ...CHAMPS_SAISIE[champ],
+        prioritaire: true,
+        lire: (texte) => (texte.trim() ? { type: "saisir-champ", champ, valeur: texte } : null),
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Ce que dit la barre du bas quand on répond en touchant une réponse. */
+export function indicationInactive(etat: EtatChat): string {
+  if (etat.etape === "attente") return "Validez le paiement sur votre téléphone";
+  if (botEcrit(etat)) return "Bike Land écrit…";
+  return "Touchez une réponse ci-dessus";
+}
+
+/* ------------------------------------------------------ Les réponses rapides */
+
+/**
+ * Les réponses rapides de l'étape, sous la dernière bulle de Bike Land :
+ * chaque choix est une pastille, et la réponse touchée devient une bulle
+ * du client (la machine l'écrit). Tout ce qui est proposé vient de la
+ * machine et du moteur ; rien n'est calculé ici.
+ */
+export function ReponsesDeLEtape({ etat, faits, maintenant, actions }: ProprietesEtape) {
   const { choix, etape } = etat;
   const { envoyer } = actions;
   const reglages = faits.reglages;
@@ -107,33 +234,66 @@ export function ControlesChat({
 
   switch (etape) {
     case "offre":
-      return <ChoixOffre faits={faits} onChoisir={(offre) => envoyer({ type: "choisir-offre", offre })} />;
+      return (
+        <Puces>
+          {ORDRE_OFFRES.map((offre) => (
+            <button key={offre} type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-offre", offre })}>
+              {NOMS_OFFRES[offre]}
+            </button>
+          ))}
+        </Puces>
+      );
 
     case "personnes": {
       if (!choix.offre) return null;
       const minimum = personnesMinDe(choix.offre, reglages);
-      if (faits.velosEnEtat < minimum) return <LienWhatsApp href={whatsApp} />;
+      if (faits.velosEnEtat < minimum) {
+        return (
+          <Puces>
+            <LienWhatsApp href={whatsApp} />
+          </Puces>
+        );
+      }
       return (
-        <ChoixPersonnes
-          minimum={minimum}
-          maximum={faits.velosEnEtat}
-          initial={choix.personnes ?? minimum}
-          onValider={(personnes) => envoyer({ type: "choisir-personnes", personnes })}
-        />
+        <Puces>
+          {taillesProposees(minimum, faits.velosEnEtat).map((personnes) => (
+            <button
+              key={personnes}
+              type="button"
+              aria-label={personnesEnClair(personnes)}
+              className={`${PUCE} min-w-14 tabular-nums`}
+              onClick={() => envoyer({ type: "choisir-personnes", personnes })}
+            >
+              {personnes}
+            </button>
+          ))}
+        </Puces>
       );
     }
 
-    case "date":
-      return choix.offre ? (
-        <ChoixDate offre={choix.offre} faits={faits} maintenant={maintenant} onChoisir={(date) => envoyer({ type: "choisir-date", date })} />
-      ) : null;
+    case "date": {
+      if (!choix.offre) return null;
+      const aujourdhui = aujourdhuiAuBenin(maintenant);
+      const demain = ajouterJours(aujourdhui, 1);
+      const jours = joursProposes(choix.offre, faits, maintenant, 6);
+      if (jours.length === 0) {
+        return <p className={`mt-3 ${AIDE}`}>Aucun départ ne se réserve en ligne dans les semaines qui viennent. Choisissez une autre date en bas.</p>;
+      }
+      return (
+        <Puces>
+          {jours.map((jour) => (
+            <button key={jour} type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-date", date: jour })}>
+              {jour === aujourdhui ? "Aujourd'hui" : jour === demain ? "Demain" : majuscule(jourCourt(jour))}
+            </button>
+          ))}
+        </Puces>
+      );
+    }
 
     case "heure":
       return choix.date ? (
         <ChoixHeure
-          date={choix.date}
-          faits={faits}
-          maintenant={maintenant}
+          departs={departsProposes(choix.date, faits, maintenant)}
           onChoisir={(depart) => envoyer({ type: "choisir-heure", depart })}
           onAutreDate={autreDate}
         />
@@ -141,24 +301,26 @@ export function ControlesChat({
 
     case "mode":
       return (
-        <Reponses>
+        <Puces>
           <button type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-mode", mode: "budget" })}>
             Oui, j&apos;ai un budget
-            <span className="block text-[0.78rem] font-normal text-gris-cadre">Je calcule votre temps de vélo et le coco qu&apos;il permet.</span>
           </button>
           <button type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-mode", mode: "duree" })}>
             Non, je choisis la durée
-            <span className="block text-[0.78rem] font-normal text-gris-cadre">Vous dites combien de temps, je vous donne le prix.</span>
           </button>
-        </Reponses>
+        </Puces>
       );
 
     case "budget":
       return (
-        <ChoixBudget
-          budgets={budgetsProposes(choix, faits, maintenant)}
-          onChoisir={(budgetXof) => envoyer({ type: "choisir-budget", budgetXof })}
-        />
+        <Puces>
+          {budgetsProposes(choix, faits, maintenant).map((budget) => (
+            <button key={budget.budgetXof} type="button" className={`${PUCE} tabular-nums`} onClick={() => envoyer({ type: "choisir-budget", budgetXof: budget.budgetXof })}>
+              {formatMontant(budget.budgetXof)}
+              <span className="font-normal">, {dureeCourte(budget.minutes)}</span>
+            </button>
+          ))}
+        </Puces>
       );
 
     case "duree":
@@ -167,77 +329,61 @@ export function ControlesChat({
     case "coco": {
       const options: { coco: Coco; libelle: string }[] = [
         { coco: "aucun", libelle: "Sans coco" },
-        { coco: "petit", libelle: `Petit coco, ${formatMontant(reglages.consommables.cocoPetitXof)} par personne` },
-        { coco: "grand", libelle: `Grand coco, ${formatMontant(reglages.consommables.cocoGrandXof)} par personne` },
+        { coco: "petit", libelle: `Petit coco, ${formatMontant(reglages.consommables.cocoPetitXof)}` },
+        { coco: "grand", libelle: `Grand coco, ${formatMontant(reglages.consommables.cocoGrandXof)}` },
       ];
       return (
-        <Reponses>
+        <Puces>
           {options.map((option) => (
             <button key={option.coco} type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-coco", coco: option.coco })}>
               {option.libelle}
             </button>
           ))}
-        </Reponses>
+        </Puces>
       );
     }
 
     case "gateaux":
       return (
-        <div className="grid grid-cols-2 gap-2">
+        <Puces>
           {[0, 1, 2, 3].map((nombre) => (
-            <button key={nombre} type="button" className={PUCE_CENTREE} onClick={() => envoyer({ type: "choisir-gateaux", gateauxParPersonne: nombre })}>
+            <button key={nombre} type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-gateaux", gateauxParPersonne: nombre })}>
               {nombre === 0 ? "Sans gâteau" : `${nombre} par personne`}
             </button>
           ))}
-        </div>
+        </Puces>
       );
 
     case "accompagnateur":
       return (
-        <Reponses>
+        <Puces>
           <button type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-accompagnateur", accompagnateur: true })}>
             Oui, avec un accompagnateur
           </button>
           <button type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-accompagnateur", accompagnateur: false })}>
             Non merci, nous connaissons la route
           </button>
-        </Reponses>
+        </Puces>
       );
 
     case "reduction":
       return (
-        <Reponses>
+        <Puces>
           <button type="button" className={PUCE} onClick={() => envoyer({ type: "repondre-reduction", veut: true })}>
             Oui, j&apos;envoie une capture d&apos;écran
           </button>
           <button type="button" className={PUCE} onClick={() => envoyer({ type: "repondre-reduction", veut: false })}>
             Non merci
           </button>
-        </Reponses>
-      );
-
-    case "preuve":
-      return (
-        <EnvoiPreuve
-          client={etat.client}
-          envoi={etat.envoi === "preuve"}
-          onEnvoyer={actions.envoyerPreuve}
-          onSans={() => envoyer({ type: "reduction-sans" })}
-        />
+        </Puces>
       );
 
     case "preuve-statut": {
       const reduction = choix.reduction;
-      if (reduction.etat === "a-verifier") {
-        return (
-          <p role="status" className="flex items-center gap-3 text-[0.88rem] text-gris-cadre">
-            <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-noir-piste/25 border-t-noir-piste" />
-            Je vérifie…
-          </p>
-        );
-      }
+      // La vérification en cours : « Bike Land écrit… » le dit.
+      if (reduction.etat === "a-verifier") return null;
       return (
-        <Reponses>
+        <Puces>
           <button type="button" className={PUCE} onClick={() => envoyer({ type: "reduction-sans" })}>
             Réserver maintenant, sans la réduction
           </button>
@@ -249,9 +395,152 @@ export function ControlesChat({
           <button type="button" className={PUCE} onClick={() => envoyer({ type: "renvoyer-preuve" })}>
             Envoyer une autre capture
           </button>
-        </Reponses>
+        </Puces>
       );
     }
+
+    case "proposition": {
+      if (!offreAffichee(etat, faits, maintenant)) return null;
+      const confirme = devisConfirme(etat);
+      const enEchec = etat.devisEnEchec !== null && !confirme;
+      return (
+        <Puces>
+          <button type="button" className={PUCE_PLEINE} disabled={!confirme} onClick={() => envoyer({ type: "reserver" })}>
+            {confirme ? "Je réserve" : enEchec ? "Prix à confirmer" : "Je vérifie le prix…"}
+          </button>
+          {enEchec && (
+            <button type="button" className={PUCE} onClick={() => envoyer({ type: "relancer-devis" })}>
+              Réessayer
+            </button>
+          )}
+          <button type="button" className={PUCE} onClick={() => envoyer({ type: "trop-cher" })}>
+            C&apos;est un peu cher pour nous
+          </button>
+        </Puces>
+      );
+    }
+
+    case "negociation":
+    case "refus":
+      return (
+        <Puces>
+          {etat.alternatives.map((alternative) => (
+            <button key={alternative.cle} type="button" className={PUCE} onClick={() => envoyer({ type: "appliquer", alternative })}>
+              {insecables(alternative.libelle)}
+            </button>
+          ))}
+          {etape === "negociation" ? (
+            <button type="button" className={PUCE_DISCRETE} onClick={() => envoyer({ type: "garder-offre" })}>
+              Garder cette offre
+            </button>
+          ) : (
+            etat.alternatives.length === 0 && (
+              <button type="button" className={PUCE} onClick={() => envoyer({ type: "recommencer" })}>
+                Recommencer
+              </button>
+            )
+          )}
+        </Puces>
+      );
+
+    case "moyen":
+      return (
+        <Puces>
+          {MOYENS_EN_LIGNE.map((moyen) => (
+            <button key={moyen} type="button" className={PUCE} onClick={() => envoyer({ type: "choisir-moyen", moyen })}>
+              {NOMS_MOYENS[moyen]}
+            </button>
+          ))}
+          <button type="button" className={PUCE_DISCRETE} onClick={() => envoyer({ type: "modifier-coordonnees" })}>
+            Modifier mes coordonnées
+          </button>
+        </Puces>
+      );
+
+    case "payer": {
+      const reessayer = !devisConfirme(etat) && etat.devisEnEchec !== null;
+      if (etat.envoi) return null;
+      return (
+        <Puces>
+          {/* Le prix n'a pas pu être vérifié (réseau, panne) : on peut le redemander ici. */}
+          {reessayer && (
+            <button type="button" className={PUCE} onClick={() => envoyer({ type: "relancer-devis" })}>
+              Réessayer
+            </button>
+          )}
+          <button type="button" className={PUCE_DISCRETE} onClick={() => envoyer({ type: "modifier-coordonnees" })}>
+            Modifier mes coordonnées
+          </button>
+        </Puces>
+      );
+    }
+
+    case "confirmee":
+      return etat.reservation ? (
+        <Puces>
+          <a href={etat.reservation.lienSuivi} onClick={actions.fermer} className={PUCE_PLEINE}>
+            Suivre ma réservation
+          </a>
+          <button type="button" className={PUCE} onClick={actions.fermer}>
+            Fermer
+          </button>
+        </Puces>
+      ) : null;
+
+    case "echec":
+      return (
+        <Puces>
+          {etat.reservation && (
+            <a href={lienRepriseDuPaiement(etat.reservation)} onClick={actions.fermer} className={PUCE_PLEINE}>
+              Reprendre le paiement
+            </a>
+          )}
+          <LienWhatsApp href={whatsApp} />
+        </Puces>
+      );
+
+    case "ferme":
+      return (
+        <Puces>
+          <LienWhatsApp href={whatsApp} />
+        </Puces>
+      );
+
+    default:
+      return null;
+  }
+}
+
+function LienWhatsApp({ href }: { href: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer noopener" className={PUCE}>
+      Écrire à Bike Land sur WhatsApp
+    </a>
+  );
+}
+
+/* ----------------------------------------------------------- Les cartes */
+
+/**
+ * La carte de l'étape, dans la discussion, comme un message de Bike Land :
+ * l'offre chiffrée, les vélos par gamme, la capture de la réduction, le
+ * paiement, l'attente de la validation Mobile Money. Elle porte
+ * `data-focus-etape` : le focus la rejoint à son arrivée, pour la lire
+ * depuis le début.
+ */
+export function CarteDeLEtape({ etat, faits, maintenant, actions }: ProprietesEtape) {
+  const { choix } = etat;
+  const reglages = faits.reglages;
+  switch (etat.etape) {
+    case "preuve":
+      return (
+        <EnvoiPreuve
+          client={etat.client}
+          envoi={etat.envoi === "preuve"}
+          onEnvoyer={actions.envoyerPreuve}
+          onSans={() => actions.envoyer({ type: "reduction-sans" })}
+        />
+      );
 
     case "velos": {
       if (choix.personnes === null) return null;
@@ -265,57 +554,22 @@ export function ControlesChat({
           stock={stock}
           stockConfirme={confirme}
           verificationEnEchec={etat.devisEnEchec !== null}
-          onRelancer={() => envoyer({ type: "relancer-devis" })}
+          onRelancer={() => actions.envoyer({ type: "relancer-devis" })}
           prix={reglages.gbashi.prixXof}
           initiale={choix.velos ?? repartitionParDefaut(choix.personnes, stock, faits)}
-          onValider={(velos) => envoyer({ type: "choisir-velos", velos })}
+          onValider={(velos) => actions.envoyer({ type: "choisir-velos", velos })}
         />
       );
     }
 
-    case "proposition":
-      return <Proposition etat={etat} faits={faits} maintenant={maintenant} actions={actions} />;
-
-    case "negociation":
-    case "refus":
-      return (
-        <Reponses>
-          {etat.alternatives.map((alternative) => (
-            <button key={alternative.cle} type="button" className={PUCE} onClick={() => envoyer({ type: "appliquer", alternative })}>
-              {insecables(alternative.libelle)}
-            </button>
-          ))}
-          {etape === "negociation" ? (
-            <button
-              type="button"
-              className="lien-souligne cible-elargie self-start py-2 text-[0.88rem] font-semibold"
-              onClick={() => envoyer({ type: "garder-offre" })}
-            >
-              Garder cette offre
-            </button>
-          ) : (
-            etat.alternatives.length === 0 && (
-              <button type="button" className={PUCE} onClick={() => envoyer({ type: "recommencer" })}>
-                Recommencer
-              </button>
-            )
-          )}
-        </Reponses>
-      );
-
-    case "coordonnees":
-      return <FormulaireCoordonnees client={etat.client} onValider={(client) => envoyer({ type: "saisir-coordonnees", client })} />;
-
-    case "moyen":
-      return (
-        <div className="grid gap-2 sm:grid-cols-3">
-          {MOYENS_EN_LIGNE.map((moyen) => (
-            <button key={moyen} type="button" className={PUCE_CENTREE} onClick={() => envoyer({ type: "choisir-moyen", moyen })}>
-              {NOMS_MOYENS[moyen]}
-            </button>
-          ))}
+    case "proposition": {
+      const offre = offreAffichee(etat, faits, maintenant);
+      return offre ? (
+        <div data-focus-etape tabIndex={-1} className="mt-3">
+          <CarteOffreChat {...offre} reglages={reglages} />
         </div>
-      );
+      ) : null;
+    }
 
     case "payer":
       return <Paiement etat={etat} faits={faits} maintenant={maintenant} actions={actions} />;
@@ -324,51 +578,27 @@ export function ControlesChat({
       const reservation = etat.reservation;
       if (!reservation?.suivi || !reservation.token) return null;
       return (
-        <>
-        {typeof reservation.demandeLe === "number" && (
-          <MinuteurExpiration demandeLe={reservation.demandeLe} onExpire={() => envoyer({ type: "paiement-expire" })} />
-        )}
-        <SuiviPaiementMomo
-          token={reservation.token}
-          paiementId={reservation.suivi.paiementId}
-          moyen={reservation.suivi.moyen}
-          telephone={reservation.suivi.telephone}
-          montantXof={reservation.montantADebiterXof}
-          urlCheckout={reservation.suivi.urlCheckout}
-          expiration="La demande de paiement a expiré et les vélos ne sont plus gardés. Votre lien de suivi, reçu par email, permet de la relancer."
-          onConfirme={() => envoyer({ type: "paiement-confirme" })}
-          onEchec={(message) => envoyer({ type: "paiement-echoue", message })}
-        />
-        </>
+        <div data-focus-etape tabIndex={-1} className="mt-3 [&>div]:mt-0">
+          {typeof reservation.demandeLe === "number" && (
+            <MinuteurExpiration demandeLe={reservation.demandeLe} onExpire={() => actions.envoyer({ type: "paiement-expire" })} />
+          )}
+          <SuiviPaiementMomo
+            token={reservation.token}
+            paiementId={reservation.suivi.paiementId}
+            moyen={reservation.suivi.moyen}
+            telephone={reservation.suivi.telephone}
+            montantXof={reservation.montantADebiterXof}
+            urlCheckout={reservation.suivi.urlCheckout}
+            expiration="La demande de paiement a expiré et les vélos ne sont plus gardés. Votre lien de suivi, reçu par email, permet de la relancer."
+            onConfirme={() => actions.envoyer({ type: "paiement-confirme" })}
+            onEchec={(message) => actions.envoyer({ type: "paiement-echoue", message })}
+          />
+        </div>
       );
     }
 
-    case "confirmee":
-      return etat.reservation ? (
-        <Reponses>
-          <a href={etat.reservation.lienSuivi} onClick={actions.fermer} className={classesBouton("primaire", "lg", "w-full")}>
-            Suivre ma réservation
-          </a>
-          <button type="button" className={PUCE_CENTREE} onClick={actions.fermer}>
-            Fermer
-          </button>
-        </Reponses>
-      ) : null;
-
-    case "echec":
-      return (
-        <Reponses>
-          {etat.reservation && (
-            <a href={lienRepriseDuPaiement(etat.reservation)} onClick={actions.fermer} className={classesBouton("primaire", "lg", "w-full")}>
-              Reprendre le paiement
-            </a>
-          )}
-          <LienWhatsApp href={whatsApp} />
-        </Reponses>
-      );
-
-    case "ferme":
-      return <LienWhatsApp href={whatsApp} />;
+    default:
+      return null;
   }
 }
 
@@ -382,271 +612,77 @@ function MinuteurExpiration({ demandeLe, onExpire }: { demandeLe: number; onExpi
   return null;
 }
 
-function LienWhatsApp({ href }: { href: string }) {
-  return (
-    <a href={href} target="_blank" rel="noreferrer noopener" className={classesBouton("sombre", "lg", "w-full")}>
-      Écrire à Bike Land sur WhatsApp
-    </a>
-  );
-}
-
-/* ------------------------------------------------------------- L'offre */
-
-function ChoixOffre({ faits, onChoisir }: { faits: FaitsChat; onChoisir: (offre: CodeOffreGroupe) => void }) {
-  return (
-    <Reponses>
-      {ORDRE_OFFRES.map((offre) => (
-        <button key={offre} type="button" className={`${PUCE} py-3`} onClick={() => onChoisir(offre)}>
-          <span className="block font-display text-[1.08rem]">{NOMS_OFFRES[offre]}</span>
-          <span className="mt-1 block text-[0.8rem] font-normal leading-snug text-gris-cadre">
-            {insecables(ligneDeLOffre(offre, faits.reglages))}
-          </span>
-        </button>
-      ))}
-    </Reponses>
-  );
-}
-
-/* ------------------------------------------------------------- Le groupe */
-
-function ChoixPersonnes({
-  minimum,
-  maximum,
-  initial,
-  onValider,
-}: {
-  minimum: number;
-  maximum: number;
-  initial: number;
-  onValider: (personnes: number) => void;
-}) {
-  const borne = (valeur: number) => Math.min(maximum, Math.max(minimum, Math.round(valeur)));
-  const [saisie, setSaisie] = useState(String(borne(initial)));
-  const nombre = Number(saisie);
-  const valable = Number.isInteger(nombre) && nombre >= minimum && nombre <= maximum;
-  const valeur = valable ? nombre : borne(Number.isFinite(nombre) ? nombre : minimum);
-  return (
-    <form
-      onSubmit={(evenement) => {
-        evenement.preventDefault();
-        if (valable) onValider(nombre);
-      }}
-    >
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          aria-label="Une personne de moins"
-          disabled={valeur <= minimum}
-          onClick={() => setSaisie(String(borne(valeur - 1)))}
-          className="grid h-12 w-12 shrink-0 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/25 bg-white text-[1.3rem] font-semibold disabled:opacity-35"
-        >
-          −
-        </button>
-        <label className="min-w-0 flex-1">
-          <span className="sr-only">Nombre de personnes</span>
-          <input
-            type="number"
-            inputMode="numeric"
-            min={minimum}
-            max={maximum}
-            value={saisie}
-            onChange={(evenement) => setSaisie(evenement.target.value)}
-            onBlur={() => setSaisie(String(valeur))}
-            aria-invalid={!valable}
-            className="h-12 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white text-center font-display text-[1.3rem] font-bold tabular-nums outline-none focus:border-noir-piste aria-[invalid=true]:border-orange-signal"
-          />
-        </label>
-        <button
-          type="button"
-          aria-label="Une personne de plus"
-          disabled={valeur >= maximum}
-          onClick={() => setSaisie(String(borne(valeur + 1)))}
-          className="grid h-12 w-12 shrink-0 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/25 bg-white text-[1.3rem] font-semibold disabled:opacity-35"
-        >
-          +
-        </button>
-      </div>
-      <p className={AIDE} aria-live="polite">
-        {personnesEnClair(valeur)}. De {minimum} à {maximum} : nous avons {maximum} vélos en état, un par personne.
-      </p>
-      <Bouton type="submit" taille="md" className="mt-3 w-full" disabled={!valable}>
-        C&apos;est bon
-      </Bouton>
-    </form>
-  );
-}
-
-/* --------------------------------------------------------------- Le jour */
-
-function ChoixDate({
-  offre,
-  faits,
-  maintenant,
-  onChoisir,
-}: {
-  offre: CodeOffreGroupe;
-  faits: FaitsChat;
-  maintenant: number;
-  onChoisir: (date: DateISO) => void;
-}) {
-  const aujourdhui = aujourdhuiAuBenin(maintenant);
-  const demain = ajouterJours(aujourdhui, 1);
-  const jours = joursProposes(offre, faits, maintenant, 6);
-  const [autre, setAutre] = useState("");
-  return (
-    <div>
-      {jours.length > 0 ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {jours.map((jour) => (
-            <button key={jour} type="button" className={PUCE_CENTREE} onClick={() => onChoisir(jour)}>
-              {jour === aujourdhui ? "Aujourd'hui" : jour === demain ? "Demain" : majuscule(jourCourt(jour))}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className={AIDE}>Aucun départ ne se réserve en ligne dans les semaines qui viennent.</p>
-      )}
-      <form
-        className="mt-3 flex items-end gap-2"
-        onSubmit={(evenement) => {
-          evenement.preventDefault();
-          if (/^\d{4}-\d{2}-\d{2}$/.test(autre)) onChoisir(autre);
-        }}
-      >
-        <label className="min-w-0 flex-1">
-          <span className={ETIQUETTE}>Une autre date</span>
-          <input
-            type="date"
-            min={aujourdhui}
-            max={ajouterJours(aujourdhui, 90)}
-            value={autre}
-            onChange={(evenement) => setAutre(evenement.target.value)}
-            className={CHAMP}
-          />
-        </label>
-        <button type="submit" disabled={!autre} className={`${PUCE_CENTREE} shrink-0`}>
-          Choisir
-        </button>
-      </form>
-    </div>
-  );
-}
-
 /* --------------------------------------------------------------- L'heure */
 
+/** Les heures pleines d'abord ; le quart d'heure sur demande. */
 function ChoixHeure({
-  date,
-  faits,
-  maintenant,
+  departs,
   onChoisir,
   onAutreDate,
 }: {
-  date: DateISO;
-  faits: FaitsChat;
-  maintenant: number;
-  onChoisir: (depart: string) => void;
+  departs: HeureMinute[];
+  onChoisir: (depart: HeureMinute) => void;
   onAutreDate: () => void;
 }) {
-  const departs = departsProposes(date, faits, maintenant);
   const periodes = [
     { cle: "matin", titre: "Le matin", departs: departs.filter((depart) => depart < "12:00") },
     { cle: "apres-midi", titre: "L'après-midi", departs: departs.filter((depart) => depart >= "12:00" && depart < "18:00") },
     { cle: "soir", titre: "Le soir", departs: departs.filter((depart) => depart >= "18:00") },
   ].filter((periode) => periode.departs.length > 0);
   const [choisie, setChoisie] = useState<string | null>(null);
+  const [toutes, setToutes] = useState(false);
   const periode = periodes.find((candidate) => candidate.cle === choisie) ?? periodes[0];
   if (!periode) {
     return (
-      <Reponses>
-        <p className={AIDE}>Il n&apos;y a plus de départ possible ce jour-là.</p>
-        <button type="button" className={PUCE} onClick={onAutreDate}>
-          Choisir une autre date
-        </button>
-      </Reponses>
+      <>
+        <p className={`mt-3 ${AIDE}`}>Il n&apos;y a plus de départ possible ce jour-là.</p>
+        <Puces>
+          <button type="button" className={PUCE} onClick={onAutreDate}>
+            Choisir une autre date
+          </button>
+        </Puces>
+      </>
     );
   }
+  // Les heures pleines, et le premier départ de la période s'il tombe au quart d'heure.
+  const pleines = periode.departs.filter((depart, rang) => rang === 0 || depart.endsWith(":00"));
+  const visibles = toutes ? periode.departs : pleines;
   return (
-    <div>
-      <div role="group" aria-label="Moment de la journée" className="flex flex-wrap gap-2">
-        {periodes.map((candidate) => (
-          <button
-            key={candidate.cle}
-            type="button"
-            aria-pressed={candidate.cle === periode.cle}
-            onClick={() => setChoisie(candidate.cle)}
-            className={`min-h-11 rounded-full border px-4 text-[0.84rem] font-semibold transition-colors ${
-              candidate.cle === periode.cle ? "border-noir-piste bg-noir-piste text-craie" : "border-noir-piste/20 bg-white"
-            }`}
-          >
-            {candidate.titre}
-          </button>
-        ))}
-      </div>
-      <div className="mt-3 grid grid-cols-4 gap-1.5">
-        {periode.departs.map((depart) => (
-          <button
-            key={depart}
-            type="button"
-            onClick={() => onChoisir(depart)}
-            className="min-h-11 rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-white px-1 text-center text-[0.84rem] font-semibold tabular-nums transition-colors hover:border-noir-piste/50"
-          >
+    <>
+      {periodes.length > 1 && (
+        <div role="group" aria-label="Moment de la journée" className="mt-3 flex flex-wrap gap-1.5">
+          {periodes.map((candidate) => (
+            <button
+              key={candidate.cle}
+              type="button"
+              aria-pressed={candidate.cle === periode.cle}
+              onClick={() => setChoisie(candidate.cle)}
+              className={`min-h-11 rounded-full border px-4 text-[0.84rem] font-semibold transition-colors ${
+                candidate.cle === periode.cle ? "border-noir-piste bg-noir-piste text-craie" : "border-noir-piste/20 bg-white text-noir-piste hover:border-noir-piste/50"
+              }`}
+            >
+              {candidate.titre}
+            </button>
+          ))}
+        </div>
+      )}
+      <div role="group" aria-label={`Les départs, ${periode.titre.toLowerCase()}`} className="mt-2.5 flex flex-wrap gap-2">
+        {visibles.map((depart) => (
+          <button key={depart} type="button" className={`${PUCE} min-w-[4.5rem] tabular-nums`} onClick={() => onChoisir(depart)}>
             {heureEnClair(depart)}
           </button>
         ))}
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------ Budget et durée */
-
-function ChoixBudget({
-  budgets,
-  onChoisir,
-}: {
-  budgets: { budgetXof: number; minutes: number; coco: Coco }[];
-  onChoisir: (budgetXof: number) => void;
-}) {
-  const [saisie, setSaisie] = useState("");
-  const montant = Number(saisie.replace(/\D/g, ""));
-  const valable = Number.isSafeInteger(montant) && montant > 0 && montant <= 10_000_000;
-  return (
-    <div>
-      <div className="grid grid-cols-2 gap-2">
-        {budgets.map((budget) => (
-          <button key={budget.budgetXof} type="button" className={PUCE} onClick={() => onChoisir(budget.budgetXof)}>
-            <span className="block tabular-nums">{formatMontant(budget.budgetXof)}</span>
-            <span className="mt-0.5 block text-[0.76rem] font-normal text-gris-cadre">
-              {dureeCourte(budget.minutes)} de vélo{budget.coco !== "aucun" ? `, ${budget.coco} coco` : ""}
-            </span>
+        {pleines.length < periode.departs.length && (
+          <button type="button" aria-expanded={toutes} className={PUCE_DISCRETE} onClick={() => setToutes(!toutes)}>
+            {toutes ? "Moins d'horaires" : "Plus d'horaires"}
           </button>
-        ))}
+        )}
       </div>
-      <form
-        className="mt-3 flex items-end gap-2"
-        onSubmit={(evenement) => {
-          evenement.preventDefault();
-          if (valable) onChoisir(montant);
-        }}
-      >
-        <label className="min-w-0 flex-1">
-          <span className={ETIQUETTE}>Un autre montant, en francs</span>
-          <input
-            inputMode="numeric"
-            autoComplete="off"
-            value={saisie}
-            onChange={(evenement) => setSaisie(evenement.target.value)}
-            placeholder="Par exemple 12 000"
-            className={CHAMP}
-          />
-        </label>
-        <button type="submit" disabled={!valable} className={`${PUCE_CENTREE} shrink-0`}>
-          Choisir
-        </button>
-      </form>
-    </div>
+    </>
   );
 }
+
+/* ------------------------------------------------------------- La durée */
 
 /** Les durées visibles d'emblée ; les plus longues, sur demande. */
 const DUREES_VISIBLES = 9;
@@ -655,20 +691,18 @@ function ChoixDuree({ durees, onChoisir }: { durees: number[]; onChoisir: (minut
   const [toutes, setToutes] = useState(false);
   const visibles = toutes ? durees : durees.slice(0, DUREES_VISIBLES);
   return (
-    <div>
-      <div className="grid grid-cols-3 gap-2">
-        {visibles.map((minutes) => (
-          <button key={minutes} type="button" className={PUCE_CENTREE} onClick={() => onChoisir(minutes)}>
-            {dureeCourte(minutes)}
-          </button>
-        ))}
-      </div>
+    <Puces>
+      {visibles.map((minutes) => (
+        <button key={minutes} type="button" className={`${PUCE} min-w-[4.5rem] tabular-nums`} onClick={() => onChoisir(minutes)}>
+          {dureeCourte(minutes)}
+        </button>
+      ))}
       {durees.length > DUREES_VISIBLES && (
-        <button type="button" onClick={() => setToutes(!toutes)} className="lien-souligne cible-elargie mt-3 text-[0.84rem] font-semibold">
+        <button type="button" aria-expanded={toutes} onClick={() => setToutes(!toutes)} className={PUCE_DISCRETE}>
           {toutes ? "Moins de durées" : "Plus long"}
         </button>
       )}
-    </div>
+    </Puces>
   );
 }
 
@@ -704,28 +738,30 @@ function ChoixVelos({
   const total = totalVelos(velos);
   const changer = (gamme: GammeVelo, ecart: number) =>
     setVelos((avant) => ({ ...avant, [gamme]: Math.max(0, Math.min(stock[gamme], avant[gamme] + ecart)) }));
+  const compteur =
+    "grid h-11 w-11 place-items-center rounded-full border-2 border-orange-signal bg-white text-[1.25rem] font-semibold leading-none text-noir-piste transition-colors hover:bg-orange-signal/10 disabled:border-noir-piste/15 disabled:text-noir-piste/35 disabled:hover:bg-white";
   return (
-    <div>
-      <ul className="space-y-2">
+    <section data-focus-etape tabIndex={-1} aria-label="Vos vélos" className={CARTE}>
+      <ul className="divide-y divide-noir-piste/10">
         {ORDRE_GAMMES.map((gamme) => (
-          <li key={gamme} className="flex items-center justify-between gap-2 rounded-[var(--radius-bouton)] border border-noir-piste/15 bg-white px-3 py-2">
+          <li key={gamme} className="flex items-center justify-between gap-2 py-2.5 first:pt-0">
             <span className="min-w-0">
               <span className="block font-semibold">{NOMS_GAMMES[gamme]}</span>
-              <span className="block text-[0.76rem] text-gris-cadre">
-                {formatMontant(prix[gamme])} par personne · {stock[gamme] > 0 ? `il en reste ${stock[gamme]}` : "plus de vélo libre"}
+              <span className="block text-[0.76rem] leading-snug text-gris-cadre">
+                {formatMontant(prix[gamme])} par personne, {stock[gamme] > 0 ? `il en reste ${stock[gamme]}` : "plus de vélo libre"}
               </span>
             </span>
-            <span className="flex shrink-0 items-center gap-1.5">
+            <span className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
                 aria-label={`Un vélo ${NOMS_GAMMES[gamme]} de moins`}
                 disabled={velos[gamme] <= 0}
                 onClick={() => changer(gamme, -1)}
-                className="grid h-10 w-10 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/25 text-[1.2rem] font-semibold disabled:opacity-35"
+                className={compteur}
               >
                 −
               </button>
-              <output aria-live="polite" className="w-7 text-center font-display text-[1.1rem] font-bold tabular-nums">
+              <output aria-live="polite" className="w-7 text-center font-display text-[1.15rem] font-bold tabular-nums">
                 {velos[gamme]}
               </output>
               <button
@@ -733,7 +769,7 @@ function ChoixVelos({
                 aria-label={`Un vélo ${NOMS_GAMMES[gamme]} de plus`}
                 disabled={velos[gamme] >= stock[gamme]}
                 onClick={() => changer(gamme, 1)}
-                className="grid h-10 w-10 place-items-center rounded-[var(--radius-bouton)] border border-noir-piste/25 text-[1.2rem] font-semibold disabled:opacity-35"
+                className={compteur}
               >
                 +
               </button>
@@ -741,7 +777,7 @@ function ChoixVelos({
           </li>
         ))}
       </ul>
-      <p className={AIDE} aria-live="polite">
+      <p className={`mt-2 ${AIDE}`} aria-live="polite">
         {total === personnes
           ? `${total} vélos pour ${personnesEnClair(personnes)}.`
           : `${total} vélo${total > 1 ? "s" : ""} choisi${total > 1 ? "s" : ""} pour ${personnesEnClair(personnes)} : le groupe comptera ${personnesEnClair(total)}.`}
@@ -752,14 +788,14 @@ function ChoixVelos({
             : " Je vérifie ce qu'il reste ce jour-là…"}
       </p>
       {!stockConfirme && verificationEnEchec && (
-        <button type="button" onClick={onRelancer} className="lien-souligne cible-elargie mt-1 text-[0.84rem] font-semibold">
+        <button type="button" onClick={onRelancer} className={`${PUCE_DISCRETE} -ml-3`}>
           Vérifier de nouveau
         </button>
       )}
-      <Bouton type="button" className="mt-3 w-full" disabled={total < minimum} onClick={() => onValider(velos)}>
+      <button type="button" className={`${BOUTON_CARTE} mt-3`} disabled={total < minimum} onClick={() => onValider(velos)}>
         {total < minimum ? `Au moins ${minimum} vélos` : "Valider les vélos"}
-      </Bouton>
-    </div>
+      </button>
+    </section>
   );
 }
 
@@ -792,14 +828,14 @@ function EnvoiPreuve({
   };
 
   return (
-    <form onSubmit={envoyer} noValidate className="space-y-3">
+    <form data-focus-etape tabIndex={-1} onSubmit={envoyer} noValidate aria-label="Votre capture d'écran" className={`${CARTE} space-y-3`}>
       <label className="block">
         <span className={ETIQUETTE}>Votre capture d&apos;écran (JPG, PNG ou WebP, 4 Mo au plus)</span>
         <input
           type="file"
           accept={TYPES_CAPTURE.join(",")}
           onChange={(evenement) => setCapture(evenement.target.files?.[0] ?? null)}
-          className="mt-1 block w-full text-[0.84rem] file:mr-3 file:rounded-[var(--radius-bouton)] file:border-0 file:bg-noir-piste file:px-3 file:py-2 file:text-[0.84rem] file:font-semibold file:text-craie"
+          className="mt-1 block w-full text-[0.84rem] file:mr-3 file:rounded-full file:border-0 file:bg-noir-piste file:px-4 file:py-2 file:text-[0.84rem] file:font-semibold file:text-craie"
         />
       </label>
       <label className="block">
@@ -810,7 +846,7 @@ function EnvoiPreuve({
           autoComplete="tel"
           value={telephone}
           onChange={(evenement) => setTelephone(evenement.target.value)}
-          placeholder="+229 97 00 00 00"
+          placeholder="01 97 00 00 00"
           className={CHAMP}
         />
       </label>
@@ -830,129 +866,28 @@ function EnvoiPreuve({
           {erreur}
         </p>
       )}
-      <Bouton type="submit" className="w-full" disabled={envoi}>
+      <button type="submit" className={BOUTON_CARTE} disabled={envoi}>
         {envoi ? "Envoi de la capture…" : "Envoyer ma capture"}
-      </Bouton>
-      <button type="button" onClick={onSans} disabled={envoi} className="lien-souligne cible-elargie text-[0.84rem] font-semibold disabled:opacity-40">
+      </button>
+      <button type="button" onClick={onSans} disabled={envoi} className={`${PUCE_DISCRETE} -ml-3 disabled:opacity-40`}>
         Continuer sans la réduction
       </button>
     </form>
   );
 }
 
-/* --------------------------------------------------------- L'offre chiffrée */
-
-function Proposition({
-  etat,
-  faits,
-  maintenant,
-  actions,
-}: {
-  etat: EtatChat;
-  faits: FaitsChat;
-  maintenant: number;
-  actions: ActionsChat;
-}) {
-  const offre = offreAffichee(etat, faits, maintenant);
-  if (!offre) return null;
-  const confirme = devisConfirme(etat);
-  const enEchec = etat.devisEnEchec !== null && !confirme;
-  return (
-    <div>
-      <CarteOffreChat {...offre} reglages={faits.reglages} />
-      <div className="mt-3 flex flex-col gap-2">
-        <Bouton type="button" taille="lg" className="w-full" disabled={!confirme} onClick={() => actions.envoyer({ type: "reserver" })}>
-          {confirme ? "Je réserve" : enEchec ? "Prix à confirmer" : "Je vérifie le prix…"}
-        </Bouton>
-        {enEchec && (
-          <button type="button" className={PUCE_CENTREE} onClick={() => actions.envoyer({ type: "relancer-devis" })}>
-            Réessayer
-          </button>
-        )}
-        <button type="button" className={PUCE_CENTREE} onClick={() => actions.envoyer({ type: "trop-cher" })}>
-          C&apos;est un peu cher pour nous
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* --------------------------------------------------------- Les coordonnées */
-
-function FormulaireCoordonnees({ client, onValider }: { client: Coordonnees; onValider: (client: Coordonnees) => void }) {
-  const [champs, setChamps] = useState<Coordonnees>(client);
-  const [essai, setEssai] = useState(false);
-  const erreurs: Partial<Record<keyof Coordonnees, string>> = {
-    ...(champs.prenom.trim() ? {} : { prenom: "Votre prénom, s'il vous plaît." }),
-    ...(champs.nom.trim() ? {} : { nom: "Votre nom, s'il vous plaît." }),
-    ...(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(champs.email.trim()) ? {} : { email: "Une adresse email valide : la facture et le lien de suivi y partent." }),
-    ...(/^[+0-9 ().-]{8,20}$/.test(champs.telephone.trim()) ? {} : { telephone: "Un numéro de téléphone, par exemple +229 97 00 00 00." }),
-  };
-  const champ = (cle: keyof Coordonnees, libelle: string, options: { type?: string; autoComplete: string; inputMode?: "tel" | "email" | "text" }) => (
-    <label className="block">
-      <span className={ETIQUETTE}>{libelle}</span>
-      <input
-        type={options.type ?? "text"}
-        inputMode={options.inputMode}
-        autoComplete={options.autoComplete}
-        value={champs[cle]}
-        onChange={(evenement) => setChamps((avant) => ({ ...avant, [cle]: evenement.target.value }))}
-        aria-invalid={essai && Boolean(erreurs[cle])}
-        aria-describedby={essai && erreurs[cle] ? `chat-${cle}-erreur` : undefined}
-        className={CHAMP}
-      />
-      {essai && erreurs[cle] && (
-        <span id={`chat-${cle}-erreur`} className="mt-1 block text-[0.78rem] text-orange-sourd">
-          {erreurs[cle]}
-        </span>
-      )}
-    </label>
-  );
-  return (
-    <form
-      noValidate
-      className="space-y-3"
-      onSubmit={(evenement) => {
-        evenement.preventDefault();
-        setEssai(true);
-        if (coordonneesValides(champs)) onValider(champs);
-      }}
-    >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {champ("prenom", "Prénom", { autoComplete: "given-name" })}
-        {champ("nom", "Nom", { autoComplete: "family-name" })}
-      </div>
-      {champ("email", "Email", { type: "email", autoComplete: "email", inputMode: "email" })}
-      {champ("telephone", "Téléphone Mobile Money", { type: "tel", autoComplete: "tel", inputMode: "tel" })}
-      <p className={AIDE}>La demande de paiement part sur ce numéro.</p>
-      <Bouton type="submit" className="w-full">
-        Continuer
-      </Bouton>
-    </form>
-  );
-}
-
 /* --------------------------------------------------------------- Le paiement */
 
-function Paiement({
-  etat,
-  faits,
-  maintenant,
-  actions,
-}: {
-  etat: EtatChat;
-  faits: FaitsChat;
-  maintenant: number;
-  actions: ActionsChat;
-}) {
+function Paiement({ etat, faits, maintenant, actions }: ProprietesEtape) {
   const offre = offreAffichee(etat, faits, maintenant);
   const pret = demandeReservationDe(etat) !== null;
   const confirme = devisConfirme(etat);
   const montant = confirme ? offre?.montantADebiterXof : undefined;
   return (
-    <div className="space-y-3">
+    <section data-focus-etape tabIndex={-1} aria-label="Votre paiement" className={CARTE}>
+      <p className="font-display text-[1.15rem] font-semibold leading-tight">Votre paiement</p>
       {offre && (
-        <dl className="space-y-1.5 rounded-[var(--radius-carte)] border border-noir-piste/10 bg-white p-3.5 text-[0.86rem]">
+        <dl className="mt-3 space-y-1.5 text-[0.86rem]">
           <div className="flex items-baseline justify-between gap-3">
             <dt>Prix de l&apos;offre</dt>
             <dd className="shrink-0 whitespace-nowrap tabular-nums">{formatMontant(offre.resultat.totalXof)}</dd>
@@ -974,26 +909,27 @@ function Paiement({
           </div>
         </dl>
       )}
-      <label className="flex cursor-pointer items-start gap-3 text-[0.88rem] leading-relaxed">
+      <p className={`mt-2 ${AIDE}`}>Le récapitulatif et la facture partent sur {etat.client.email}.</p>
+      <label className="mt-4 flex cursor-pointer items-start gap-3 text-[0.88rem] leading-relaxed">
         <input
           type="checkbox"
           checked={etat.cgv}
           onChange={(evenement) => actions.envoyer({ type: "accepter-cgv", acceptees: evenement.target.checked })}
-          className="mt-1 h-4 w-4 shrink-0 accent-[#f25c05]"
+          className="mt-0.5 h-5 w-5 shrink-0 accent-[#f25c05]"
         />
         <span>
           J&apos;accepte les{" "}
-          <a href="/cgv" target="_blank" className="lien-souligne font-semibold">
+          <a href="/cgv" target="_blank" className="font-semibold underline decoration-noir-piste/40 underline-offset-2">
             conditions générales de vente
           </a>{" "}
           et la{" "}
-          <a href="/donnees-personnelles" target="_blank" className="lien-souligne font-semibold">
+          <a href="/donnees-personnelles" target="_blank" className="font-semibold underline decoration-noir-piste/40 underline-offset-2">
             politique de protection des données
           </a>
           .
         </span>
       </label>
-      <Bouton type="button" taille="lg" className="w-full" disabled={!pret || etat.envoi !== null} onClick={() => void actions.payer()}>
+      <button type="button" className={`${BOUTON_CARTE} mt-4`} disabled={!pret || etat.envoi !== null} onClick={() => void actions.payer()}>
         {etat.envoi === "reservation"
           ? "Envoi de la demande…"
           : typeof montant === "number"
@@ -1003,14 +939,8 @@ function Paiement({
               : etat.devisEnEchec !== null
                 ? "Prix à confirmer"
                 : "Je vérifie le prix…"}
-      </Bouton>
-      {/* Le prix n'a pas pu être vérifié (réseau, panne) : on peut le redemander ici. */}
-      {!confirme && etat.devisEnEchec !== null && (
-        <button type="button" className={PUCE_CENTREE} onClick={() => actions.envoyer({ type: "relancer-devis" })}>
-          Réessayer
-        </button>
-      )}
-      {!etat.cgv && <p className={AIDE}>Cochez les conditions générales pour payer.</p>}
-    </div>
+      </button>
+      {!etat.cgv && <p className={`mt-2 ${AIDE}`}>Cochez les conditions générales pour payer.</p>}
+    </section>
   );
 }

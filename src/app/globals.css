@@ -108,13 +108,86 @@ dialog[data-annonce]::backdrop {
 }
 
 /* Le chatbot des offres de groupe ouvert : la page derrière ne défile plus
-   (plein écran sur téléphone, panneau sur le côté sur ordinateur), et le
-   voile la fonce, avec la même couleur écrite en dur que l'annonce. */
+   (plein écran sur téléphone, petite fenêtre en bas à droite sur
+   ordinateur), et le voile la fonce, avec une couleur écrite en dur comme
+   celle de l'annonce. */
 html:has(dialog[data-chat-groupe][open]) {
   overflow: hidden;
 }
 dialog[data-chat-groupe]::backdrop {
-  background-color: rgb(14 14 14 / 0.55);
+  background-color: rgb(14 14 14 / 0.45);
+}
+
+/* Dans la discussion, sur la craie et le blanc, le contour de focus passe
+   au noir : l'orange s'y confondrait avec le bord orange des réponses. Il
+   reste orange sur l'en-tête noir. Les zones qui reçoivent le focus par
+   programme (tabindex -1) et le champ du bas, qui montre son focus par sa
+   bordure, n'ont pas de contour. Écrit hors des couches de Tailwind, comme
+   la règle commune qu'il corrige plus bas. */
+dialog[data-chat-groupe] :focus-visible {
+  outline-color: var(--color-noir-piste);
+}
+dialog[data-chat-groupe] header :focus-visible {
+  outline-color: var(--color-orange-signal);
+}
+dialog[data-chat-groupe] [tabindex="-1"]:focus-visible,
+dialog[data-chat-groupe] .saisie-chat:focus-visible {
+  outline: none;
+}
+
+/* « Bike Land écrit… » : trois points qui sautillent l'un après l'autre. */
+@keyframes point-ecriture {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+.point-ecriture {
+  animation: point-ecriture 1.2s ease-in-out infinite;
+}
+
+/* Le petit message « Réserver en groupe ? » à côté de la bulle : il glisse
+   vers elle en arrivant, s'efface en partant. */
+@keyframes invitation-entree {
+  from {
+    opacity: 0;
+    transform: translateX(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes invitation-sortie {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(6px);
+  }
+}
+.invitation-entree {
+  transform-origin: right center;
+  animation: invitation-entree 0.35s var(--ease-doux) both;
+}
+.invitation-sortie {
+  animation: invitation-sortie 0.3s ease-in both;
+}
+
+/* Moins de mouvement demandé : les points restent immobiles. Le message
+   de la bulle apparaît et disparaît sans glisser (règle commune plus bas). */
+@media (prefers-reduced-motion: reduce) {
+  .point-ecriture {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 /* ------------------------------------------------------------------

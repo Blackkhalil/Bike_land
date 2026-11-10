@@ -66,6 +66,32 @@ verifier("réglages illisibles : jamais de vente aux valeurs par défaut, la bul
 ], [null, null, true]);
 await depot.effacerParametreAdmin(CLE_REGLAGES_OFFRES);
 
+/* ------------------------------------------------ La bulle reste légère */
+
+// La bulle est sur toutes les pages du site : à son chargement, ni le moteur
+// de calcul ni la machine du chatbot (le panneau arrive à la première
+// ouverture, par import dynamique). Seuls comptent les imports exécutés,
+// pas les `import type`, effacés à la compilation.
+const { readFileSync } = await import("node:fs");
+const importsExecutes = (fichier: string) =>
+  [...readFileSync(join(projet, fichier), "utf8").matchAll(/^import\s+(?!type\b)[^;]*?from\s+"([^"]+)"/gm)].map((trouve) => trouve[1]);
+verifier("la bulle n'importe ni le moteur ni la machine au chargement de la page", importsExecutes("src/components/offres-groupe/BulleChatGroupe.tsx"), [
+  "next/dynamic",
+  "next/navigation",
+  "react",
+  "@/lib/offres-groupe/ouverture-chat",
+  "./IconesChat",
+]);
+verifier("ses icônes et l'ouverture du chat n'importent rien à l'exécution", [
+  importsExecutes("src/components/offres-groupe/IconesChat.tsx"),
+  importsExecutes("src/lib/offres-groupe/ouverture-chat.ts"),
+], [[], []]);
+verifier(
+  "le panneau arrive par import dynamique, sans rendu serveur",
+  /dynamic\(\(\) => import\("\.\/PanneauChatGroupe"\)[\s\S]*?ssr: false/.test(readFileSync(join(projet, "src/components/offres-groupe/BulleChatGroupe.tsx"), "utf8")),
+  true,
+);
+
 /* ------------------------------------------------ Le lien de l'email */
 
 verifier("le lien de l'email après une vérification à la main", lien.lienChatGroupe("road-trip-groupe", "pr_9"), "/?reserver-en-groupe=road-trip-groupe&preuve=pr_9");

@@ -2,8 +2,11 @@
 
 import { useEffect, useReducer, useRef, useState } from "react";
 
+import { SymboleMarque } from "@/components/Marque";
 import { ROUTES_OFFRES_GROUPE } from "@/lib/offres-groupe/api";
 import {
+  botEcrit,
+  champDemande,
   CLE_STOCKAGE_CHAT,
   demandeDevisAttendue,
   demandeReservationDe,
@@ -16,16 +19,20 @@ import {
   type ActionChat,
   type EtatChat,
   type FaitsChat,
-  type MessageChat,
 } from "@/lib/offres-groupe/conversation";
 import type { DemandeOuverture } from "@/lib/offres-groupe/ouverture-chat";
-import { insecables } from "@/lib/offres-groupe/textes-chat";
 import { lienWhatsApp } from "@/lib/site";
 
-import { ControlesChat, type ActionsChat } from "./ControlesChat";
+import { CompositeurChat } from "./CompositeurChat";
+import { CarteDeLEtape, indicationInactive, modeSaisieDe, ReponsesDeLEtape, type ActionsChat } from "./ControlesChat";
+import { IconeFermer, IconeRecommencer, IconeWhatsApp } from "./IconesChat";
+import { BulleEcrit, FilMessages } from "./MessagesChat";
 
 /** Le temps laissé au client pour finir de choisir avant de demander le prix au serveur. */
 const ATTENTE_DEVIS_MS = 350;
+
+/** Ce qui prend le focus à chaque nouvelle étape : la carte qui arrive, sinon la première réponse. */
+const PREMIER_CONTROLE = "[data-focus-etape], button:not([disabled]), a[href], input:not([disabled])";
 
 /** La conversation rangée dans le navigateur, si elle s'y lit encore. */
 function conversationRangee(maintenant: number): EtatChat | null {
@@ -46,9 +53,52 @@ function ranger(etat: EtatChat, ouvert: boolean) {
 }
 
 /**
- * Le panneau du chatbot des offres de groupe : plein écran sur téléphone
- * (dès 320 px), panneau sur le côté sur ordinateur. Un dialogue natif ouvert
- * avec showModal() : la page derrière devient inerte (le focus reste dans le
+ * La partie visible de l'écran du téléphone quand son clavier est ouvert :
+ * le panneau s'y ajuste, la barre du bas reste au-dessus du clavier et
+ * l'en-tête reste en haut. `null` sans clavier (le panneau garde 100dvh) et
+ * sur ordinateur.
+ */
+function useZoneVisible(): { hauteur: number; haut: number } | null {
+  const [zone, setZone] = useState<{ hauteur: number; haut: number } | null>(null);
+  useEffect(() => {
+    const vue = window.visualViewport;
+    if (!vue) return;
+    const telephone = window.matchMedia("(max-width: 767.98px)");
+    let image = 0;
+    const mesurer = () => {
+      image = 0;
+      // Un écran agrandi aux doigts n'est pas un clavier.
+      const clavier = telephone.matches && Math.abs(vue.scale - 1) < 0.01 && window.innerHeight - vue.height > 120;
+      setZone((avant) => {
+        if (!clavier) return null;
+        const suivante = { hauteur: Math.round(vue.height), haut: Math.round(vue.offsetTop) };
+        return avant && avant.hauteur === suivante.hauteur && avant.haut === suivante.haut ? avant : suivante;
+      });
+    };
+    const demander = () => {
+      if (!image) image = window.requestAnimationFrame(mesurer);
+    };
+    vue.addEventListener("resize", demander);
+    vue.addEventListener("scroll", demander);
+    telephone.addEventListener("change", demander);
+    return () => {
+      vue.removeEventListener("resize", demander);
+      vue.removeEventListener("scroll", demander);
+      telephone.removeEventListener("change", demander);
+      if (image) window.cancelAnimationFrame(image);
+    };
+  }, []);
+  return zone;
+}
+
+/**
+ * Le chatbot des offres de groupe, comme une discussion sur un téléphone,
+ * aux couleurs de Bike Land : en-tête noir (le logo, « en ligne »), les
+ * bulles de Bike Land en blanc à gauche, celles du client en orange à
+ * droite avec leur heure, les réponses en pastilles, la barre du bas pour
+ * ce qui se tape. Plein écran sur téléphone (dès 320 px), petite fenêtre
+ * en bas à droite sur ordinateur. Un dialogue natif ouvert avec
+ * showModal() : la page derrière devient inerte (le focus reste dans le
  * panneau), Échap le ferme, et le focus revient à ce qui l'a ouvert.
  *
  * La conversation est la machine pure de src/lib/offres-groupe/conversation.ts ;
@@ -83,12 +133,15 @@ export function PanneauChatGroupe({
 }) {
   const dialogue = useRef<HTMLDialogElement>(null);
   const defilement = useRef<HTMLDivElement>(null);
-  const zoneReponses = useRef<HTMLDivElement>(null);
+  const zoneEtape = useRef<HTMLDivElement>(null);
+  const saisie = useRef<HTMLInputElement>(null);
+  const premierDefilement = useRef(true);
   const [etat, envoyer] = useReducer(
     (actuel: EtatChat, action: ActionChat) => reduire(actuel, action, faits),
     ouvertA,
-    (instant: number) => conversationRangee(instant) ?? etatInitial(),
+    (instant: number) => conversationRangee(instant) ?? etatInitial(undefined, faits, instant),
   );
+  const zoneVisible = useZoneVisible();
 
   // L'horloge du panneau : les jours et les départs proposés suivent l'heure.
   const [maintenant, setMaintenant] = useState(ouvertA);
@@ -107,7 +160,6 @@ export function PanneauChatGroupe({
         element.setAttribute("open", "");
       }
     }
-    zoneReponses.current?.focus();
   }, []);
 
   // Une demande d'ouverture (bouton d'une page, lien de l'email) : sur cette
@@ -125,18 +177,34 @@ export function PanneauChatGroupe({
   }, [etat]);
 
   // Chaque nouvelle bulle se montre, son début en haut de l'écran : une
-  // offre chiffrée se lit depuis sa première ligne. Chaque nouvelle étape
-  // prend le focus.
+  // offre chiffrée se lit depuis sa première ligne. Aussi quand le clavier
+  // du téléphone s'ouvre et réduit la discussion.
+  const ecrit = botEcrit(etat);
   const nombreMessages = etat.messages.length;
+  const hauteurVisible = zoneVisible?.hauteur ?? null;
   useEffect(() => {
     const zone = defilement.current;
-    const derniere = zone?.querySelector<HTMLElement>("[data-bulle]:last-of-type");
-    if (!zone || !derniere) return;
-    zone.scrollTop = Math.max(0, derniere.offsetTop - 12);
-  }, [nombreMessages, etat.etape]);
+    if (!zone) return;
+    const derniere = zone.querySelector<HTMLElement>("[data-bulle]:last-of-type");
+    const haut = derniere ? Math.max(0, derniere.offsetTop - 12) : 0;
+    const doux = !premierDefilement.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    premierDefilement.current = false;
+    zone.scrollTo({ top: haut, behavior: doux ? "smooth" : "auto" });
+  }, [nombreMessages, etat.etape, ecrit, hauteurVisible]);
+
+  // Chaque nouvelle étape, ou chaque coordonnée demandée, prend le focus :
+  // le champ du bas quand la réponse se tape, sinon la carte qui arrive ou
+  // la première réponse.
+  const mode = modeSaisieDe(etat, faits, maintenant);
+  const saisiePrioritaire = mode?.prioritaire === true;
+  const champ = etat.etape === "coordonnees" ? champDemande(etat.client) : null;
   useEffect(() => {
-    zoneReponses.current?.focus({ preventScroll: true });
-  }, [etat.etape]);
+    const champDuBas = saisie.current && !saisie.current.disabled ? saisie.current : null;
+    const cible = saisiePrioritaire
+      ? champDuBas
+      : (zoneEtape.current?.querySelector<HTMLElement>(PREMIER_CONTROLE) ?? champDuBas ?? zoneEtape.current);
+    cible?.focus({ preventScroll: true });
+  }, [etat.etape, champ, saisiePrioritaire]);
 
   // Le devis : demandé au serveur dès que le prix est à confirmer.
   const demandeDevis = demandeDevisAttendue(etat);
@@ -223,6 +291,11 @@ export function PanneauChatGroupe({
     fermer,
   };
 
+  // Un paiement en cours ne se recommence pas (règle de la machine).
+  const recommencerBloque = etat.etape === "attente" || etat.envoi !== null;
+  const boutonEnTete =
+    "grid h-11 w-11 shrink-0 place-items-center rounded-full text-craie transition-colors hover:bg-craie/10 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
+
   return (
     <dialog
       ref={dialogue}
@@ -233,92 +306,68 @@ export function PanneauChatGroupe({
         fermer();
       }}
       onClick={(evenement) => {
-        // Un clic sur le voile, hors du panneau (ordinateur), le ferme.
+        // Un clic sur le voile, hors de la fenêtre (ordinateur), la ferme.
         if (evenement.target === evenement.currentTarget) fermer();
       }}
-      className="fixed inset-0 z-[70] m-0 h-[100dvh] max-h-none w-full max-w-none overflow-hidden bg-craie p-0 text-noir-piste md:left-auto md:right-0 md:w-[440px] md:border-l md:border-noir-piste/10"
+      style={zoneVisible ? { height: zoneVisible.hauteur, top: zoneVisible.haut } : undefined}
+      className="fixed inset-0 z-[70] m-0 h-[100dvh] max-h-none w-full max-w-none overflow-hidden bg-craie p-0 text-noir-piste md:inset-auto md:bottom-4 md:right-4 md:h-[min(680px,calc(100dvh-32px))] md:w-[400px] md:rounded-[24px] md:shadow-[0_24px_60px_rgba(14,14,14,0.35)]"
     >
       <div className="flex h-full flex-col">
-        <header className="flex shrink-0 items-center justify-between gap-3 bg-noir-piste px-4 py-3 text-craie">
-          <div className="min-w-0">
-            <h2 id="titre-chat-groupe" className="font-display text-[1.25rem] font-semibold leading-tight">
-              Réserver en groupe
+        <header className="flex shrink-0 items-center gap-2.5 bg-noir-piste pb-2 pl-3 pr-1.5 pt-[max(0.5rem,env(safe-area-inset-top))] text-craie">
+          <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-orange-signal text-noir-piste">
+            <SymboleMarque taille={26} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 id="titre-chat-groupe" className="truncate font-display text-[1.12rem] font-semibold leading-tight">
+              <span className="sr-only">Réserver en groupe avec </span>
+              Bike Land
             </h2>
-            <p className="truncate text-[0.78rem] text-craie/70">Bike for All, Road trip en groupe, Gbashi Bike</p>
+            <p className="flex items-center gap-1.5 text-[0.76rem] leading-tight text-craie/75">
+              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-[#3ddc84]" />
+              en ligne
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={fermer}
-            aria-label="Fermer la discussion"
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-craie/25 text-[1.4rem] leading-none transition-colors hover:bg-craie/10"
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-        </header>
-
-        <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 pt-4">
-          {/* Le rôle « log » sur un conteneur : la liste garde son rôle de liste. */}
-          <div role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion">
-            <ol className="space-y-2.5">
-              {etat.messages.map((message) => (
-                <Bulle key={message.id} message={message} />
-              ))}
-            </ol>
-          </div>
-          <div ref={zoneReponses} tabIndex={-1} role="group" aria-label="Vos réponses" className="mt-4 outline-none">
-            <ControlesChat etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
-          </div>
-        </div>
-
-        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-noir-piste/10 bg-white px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] text-[0.84rem]">
-          <button
-            type="button"
-            onClick={() => actions.envoyer({ type: "recommencer" })}
-            disabled={etat.etape === "attente" || etat.envoi !== null}
-            className="lien-souligne cible-elargie font-semibold disabled:opacity-40"
-          >
-            Recommencer
-          </button>
           <a
             href={lienWhatsApp(messageWhatsApp(etat, faits, maintenant))}
             target="_blank"
             rel="noreferrer noopener"
-            className="lien-souligne cible-elargie font-semibold text-vert-lagune"
+            aria-label="Écrire à Bike Land sur WhatsApp"
+            title="Écrire à Bike Land sur WhatsApp"
+            className={boutonEnTete}
           >
-            Parler à Bike Land sur WhatsApp
+            <IconeWhatsApp />
           </a>
-        </footer>
+          <button
+            type="button"
+            onClick={() => actions.envoyer({ type: "recommencer" })}
+            disabled={recommencerBloque}
+            aria-label="Recommencer la discussion"
+            title="Recommencer"
+            className={boutonEnTete}
+          >
+            <IconeRecommencer />
+          </button>
+          <button type="button" onClick={fermer} aria-label="Fermer la discussion" title="Fermer" className={boutonEnTete}>
+            <IconeFermer />
+          </button>
+        </header>
+
+        <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-5 pt-3">
+          {/* Le rôle « log » sur un conteneur : la liste garde son rôle de liste. */}
+          <div role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion">
+            <FilMessages messages={etat.messages} maintenant={maintenant} />
+          </div>
+          <div ref={zoneEtape} tabIndex={-1}>
+            <CarteDeLEtape etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
+            <div role="status">{ecrit && <BulleEcrit />}</div>
+            <div role="group" aria-label="Vos réponses">
+              <ReponsesDeLEtape etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
+            </div>
+          </div>
+        </div>
+
+        <CompositeurChat mode={mode} indicationInactive={indicationInactive(etat)} champ={saisie} onEnvoyer={actions.envoyer} />
       </div>
     </dialog>
-  );
-}
-
-/** Une bulle de la discussion : le chatbot à gauche, le client à droite. */
-function Bulle({ message }: { message: MessageChat }) {
-  if (message.de === "client") {
-    return (
-      <li data-bulle className="flex justify-end">
-        <p className="max-w-[85%] rounded-[var(--radius-carte)] rounded-br-[4px] bg-noir-piste px-3.5 py-2 text-[0.9rem] leading-snug text-craie">
-          <span className="sr-only">Vous : </span>
-          {insecables(message.texte)}
-        </p>
-      </li>
-    );
-  }
-  const ton =
-    message.ton === "alerte"
-      ? "border-l-4 border-orange-signal"
-      : message.ton === "succes"
-        ? "border-l-4 border-vert-lagune"
-        : "";
-  return (
-    <li data-bulle className="flex justify-start">
-      <p
-        className={`max-w-[92%] whitespace-pre-line rounded-[var(--radius-carte)] rounded-bl-[4px] bg-white px-3.5 py-2.5 text-[0.9rem] leading-relaxed text-noir-piste ${ton}`}
-      >
-        <span className="sr-only">Bike Land : </span>
-        {insecables(message.texte)}
-      </p>
-    </li>
   );
 }

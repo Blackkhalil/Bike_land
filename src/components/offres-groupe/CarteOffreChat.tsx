@@ -5,11 +5,13 @@ import { insecables, jourEnClair, majuscule, NOMS_OFFRES, personnesEnClair, regl
 import { TAUX_ENCAISSEMENT } from "@/lib/tarifs-paiement";
 
 /**
- * L'offre chiffrée, dans la discussion : chaque ligne de prix du moteur, le
- * prix barré, la ligne des frais de paiement électronique (125 F par
- * personne), la commission de l'opérateur Mobile Money (décision 3, donnée
- * par le serveur avec son devis), le total, ce qui est compris, la règle de
- * retard et le récapitulatif modèle du tableur (pas d'IA au lancement).
+ * L'offre chiffrée, dans la discussion, comme une carte envoyée par Bike
+ * Land : chaque ligne de prix du moteur, le prix barré, la ligne des frais
+ * de paiement électronique (125 F par personne), la commission de
+ * l'opérateur Mobile Money (décision 3, donnée par le serveur avec son
+ * devis), le total, ce qui est compris, la règle de retard et le
+ * récapitulatif modèle du tableur (pas d'IA au lancement). Ses réponses
+ * (« Je réserve », « C'est un peu cher pour nous ») suivent en pastilles.
  *
  * Rien n'est calculé ici : tout vient du résultat du moteur et du devis.
  */
@@ -29,10 +31,13 @@ export function CarteOffreChat({
 }) {
   const ligneTotal = "flex items-baseline justify-between gap-3";
   return (
-    <section aria-label="Votre offre" className="rounded-[var(--radius-carte)] border border-noir-piste/10 bg-white p-4 text-[0.88rem]">
+    <section
+      aria-label="Votre offre"
+      className="w-full rounded-2xl rounded-bl-md bg-white p-4 text-[0.88rem] text-noir-piste shadow-[0_1px_0.5px_rgba(14,14,14,0.13)]"
+    >
       <p className="font-display text-[1.2rem] font-semibold leading-tight">{NOMS_OFFRES[resultat.offre]}</p>
       <p className="mt-1 text-[0.8rem] text-gris-cadre">
-        {majuscule(jourEnClair(resultat.date))}, de {heureEnClair(resultat.depart)} à {heureEnClair(resultat.fin)} ·{" "}
+        {majuscule(jourEnClair(resultat.date))}, de {heureEnClair(resultat.depart)} à {heureEnClair(resultat.fin)},{" "}
         {personnesEnClair(resultat.personnes)}
       </p>
 
@@ -69,18 +74,15 @@ export function CarteOffreChat({
             {confirme && typeof commissionXof === "number" ? `+ ${formatMontant(commissionXof)}` : "en calcul…"}
           </dd>
         </div>
-        <div className={`${ligneTotal} rounded-[var(--radius-bouton)] bg-noir-piste px-3 py-2.5 text-craie`}>
+        <div className={`${ligneTotal} rounded-xl bg-noir-piste px-3 py-2.5 text-craie`}>
           <dt className="font-semibold">Débité de votre compte</dt>
           <dd className="shrink-0 whitespace-nowrap font-display text-[1.25rem] font-bold tabular-nums">
             {confirme && typeof montantADebiterXof === "number" ? formatMontant(montantADebiterXof) : "…"}
           </dd>
         </div>
       </dl>
-      {!confirme && (
-        <p role="status" className="mt-2 text-[0.78rem] text-gris-cadre">
-          Je fais confirmer ce prix par Bike Land…
-        </p>
-      )}
+      {/* « Bike Land écrit… » annonce l'attente aux lecteurs d'écran : ce texte reste visuel. */}
+      {!confirme && <p className="mt-2 text-[0.78rem] text-gris-cadre">Je fais confirmer ce prix par Bike Land…</p>}
 
       <p className="mt-4 font-semibold">Compris dans le prix</p>
       <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[0.84rem]">
@@ -89,10 +91,10 @@ export function CarteOffreChat({
         ))}
       </ul>
 
-      <p className="mt-4 rounded-[var(--radius-bouton)] bg-craie px-3 py-2 text-[0.8rem] leading-relaxed">{insecables(regleRetard(reglages))}</p>
+      <p className="mt-4 rounded-xl bg-craie px-3 py-2 text-[0.8rem] leading-relaxed">{insecables(regleRetard(reglages))}</p>
 
       <details className="mt-3 text-[0.82rem]">
-        <summary className="cursor-pointer font-semibold">Votre récapitulatif</summary>
+        <summary className="cursor-pointer py-1 font-semibold">Votre récapitulatif</summary>
         <p className="mt-2 whitespace-pre-line leading-relaxed text-gris-cadre">{insecables(resultat.recapModele)}</p>
       </details>
     </section>
