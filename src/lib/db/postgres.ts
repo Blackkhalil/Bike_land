@@ -41,6 +41,8 @@ import {
   construireParcDuJour,
   heureDeMinutes,
   heuresCouvrantes,
+  minutesDeLigne,
+  seChevauchent,
   type ParcDuJourDe,
 } from "../disponibilite";
 import { penaliteRetardXof } from "../offres/retard";
@@ -1422,7 +1424,15 @@ const depotDirect: Depot = {
               status: true,
               createdAt: true,
               items: {
-                select: { bikeId: true, startDate: true, endDate: true, startHour: true, endHour: true },
+                select: {
+                  bikeId: true,
+                  startDate: true,
+                  endDate: true,
+                  startHour: true,
+                  endHour: true,
+                  startMinute: true,
+                  endMinute: true,
+                },
               },
             },
           });
@@ -1438,7 +1448,14 @@ const depotDirect: Depot = {
             panierExpire(existante.createdAt.toISOString())
           ) {
             for (const ligne of existante.items) {
-              const conflit = await tx.bookingItem.findFirst({
+              // Les réservations qui recouvrent ses jours et ses heures
+              // pleines, puis celles qui recouvrent vraiment ses minutes
+              // (src/lib/disponibilite) : un groupe parti à 8 h 30 n'a pas
+              // repris les vélos d'un groupe de 8 h à 8 h 30, qui sont donc
+              // encore libres pour lui (décision n° 6). À l'heure pleine,
+              // rien ne change : les minutes d'une telle réservation sont
+              // ses heures.
+              const conflits = await tx.bookingItem.findMany({
                 where: {
                   ...conflitHoraire(
                     ligne.bikeId,
@@ -1449,9 +1466,26 @@ const depotDirect: Depot = {
                   ),
                   bookingId: { not: existante.id },
                 },
-                select: { id: true },
+                select: { startHour: true, endHour: true, startMinute: true, endMinute: true },
               });
-              if (conflit) throw new ConflitDisponibiliteError();
+              const creneau = minutesDeLigne({
+                heureDebut: ligne.startHour,
+                heureFin: ligne.endHour,
+                minuteDebut: ligne.startMinute,
+                minuteFin: ligne.endMinute,
+              });
+              const repris = conflits.some((autre) =>
+                seChevauchent(
+                  creneau,
+                  minutesDeLigne({
+                    heureDebut: autre.startHour,
+                    heureFin: autre.endHour,
+                    minuteDebut: autre.startMinute,
+                    minuteFin: autre.endMinute,
+                  }),
+                ),
+              );
+              if (repris) throw new ConflitDisponibiliteError();
               // Déclaré indisponible entre-temps un jour de la sortie : le
               // vélo n'est plus libre non plus (même règle qu'`estDisponible`).
               const indisponible = await tx.indisponibiliteVelo.findFirst({

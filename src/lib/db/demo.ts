@@ -22,7 +22,14 @@ import {
 } from "@/data/offres";
 import { blocPadel, lireReglagesAvec } from "@/data/reglages";
 import { lireReglagesOffresAvec } from "@/data/reglages-offres";
-import { attribuerVelos, construireParcDuJour, heureDeMinutes, heuresCouvrantes } from "../disponibilite";
+import {
+  attribuerVelos,
+  construireParcDuJour,
+  heureDeMinutes,
+  heuresCouvrantes,
+  minutesDeLigne,
+  seChevauchent,
+} from "../disponibilite";
 import { penaliteRetardXof } from "../offres/retard";
 import { calculerDevis } from "../tarification";
 import { genererReference, genererToken, hacherToken, lireToken } from "../tokens";
@@ -834,12 +841,27 @@ export const depotDemo: Depot = {
         heureDebut: reservation.heureDebut,
         heureFin: reservation.heureFin,
       };
+      const minutes = minutesDeLigne(reservation);
+      const limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000;
       // Vélo par vélo, dans le même ordre qu'en base : repris par une autre
-      // réservation, ou déclaré indisponible entre-temps un jour de la sortie.
+      // réservation (mêmes jours et heures pleines, puis mêmes minutes : un
+      // groupe de 8 h 30 ne reprend pas les vélos d'un groupe de 8 h à
+      // 8 h 30), ou déclaré indisponible entre-temps un jour de la sortie.
       for (const ligne of reservation.lignes) {
-        if (reservationsBloquantes(ligne.veloId).some((periode) => creneauxSeChevauchent(creneau, periode))) {
-          throw new ConflitDisponibiliteError();
-        }
+        const repris = etat().reservations.some(
+          (autre) =>
+            autre.id !== reservation.id &&
+            bloque(autre, limite) &&
+            autre.lignes.some((l) => l.veloId === ligne.veloId) &&
+            creneauxSeChevauchent(creneau, {
+              debut: autre.dateDebut,
+              fin: autre.dateFin,
+              heureDebut: autre.heureDebut,
+              heureFin: autre.heureFin,
+            }) &&
+            seChevauchent(minutes, minutesDeLigne(autre)),
+        );
+        if (repris) throw new ConflitDisponibiliteError();
         if (indisponibleSurPeriode(ligne.veloId, reservation.dateDebut, reservation.dateFin)) {
           throw new ConflitDisponibiliteError(MESSAGE_VELO_INDISPONIBLE);
         }
