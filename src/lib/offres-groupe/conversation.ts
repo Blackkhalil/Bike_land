@@ -939,10 +939,11 @@ const MESSAGES_ERREUR: Record<CodeErreurLue, string> = {
   TROP_DE_DEMANDES: "Beaucoup de demandes en même temps : patientez une minute, puis réessayez.",
   EN_ATTENTE: `Une demande de paiement à votre nom attend déjà sur votre téléphone. Validez-la, ou attendez ${EXPIRATION_PANIER_MINUTES} minutes qu'elle expire avant d'en lancer une autre. Le lien de suivi est dans votre email.`,
   PAIEMENT: "La demande de paiement n'a pas pu partir. Aucun montant n'a été prélevé : réessayez dans un instant.",
+  SERVEUR: "Un souci de notre côté a interrompu la demande. Réessayez dans un instant, ou écrivez-nous sur WhatsApp.",
   INCONNUE: "Je n'ai pas eu de réponse claire de Bike Land. Réessayez dans un instant.",
 };
 
-const CODES_ERREUR: readonly CodeErreurOffresGroupe[] = ["FERME", "REGLAGES_ILLISIBLES", "SAISIE", "TROP_DE_DEMANDES", "EN_ATTENTE", "PAIEMENT"];
+const CODES_ERREUR: readonly CodeErreurOffresGroupe[] = ["FERME", "REGLAGES_ILLISIBLES", "SAISIE", "TROP_DE_DEMANDES", "EN_ATTENTE", "PAIEMENT", "SERVEUR"];
 
 const estObjet = (valeur: unknown): valeur is Record<string, unknown> => typeof valeur === "object" && valeur !== null;
 
