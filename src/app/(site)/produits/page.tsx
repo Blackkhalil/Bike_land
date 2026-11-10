@@ -62,7 +62,7 @@ import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { BoutonChatGroupe } from "@/components/offres-groupe/BoutonChatGroupe";
 import type { ReglagesOffres } from "@/data/reglages-offres";
 import { formatMontant, formatPourcentage, heureEnClair } from "@/lib/offres";
-import { joursEnClair, NOMS_JOURS } from "@/lib/offres/calendrier";
+import { dureeEnClair, joursEnClair, NOMS_JOURS } from "@/lib/offres/calendrier";
 import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { filDAriane } from "@/lib/donnees-structurees";
 import { metadonneesPage } from "@/lib/seo";
@@ -296,6 +296,64 @@ function RoadTripEnGroupe({ reglages }: { reglages: ReglagesOffres }) {
 }
 
 /**
+ * Bike for All, quand l'interrupteur « Offres de groupe » est ouvert : la
+ * carte du cahier des charges (étape 2), aux chiffres des réglages des
+ * offres. Le groupe donne son budget ou sa durée ; il se réserve avec le
+ * chatbot, sur tous les créneaux libres.
+ */
+function BikeForAll({ reglages }: { reglages: ReglagesOffres }) {
+  const bfa = reglages.bikeForAll;
+  const limite = reglages.dateLimiteWeekend;
+  return (
+    <div>
+      <div className="flex flex-wrap gap-2">
+        <Pastille ton="succes">Tous les jours</Pastille>
+        <Pastille ton="neutre">En groupe</Pastille>
+      </div>
+      <TitreSection className="mt-5">Bike for All</TitreSection>
+      <p className="mt-3 font-display text-[1.4rem] leading-tight">Votre budget, votre temps de vélo</p>
+      <p className="mt-5 max-w-md text-[0.98rem] leading-relaxed text-gris-cadre">
+        Donnez le budget du groupe&nbsp;: notre assistant calcule le temps de vélo et le coco qu&apos;il permet. Ou
+        choisissez la durée, il vous donne le prix. Sur tous les créneaux libres, avec toute notre gamme de
+        vélos.
+      </p>
+      <dl className="mt-8 max-w-md">
+        <Repere terme="Quand">
+          Tous les jours, départs de {heureEnClair(bfa.premierDepart)} à {heureEnClair(bfa.dernierDepart)}, retour à{" "}
+          {heureEnClair(bfa.retourAuPlusTard)} au plus tard
+        </Repere>
+        <Repere terme="Groupe">{bfa.personnesMin} personnes minimum</Repere>
+        <Repere terme="Tarif">
+          <span className="font-display text-[1.2rem] text-orange-signal">dès {formatMontant(bfa.budgetMinXof)}</span>{" "}
+          pour le groupe
+          <span className="block text-[0.82rem] font-normal opacity-80">
+            {formatMontant(bfa.tarifHeurePersonneXof)} de l&apos;heure par personne, plus{" "}
+            {formatMontant(reglages.paiement.fraisParPersonneXof)} de frais de paiement en ligne par personne
+          </span>
+        </Repere>
+        <Repere terme="Compris">Vélo, casque, et un coco par personne selon le budget</Repere>
+        <Repere terme="Options">
+          Gâteaux ({formatMontant(reglages.consommables.gateauPrixXof)} pièce), accompagnateur Bike Land
+        </Repere>
+        <Repere terme="Réservation">
+          En ligne, au moins {dureeEnClair(reglages.delaiMinimumMinutes)} avant le départ ; pour le week-end, au plus
+          tard le {NOMS_JOURS[limite.jour]} à {heureEnClair(limite.heure)}
+        </Repere>
+      </dl>
+      <div className="mt-8">
+        <BoutonChatGroupe offre="bike-for-all" variante="primaire" taille="lg">
+          Réserver Bike for All
+        </BoutonChatGroupe>
+        <p className="mt-3 max-w-md text-[0.85rem] leading-relaxed text-gris-cadre">
+          Notre assistant vous demande votre groupe, votre jour et votre budget, calcule le prix et vous fait
+          payer en Mobile Money, sans quitter la page.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Gbashi Bike sur réservation (décision 1), quand l'interrupteur « Offres
  * de groupe » est ouvert : il repasse en ligne le dimanche, avec le chatbot,
  * à la place de la commande sur WhatsApp. La carte du cahier des charges :
@@ -428,7 +486,8 @@ export default async function PageProduits() {
   const sommaire = [
     { id: "padel-bike", nom: "Padel bike" },
     { id: "gbashi-bike", nom: "Gbashi bike" },
-    { id: "road-trip", nom: "Road trip" },
+    ...(groupe ? [{ id: "bike-for-all", nom: "Bike for All" }] : []),
+    { id: "road-trip", nom: groupe ? "Road trip en groupe" : "Road trip" },
     { id: "location-libre", nom: "Location libre" },
   ];
   const classeAncre =
@@ -447,8 +506,17 @@ export default async function PageProduits() {
           plusieurs envies
         </TitreSection>
         <p className="mt-6 max-w-2xl text-[1.02rem] leading-relaxed text-craie/70">
-          À vélo jusqu&apos;au padel, en groupe le week-end, en version sport sur commande, ou en
-          solo à l&apos;heure&nbsp;: tout part de la route des Pêches, à Fidjrossè.
+          {groupe ? (
+            <>
+              À vélo jusqu&apos;au padel, en groupe tous les jours ou le week-end, en version sport le
+              dimanche, ou en solo à l&apos;heure&nbsp;: tout part de la route des Pêches, à Fidjrossè.
+            </>
+          ) : (
+            <>
+              À vélo jusqu&apos;au padel, en groupe le week-end, en version sport sur commande, ou en
+              solo à l&apos;heure&nbsp;: tout part de la route des Pêches, à Fidjrossè.
+            </>
+          )}
           <EnSaisonOctobreRose enSaisonAuServeur={avecOctobreRose}>
             {" Et ce mois-ci, des sorties aux couleurs d'Octobre rose."}
           </EnSaisonOctobreRose>
@@ -746,6 +814,20 @@ export default async function PageProduits() {
           )}
         </div>
       </Section>
+
+      {/* ------------------------------------------------- Bike for All */}
+      {groupe && (
+        <Section id="bike-for-all" fond="craie" className="scroll-mt-[72px] py-20 sm:py-24">
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
+            <PhotoProduit
+              src="/images/produits/road-trip.jpg"
+              alt="Un groupe pose avec ses vélos sur la route des Pêches, au lever du jour"
+              cadrage="object-[50%_60%]"
+            />
+            <BikeForAll reglages={groupe.reglages} />
+          </div>
+        </Section>
+      )}
 
       {/* ---------------------------------------------------- Road trip */}
       <Section id="road-trip" fond="noir" className="scroll-mt-[72px] py-20 sm:py-24">

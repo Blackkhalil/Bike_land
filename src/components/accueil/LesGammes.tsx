@@ -40,7 +40,7 @@ function auChoix(nombre: number): string {
   return nombre === 1 ? "Un seul exemplaire" : `${nombre} vélos`;
 }
 
-export function LesGammes({ velos }: { velos: Velo[] }) {
+export function LesGammes({ velos, offresGroupe = false }: { velos: Velo[]; offresGroupe?: boolean }) {
   const durees = GRILLE_HORAIRE.CLASSIQUE.map((palier) => palier.heures);
 
   return (
@@ -61,7 +61,8 @@ export function LesGammes({ velos }: { velos: Velo[] }) {
           // Le road trip du samedi, pour le Premium et le Prestige. Le
           // Classique n'a pas de sortie encadrée en ligne (Gbashi bike se
           // commande sur WhatsApp) : ni ligne de sortie, ni cocos offertes.
-          const sortie = sortieEncadreeDe(gamme.code, velosEnEtatDe(gamme.code, velos));
+          // Offres de groupe ouvertes (décision 1) : plus de road trip par gamme.
+          const sortie = offresGroupe ? null : sortieEncadreeDe(gamme.code, velosEnEtatDe(gamme.code, velos));
 
           return (
             <article

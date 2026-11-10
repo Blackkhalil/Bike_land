@@ -14,6 +14,7 @@ import { GRILLE_HORAIRE } from "@/data/offres";
 import { depot } from "@/lib/db";
 import { accueil } from "@/lib/donnees-structurees";
 import { formatXof } from "@/lib/format";
+import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { photosDuCarrousel } from "@/lib/photos-carrousel";
 import { metadonneesPage } from "@/lib/seo";
 import { site } from "@/lib/site";
@@ -72,7 +73,7 @@ export default async function PageAccueil() {
       {/* Les trois gammes juste après l'aperçu du parc : le visiteur
           vient de voir des vélos, c'est le moment où il se demande
           pourquoi ils n'ont pas tous le même prix. */}
-      <LesGammes velos={velos} />
+      <LesGammes velos={velos} offresGroupe={Boolean(await offresGroupeEnVente())} />
       <ItinerairesApercu />
       <CommentCaMarche />
       <VeloEnVedette />

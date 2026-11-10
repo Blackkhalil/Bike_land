@@ -8,6 +8,7 @@ import { GAMME_LA_PLUS_PRISE, GAMMES, GRILLE_HORAIRE, sortieEncadreeDe, velosEnE
 import { depot } from "@/lib/db";
 import { filDAriane } from "@/lib/donnees-structurees";
 import { formatXof } from "@/lib/format";
+import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { metadonneesPage } from "@/lib/seo";
 
 /** L'heure de vélo la moins chère, toutes gammes confondues. */
@@ -40,7 +41,7 @@ export const revalidate = 60;
  * vélos.
  */
 export default async function PageCatalogue() {
-  const velos = await depot.listerVelos();
+  const [velos, groupe] = await Promise.all([depot.listerVelos(), offresGroupeEnVente()]);
   const gammes = GAMMES.map((gamme) => {
     const deLaGamme = velos.filter((velo) => velo.gamme === gamme.code);
     return {
@@ -51,7 +52,8 @@ export default async function PageCatalogue() {
       lePlusPris: gamme.code === GAMME_LA_PLUS_PRISE,
       // Le road trip du samedi, en groupe de dix : seulement pour une gamme
       // qui a assez de vélos en état (velosEnEtatDe).
-      sortie: sortieEncadreeDe(gamme.code, velosEnEtatDe(gamme.code, velos)),
+      // Offres de groupe ouvertes (décision 1) : plus de road trip par gamme.
+      sortie: groupe ? null : sortieEncadreeDe(gamme.code, velosEnEtatDe(gamme.code, velos)),
     };
   }).filter((gamme) => gamme.nombre > 0);
 

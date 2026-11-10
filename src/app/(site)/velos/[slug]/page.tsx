@@ -14,6 +14,7 @@ import { DonneesStructurees } from "@/components/DonneesStructurees";
 import { depot } from "@/lib/db";
 import { filDAriane, veloALouer } from "@/lib/donnees-structurees";
 import { formatXof } from "@/lib/format";
+import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { DESCRIPTION_MAX, libelleVelo, metadonneesPage, premierQuiTient, SUFFIXE_TITRE, TITRE_MAX } from "@/lib/seo";
 
 type Params = Promise<{ slug: string }>;
@@ -54,7 +55,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const heure = formatXof(GRILLE_HORAIRE[velo.gamme][0].prixXof);
   // Le road trip du samedi, pour un vélo Premium ou Prestige. Un Classique
   // n'a pas de sortie encadrée en ligne : Gbashi bike se commande sur WhatsApp.
-  const sortie = sortieEncadreeDe(velo.gamme, velosEnEtatDe(velo.gamme, await depot.listerVelos()));
+  // Offres de groupe ouvertes (décision 1) : plus de road trip par gamme à annoncer.
+  const sortie = (await offresGroupeEnVente())
+    ? null
+    : sortieEncadreeDe(velo.gamme, velosEnEtatDe(velo.gamme, await depot.listerVelos()));
   const prixSortie = sortie ? formatXof(sortie.prixMinimum) : "";
   const enSortie = sortie
     ? `, ou en ${sortie.nomDansLaPhrase} ${sortie.avantPrix} ${prixSortie} par personne`
@@ -93,7 +97,11 @@ export default async function PageVelo({ params }: { params: Params }) {
   const velo = await depot.trouverVeloParSlug(slug);
   if (!velo) notFound();
 
-  const [points, tousLesVelos] = await Promise.all([depot.listerPointsDeRetrait(), depot.listerVelos()]);
+  const [points, tousLesVelos, groupe] = await Promise.all([
+    depot.listerPointsDeRetrait(),
+    depot.listerVelos(),
+    offresGroupeEnVente(),
+  ]);
   // On ne réserve plus un vélo précis mais une gamme : la fiche montre le
   // vélo, et renvoie à la réservation de sa gamme.
   const gamme = GAMMES.find((entree) => entree.code === velo.gamme);
@@ -101,10 +109,12 @@ export default async function PageVelo({ params }: { params: Params }) {
   const lienGamme = `/reserver/${velo.gamme.toLowerCase()}`;
   const seulDeSaGamme = tousLesVelos.filter((autre) => autre.gamme === velo.gamme).length <= 1;
   const enEtatDeLaGamme = velosEnEtatDe(velo.gamme, tousLesVelos);
-  const sortie = sortieEncadreeDe(velo.gamme, enEtatDeLaGamme);
+  // Offres de groupe ouvertes (décision 1) : le Road trip en groupe roule sur
+  // toute la gamme, avec le chatbot ; plus de road trip par gamme à annoncer.
+  const sortie = groupe ? null : sortieEncadreeDe(velo.gamme, enEtatDeLaGamme);
   // « Le road trip du samedi se fait en vélo Premium ou Prestige » : sur la
   // fiche d'un Classique ; le groupe de dix, sur celle du Prestige.
-  const horsGamme = noteDepartsHorsGamme(velo.gamme, enEtatDeLaGamme);
+  const horsGamme = groupe ? null : noteDepartsHorsGamme(velo.gamme, enEtatDeLaGamme);
 
   const point = points.find((p) => p.id === velo.pointDeRetraitId);
   // Les autres vélos du parc, sans trier par catégorie : elle ne guide
