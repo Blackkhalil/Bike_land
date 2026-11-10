@@ -107,6 +107,7 @@ import {
   questionVelos,
   rappelCoordonnees,
   refusCreneauPlein,
+  sansCoupure,
   velosEnClair,
   type ChampCoordonnees,
 } from "./textes-chat";
@@ -741,9 +742,10 @@ function cartePaiementFigee(etat: EtatChat): Omit<MessageChat, "id">[] {
     lignes.push({ libelle: "Frais Mobile Money", valeur: `+ ${formatMontant(devis.commissionXof)}` });
   }
   if (typeof devis.montantADebiterXof === "number") {
-    const reseau = etat.moyen ? ` (${NOMS_MOYENS[etat.moyen]})` : "";
+    // Le numéro et le réseau ne se coupent pas en fin de ligne.
+    const reseau = etat.moyen ? ` (${sansCoupure(NOMS_MOYENS[etat.moyen])})` : "";
     lignes.push({
-      libelle: `Débité sur le ${etat.client.telephone.trim()}${reseau}`,
+      libelle: `Débité sur le ${sansCoupure(etat.client.telephone)}${reseau}`,
       valeur: formatMontant(devis.montantADebiterXof),
       fort: true,
     });

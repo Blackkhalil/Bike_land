@@ -76,6 +76,11 @@ export function insecables(texte: string): string {
   );
 }
 
+/** Un numéro de téléphone ou un nom court (« MTN MoMo ») qui ne se coupe jamais en fin de ligne. */
+export function sansCoupure(texte: string): string {
+  return texte.trim().replace(/ /g, INSECABLE);
+}
+
 /** « Samedi », « samedi » : la première lettre en capitale. */
 export function majuscule(texte: string): string {
   return texte.charAt(0).toUpperCase() + texte.slice(1);
