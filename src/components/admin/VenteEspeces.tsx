@@ -773,7 +773,12 @@ export function VenteEspeces({
   const formules: (readonly [CodeOffre, string, string])[] = [
     ["location-libre", "Location libre", "À l'heure, avec caution"],
     // Le samedi et le dimanche, en Premium ou Prestige, dix personnes au moins.
-    ["road-trip", "Road trip", `8 h, samedi et dimanche : ${gammesDuDepart("samedi-matin")}, ${CRENEAUX_ROAD_TRIP[0].personnesMin} personnes min.`],
+    // Offres de groupe ouvertes, le Road trip en groupe le remplace (décision 1).
+    ...(offresGroupe
+      ? []
+      : ([
+          ["road-trip", "Road trip", `8 h, samedi et dimanche : ${gammesDuDepart("samedi-matin")}, ${CRENEAUX_ROAD_TRIP[0].personnesMin} personnes min.`],
+        ] as const)),
     // Les sorties sur commande : au jour et à l'heure convenus avec le client.
     [
       "gbashi-bike",

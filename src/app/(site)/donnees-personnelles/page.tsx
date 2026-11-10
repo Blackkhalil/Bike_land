@@ -1,19 +1,28 @@
 import type { Metadata } from "next";
 
 import { ArticleLegal, PageLegale } from "@/components/PageLegale";
-import { agentIaActif } from "@/lib/offres-groupe/vitrine";
+import { agentIaActif, interrupteurOffresGroupeOuvert } from "@/lib/offres-groupe/vitrine";
 import { site } from "@/lib/site";
 import { metadonneesPage } from "@/lib/seo";
 
 /**
- * L'assistant d'IA n'est cité que s'il est activé (décision 21 : pas au
- * lancement). La clé se lit sur le serveur et n'en sort jamais. La page ne
- * lit pas la base : elle s'affiche toujours, base ou pas.
+ * Les offres de groupe (capture de la réduction, assistant de réservation)
+ * ne sont citées qu'interrupteur ouvert, comme dans les CGV : coupé, la page
+ * est celle d'avant, mot pour mot. Une base muette compte comme coupé : la
+ * page s'affiche toujours. L'assistant d'IA n'est cité que s'il est activé
+ * (décision 21 : pas au lancement) ; la clé se lit sur le serveur et n'en
+ * sort jamais.
  */
-export function generateMetadata(): Metadata {
+async function quoiCiter(): Promise<{ groupe: boolean; iaActive: boolean }> {
+  const groupe = await interrupteurOffresGroupeOuvert();
+  return { groupe, iaActive: groupe && agentIaActif() };
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { iaActive } = await quoiCiter();
   return metadonneesPage({
     titre: "Protection des données personnelles",
-    description: agentIaActif()
+    description: iaActive
       ? "Quelles données Bike Land collecte, pourquoi, combien de temps elles sont conservées, ce qui est confié " +
         "à un assistant d'IA et comment exercer vos droits auprès de l'APDP."
       : "Quelles données Bike Land collecte, pourquoi, combien de temps elles sont conservées et comment " +
@@ -32,12 +41,12 @@ export function generateMetadata(): Metadata {
 const CONSERVATION_ANTHROPIC_JOURS = 30;
 const CONSERVATION_CAPTURE_JOURS = 30;
 
-export default function PageDonneesPersonnelles() {
-  const iaActive = agentIaActif();
+export default async function PageDonneesPersonnelles() {
+  const { groupe, iaActive } = await quoiCiter();
   return (
     <PageLegale
       titre="Protection des données personnelles"
-      miseAJour="10 novembre 2026"
+      miseAJour={groupe ? "10 novembre 2026" : "14 octobre 2026"}
       sousTitre="Nous collectons le strict nécessaire à la location, et rien de plus. Cette page dit précisément quoi, pourquoi et pour combien de temps."
     >
       <ArticleLegal titre="Responsable du traitement">
@@ -72,13 +81,15 @@ export default function PageDonneesPersonnelles() {
           <li>
             <strong>Message libre</strong> : le texte que vous nous adressez, s&apos;il y a lieu.
           </li>
-          <li>
-            <strong>Capture d&apos;écran pour la réduction</strong> (Road trip en groupe) : si vous demandez
-            la réduction, la capture que vous envoyez, qui montre votre abonnement à l&apos;un de nos
-            comptes ou votre story. Finalité : vérifier que la réduction vous est due. Elle peut faire
-            apparaître votre nom d&apos;utilisateur et votre photo de profil : envoyez seulement l&apos;écran
-            demandé.
-          </li>
+          {groupe && (
+            <li>
+              <strong>Capture d&apos;écran pour la réduction</strong> (Road trip en groupe) : si vous demandez
+              la réduction, la capture que vous envoyez, qui montre votre abonnement à l&apos;un de nos
+              comptes ou votre story. Finalité : vérifier que la réduction vous est due. Elle peut faire
+              apparaître votre nom d&apos;utilisateur et votre photo de profil : envoyez seulement l&apos;écran
+              demandé.
+            </li>
+          )}
         </ul>
         <p>
           Aucun compte n&apos;est créé : votre fiche client se constitue à partir de votre
@@ -92,10 +103,12 @@ export default function PageDonneesPersonnelles() {
           le respect d&apos;obligations légales, notamment comptables, pour les factures ; votre
           consentement pour toute communication non liée à une location en cours.
         </p>
-        <p>
-          La capture d&apos;écran pour la réduction repose sur votre choix : rien ne vous oblige à
-          l&apos;envoyer, et sans elle vous réservez simplement au prix sans réduction.
-        </p>
+        {groupe && (
+          <p>
+            La capture d&apos;écran pour la réduction repose sur votre choix : rien ne vous oblige à
+            l&apos;envoyer, et sans elle vous réservez simplement au prix sans réduction.
+          </p>
+        )}
       </ArticleLegal>
 
       <ArticleLegal titre="Durée de conservation">
@@ -103,17 +116,19 @@ export default function PageDonneesPersonnelles() {
           <li>Données de réservation&nbsp;: 3&nbsp;ans après la fin de la location.</li>
           <li>Factures et pièces comptables&nbsp;: 10&nbsp;ans, conformément aux obligations fiscales.</li>
           <li>Messages du formulaire de contact&nbsp;: 12&nbsp;mois après la dernière réponse.</li>
-          <li>
-            Capture d&apos;écran pour la réduction&nbsp;: supprimée dès que la décision est prise, et au
-            plus tard {CONSERVATION_CAPTURE_JOURS}&nbsp;jours après son envoi
-            {iaActive ? (
-              <>
-                {" "}; {CONSERVATION_ANTHROPIC_JOURS}&nbsp;jours chez Anthropic (voir plus bas).
-              </>
-            ) : (
-              "."
-            )}
-          </li>
+          {groupe && (
+            <li>
+              Capture d&apos;écran pour la réduction&nbsp;: supprimée dès que la décision est prise, et au
+              plus tard {CONSERVATION_CAPTURE_JOURS}&nbsp;jours après son envoi
+              {iaActive ? (
+                <>
+                  {" "}; {CONSERVATION_ANTHROPIC_JOURS}&nbsp;jours chez Anthropic (voir plus bas).
+                </>
+              ) : (
+                "."
+              )}
+            </li>
+          )}
         </ul>
       </ArticleLegal>
 
@@ -122,16 +137,18 @@ export default function PageDonneesPersonnelles() {
           Les données ne sont ni vendues, ni louées, ni cédées. Elles sont accessibles à
           l&apos;équipe de {site.nom} et à nos sous-traitants techniques, strictement pour ce qui
           leur incombe : l&apos;hébergeur du site et de la base de données, l&apos;agrégateur de
-          paiement, le service d&apos;envoi des emails transactionnels
           {iaActive ? (
-            <> et, pour les offres de groupe, l&apos;assistant d&apos;intelligence artificielle décrit ci-dessous.</>
+            <>
+              paiement, le service d&apos;envoi des emails transactionnels et, pour les offres de groupe,
+              l&apos;assistant d&apos;intelligence artificielle décrit ci-dessous.
+            </>
           ) : (
-            "."
+            <>paiement et le service d&apos;envoi des emails transactionnels.</>
           )}
         </p>
       </ArticleLegal>
 
-      {!iaActive && (
+      {groupe && !iaActive && (
         <ArticleLegal titre="Capture d'écran de la réduction (offres de groupe)">
           <p>
             Si vous demandez la réduction du Road trip en groupe, votre capture d&apos;écran est vérifiée
@@ -241,11 +258,21 @@ export default function PageDonneesPersonnelles() {
           Quand vous fermez une annonce de saison, comme celle d&apos;Octobre rose, votre navigateur
           retient sur votre appareil que vous l&apos;avez vue, pour ne pas vous la remontrer. Le
           temps de votre visite, il retient aussi le produit que vous avez choisi, pour ouvrir la
-          réservation dessus. Si vous utilisez notre assistant de réservation de groupe, il garde
-          aussi vos réponses le temps de votre visite, coordonnées comprises, pour reprendre la
-          discussion si la page se recharge ; elles ne nous parviennent qu&apos;au moment où vous
-          demandez un prix ou réservez. Ces informations ne nous sont pas transmises autrement, et
-          vous pouvez les effacer en vidant les données du site dans votre navigateur.
+          réservation dessus.{" "}
+          {groupe ? (
+            <>
+              Si vous utilisez notre assistant de réservation de groupe, il garde aussi vos réponses le
+              temps de votre visite, coordonnées comprises, pour reprendre la discussion si la page se
+              recharge ; elles ne nous parviennent qu&apos;au moment où vous demandez un prix ou réservez.
+              Ces informations ne nous sont pas transmises autrement, et vous pouvez les effacer en
+              vidant les données du site dans votre navigateur.
+            </>
+          ) : (
+            <>
+              Ces informations ne nous sont pas transmises, et vous pouvez les effacer en vidant les
+              données du site dans votre navigateur.
+            </>
+          )}
         </p>
       </ArticleLegal>
     </PageLegale>

@@ -257,12 +257,15 @@ export function PanneauChatGroupe({
         </header>
 
         <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-6 pt-4">
-          <ol role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion" className="space-y-2.5">
-            {etat.messages.map((message) => (
-              <Bulle key={message.id} message={message} />
-            ))}
-          </ol>
-          <div ref={zoneReponses} tabIndex={-1} aria-label="Vos réponses" className="mt-4 outline-none">
+          {/* Le rôle « log » sur un conteneur : la liste garde son rôle de liste. */}
+          <div role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion">
+            <ol className="space-y-2.5">
+              {etat.messages.map((message) => (
+                <Bulle key={message.id} message={message} />
+              ))}
+            </ol>
+          </div>
+          <div ref={zoneReponses} tabIndex={-1} role="group" aria-label="Vos réponses" className="mt-4 outline-none">
             <ControlesChat etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
           </div>
         </div>

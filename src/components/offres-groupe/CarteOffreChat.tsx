@@ -60,9 +60,9 @@ export function CarteOffreChat({
         )}
         <div className="flex items-start justify-between gap-3">
           <dt className="min-w-0">
-            <span className="block">Frais de l&apos;opérateur Mobile Money</span>
+            <span className="block">Frais Mobile Money</span>
             <span className="block text-[0.76rem] leading-snug text-gris-cadre">
-              {formatPourcentage(TAUX_ENCAISSEMENT)}, ajoutés par l&apos;opérateur au moment de payer
+              {formatPourcentage(TAUX_ENCAISSEMENT)}, prélevés par l&apos;opérateur de paiement au moment de payer
             </span>
           </dt>
           <dd className="shrink-0 whitespace-nowrap tabular-nums">

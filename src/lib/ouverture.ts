@@ -100,6 +100,10 @@ export function offresGroupeActives(ouverture: OuvertureCreneaux): boolean {
   return ouverture.creneauxActifs.has(CODE_INTERRUPTEUR_OFFRES);
 }
 
+/** Le refus du road trip par gamme quand les offres de groupe sont ouvertes (décision 1). */
+export const MESSAGE_ROAD_TRIP_REMPLACE =
+  "Le road trip du week-end se réserve désormais en groupe, toutes gammes : ouvrez « Réserver en groupe » sur le site. Aucun montant n'a été prélevé.";
+
 /**
  * La réservation en ligne de Padel bike est-elle ouverte depuis le tableau
  * de bord ce jour-là ? Fermée sous son code (complet, terrain indisponible),
@@ -327,6 +331,10 @@ export function motifDeRefus(
   }
 
   if (demande.offre === "road-trip") {
+    // Décision 1 : offres de groupe ouvertes, le road trip par gamme laisse la
+    // place au Road trip en groupe, qui se réserve avec l'assistant du site.
+    // Vérifié ici aussi pour une page du tunnel restée ouverte avant la bascule.
+    if (offresGroupeActives(ouverture)) return MESSAGE_ROAD_TRIP_REMPLACE;
     const jourSemaine = new Date(`${demande.dateDebut}T12:00:00Z`).getUTCDay();
     const creneau = CRENEAUX_ROAD_TRIP.find(
       (c) => c.jourSemaine === jourSemaine && c.heureDebut === demande.heureDebut,

@@ -30,7 +30,7 @@ import {
 import { numeroDeFacture } from "@/lib/facture";
 import { formatDateAvecJour, resumeOffre } from "@/lib/format";
 import { lienDeSuivi } from "@/lib/lien-suivi";
-import { personnesMaxPour } from "@/lib/ouverture";
+import { lireOuverture, offresGroupeActives, personnesMaxPour } from "@/lib/ouverture";
 import { MESSAGES_REFUS } from "@/lib/parrainage";
 import { rafraichirSitePublic } from "@/lib/rafraichir";
 import { blocPadel } from "@/data/reglages";
@@ -142,6 +142,16 @@ type Preparation =
  * l'enregistrement, dans la transaction qui crée la réservation.
  */
 async function preparer(donnees: EntreeDevisComptoir): Promise<Preparation> {
+  // Décision 1 : offres de groupe ouvertes, le road trip par gamme laisse la
+  // place au Road trip en groupe, vendu au comptoir dans « Offres de groupe ».
+  if (donnees.offre === "road-trip" && offresGroupeActives(await lireOuverture())) {
+    return {
+      refus: NextResponse.json(
+        { erreur: "Le road trip par gamme est remplacé par le Road trip en groupe : vendez-le avec « Road trip en groupe »." },
+        { status: 409 },
+      ),
+    };
+  }
   if (donnees.offre === "octobre-rose") return preparerOctobreRose(donnees);
   if (donnees.offre === "padel-bike") return preparerPadel(donnees);
 

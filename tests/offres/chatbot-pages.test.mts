@@ -38,7 +38,7 @@ const texte = (html: string) =>
     .replace(ESPACES_INSECABLES, " ")
     .replace(/\s+/g, " ");
 const rendreCgv = async () => texte(renderToStaticMarkup(await cgv.default()));
-const rendreDonnees = () => texte(renderToStaticMarkup(donnees.default()));
+const rendreDonnees = async () => texte(renderToStaticMarkup(await donnees.default()));
 
 /* ------------------------------------------------ La bulle et l'interrupteur */
 
@@ -116,23 +116,34 @@ verifier("CGV : interrupteur coupé, description d'avant", String((await cgv.gen
 
 /* ------------------------------------------------ Les données personnelles */
 
-page = rendreDonnees();
-verifier("données personnelles, agent IA pas activé : ni Anthropic ni IA", [page.includes("Anthropic"), page.includes("intelligence artificielle"), page.includes("assistant d'IA")], [false, false, false]);
+page = await rendreDonnees();
+verifier(
+  "données personnelles, interrupteur coupé : la page d'avant, sans capture ni assistant",
+  [page.includes("Capture d'écran"), page.includes("assistant de réservation de groupe"), page.includes("14 octobre 2026"), page.includes("paiement et le service d'envoi des emails transactionnels.")],
+  [false, false, true, true],
+);
+process.env.ANTHROPIC_API_KEY = "cle-de-test-factice";
+verifier("interrupteur coupé, même avec la clé IA : pas un mot d'IA", (await rendreDonnees()).includes("Anthropic"), false);
+delete process.env.ANTHROPIC_API_KEY;
+await depot.reglerCreneau(CODE_INTERRUPTEUR_OFFRES, true);
+page = await rendreDonnees();
+verifier("données personnelles, interrupteur ouvert, agent IA pas activé : ni Anthropic ni IA", [page.includes("Anthropic"), page.includes("intelligence artificielle"), page.includes("assistant d'IA")], [false, false, false]);
 verifier("la capture vérifiée à la main, stockage privé, supprimée dès la décision, 30 jours au plus", [
   page.includes("vérifiée à la main par l'équipe de Bike Land"),
   page.includes("espace de stockage privé"),
   page.includes("supprimée dès que la décision est prise, et au plus tard 30 jours après son envoi"),
 ], [true, true, true]);
 verifier("la discussion du chatbot gardée dans le navigateur, le temps de la visite", page.includes("le temps de votre visite, coordonnées comprises"), true);
-verifier("description sans IA", String(donnees.generateMetadata().description).includes("IA"), false);
+verifier("description sans IA", String((await donnees.generateMetadata()).description).includes("IA"), false);
 process.env.ANTHROPIC_API_KEY = "cle-de-test-factice";
-page = rendreDonnees();
+page = await rendreDonnees();
 verifier("données personnelles, agent IA activé : le paragraphe Anthropic revient", [page.includes("Anthropic"), page.includes("Assistant d'intelligence artificielle (offres de groupe)")], [true, true]);
-verifier("description avec l'IA", String(donnees.generateMetadata().description).includes("assistant d'IA"), true);
+verifier("description avec l'IA", String((await donnees.generateMetadata()).description).includes("assistant d'IA"), true);
 verifier("la clé n'apparaît jamais dans la page", page.includes("cle-de-test-factice"), false);
 delete process.env.ANTHROPIC_API_KEY;
 
-const tirets = [await rendreCgv(), rendreDonnees()].filter((x) => /—|–/.test(x));
+const tirets = [await rendreCgv(), await rendreDonnees()].filter((x) => /—|–/.test(x));
+await depot.reglerCreneau(CODE_INTERRUPTEUR_OFFRES, false);
 verifier("aucun tiret long dans les pages légales", tirets.length, 0);
 
 if (echecs) {

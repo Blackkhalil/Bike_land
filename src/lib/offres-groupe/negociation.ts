@@ -397,9 +397,9 @@ export function alternativesDuRefus(
     case "PARC":
     case "STOCK_GAMME": {
       const maximum = refus.maximum ?? 0;
-      if (refus.code === "STOCK_GAMME" || offre === "gbashi-groupe") {
+      if (refus.code === "STOCK_GAMME" || (offre === "gbashi-groupe" && maximum >= minimum)) {
         alternatives.push({ cle: "velos", libelle: "Changer la répartition des vélos", changement: { velos: null } });
-      } else if (maximum >= minimum && choix.personnes !== null && maximum < choix.personnes) {
+      } else if (offre !== "gbashi-groupe" && maximum >= minimum && choix.personnes !== null && maximum < choix.personnes) {
         // Le serveur a compté ces vélos libres sur ce créneau : le moteur refait le prix pour eux.
         alternatives.push(
           proposition(
@@ -413,19 +413,27 @@ export function alternativesDuRefus(
           ),
         );
       }
+      let prochainPropose = false;
       if (prochainCreneau) {
         const changement: Partial<Choix> =
           offre === "bike-for-all" ? { date: prochainCreneau.date, depart: prochainCreneau.depart } : { date: prochainCreneau.date };
         const issue = evaluer({ ...choix, ...changement }, faits, maintenant);
+        const quand =
+          offre === "bike-for-all"
+            ? `${majuscule(jourEnClair(prochainCreneau.date))} à ${heureEnClair(prochainCreneau.depart)}`
+            : majuscule(jourEnClair(prochainCreneau.date));
         if (issue?.ok) {
-          const quand =
-            offre === "bike-for-all"
-              ? `${majuscule(jourEnClair(prochainCreneau.date))} à ${heureEnClair(prochainCreneau.depart)}`
-              : majuscule(jourEnClair(prochainCreneau.date));
           alternatives.push({ cle: "prochain-creneau", libelle: avecTotal(quand, issue), totalXof: issue.resultat.totalXof, changement });
+          prochainPropose = true;
+        } else if (offre === "gbashi-groupe" && choix.velos === null) {
+          // Gbashi Bike, vélos pas encore répartis : le jour seul, la répartition suit.
+          alternatives.push({ cle: "prochain-creneau", libelle: quand, changement });
+          prochainPropose = true;
         }
       }
-      alternatives.push(...autresJours(choix, faits, maintenant).filter((jour) => jour.changement.date !== prochainCreneau?.date));
+      alternatives.push(
+        ...autresJours(choix, faits, maintenant).filter((jour) => !prochainPropose || jour.changement.date !== prochainCreneau?.date),
+      );
       alternatives.push(autreDate());
       break;
     }
@@ -554,7 +562,8 @@ export function variantesMoinsCheres(choix: Choix, faits: FaitsChat, maintenant:
     if (choix.mode === "budget" && choix.budgetXof !== null && choix.personnes !== null) {
       const minimum = budgetMinimumBikeForAllXof(choix.personnes, reglages);
       const rond = Math.floor((choix.budgetXof - 1) / 5000) * 5000;
-      for (const budgetXof of [rond, minimum]) {
+      // Le montant rond peut valoir le minimum (10 personnes, 10 000 F) : une seule variante.
+      for (const budgetXof of new Set([rond, minimum])) {
         if (budgetXof >= minimum && budgetXof < choix.budgetXof) {
           candidates.push({
             cle: `budget-${budgetXof}`,

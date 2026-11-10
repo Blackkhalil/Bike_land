@@ -232,6 +232,8 @@ export interface ReservationCreee {
   statutPaiement: "REUSSI" | "EN_ATTENTE" | "ECHOUE";
   suivi: SuiviPaiementChat | null;
   messagePaiement?: string;
+  /** L'instant où la demande de paiement est partie : l'attente expire 30 minutes après. */
+  demandeLe?: number;
 }
 
 export interface EtatChat {
@@ -339,7 +341,12 @@ export type ActionChat = Horodatee<
   | { type: "reservation-echec" }
   | { type: "paiement-confirme" }
   | { type: "paiement-echoue"; message: string }
+  | { type: "paiement-expire" }
 >;
+
+/** L'attente du paiement a dépassé la garde des vélos. */
+const MESSAGE_PAIEMENT_EXPIRE =
+  "La demande de paiement a expiré. Votre lien de suivi permet de la relancer, si les vélos sont encore libres.";
 
 /* ------------------------------------------------------------ Petits outils */
 
@@ -490,7 +497,12 @@ function versProposition(etat: EtatChat, precedentXof: number | null, faits: Fai
  * connu (un jour sans départ, un groupe trop grand, un budget trop petit),
  * puis le chatbot pose la question suivante, ou présente l'offre.
  */
-function continuer(etat: EtatChat, faits: FaitsChat, maintenant: number, precedentXof: number | null = null): EtatChat {
+function continuer(etatRecu: EtatChat, faits: FaitsChat, maintenant: number, precedentXof: number | null = null): EtatChat {
+  // Réduction du road trip réglée à 0 % : il n'y a rien à demander au client.
+  const etat: EtatChat =
+    etatRecu.choix.offre === "road-trip-groupe" && etatRecu.choix.reduction.etat === "a-demander" && faits.reglages.roadTrip.reduction <= 0
+      ? { ...etatRecu, choix: { ...etatRecu.choix, reduction: { etat: "sans" } } }
+      : etatRecu;
   const issue = evaluer(etat.choix, faits, maintenant, parcConnu(etat, faits));
   if (issue && !issue.ok) return versRefus(etat, issue.refus, null, faits, maintenant);
   const manque = etapeManquante(etat.choix);
@@ -759,6 +771,14 @@ export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): E
       const reservation = etat.reservation;
       if (!reservation) return etat;
       return { ...ajouter(etat, bot(messageConfirmation(reservation, etat.client), "succes")), etape: "confirmee" };
+    }
+
+    case "paiement-expire": {
+      if (etat.etape !== "attente") return etat;
+      return {
+        ...ajouter(etat, bot(MESSAGE_PAIEMENT_EXPIRE, "alerte")),
+        etape: "echec",
+      };
     }
 
     case "paiement-echoue": {
@@ -1141,8 +1161,16 @@ function recevoirDevis(
     capacite: { offre, date: demande.date, velosLibres: reponse.capacite.velosLibres, parGamme: reponse.capacite.parGamme },
   };
 
-  // À l'étape des vélos, seul compte ce qu'il reste de chaque gamme.
-  if (etat.etape === "velos") return suivant;
+  // À l'étape des vélos, seul compte ce qu'il reste de chaque gamme : le refus
+  // de la demande provisoire (tout en Classique) est ignoré. Sauf s'il ne reste
+  // même plus le minimum du groupe ce jour-là : le refus du serveur et son
+  // créneau libre le plus proche s'appliquent alors, comme pour les autres offres.
+  if (etat.etape === "velos") {
+    if (!reponse.issue.ok && reponse.capacite.velosLibres < faits.reglages.gbashi.personnesMin) {
+      return versRefus(suivant, reponse.issue.refus, reponse.prochainCreneau, faits, maintenant);
+    }
+    return suivant;
+  }
 
   // La capture du road trip : le serveur dit où elle en est vraiment.
   const reduction = suivant.choix.reduction;
@@ -1246,7 +1274,7 @@ function recevoirReservation(etat: EtatChat, statut: number, corps: unknown, fai
       if (reservation.statutPaiement === "EN_ATTENTE" && reservation.suivi && reservation.token) {
         return {
           ...ajouter(
-            suivant,
+            { ...suivant, reservation: { ...reservation, demandeLe: maintenant } },
             bot(
               `La demande de paiement de ${formatMontant(reservation.montantADebiterXof)} est partie sur le ${reservation.suivi.telephone}. ` +
                 `Validez-la avec votre code secret. Vos vélos sont gardés ${EXPIRATION_PANIER_MINUTES} minutes.`,
@@ -1508,12 +1536,12 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
       etape: "payer",
     };
   }
-  // Une attente de paiement plus vieille que la garde des vélos.
-  if (relu.etape === "attente" && maintenant - brut.misAJourLe > EXPIRATION_PANIER_MINUTES * 60_000) {
-    relu = {
-      ...ajouter(relu, bot("La demande de paiement a expiré. Votre lien de suivi permet de la relancer, si les vélos sont encore libres.", "alerte")),
-      etape: "echec",
-    };
+  // Une attente de paiement plus vieille que la garde des vélos, comptée
+  // depuis la demande (pas depuis la dernière sauvegarde, qu'une fermeture
+  // du panneau rafraîchit).
+  const demandeLe = relu.reservation?.demandeLe ?? brut.misAJourLe;
+  if (relu.etape === "attente" && maintenant - demandeLe > EXPIRATION_PANIER_MINUTES * 60_000) {
+    relu = { ...ajouter(relu, bot(MESSAGE_PAIEMENT_EXPIRE, "alerte")), etape: "echec" };
   }
   return { etat: relu, ouvert: brut.ouvert === true };
 }

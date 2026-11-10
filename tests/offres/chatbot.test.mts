@@ -365,6 +365,26 @@ verifier("ce qu'il reste ce dimanche, confirmé par le serveur ; le refus provis
   "velos",
 ]);
 verifier("répartition proposée : les moins chers d'abord, dans le stock", n.repartitionParDefaut(5, { CLASSIQUE: 3, PREMIUM: 6, PRESTIGE: 2 }, FAITS), { CLASSIQUE: 3, PREMIUM: 2, PRESTIGE: 0 });
+{
+  // Dimanche presque plein : moins de vélos libres que le minimum du groupe.
+  let plein = suite([
+    { type: "choisir-offre", offre: "gbashi-groupe" },
+    { type: "choisir-personnes", personnes: 6 },
+    { type: "choisir-date", date: DIMANCHE },
+  ]);
+  plein = devisRecu(
+    plein,
+    reponseDevis(m.calculerGbashi({ velos: { CLASSIQUE: 6 } }, R, { ...ctx(DIMANCHE, LUNDI_10H, 3), stockParGamme: { CLASSIQUE: 2, PREMIUM: 1, PRESTIGE: 0 } }), {
+      capacite: { velosLibres: 3, parGamme: { CLASSIQUE: 2, PREMIUM: 1, PRESTIGE: 0 } },
+      prochainCreneau: { date: "2026-11-22", depart: "07:00" },
+    }),
+  );
+  verifier(
+    "3 vélos libres pour un minimum de 5 : le refus du serveur, et le dimanche suivant proposé",
+    [plein.etape, plein.alternatives.some((a: { libelle: string }) => /22 novembre/.test(a.libelle))],
+    ["refus", true],
+  );
+}
 g = agir(g, { type: "choisir-velos", velos: { CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 } });
 verifier("les vélos choisis, puis les gâteaux", [g.etape, g.choix.personnes, derniers(g, 2).split(" | ")[0]], ["gateaux", 5, "2 Classique, 2 Premium et 1 Prestige"]);
 g = agir(g, { type: "choisir-gateaux", gateauxParPersonne: 0 });

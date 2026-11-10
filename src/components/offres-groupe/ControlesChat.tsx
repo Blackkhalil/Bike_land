@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import { Bouton, classesBouton } from "@/components/Bouton";
 import { SuiviPaiementMomo } from "@/components/reservation/SuiviPaiementMomo";
+import { EXPIRATION_PANIER_MINUTES } from "@/data/offres";
 import { ajouterJours, type DateISO } from "@/lib/dates";
 import { formatMontant, heureEnClair, NOMS_GAMMES, ORDRE_GAMMES, type Coco, type CodeOffreGroupe, type GammeVelo } from "@/lib/offres";
 import { schemaChampsPreuve, TAILLE_MAX_CAPTURE_OCTETS, TYPES_CAPTURE } from "@/lib/offres-groupe/api";
@@ -323,6 +324,10 @@ export function ControlesChat({
       const reservation = etat.reservation;
       if (!reservation?.suivi || !reservation.token) return null;
       return (
+        <>
+        {typeof reservation.demandeLe === "number" && (
+          <MinuteurExpiration demandeLe={reservation.demandeLe} onExpire={() => envoyer({ type: "paiement-expire" })} />
+        )}
         <SuiviPaiementMomo
           token={reservation.token}
           paiementId={reservation.suivi.paiementId}
@@ -334,6 +339,7 @@ export function ControlesChat({
           onConfirme={() => envoyer({ type: "paiement-confirme" })}
           onEchec={(message) => envoyer({ type: "paiement-echoue", message })}
         />
+        </>
       );
     }
 
@@ -364,6 +370,16 @@ export function ControlesChat({
     case "ferme":
       return <LienWhatsApp href={whatsApp} />;
   }
+}
+
+/** Rien à l'écran : prévient la machine quand l'attente du paiement dépasse la garde des vélos. */
+function MinuteurExpiration({ demandeLe, onExpire }: { demandeLe: number; onExpire: () => void }) {
+  useEffect(() => {
+    const reste = demandeLe + EXPIRATION_PANIER_MINUTES * 60_000 - Date.now();
+    const minuteur = setTimeout(onExpire, Math.max(0, reste));
+    return () => clearTimeout(minuteur);
+  }, [demandeLe, onExpire]);
+  return null;
 }
 
 function LienWhatsApp({ href }: { href: string }) {
@@ -942,7 +958,7 @@ function Paiement({
             <dd className="shrink-0 whitespace-nowrap tabular-nums">{formatMontant(offre.resultat.totalXof)}</dd>
           </div>
           <div className="flex items-baseline justify-between gap-3">
-            <dt>Frais de l&apos;opérateur Mobile Money</dt>
+            <dt>Frais Mobile Money (opérateur de paiement)</dt>
             <dd className="shrink-0 whitespace-nowrap tabular-nums">
               {confirme && typeof offre.commissionXof === "number" ? `+ ${formatMontant(offre.commissionXof)}` : "en calcul…"}
             </dd>
@@ -984,8 +1000,16 @@ function Paiement({
             ? `Payer ${formatMontant(montant)}`
             : confirme
               ? "Payer"
-              : "Je vérifie le prix…"}
+              : etat.devisEnEchec !== null
+                ? "Prix à confirmer"
+                : "Je vérifie le prix…"}
       </Bouton>
+      {/* Le prix n'a pas pu être vérifié (réseau, panne) : on peut le redemander ici. */}
+      {!confirme && etat.devisEnEchec !== null && (
+        <button type="button" className={PUCE_CENTREE} onClick={() => actions.envoyer({ type: "relancer-devis" })}>
+          Réessayer
+        </button>
+      )}
       {!etat.cgv && <p className={AIDE}>Cochez les conditions générales pour payer.</p>}
     </div>
   );
