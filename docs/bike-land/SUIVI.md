@@ -12,9 +12,9 @@ responsable notée ici.
 |---|---|
 | 0. Audit et plan | Terminée le 9 novembre 2026 |
 | Feu vert 1 | Donné le 9 novembre 2026 |
-| 1. Construction | Lots 0 à 5 fusionnés (branche d'intégration) : calculatrice, administration, disponibilité à la minute, chatbot à boutons, réservation et paiement, agent IA inactif. Relectures appliquées. Reste : relecture du chatbot à appliquer |
-| 2. Tests | À venir |
-| 3. Démo, feu vert 2 | À venir |
+| 1. Construction | Terminée le 10 novembre 2026 : lots 0 à 5 fusionnés et relus (calculatrice, administration, disponibilité à la minute, chatbot à boutons, réservation et paiement, agent IA inactif), toutes les relectures appliquées |
+| 2. Tests | 24 suites, 1 327 contrôles verts ; essai de concurrence sur la base de test (6 manches justes) ; parcours complet du chatbot essayé dans un navigateur (téléphone, 375 px), du choix de l'offre à la confirmation |
+| 3. Démo, feu vert 2 | En cours : aperçu protégé envoyé au responsable le 10 novembre (base de test, interrupteur allumé) |
 | 4. Mise en ligne | À venir |
 | 5. Clôture | À venir |
 
