@@ -12,7 +12,7 @@ responsable notée ici.
 |---|---|
 | 0. Audit et plan | Terminée le 9 novembre 2026 |
 | Feu vert 1 | Donné le 9 novembre 2026 |
-| 1. Construction | En cours : lots 0, 1 (calculatrice), 2 (administration) et 5a (agent IA, inactif) fusionnés ; lots 3 (disponibilité), 4 (chatbot) et 5b (réservation et paiement) en construction |
+| 1. Construction | Lots 0 à 5 fusionnés (branche d'intégration) : calculatrice, administration, disponibilité à la minute, chatbot à boutons, réservation et paiement, agent IA inactif. Relectures appliquées. Reste : relecture du chatbot à appliquer |
 | 2. Tests | À venir |
 | 3. Démo, feu vert 2 | À venir |
 | 4. Mise en ligne | À venir |
@@ -132,7 +132,8 @@ demande après le vendredi 19 h pour le week-end, refusée.
 |---|---|
 | Production | Branche `Projet-Bikeland`, projets Vercel `bike-land` (site) et `bikeland-gestion-rsfaj` (gestion), base Supabase de production. |
 | Test | Projet Supabase `bike-land-staging` (id `ypyiwoppmjfrmicaqazo`, Londres) : schéma de production, protection RLS sur toutes les tables, 18 vélos fictifs. |
-| Branche de travail | `feature/offres-groupe`, locale seulement. Pas de push tant que les aperçus Vercel reçoivent la base de production : il faut d'abord donner aux aperçus de cette branche la base de test (la clé SasPay reste la même, décision 17). |
+| Branche de travail | `feature/offres-groupe`, poussée sur GitHub le 10 novembre une fois les aperçus Vercel de cette branche branchés sur la base de test (DATABASE_URL propre à la branche, sur les deux projets). La clé SasPay reste la vraie (décision 17) : un paiement validé sur un aperçu débite vraiment. |
+| Base de test, état | SQL des offres de groupe appliqué (`offres-groupe.sql` rejoué, `offres-groupe-preuves.sql`), interrupteur des offres de groupe allumé pour la démo, réglages par défaut (ceux du tableur). |
 
 ## Plan de retour arrière
 
@@ -191,3 +192,21 @@ avant le suivant.
 - 9 novembre 2026 : lots 1 (moteur de calcul) et 2 (données et administration)
   lancés en parallèle, chacun dans son worktree, suivis d'une relecture
   indépendante en lecture seule.
+- 10 novembre 2026 : lots 3 (disponibilité à la minute), 4 (chatbot à boutons,
+  décisions 22 et 23) et 5b (devis, réservation, paiement, preuves) construits
+  en parallèle, relus chacun en lecture seule, fusionnés sur la branche
+  d'intégration. Relectures appliquées : vélo à l'atelier et paiement tardif,
+  preuve reprise à une demande expirée, vente au comptoir renvoyée, vélos
+  attribués au plus serré, vélos repris remplacés au paiement tardif (décision
+  6), remboursement décidé jamais défait, devis limité par adresse, captures
+  plus légères (4 Mo à l'envoi, 1 Mo gardé), lien de suivi envoyé même si le
+  paiement ne part pas ; lot 1 : premier départ proposé qui rentre avant
+  l'heure limite ; lot 2 : prénom visible à l'interrupteur, pourcentages,
+  bandeau. Tests : 24 suites, 1 324 contrôles, tous verts.
+- 10 novembre 2026 : base de test. SQL appliqué (additif, rejouable). Essai de
+  concurrence sur la vraie base (`outils/test-concurrence-groupe.ts`) : 6
+  manches justes (deux groupes pour les derniers vélos, tout le parc, dernier
+  Prestige, deux paiements tardifs simultanés, paiement tardif croisé avec une
+  demande, vélo indisponible remplacé), croisements réels rejoués par
+  PostgreSQL, aucun vélo pris deux fois. Un passage sur six s'est arrêté sur
+  une erreur non affichée, sans contrôle faux : à surveiller.
