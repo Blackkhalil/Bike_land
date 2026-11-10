@@ -56,6 +56,8 @@ const FORMAT_JOUR_COURT = new Intl.DateTimeFormat("fr-FR", {
 
 /** Le liant invisible (U+2060, « word joiner ») : aucune coupure de ligne à cet endroit. */
 const LIANT = String.fromCharCode(0x2060);
+/** L'espace insécable (U+00A0) : les deux mots qu'elle sépare restent sur la même ligne. */
+const INSECABLE = String.fromCharCode(0xa0);
 
 /**
  * La typographie française à l'affichage : une espace insécable avant « ? »,
@@ -89,7 +91,7 @@ export function jourCourt(date: DateISO): string {
 
 /** « 1 personne », « 12 personnes », le nombre jamais séparé de son mot (espace insécable). */
 export function personnesEnClair(nombre: number): string {
-  return `${nombre} personne${nombre > 1 ? "s" : ""}`;
+  return `${nombre}${INSECABLE}personne${nombre > 1 ? "s" : ""}`;
 }
 
 /** « petit coco », « grand coco », « sans coco ». */

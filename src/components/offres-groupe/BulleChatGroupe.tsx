@@ -302,7 +302,7 @@ function Invitation({
     >
       <button type="button" onClick={onOuvrir} className="min-h-11 rounded-l-2xl py-2 pl-4 pr-1 text-left text-[0.9rem] font-semibold leading-tight">
         {/* Espace insécable : le « ? » ne part jamais seul à la ligne. */}
-        Réserver en groupe{" "}?
+        Réserver en groupe&nbsp;?
       </button>
       <button
         type="button"

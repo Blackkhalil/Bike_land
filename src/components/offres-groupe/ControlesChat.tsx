@@ -804,8 +804,9 @@ function ChoixVelos({
             <span className="min-w-0">
               <span className="block font-semibold">{NOMS_GAMMES[gamme]}</span>
               <span className="block text-[0.76rem] leading-snug text-gris-cadre">
+                {formatMontant(prix[gamme])} par personne,{" "}
                 {/* Le nombre restant ne part jamais seul à la ligne (espace insécable). */}
-                {formatMontant(prix[gamme])} par personne, {stock[gamme] > 0 ? `il en reste ${stock[gamme]}` : "plus de vélo libre"}
+                {stock[gamme] > 0 ? <>il en reste&nbsp;{stock[gamme]}</> : "plus de vélo libre"}
               </span>
             </span>
             <span className="flex shrink-0 items-center gap-1">
