@@ -186,8 +186,7 @@ export function PanneauChatGroupe({
     const zone = defilement.current;
     if (!zone) return;
     const derniere = zone.querySelector<HTMLElement>("[data-bulle]:last-of-type");
-    // Assez de marge pour que la pastille du jour, collée en haut, ne cache pas le début de la bulle.
-    const haut = derniere ? Math.max(0, derniere.offsetTop - 40) : 0;
+    const haut = derniere ? Math.max(0, derniere.offsetTop - 12) : 0;
     const doux = !premierDefilement.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     premierDefilement.current = false;
     zone.scrollTo({ top: haut, behavior: doux ? "smooth" : "auto" });

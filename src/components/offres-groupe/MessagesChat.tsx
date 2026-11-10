@@ -7,13 +7,12 @@ const PASTILLE_JOUR =
   "rounded-full bg-white/90 px-3 py-1 text-[0.72rem] font-semibold text-gris-cadre shadow-[0_1px_0.5px_rgba(14,14,14,0.12)]";
 
 /**
- * Le jour de la discussion (« Aujourd'hui »), collé en haut de la zone qui
- * défile, comme sur un téléphone : il reste visible quand on remonte ou
- * descend dans les bulles. Décoratif pour les lecteurs d'écran.
+ * Le jour de la discussion (« Aujourd'hui »), en haut des bulles, comme sur
+ * un téléphone. Décoratif pour les lecteurs d'écran.
  */
 export function JourDeLaDiscussion({ messages, maintenant }: { messages: MessageChat[]; maintenant: number }) {
   return (
-    <div aria-hidden="true" className="pointer-events-none sticky top-0 z-10 -mt-1 mb-2 flex justify-center">
+    <div aria-hidden="true" className="mb-3 flex justify-center">
       <span className={PASTILLE_JOUR}>{jourDuMessage(messages[0]?.a, maintenant)}</span>
     </div>
   );

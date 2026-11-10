@@ -52,7 +52,7 @@ export function CompositeurChat({
       )}
       <div className="flex items-center gap-2">
         <div
-          className={`flex min-h-11 min-w-0 flex-1 items-center rounded-full border px-4 transition-colors ${
+          className={`flex min-h-11 min-w-0 flex-1 items-center rounded-full border px-3.5 transition-colors ${
             mode
               ? "border-noir-piste/25 bg-white focus-within:border-noir-piste focus-within:ring-1 focus-within:ring-noir-piste"
               : "border-transparent bg-craie"
@@ -83,7 +83,7 @@ export function CompositeurChat({
               if (mode) setSaisie({ cle: mode.cle, texte: evenement.target.value });
             }}
             // 16 px pour le texte tapé (sinon l'iPhone agrandit la page) ; l'indication, plus petite, tient dès 320 px.
-            className="saisie-chat h-11 w-full min-w-0 text-ellipsis bg-transparent text-[1rem] text-noir-piste placeholder:text-[0.875rem] placeholder:text-gris-cadre disabled:cursor-not-allowed"
+            className="saisie-chat h-11 w-full min-w-0 text-ellipsis bg-transparent text-[1rem] text-noir-piste placeholder:text-[0.8125rem] placeholder:text-gris-cadre disabled:cursor-not-allowed min-[360px]:placeholder:text-[0.875rem]"
           />
         </div>
         <button

@@ -900,7 +900,7 @@ function Paiement({ etat, faits, maintenant, actions }: ProprietesEtape) {
           </div>
           <div className="flex items-baseline justify-between gap-3 border-t border-noir-piste/10 pt-1.5 font-semibold">
             <dt>
-              Débité sur le {etat.client.telephone}
+              Débité sur le <span className="whitespace-nowrap">{etat.client.telephone}</span>
               {etat.moyen ? ` (${NOMS_MOYENS[etat.moyen]})` : ""}
             </dt>
             <dd className="shrink-0 whitespace-nowrap font-display text-[1.15rem] tabular-nums">
