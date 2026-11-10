@@ -509,6 +509,23 @@ verifier(
   "Plus aucune place ce jour-là : tous les vélos de la sortie sont pris.",
 );
 
+console.log("\n— Une ancienne location sur plusieurs jours");
+// Le site ne vend plus qu'à la journée, mais le dépôt en garde peut-être :
+// mêmes heures chaque jour de la période, comme `creneauxSeChevauchent`.
+const mercredi = ajouterJours(S1, 4);
+const vendredi = ajouterJours(mercredi, 2);
+const veloLong = parcS1.velos[17].id;
+const longue = (await location(veloLong, mercredi, 9, { dateFin: vendredi, dureeHeures: 3, moyenPaiement: "ESPECES", encaissement: { par: "Essai" } })).reservation as Resa;
+verifier("du mercredi au vendredi, de 9 h à 12 h", [longue.dateDebut, longue.dateFin, longue.heureDebut, longue.heureFin], [mercredi, vendredi, 9, 12]);
+verifier(
+  "le parc la compte chaque jour de la période, de 9 h à 12 h, et pas la veille",
+  [(await parcDu(ajouterJours(mercredi, 1))).occupations, (await parcDu(vendredi)).occupations, (await parcDu(ajouterJours(mercredi, -1))).occupations],
+  [[{ veloId: veloLong, debutMinute: 540, finMinute: 720 }], [{ veloId: veloLong, debutMinute: 540, finMinute: 720 }], []],
+);
+const jeudi18 = await erreurDe(depot.creerReservationGroupe(groupe(ajouterJours(mercredi, 1), 600, 630, 18)));
+verifier("un groupe de 18 le jeudi à 10 h : refusé, 17 vélos libres", [jeudi18?.name, jeudi18?.velosLibres], ["CapaciteInsuffisanteError", 17]);
+verifier("le même à 12 h, le vélo rendu : accepté", ((await depot.creerReservationGroupe(groupe(ajouterJours(mercredi, 1), 720, 750, 18))).reservation as Resa).lignes.length, 18);
+
 console.log("\n— Vente au comptoir");
 const comptoir = (autre: Record<string, unknown>) => depot.creerReservationGroupe(groupe(S7, 840, 870, 4, { moyenPaiement: "ESPECES", ...autre }));
 const vente = (await comptoir({ encaissement: { par: "Koffi", reference: "CPT-ESSAI-1" } })).reservation as Resa;
