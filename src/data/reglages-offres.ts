@@ -79,7 +79,7 @@ export interface ReglagesOffres {
      * prix, pas aux frais.
      */
     prixPersonneXof: number;
-    /** Réduction possible (0,04 = 4 %), une seule par groupe. */
+    /** Réduction possible (0,04 = 4 %), une seule fois par client (décision 25). */
     reduction: number;
     personnesMin: number;
     cocosGrandsParPersonne: number;

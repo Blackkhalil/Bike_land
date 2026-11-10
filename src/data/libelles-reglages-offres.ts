@@ -104,7 +104,7 @@ export const RUBRIQUES_REGLAGES_OFFRES: RubriqueReglages[] = [
     description: "La balade de groupe du week-end, prix fixe par personne, toutes gammes.",
     champs: [
       { chemin: "roadTrip.prixPersonneXof", libelle: "Prix par personne, avant les frais de paiement", unite: "F" },
-      { chemin: "roadTrip.reduction", libelle: "Réduction (abonné à nos réseaux)", unite: "%", aide: "Une seule par groupe, sur le prix avant les frais." },
+      { chemin: "roadTrip.reduction", libelle: "Réduction (abonné à nos réseaux)", unite: "%", aide: "Une seule fois par client (même numéro ou même email), sur le prix avant les frais." },
       { chemin: "roadTrip.personnesMin", libelle: "Personnes au minimum", unite: "personnes" },
       {
         chemin: "roadTrip.cocosGrandsParPersonne",

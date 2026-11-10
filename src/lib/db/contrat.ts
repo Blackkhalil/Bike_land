@@ -752,7 +752,8 @@ export async function usageDUnePreuveValidee(
 /**
  * La preuve de réduction peut-elle servir ? Elle doit être validée (par
  * l'agent IA ou à la main), et ne pas retenir déjà la réduction d'une autre
- * réservation : une par groupe. Une preuve rattachée à une réservation qui ne
+ * réservation : une par réservation, et une réduction par client (décision 25,
+ * `reductionDejaEue`). Une preuve rattachée à une réservation qui ne
  * retient plus rien (annulée, ou jamais payée et expirée au bout de 30
  * minutes) redevient libre : le client qui recommence après un paiement
  * échoué garde sa réduction. `null` si elle peut servir. La même règle en
@@ -1303,7 +1304,7 @@ export interface DemandeReservationGroupe {
    * payée, comme DemandeReservation.encaissement.
    */
   encaissement?: { par: string; reference?: string };
-  /** Road trip : la preuve de réduction validée, consommée dans la même transaction (une par groupe). */
+  /** Road trip : la preuve de réduction validée, consommée dans la même transaction (une par client, décision 25). */
   preuveId?: string;
 }
 

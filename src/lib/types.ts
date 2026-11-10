@@ -480,7 +480,7 @@ export type StatutPreuveReduction = "en_attente" | "validee" | "refusee";
  */
 export interface PreuveReduction {
   id: string;
-  /** La réservation qui a retenu la réduction, une fois la preuve servie (une par groupe). */
+  /** La réservation qui a retenu la réduction, une fois la preuve servie (une réduction par client, décision 25). */
   reference?: string;
   /** Où le fichier est rangé (« blob:… » ou « base:… ») ; absent une fois effacé. */
   fichierCle?: string;

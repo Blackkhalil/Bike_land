@@ -6,7 +6,7 @@
  *
  * Décision 2 : 3 000 F par personne, plus 125 F de frais de paiement en
  * ligne, soit 3 125 F. La réduction (4 %) porte sur le prix avant frais,
- * une fois par groupe : 10 personnes paient 30 000 F - 1 200 F + 1 250 F
+ * une fois par client (décision 25) : 10 personnes paient 30 000 F - 1 200 F + 1 250 F
  * = 30 050 F, au lieu de 31 250 F. Au comptoir, sans les frais
  * (décision 12).
  *
@@ -80,7 +80,7 @@ export function calculerRoadTrip(demande: DemandeRoadTrip, reglages: Reglages, c
           {
             code: "reduction" as const,
             libelle: `Réduction de ${formatPourcentage(rt.reduction)}`,
-            detail: "Abonnement ou story validé, une fois par groupe",
+            detail: "Abonnement ou story validé, une fois par client",
             montantXof: -reductionXof,
           },
         ]
