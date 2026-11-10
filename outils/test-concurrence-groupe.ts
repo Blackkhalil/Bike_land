@@ -16,6 +16,10 @@
  * annule l'une des deux (P2034), qui, rejouee, voit les velos pris par
  * l'autre. Trois manches : les 2 derniers velos (le reste deja pris), tout
  * le parc d'un coup, et le dernier Prestige gamme par gamme (Gbashi Bike).
+ * Deux manches de plus pour les paiements tardifs (decision 6) : deux
+ * paiements arrives au meme instant pour deux demandes expirees sur les
+ * memes velos (un seul confirme), puis un paiement tardif croise avec une
+ * nouvelle demande sur ses velos (un seul des deux passe).
  *
  * Precautions :
  *  - il refuse de tourner sans DATABASE_URL, et sur toute autre base que
@@ -124,7 +128,7 @@ async function nettoyer(prisma: PrismaClient): Promise<void> {
   for (const r of reservations) {
     try {
       await prisma.$transaction([
-        prisma.journalEvenement.deleteMany({ where: { reference: r.reference, type: "reservation-groupe" } }),
+        prisma.journalEvenement.deleteMany({ where: { reference: r.reference } }),
         prisma.payment.deleteMany({ where: { bookingId: r.id } }),
         prisma.bookingOption.deleteMany({ where: { bookingId: r.id } }),
         prisma.bookingItem.deleteMany({ where: { bookingId: r.id } }),
@@ -218,6 +222,60 @@ async function main(): Promise<void> {
         [["CapaciteInsuffisanteError", 0]],
       );
     }
+
+    // Une demande vieillie de 31 minutes ne retient plus ses velos (base de
+    // test seulement, sur les reservations de ce passage).
+    const vieillir = (reference: string) =>
+      prisma.booking.update({ where: { reference }, data: { createdAt: new Date(Date.now() - 31 * 60_000) } });
+
+    console.log("\nManche 4 : deux paiements tardifs au meme instant, sur les memes velos");
+    const quatorze = { debutMinute: 840, finMinute: 870 };
+    const tousQuatorze = velosLibresSurCreneau(await depot.parcDuJour(date), quatorze).total;
+    const a4 = (await depot.creerReservationGroupe(demande(date, quatorze, tousQuatorze, "a4"))).reservation;
+    references.push(a4.reference);
+    await vieillir(a4.reference);
+    const b4 = (await depot.creerReservationGroupe(demande(date, quatorze, tousQuatorze, "b4"))).reservation;
+    references.push(b4.reference);
+    await vieillir(b4.reference);
+    verifier("la seconde demande a pris les velos de la premiere, expiree", [...b4.lignes.map((l) => l.veloId)].sort(), [...a4.lignes.map((l) => l.veloId)].sort());
+    const paiements4 = await Promise.allSettled([
+      depot.confirmerPaiement(a4.reference, `TX-ESSAI-${passage}-A4`),
+      depot.confirmerPaiement(b4.reference, `TX-ESSAI-${passage}-B4`),
+    ]);
+    verifier(
+      "deux paiements tardifs simultanes : un seul confirme",
+      paiements4.filter((p) => p.status === "fulfilled" && p.value && !p.value.dejaConfirmee).length,
+      1,
+    );
+    verifier(
+      "l'autre : ConflitDisponibiliteError, donc rembourse",
+      paiements4.filter((p) => p.status === "rejected").map((p) => (p as PromiseRejectedResult).reason?.name),
+      ["ConflitDisponibiliteError"],
+    );
+
+    console.log("\nManche 5 : un paiement tardif et une nouvelle demande au meme instant, sur les memes velos");
+    const quinze = { debutMinute: 900, finMinute: 930 };
+    const tousQuinze = velosLibresSurCreneau(await depot.parcDuJour(date), quinze).total;
+    const a5 = (await depot.creerReservationGroupe(demande(date, quinze, tousQuinze, "a5"))).reservation;
+    references.push(a5.reference);
+    await vieillir(a5.reference);
+    const [paiement5, nouvelle5] = await Promise.allSettled([
+      depot.confirmerPaiement(a5.reference, `TX-ESSAI-${passage}-A5`),
+      depot.creerReservationGroupe(demande(date, quinze, tousQuinze, "b5")),
+    ]);
+    if (nouvelle5.status === "fulfilled") references.push(nouvelle5.value.reservation.reference);
+    const passes5 = [
+      paiement5.status === "fulfilled" && Boolean(paiement5.value) && !paiement5.value?.dejaConfirmee,
+      nouvelle5.status === "fulfilled",
+    ].filter(Boolean).length;
+    verifier("un seul des deux passe", passes5, 1);
+    verifier(
+      "l'autre est refuse proprement (velos repris, ou plus aucun velo libre)",
+      [paiement5, nouvelle5]
+        .filter((p) => p.status === "rejected")
+        .map((p) => ["ConflitDisponibiliteError", "CapaciteInsuffisanteError"].includes((p as PromiseRejectedResult).reason?.name)),
+      [true],
+    );
 
     const final = await depot.parcDuJour(date);
     verifier("jamais un velo pris deux fois sur les memes minutes", sansDoubleReservation(final), true);
