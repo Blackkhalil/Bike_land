@@ -55,6 +55,15 @@ const FORMAT_JOUR_COURT = new Intl.DateTimeFormat("fr-FR", {
   timeZone: "UTC",
 });
 
+/**
+ * La typographie française à l'affichage : une espace insécable avant « ? »,
+ * « ! », « : », « ; » et « » », et après « « ». Sur un téléphone étroit, le
+ * point d'interrogation ne part plus seul à la ligne.
+ */
+export function insecables(texte: string): string {
+  return texte.replace(/ ([?!:;»])/g, " $1").replace(/« /g, "« ");
+}
+
 /** « Samedi », « samedi » : la première lettre en capitale. */
 export function majuscule(texte: string): string {
   return texte.charAt(0).toUpperCase() + texte.slice(1);

@@ -649,6 +649,16 @@ verifier("attente de paiement récente : le suivi reprend", c.relireSauvegarde(c
 
 /* ------------------------------------------------ Le ton des textes */
 
+const AVEC_INSECABLES = t.insecables("Quelle sortie vous tente ? C'est validé ! Prix : 11 250 F ; « Abonné(e) » 08:00");
+verifier("typographie à l'affichage : espace insécable avant ? ! : ; » et après «, pas dans une heure", [
+  AVEC_INSECABLES.includes("tente ?"),
+  AVEC_INSECABLES.includes("validé !"),
+  AVEC_INSECABLES.includes("Prix :"),
+  AVEC_INSECABLES.includes("F ;"),
+  AVEC_INSECABLES.includes("« Abonné(e) »"),
+  AVEC_INSECABLES.includes("08:00"),
+], [true, true, true, true, true, true]);
+
 const textes = traverses.flatMap((etat) => [
   ...etat.messages.map((message: { texte: string }) => message.texte),
   ...etat.alternatives.map((alternative: { libelle: string }) => alternative.libelle),

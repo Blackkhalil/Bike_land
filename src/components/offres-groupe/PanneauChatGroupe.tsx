@@ -19,6 +19,7 @@ import {
   type MessageChat,
 } from "@/lib/offres-groupe/conversation";
 import type { DemandeOuverture } from "@/lib/offres-groupe/ouverture-chat";
+import { insecables } from "@/lib/offres-groupe/textes-chat";
 import { lienWhatsApp } from "@/lib/site";
 
 import { ControlesChat, type ActionsChat } from "./ControlesChat";
@@ -296,7 +297,7 @@ function Bulle({ message }: { message: MessageChat }) {
       <li data-bulle className="flex justify-end">
         <p className="max-w-[85%] rounded-[var(--radius-carte)] rounded-br-[4px] bg-noir-piste px-3.5 py-2 text-[0.9rem] leading-snug text-craie">
           <span className="sr-only">Vous : </span>
-          {message.texte}
+          {insecables(message.texte)}
         </p>
       </li>
     );
@@ -313,7 +314,7 @@ function Bulle({ message }: { message: MessageChat }) {
         className={`max-w-[92%] whitespace-pre-line rounded-[var(--radius-carte)] rounded-bl-[4px] bg-white px-3.5 py-2.5 text-[0.9rem] leading-relaxed text-noir-piste ${ton}`}
       >
         <span className="sr-only">Bike Land : </span>
-        {message.texte}
+        {insecables(message.texte)}
       </p>
     </li>
   );

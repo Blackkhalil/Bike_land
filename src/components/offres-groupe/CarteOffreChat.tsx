@@ -1,7 +1,7 @@
 import type { ReglagesOffres } from "@/data/reglages-offres";
 import { formatMontant, formatPourcentage, heureEnClair, type ResultatOffre } from "@/lib/offres";
 import { inclusDans } from "@/lib/offres-groupe/conversation";
-import { jourEnClair, majuscule, NOMS_OFFRES, personnesEnClair, regleRetard } from "@/lib/offres-groupe/textes-chat";
+import { insecables, jourEnClair, majuscule, NOMS_OFFRES, personnesEnClair, regleRetard } from "@/lib/offres-groupe/textes-chat";
 import { TAUX_ENCAISSEMENT } from "@/lib/tarifs-paiement";
 
 /**
@@ -89,11 +89,11 @@ export function CarteOffreChat({
         ))}
       </ul>
 
-      <p className="mt-4 rounded-[var(--radius-bouton)] bg-craie px-3 py-2 text-[0.8rem] leading-relaxed">{regleRetard(reglages)}</p>
+      <p className="mt-4 rounded-[var(--radius-bouton)] bg-craie px-3 py-2 text-[0.8rem] leading-relaxed">{insecables(regleRetard(reglages))}</p>
 
       <details className="mt-3 text-[0.82rem]">
         <summary className="cursor-pointer font-semibold">Votre récapitulatif</summary>
-        <p className="mt-2 whitespace-pre-line leading-relaxed text-gris-cadre">{resultat.recapModele}</p>
+        <p className="mt-2 whitespace-pre-line leading-relaxed text-gris-cadre">{insecables(resultat.recapModele)}</p>
       </details>
     </section>
   );

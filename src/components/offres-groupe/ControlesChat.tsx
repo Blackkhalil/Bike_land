@@ -32,6 +32,7 @@ import {
   totalVelos,
 } from "@/lib/offres-groupe/negociation";
 import {
+  insecables,
   jourCourt,
   ligneDeLOffre,
   majuscule,
@@ -262,6 +263,8 @@ export function ControlesChat({
           minimum={reglages.gbashi.personnesMin}
           stock={stock}
           stockConfirme={confirme}
+          verificationEnEchec={etat.devisEnEchec !== null}
+          onRelancer={() => envoyer({ type: "relancer-devis" })}
           prix={reglages.gbashi.prixXof}
           initiale={choix.velos ?? repartitionParDefaut(choix.personnes, stock, faits)}
           onValider={(velos) => envoyer({ type: "choisir-velos", velos })}
@@ -278,11 +281,15 @@ export function ControlesChat({
         <Reponses>
           {etat.alternatives.map((alternative) => (
             <button key={alternative.cle} type="button" className={PUCE} onClick={() => envoyer({ type: "appliquer", alternative })}>
-              {alternative.libelle}
+              {insecables(alternative.libelle)}
             </button>
           ))}
           {etape === "negociation" ? (
-            <button type="button" className={`${PUCE} border-transparent bg-transparent underline`} onClick={() => envoyer({ type: "garder-offre" })}>
+            <button
+              type="button"
+              className="lien-souligne cible-elargie self-start py-2 text-[0.88rem] font-semibold"
+              onClick={() => envoyer({ type: "garder-offre" })}
+            >
               Garder cette offre
             </button>
           ) : (
@@ -375,7 +382,9 @@ function ChoixOffre({ faits, onChoisir }: { faits: FaitsChat; onChoisir: (offre:
       {ORDRE_OFFRES.map((offre) => (
         <button key={offre} type="button" className={`${PUCE} py-3`} onClick={() => onChoisir(offre)}>
           <span className="block font-display text-[1.08rem]">{NOMS_OFFRES[offre]}</span>
-          <span className="mt-1 block text-[0.8rem] font-normal leading-snug text-gris-cadre">{ligneDeLOffre(offre, faits.reglages)}</span>
+          <span className="mt-1 block text-[0.8rem] font-normal leading-snug text-gris-cadre">
+            {insecables(ligneDeLOffre(offre, faits.reglages))}
+          </span>
         </button>
       ))}
     </Reponses>
@@ -654,6 +663,8 @@ function ChoixVelos({
   minimum,
   stock,
   stockConfirme,
+  verificationEnEchec,
+  onRelancer,
   prix,
   initiale,
   onValider,
@@ -662,6 +673,9 @@ function ChoixVelos({
   minimum: number;
   stock: Record<GammeVelo, number>;
   stockConfirme: boolean;
+  /** Le serveur n'a pas pu dire ce qu'il reste : le prix et le stock seront confirmés avant de payer. */
+  verificationEnEchec: boolean;
+  onRelancer: () => void;
   prix: Record<GammeVelo, number>;
   initiale: Partial<Record<GammeVelo, number>>;
   onValider: (velos: Record<GammeVelo, number>) => void;
@@ -715,8 +729,17 @@ function ChoixVelos({
         {total === personnes
           ? `${total} vélos pour ${personnesEnClair(personnes)}.`
           : `${total} vélo${total > 1 ? "s" : ""} choisi${total > 1 ? "s" : ""} pour ${personnesEnClair(personnes)} : le groupe comptera ${personnesEnClair(total)}.`}
-        {stockConfirme ? "" : " Je vérifie ce qu'il reste ce jour-là…"}
+        {stockConfirme
+          ? ""
+          : verificationEnEchec
+            ? " Je n'ai pas pu vérifier ce qu'il reste ce jour-là : ce sera fait avant le paiement."
+            : " Je vérifie ce qu'il reste ce jour-là…"}
       </p>
+      {!stockConfirme && verificationEnEchec && (
+        <button type="button" onClick={onRelancer} className="lien-souligne cible-elargie mt-1 text-[0.84rem] font-semibold">
+          Vérifier de nouveau
+        </button>
+      )}
       <Bouton type="button" className="mt-3 w-full" disabled={total < minimum} onClick={() => onValider(velos)}>
         {total < minimum ? `Au moins ${minimum} vélos` : "Valider les vélos"}
       </Bouton>
