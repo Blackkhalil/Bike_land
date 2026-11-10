@@ -95,6 +95,7 @@ export function VideoFond({
       {active && (
       <button
         type="button"
+        data-evite-bulle
         onClick={basculerSon}
         aria-pressed={!muet}
         className="absolute bottom-5 right-5 z-20 inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-full border border-craie/30 bg-noir-piste/60 px-4 text-[0.82rem] font-semibold text-craie backdrop-blur-sm transition-colors hover:border-craie/60 hover:bg-noir-piste/80"
