@@ -81,8 +81,9 @@ export function CarteOffreChat({
           </dd>
         </div>
       </dl>
-      {/* « Bike Land écrit… » annonce l'attente aux lecteurs d'écran : ce texte reste visuel. */}
-      {!confirme && <p className="mt-2 text-[0.78rem] text-gris-cadre">Je fais confirmer ce prix par Bike Land…</p>}
+      {/* « Bike Land écrit… » annonce l'attente aux lecteurs d'écran : ce texte reste visuel. Il change
+          sur place quand le prix est confirmé : la carte garde sa hauteur, les réponses dessous ne bougent pas. */}
+      <p className="mt-2 text-[0.78rem] text-gris-cadre">{confirme ? "Prix confirmé par Bike Land." : "Je fais confirmer ce prix par Bike Land…"}</p>
 
       <p className="mt-4 font-semibold">Compris dans le prix</p>
       <ul className="mt-1.5 list-disc space-y-1 pl-5 text-[0.84rem]">

@@ -415,7 +415,9 @@ export function PanneauChatGroupe({
           </button>
         </header>
 
-        <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-craie px-3 pb-5 pt-3">
+        {/* Sans ancrage automatique du défilement : la discussion ne bouge que quand le chat la fait
+            défiler (sinon le navigateur la recale d'abord, puis le chat, en deux temps). */}
+        <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-craie px-3 pb-5 pt-3 [overflow-anchor:none]">
           <JourDeLaDiscussion messages={etat.messages} maintenant={maintenant} />
           {/* Le rôle « log » sur un conteneur : la liste garde son rôle de liste. */}
           <div role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion">
