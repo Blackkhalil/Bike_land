@@ -473,5 +473,37 @@ console.log("\n— Comptoir");
   verifier("interrupteur coupé : pas de vente de groupe au comptoir non plus", [ferme.statut, ferme.corps.code], [403, "FERME"]);
 }
 
+/* ------------------------------------------- Les routes, branchées au vrai dépôt */
+
+console.log("\n— Routes, en démonstration (interrupteur coupé par défaut)");
+{
+  const { POST: routeDevis } = await charger("src/app/api/offres-groupe/devis/route.ts");
+  const { POST: routeReservations } = await charger("src/app/api/offres-groupe/reservations/route.ts");
+  const { POST: routeComptoir } = await charger("src/app/api/admin/offres-groupe/comptoir/route.ts");
+  const { depot } = await charger("src/lib/db/index.ts");
+  const { CLE_REGLAGES_OFFRES, CODE_INTERRUPTEUR_OFFRES } = await charger("src/data/reglages-offres.ts");
+  const appeler = async (route: (r: Request) => Promise<Response>, corps: unknown) => {
+    const reponse = await route(
+      new Request("http://localhost/api/offres-groupe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corps) }),
+    );
+    return { statut: reponse.status, corps: (await reponse.json()) as Record<string, unknown> };
+  };
+  verifier("devis : 403 FERME tant que l'interrupteur n'est pas ouvert", (await appeler(routeDevis, bikeForAll())).corps.code, "FERME");
+  verifier("réservation : 403 FERME", (await appeler(routeReservations, reservation(bikeForAll(), 11250))).statut, 403);
+  verifier("comptoir : 403 FERME", (await appeler(routeComptoir, { action: "devis", ...bikeForAll() })).corps.code, "FERME");
+  process.env.BIKELAND_ROLE = "site";
+  verifier("comptoir sur le site public : 401, sans session d'administration", (await appeler(routeComptoir, { action: "devis", ...bikeForAll() })).statut, 401);
+  delete process.env.BIKELAND_ROLE;
+  // Interrupteur ouvert, réglages enregistrés impossibles : jamais de vente aux valeurs par défaut.
+  await depot.reglerCreneau(CODE_INTERRUPTEUR_OFFRES, true);
+  await depot.ecrireParametreAdmin(CLE_REGLAGES_OFFRES, "{ pas du json");
+  const illisible = await appeler(routeDevis, bikeForAll());
+  verifier("interrupteur ouvert, réglages illisibles : 503 REGLAGES_ILLISIBLES", [illisible.statut, illisible.corps.code], [503, "REGLAGES_ILLISIBLES"]);
+  const saisie = await appeler(routeReservations, { offre: "bike-for-all" });
+  verifier("réservation mal formée : 400 SAISIE", [saisie.statut, saisie.corps.code], [400, "SAISIE"]);
+  await depot.effacerParametreAdmin(CLE_REGLAGES_OFFRES);
+  await depot.reglerCreneau(CODE_INTERRUPTEUR_OFFRES, false);
+}
+
 console.log(echecs ? `\n${echecs} échec(s).` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);
