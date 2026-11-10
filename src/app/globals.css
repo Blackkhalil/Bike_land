@@ -139,7 +139,7 @@ dialog[data-chat-groupe] .saisie-chat:focus-visible {
    montre où l'on est ; les flèches la font défiler, Tab mène aux réponses. */
 dialog[data-chat-groupe] [data-discussion]:focus-visible {
   outline: 2px solid var(--color-noir-piste);
-  outline-offset: -2px;
+  outline-offset: -4px;
 }
 
 /* Le rond « Voir la suite » arrive en douceur, en bas à droite de la discussion. */
