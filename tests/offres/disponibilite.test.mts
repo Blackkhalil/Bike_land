@@ -167,6 +167,22 @@ const douze = D.attribuerVelos(parcVide, c(480, 510), 12);
 verifier("12 vélos toutes gammes : les 10 Classique puis 2 Premium", douze.velos?.map((v: { gamme: string }) => v.gamme), [...Array(10).fill("CLASSIQUE"), "PREMIUM", "PREMIUM"]);
 const gbashiPur = D.attribuerVelos(parcVide, c(420, 660), { CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 });
 verifier("Gbashi : le nombre exact de chaque gamme", gbashiPur.velos?.map((v: { id: string }) => v.id), ["v01", "v02", "v11", "v12", "v17"]);
+// Le scénario de la relecture : un groupe Q a les 6 Premium et les 2
+// Prestige de 9 h à 10 h. Le groupe R, 8 vélos de 8 h à 9 h, prend au plus
+// serré les vélos que Q prend à 9 h ; le groupe S, 10 vélos de 8 h à 10 h,
+// trouve alors encore les 10 Classique.
+const vingtQuatre = (velos: typeof dixHuit, debut: number, fin: number) =>
+  velos.map((v) => ({ veloId: v.id, heureDebut: Math.floor(debut / 60), heureFin: Math.ceil(fin / 60), minuteDebut: debut, minuteFin: fin }));
+const lignesQ = vingtQuatre(dixHuit.slice(10), 540, 600);
+const groupeR = D.attribuerVelos(D.construireParcDuJour("2027-01-02", dixHuit, new Set(), lignesQ), c(480, 540), 8);
+verifier(
+  "au plus serré : un groupe de 8 h à 9 h prend les vélos qu'un autre groupe prend à 9 h",
+  groupeR.velos?.map((v: { id: string }) => v.id),
+  dixHuit.slice(10).map((v) => v.id),
+);
+const lignesR = (groupeR.velos ?? []).map((v: { id: string }) => ({ veloId: v.id, heureDebut: 8, heureFin: 9, minuteDebut: 480, minuteFin: 540 }));
+const groupeS = D.attribuerVelos(D.construireParcDuJour("2027-01-02", dixHuit, new Set(), [...lignesQ, ...lignesR]), c(480, 600), 10);
+verifier("…et un groupe de 10 de 8 h à 10 h trouve encore les 10 Classique", groupeS.velos?.map((v: { gamme: string }) => v.gamme), Array(10).fill("CLASSIQUE"));
 const troisPrestige = D.attribuerVelos(parcVide, c(420, 660), { PRESTIGE: 3 });
 verifier("3 Prestige demandés pour 2 au parc : rien d'attribué, et ce qui reste", [troisPrestige.velos, troisPrestige.libres.total, troisPrestige.libres.parGamme], [null, 18, { CLASSIQUE: 10, PREMIUM: 6, PRESTIGE: 2 }]);
 
@@ -487,12 +503,22 @@ verifier("une location libre de 12 h à 14 h sur l'un de ses vélos : refusée",
 verifier("de 13 h à 15 h : acceptée", ((await location(L.lignes[0].veloId, S4, 13)).reservation as Resa).statut, "EN_ATTENTE_PAIEMENT");
 const matin: Resa = await reserverGroupe(S4, 480, 510, 10);
 verifier(
-  "un groupe de 8 h à 8 h 30 sur les 10 Classique : le road trip actuel (8 h - 11 h) ne voit plus que 7 vélos",
-  [((await depot.velosLibres(S4, 8, 11)) as { id: string }[]).length, ((await depot.velosLibres(S4, 8, 11)) as { id: string }[]).some((v) => ids(matin).includes(v.id))],
-  [7, false],
+  "un groupe de 8 h à 8 h 30, au plus serré : le vélo loué de 10 h à 12 h, puis 9 Classique",
+  [ids(matin).includes(L.lignes[0].veloId), gammesDe(matin)],
+  [true, { PREMIUM: 1, CLASSIQUE: 9 }],
 );
 verifier(
-  "une location libre par gamme Classique à 8 h : refusée, plus aucun Classique",
+  "le road trip actuel (8 h - 11 h) voit encore 8 vélos, aucun du groupe",
+  [((await depot.velosLibres(S4, 8, 11)) as { id: string }[]).length, ((await depot.velosLibres(S4, 8, 11)) as { id: string }[]).some((v) => ids(matin).includes(v.id))],
+  [8, false],
+);
+verifier(
+  "une location libre par gamme Classique à 8 h : le dernier Classique libre",
+  ((await location(undefined, S4, 8, { gamme: "CLASSIQUE" })).reservation as Resa).statut,
+  "EN_ATTENTE_PAIEMENT",
+);
+verifier(
+  "une seconde : refusée, plus aucun Classique",
   (await erreurDe(location(undefined, S4, 8, { gamme: "CLASSIQUE" })))?.message.replace(/[  ]/g, " "),
   "Plus aucun vélo Classique n'est libre à cette heure : choisissez une autre heure, un autre jour ou une autre gamme.",
 );

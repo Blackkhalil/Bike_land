@@ -165,11 +165,30 @@ export function construireParcDuJour<T extends VeloDuParc & { statut: string }>(
 }
 
 /**
+ * L'écart, en minutes, entre le créneau et l'occupation la plus proche d'un
+ * vélo ce jour-là : celle qui finit avant le départ, ou commence après le
+ * retour. L'infini quand le vélo n'a rien d'autre ce jour-là.
+ */
+function ecartAuVoisin(veloId: string, occupations: ParcDuJour["occupations"], creneau: CreneauMinutes): number {
+  let ecart = Number.POSITIVE_INFINITY;
+  for (const o of occupations) {
+    if (o.veloId !== veloId) continue;
+    if (o.finMinute <= creneau.debutMinute) ecart = Math.min(ecart, creneau.debutMinute - o.finMinute);
+    else if (o.debutMinute >= creneau.finMinute) ecart = Math.min(ecart, o.debutMinute - creneau.finMinute);
+  }
+  return ecart;
+}
+
+/**
  * Les vélos à bloquer pour un groupe, parmi ceux libres sur tout le créneau :
- * un nombre de vélos toutes gammes confondues, pris dans l'ordre
- * d'attribution (le Classique d'abord, comme Octobre rose et Padel bike), ou
- * le nombre exact de chaque gamme (Gbashi Bike). `velos` vaut `null` quand il
- * n'y en a pas assez ; `libres` dit toujours ce qui reste sur le créneau.
+ * un nombre de vélos toutes gammes confondues, ou le nombre exact de chaque
+ * gamme (Gbashi Bike). Au plus serré d'abord : les vélos dont une occupation
+ * finit juste avant le départ ou commence juste après le retour. Le parc se
+ * fragmente moins, et un groupe plus long trouve encore ses vélos (cahier,
+ * étape 5). À écart égal, l'ordre d'attribution (le Classique d'abord, comme
+ * Octobre rose et Padel bike) : un jour sans autre réservation, rien ne
+ * change. `velos` vaut `null` quand il n'y en a pas assez ; `libres` dit
+ * toujours ce qui reste sur le créneau.
  */
 export function attribuerVelos<T extends VeloDuParc>(
   parc: ParcDuJourDe<T>,
@@ -179,7 +198,13 @@ export function attribuerVelos<T extends VeloDuParc>(
   const libres = velosLibresSurCreneau(parc, creneau);
   if (!suffit(libres, besoin)) return { velos: null, libres };
   const idsLibres = new Set(libres.ids);
-  const candidats = ordreAttribution(parc.velos.filter((velo) => idsLibres.has(velo.id)));
+  const ecarts = new Map(parc.velos.map((velo) => [velo.id, ecartAuVoisin(velo.id, parc.occupations, creneau)]));
+  // Tri stable : à écart égal, l'ordre d'attribution est gardé.
+  const candidats = ordreAttribution(parc.velos.filter((velo) => idsLibres.has(velo.id))).sort((a, b) => {
+    const ea = ecarts.get(a.id) ?? Number.POSITIVE_INFINITY;
+    const eb = ecarts.get(b.id) ?? Number.POSITIVE_INFINITY;
+    return ea === eb ? 0 : ea < eb ? -1 : 1;
+  });
   if (typeof besoin === "number") return { velos: candidats.slice(0, besoin), libres };
   return {
     velos: CODES_GAMMES.flatMap((gamme) =>
