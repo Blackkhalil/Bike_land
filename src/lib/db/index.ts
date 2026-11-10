@@ -102,4 +102,11 @@ export const depot: Depot = {
   reservationsTouchees: async (depuis) => (await obtenirDepot()).reservationsTouchees(depuis),
   parcDuJour: async (date) => (await obtenirDepot()).parcDuJour(date),
   creerReservationGroupe: async (demande) => (await obtenirDepot()).creerReservationGroupe(demande),
+  creerPreuve: async (champs) => (await obtenirDepot()).creerPreuve(champs),
+  trouverPreuve: async (id) => (await obtenirDepot()).trouverPreuve(id),
+  listerPreuves: async (filtre) => (await obtenirDepot()).listerPreuves(filtre),
+  lireFichierPreuve: async (id) => (await obtenirDepot()).lireFichierPreuve(id),
+  deciderPreuve: async (id, decision) => (await obtenirDepot()).deciderPreuve(id, decision),
+  effacerFichierPreuve: async (id) => (await obtenirDepot()).effacerFichierPreuve(id),
+  listerFichiersPreuvesAEffacer: async (avant) => (await obtenirDepot()).listerFichiersPreuvesAEffacer(avant),
 };

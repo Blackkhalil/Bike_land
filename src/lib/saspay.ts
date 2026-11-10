@@ -20,6 +20,7 @@
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { estReferenceDeTest } from "./tokens";
 import type { MoyenPaiement } from "./types";
 
 const API_BASE = "https://api.saspay.me/api/v1";
@@ -158,7 +159,10 @@ export async function pousserPaiement(demande: {
         currency: "XOF",
         country: "BJ",
         network: reseau,
-        description: `Bike Land, réservation ${demande.reference}`,
+        // Un essai (référence « BL-T… », hors production, décision 17) se
+        // lit comme tel dans le tableau de bord SasPay ; la référence reste
+        // en place, `referenceDepuisCharge` la retrouve de même.
+        description: `Bike Land, ${estReferenceDeTest(demande.reference) ? "essai" : "réservation"} ${demande.reference}`,
         // Ignoré par SasPay tant que le compte est en ADD_ON (cf. ci-dessus).
         fee_charge_mode: "DEDUCTED",
         // Notre référence voyage avec le paiement : c'est elle que le

@@ -4,9 +4,11 @@
  *
  * L'agent IA regarde la capture et dit ce qu'il voit, dans une réponse JSON
  * stricte. C'est le serveur qui décide, ici :
- *  - « validee » seulement si l'agent voit un abonnement (ou une story qui
- *    identifie Bike Land) ET que le nom d'utilisateur qu'il a lu est
- *    exactement celui d'un compte de Bike Land, sur le bon réseau ;
+ *  - « validee » seulement si l'agent voit un abonnement ET que le nom
+ *    d'utilisateur qu'il a lu est exactement celui d'un compte de Bike Land,
+ *    sur le bon réseau ; ou une story qui identifie le compte Instagram de
+ *    Bike Land (@bikeland_bj : cahier des charges, étape 6, et CGV), et lui
+ *    seul : une story d'un autre réseau passe à la main ;
  *  - « refusee » quand l'agent voit clairement que ce n'est pas le cas ;
  *  - « en_attente » dans tous les autres cas : doute, compte inconnu, réseau
  *    dont Bike Land n'a pas donné le nom d'utilisateur (voir comptes.ts),
@@ -16,7 +18,9 @@
  *
  * L'image n'est ni journalisée ni conservée ici (son stockage privé et sa
  * suppression relèvent de la réservation, lot 5b). Aucune liste d'abonnés
- * n'est jamais lue, aucun réseau social n'est appelé.
+ * n'est jamais lue, aucun réseau social n'est appelé. Le nom de compte du
+ * client ne sort jamais d'ici : seul un compte de Bike Land reconnu est
+ * rendu (`identifiantVu`), et tout autre nom en @ est masqué dans le motif.
  *
  * Module serveur uniquement (voir client.ts).
  */
@@ -55,7 +59,11 @@ export interface ResultatCapture {
   motif: string;
   /** Le réseau reconnu sur la capture. */
   reseau?: string;
-  /** Le nom de compte lu sur la capture, ramené à sa forme simple. */
+  /**
+   * Le compte de Bike Land lu sur la capture, ramené à sa forme simple. Un
+   * nom qui n'est pas celui d'un compte de Bike Land (celui du client,
+   * souvent) n'est jamais rendu : il finirait rangé avec la preuve.
+   */
   identifiantVu?: string;
 }
 
@@ -115,7 +123,7 @@ export function consignesCapture(comptes: readonly CompteBikeLand[]): string {
 
 La réduction est accordée seulement si la capture montre l'une de ces deux choses :
 1. « abonne » : la personne qui a pris la capture suit un compte de Bike Land. Par exemple la page de profil de ce compte avec le bouton dans l'état « Suivi(e) », « Abonné(e) » ou « Following » (et non « Suivre », « S'abonner », « Suivre en retour » ou « Follow »), ou ce compte dans la liste de ses abonnements.
-2. « story » : une story publiée par cette personne, où un compte de Bike Land est identifié (tagué).
+2. « story » : une story publiée par cette personne, où le compte Instagram de Bike Land est identifié (tagué).
 
 Les comptes de Bike Land, et eux seuls :
 ${liste}
@@ -190,10 +198,25 @@ function lireVerdict(texte: string): Verdict | null {
   }
 }
 
-/** Les indices de l'agent, en une ligne courte et sans tiret long, pour l'administration. */
-function indicesEnClair(indices: string): string {
+/** Les noms d'utilisateur des comptes de Bike Land, ramenés à leur forme simple. */
+function identifiantsDeBikeLand(comptes: readonly CompteBikeLand[]): Set<string> {
+  return new Set(
+    comptes.map((c) => (c.identifiant ? normaliserIdentifiant(c.identifiant) : "")).filter((identifiant) => identifiant !== ""),
+  );
+}
+
+/**
+ * Les indices de l'agent, en une ligne courte et sans tiret long, pour
+ * l'administration. Un nom en @ qui n'est pas celui d'un compte de Bike Land
+ * (le pseudo du client, malgré la consigne) est masqué : il serait rangé
+ * avec la preuve (relecture du lot 5a).
+ */
+function indicesEnClair(indices: string, comptes: readonly CompteBikeLand[]): string {
+  const connus = identifiantsDeBikeLand(comptes);
   const ligne = indices
     .replace(/[‒-―⸺⸻﹘]|--/g, ",")
+    // Un nom en @ ne finit pas par un point : celui d'une fin de phrase reste dehors.
+    .replace(/@([\p{L}\p{N}._]*[\p{L}\p{N}_])/gu, (mention, nom: string) => (connus.has(normaliserIdentifiant(nom)) ? mention : "@…"))
     .replace(/\s+/g, " ")
     .trim();
   return ligne.length > 240 ? `${ligne.slice(0, 239)}…` : ligne;
@@ -202,11 +225,15 @@ function indicesEnClair(indices: string): string {
 /** Ce que le serveur conclut de la réponse de l'agent. */
 function decider(verdict: Verdict, comptes: readonly CompteBikeLand[]): ResultatCapture {
   const vu = verdict.identifiant_vu ? normaliserIdentifiant(verdict.identifiant_vu) : "";
-  const indices = indicesEnClair(verdict.indices);
+  const indices = indicesEnClair(verdict.indices, comptes);
+  // Le nom lu n'est gardé que s'il est celui d'un compte de Bike Land :
+  // jamais le compte du client.
+  const deBikeLand = vu !== "" && identifiantsDeBikeLand(comptes).has(vu);
   const lu = {
     ...(verdict.reseau ? { reseau: verdict.reseau } : {}),
-    ...(vu ? { identifiantVu: vu } : {}),
+    ...(deBikeLand ? { identifiantVu: vu } : {}),
   };
+  const nomLu = deBikeLand ? `@${vu}` : vu ? "un autre compte" : "compte illisible";
 
   if (verdict.decision === "non") {
     return { statut: "refusee", motif: `Ni abonnement ni story visible, selon l'agent IA : ${indices}`, ...lu };
@@ -225,17 +252,27 @@ function decider(verdict: Verdict, comptes: readonly CompteBikeLand[]): Resultat
     if (sansIdentifiant) {
       return {
         statut: "en_attente",
-        motif: `L'agent IA a vu ${vuQuoi} sur ${NOMS_RESEAUX[sansIdentifiant.reseau]} (${vu ? `@${vu}` : "compte illisible"}), mais le nom d'utilisateur ${NOMS_RESEAUX[sansIdentifiant.reseau]} de Bike Land n'est pas encore enregistré sur le site : à vérifier à la main.`,
+        motif: `L'agent IA a vu ${vuQuoi} sur ${NOMS_RESEAUX[sansIdentifiant.reseau]} (${vu ? "compte lu sur la capture" : "compte illisible"}), mais le nom d'utilisateur ${NOMS_RESEAUX[sansIdentifiant.reseau]} de Bike Land n'est pas encore enregistré sur le site : à vérifier à la main.`,
         ...lu,
       };
     }
     return {
       statut: "en_attente",
-      motif: `L'agent IA a vu ${vuQuoi}, mais pas d'un compte de Bike Land (${vu ? `@${vu}` : "compte illisible"}${verdict.reseau ? `, ${verdict.reseau}` : ""}) : à vérifier à la main.`,
+      motif: `L'agent IA a vu ${vuQuoi}, mais pas d'un compte de Bike Land (${nomLu}${verdict.reseau ? `, ${verdict.reseau}` : ""}) : à vérifier à la main.`,
       ...lu,
     };
   }
   const ce = `@${compte.identifiant} sur ${NOMS_RESEAUX[compte.reseau]}`;
+  // La story ouvre droit à la réduction quand elle identifie le compte
+  // Instagram de Bike Land (cahier, étape 6 ; CGV). Sur un autre réseau, on
+  // ne décide pas seul : Bike Land regarde.
+  if (verdict.decision === "story" && compte.reseau !== "instagram") {
+    return {
+      statut: "en_attente",
+      motif: `L'agent IA a vu une story qui identifie ${ce} : la réduction vaut pour une story Instagram, à vérifier à la main.`,
+      ...lu,
+    };
+  }
   return {
     statut: "validee",
     motif:

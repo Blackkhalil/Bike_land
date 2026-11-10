@@ -20,6 +20,7 @@ import {
   nomDuReglage,
   valeurReglageEnClair,
 } from "@/data/libelles-reglages-offres";
+import { OFFRES_GROUPE } from "@/data/offres";
 import { formatDateAvecJour } from "@/lib/format";
 import type { EvenementJournal } from "@/lib/types";
 
@@ -32,6 +33,9 @@ export const TYPES_EVENEMENT: Readonly<Record<string, string>> = {
   retard: "Retard au retour",
   "remboursement-cree": "Remboursement à faire",
   "remboursement-fait": "Remboursement fait",
+  "preuve-validee": "Réduction validée",
+  "preuve-refusee": "Réduction refusée",
+  "vente-comptoir-groupe": "Vente de groupe au comptoir",
 };
 
 /** Le nom d'un type d'événement, ou le type lui-même s'il est inconnu. */
@@ -66,6 +70,12 @@ const nombre = (valeur: unknown): number | undefined =>
 function jour(valeur: unknown): string {
   const date = texte(valeur);
   return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? formatDateAvecJour(date) : (date ?? "un jour inconnu");
+}
+
+/** Le nom d'une offre de groupe, d'après son code : « Bike for All ». */
+function nomOffreGroupe(valeur: unknown): string {
+  const code = texte(valeur);
+  return code && code in OFFRES_GROUPE ? OFFRES_GROUPE[code as keyof typeof OFFRES_GROUPE].nom : "Offre de groupe";
 }
 
 /** Une valeur brute, courte, pour un événement que l'administration ne connaît pas. */
@@ -143,6 +153,20 @@ export function resumeEvenement(evenement: EvenementJournal): ResumeEvenement {
       return {
         titre: `${montantF(nombre(d.montantXof) ?? 0)} remboursés`,
         lignes: texte(d.motif) ? [texte(d.motif) as string] : [],
+      };
+    case "preuve-validee":
+    case "preuve-refusee":
+      return {
+        titre: evenement.type === "preuve-validee" ? "Capture de réduction validée" : "Capture de réduction refusée",
+        lignes: texte(d.motif) ? [texte(d.motif) as string] : [],
+      };
+    case "vente-comptoir-groupe":
+      return {
+        titre: `Vente au comptoir : ${montantF(nombre(d.totalXof) ?? 0)} en espèces`,
+        lignes: [
+          `${nomOffreGroupe(d.offre)}, ${nombre(d.personnes) ?? "?"} personnes, le ${jour(d.date)}.`,
+          ...(texte(d.encaissePar) ? [`Argent reçu par ${texte(d.encaissePar)}.`] : []),
+        ],
       };
     default:
       return {
