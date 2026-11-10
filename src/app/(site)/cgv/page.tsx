@@ -12,25 +12,37 @@ import {
 } from "@/data/offres";
 import { formatHeureMinute, NOMS_JOURS } from "@/data/reglages";
 import { lireReglagesOffresAvec, type ReglagesOffres } from "@/data/reglages-offres";
-import { comptesBikeLand, NOMS_RESEAUX } from "@/lib/agent-ia/comptes";
 import { depot } from "@/lib/db";
 import { formatXof } from "@/lib/format";
 import { penaliteRetardXof } from "@/lib/offres/retard";
+import { preuvesAcceptees } from "@/lib/offres-groupe/textes-chat";
+import { agentIaActif, interrupteurOffresGroupeOuvert } from "@/lib/offres-groupe/vitrine";
 import { site } from "@/lib/site";
 import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = metadonneesPage({
-  titre: "Conditions générales de vente",
-  description:
-    "Conditions de vente Bike Land : réservation en ligne, paiement Mobile Money, road trips encadrés, " +
-    "offres de groupe, location à l'heure, caution, annulation et responsabilité.",
-  chemin: "/cgv",
-});
+/**
+ * La description ne parle des offres de groupe que quand elles se vendent :
+ * interrupteur coupé, ce sont les conditions d'avant.
+ */
+export async function generateMetadata(): Promise<Metadata> {
+  const groupe = await interrupteurOffresGroupeOuvert();
+  return metadonneesPage({
+    titre: "Conditions générales de vente",
+    description: groupe
+      ? "Conditions de vente Bike Land : réservation en ligne, paiement Mobile Money, road trips encadrés, " +
+        "offres de groupe, location à l'heure, caution, annulation et responsabilité."
+      : "Conditions de vente Bike Land : réservation en ligne, paiement Mobile Money, road trips encadrés, " +
+        "location à l'heure, caution, annulation et responsabilité.",
+    chemin: "/cgv",
+  });
+}
 
 /**
  * Régénérée au plus toutes les cinq minutes, et tout de suite après un
  * réglage dans l'administration (rafraichirSitePublic) : les conditions des
- * offres de groupe citent les chiffres des réglages en vigueur.
+ * offres de groupe citent les chiffres des réglages en vigueur, et ne
+ * paraissent qu'interrupteur « Offres de groupe » ouvert. Sans base, la page
+ * s'affiche comme interrupteur coupé.
  */
 export const revalidate = 300;
 
@@ -72,27 +84,25 @@ function pourcentage(taux: number): string {
   return `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 2 }).format(taux * 100)}${INSECABLE}%`;
 }
 
-/** Les comptes qui ouvrent droit à la réduction : « Instagram (@bikeland_bj) ou TikTok (Bike Land) ». */
-function comptesEnClair(): { abonnement: string; story: string | null } {
-  const comptes = comptesBikeLand().filter((compte) => compte.reseau !== "facebook");
-  const noms = comptes.map(
-    (compte) => `${NOMS_RESEAUX[compte.reseau]} (${compte.identifiant ? `@${compte.identifiant}` : compte.nom})`,
-  );
-  const instagram = comptes.find((compte) => compte.reseau === "instagram" && compte.identifiant);
-  return {
-    abonnement: noms.length > 1 ? `${noms.slice(0, -1).join(", ")} ou ${noms[noms.length - 1]}` : (noms[0] ?? ""),
-    story: instagram ? `@${instagram.identifiant}` : null,
-  };
+/**
+ * Les preuves qui ouvrent droit à la réduction, une seule suffit : celles que
+ * le chatbot demande (src/lib/offres-groupe/textes-chat.ts), d'après les
+ * comptes de Bike Land. La story, sur Instagram seulement.
+ */
+function preuvesEnClair(): string {
+  const preuves = preuvesAcceptees();
+  return preuves.length > 1 ? `${preuves.slice(0, -1).join(", ")} ou ${preuves[preuves.length - 1]}` : (preuves[0] ?? "");
 }
 
 /**
  * Les conditions particulières des offres de groupe (décisions du
  * responsable du 9 novembre 2026, voir docs/bike-land/SUIVI.md), avec les
  * chiffres des réglages en vigueur, ou sans chiffres quand ils sont illisibles.
+ * L'agent IA n'y est cité que s'il est activé (décision 21) : au lancement,
+ * chaque capture est vérifiée à la main.
  */
-function ConditionsOffresDeGroupe({ reglages }: { reglages: ReglagesOffres | null }) {
+function ConditionsOffresDeGroupe({ reglages, iaActive }: { reglages: ReglagesOffres | null; iaActive: boolean }) {
   const r = reglages;
-  const comptes = comptesEnClair();
   const baremeAffiche = "selon le barème affiché au moment de la réservation";
   const exempleRetard = r ? r.retard.toleranceMinutes + 3 : 0;
   return (
@@ -161,18 +171,26 @@ function ConditionsOffresDeGroupe({ reglages }: { reglages: ReglagesOffres | nul
           <strong>
             Réduction{r ? ` de ${pourcentage(r.roadTrip.reduction)}` : ""} sur le Road trip en groupe.
           </strong>{" "}
-          Elle remercie le groupe qui fait connaître {site.nom} : abonnement à notre compte{" "}
-          {comptes.abonnement}
-          {comptes.story ? <>, ou story qui identifie {comptes.story}</> : null}.{" "}
+          Elle remercie le groupe qui fait connaître {site.nom}, sur une seule capture d&apos;écran, au
+          choix : {preuvesEnClair()}.{" "}
           {r ? null : <>Son taux est celui affiché au moment de la réservation. </>}
           Elle porte sur le prix du road trip, hors frais de paiement électronique, et s&apos;applique une
-          seule fois par groupe, sur une seule capture d&apos;écran. La capture est vérifiée
-          automatiquement par un assistant d&apos;intelligence artificielle (voir notre page Protection
-          des données) ; en cas de doute, notre équipe la vérifie à la main. La réduction n&apos;est
-          jamais appliquée par défaut : tant qu&apos;elle n&apos;est pas validée, le prix s&apos;entend sans
-          réduction. À la remise des vélos, l&apos;équipe peut demander au responsable du groupe de
-          montrer son téléphone ; s&apos;il n&apos;est pas abonné, il peut s&apos;abonner sur place ou
-          régler la différence.
+          seule fois par groupe.{" "}
+          {iaActive ? (
+            <>
+              La capture est vérifiée automatiquement par un assistant d&apos;intelligence artificielle (voir
+              notre page Protection des données) ; en cas de doute, notre équipe la vérifie à la main.
+            </>
+          ) : (
+            <>
+              Notre équipe vérifie chaque capture à la main et vous répond par email ; vous pouvez aussi
+              réserver sans attendre, au prix sans réduction.
+            </>
+          )}{" "}
+          La réduction n&apos;est jamais appliquée par défaut : tant qu&apos;elle n&apos;est pas validée, le
+          prix s&apos;entend sans réduction. À la remise des vélos, l&apos;équipe peut demander au responsable
+          du groupe de montrer son téléphone ; s&apos;il n&apos;est pas abonné, il peut s&apos;abonner sur place
+          ou régler la différence.
         </p>
       )}
       <p>
@@ -201,7 +219,9 @@ function ConditionsOffresDeGroupe({ reglages }: { reglages: ReglagesOffres | nul
 }
 
 export default async function PageCGV() {
-  const reglagesOffres = await reglagesEnVigueur();
+  const [groupe, reglagesOffres] = await Promise.all([interrupteurOffresGroupeOuvert(), reglagesEnVigueur()]);
+  // La clé de l'agent IA se lit ici, sur le serveur : elle ne quitte jamais le serveur.
+  const iaActive = agentIaActif();
   return (
     <PageLegale
       titre="Conditions générales de vente"
@@ -229,17 +249,30 @@ export default async function PageCGV() {
       </ArticleLegal>
 
       <ArticleLegal titre="Article 3. Offres et tarifs">
-        <p>
-          {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
-          en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, au forfait par
-          personne selon la gamme de vélo&nbsp;: dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} le samedi et le
-          dimanche matin, en vélo {gammesDuDepart("samedi-matin")}, eau et coco compris. Une réservation de road trip
-          compte {PERSONNES_MIN_ROAD_TRIP} personnes au moins, un vélo de la gamme choisie par
-          personne. La{" "}
-          <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
-          accompagnement, facturée à l&apos;heure selon la grille publiée sur le site, de une à{" "}
-          {DUREE_MAX_LOCATION_LIBRE} heures.
-        </p>
+        {groupe ? (
+          // Décision 1 : le road trip par gamme est remplacé par le road trip en groupe.
+          <p>
+            {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
+            en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, le samedi et le
+            dimanche matin&nbsp;: il se réserve pour tout le groupe, sur toute notre gamme de vélos, comme
+            offre de groupe (Road trip en groupe, article 12). La{" "}
+            <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
+            accompagnement, facturée à l&apos;heure selon la grille publiée sur le site, de une à{" "}
+            {DUREE_MAX_LOCATION_LIBRE} heures.
+          </p>
+        ) : (
+          <p>
+            {site.nom} propose deux offres distinctes. Le <strong>road trip</strong> est une sortie
+            en groupe sur l&apos;un de nos circuits, encadrée par un coordinateur, au forfait par
+            personne selon la gamme de vélo&nbsp;: dès {formatXof(PRIX_MINIMUM_ROAD_TRIP_XOF)} le samedi et le
+            dimanche matin, en vélo {gammesDuDepart("samedi-matin")}, eau et coco compris. Une réservation de road trip
+            compte {PERSONNES_MIN_ROAD_TRIP} personnes au moins, un vélo de la gamme choisie par
+            personne. La{" "}
+            <strong>location libre</strong> est la mise à disposition d&apos;un vélo sans
+            accompagnement, facturée à l&apos;heure selon la grille publiée sur le site, de une à{" "}
+            {DUREE_MAX_LOCATION_LIBRE} heures.
+          </p>
+        )}
         <p>
           <strong>Padel bike</strong> est une sortie en groupe, à vélo jusqu&apos;au terrain de padel
           puis une session de padel, au prix unique par personne annoncé sur sa page, quel que soit
@@ -248,23 +281,33 @@ export default async function PageCGV() {
           indiqués ; elle se vend aussi au comptoir. Le vélo de chaque participant est attribué par{" "}
           {site.nom} parmi les vélos disponibles ; il n&apos;est pas choisi.
         </p>
-        <p>
-          <strong>Gbashi bike</strong>, le road trip version sport avec sa séance de sport, se commande
-          sur WhatsApp, hors réservation en ligne, dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)} par
-          personne selon la gamme. Le jour, le nombre de participants et le règlement sont convenus
-          avec {site.nom} au moment de la commande.
-        </p>
+        {groupe ? (
+          // Décision 1 : Gbashi Bike repasse en ligne le dimanche, sur réservation.
+          <p>
+            <strong>Gbashi Bike</strong>, le road trip version sport avec sa séance encadrée par nos
+            coachs, se réserve en ligne uniquement sur réservation, pour tout le groupe, comme offre de
+            groupe (article 12)&nbsp;: un vélo par participant, au prix de la gamme choisie.
+          </p>
+        ) : (
+          <p>
+            <strong>Gbashi bike</strong>, le road trip version sport avec sa séance de sport, se commande
+            sur WhatsApp, hors réservation en ligne, dès {formatXof(PRIX_MINIMUM_GBASHI_BIKE_XOF)} par
+            personne selon la gamme. Le jour, le nombre de participants et le règlement sont convenus
+            avec {site.nom} au moment de la commande.
+          </p>
+        )}
         <p>
           {site.nom} organise aussi des <strong>sorties de saison</strong>, comme Octobre rose :
           une sortie en groupe encadrée, à date et heure fixes, au prix unique par personne
           annoncé sur sa page, quel que soit le vélo. Le vélo de chaque participant est attribué
           par {site.nom} parmi les vélos disponibles ; il n&apos;est pas choisi.
         </p>
-        <p>
-          Les offres de groupe <strong>Bike for All</strong>, <strong>Road trip en groupe</strong> et{" "}
-          <strong>Gbashi Bike</strong>, quand elles se réservent sur ce site, suivent en plus les
-          conditions particulières de l&apos;article 12.
-        </p>
+        {groupe && (
+          <p>
+            Les offres de groupe <strong>Bike for All</strong>, <strong>Road trip en groupe</strong> et{" "}
+            <strong>Gbashi Bike</strong> suivent en plus les conditions particulières de l&apos;article 12.
+          </p>
+        )}
         <p>
           Les prix sont indiqués en francs CFA (XOF), toutes taxes comprises.
           L&apos;opérateur de paiement ajoute sa commission au montant de la location.{" "}
@@ -272,7 +315,9 @@ export default async function PageCGV() {
             Cette commission vous est annoncée avant toute validation : l&apos;écran de paiement
             affiche le détail et le montant exact qui sera débité de votre compte.
           </strong>{" "}
-          Aucun autre supplément n&apos;est appliqué.
+          {groupe
+            ? "Aucun autre supplément n'est appliqué, sauf, pour les offres de groupe, les frais de paiement électronique décrits à l'article 12."
+            : "Aucun autre supplément n'est appliqué."}
         </p>
         <p>
           Le paiement en ligne s&apos;effectue par Mobile Money : MTN Money, Moov Money ou
@@ -374,7 +419,7 @@ export default async function PageCGV() {
         </p>
       </ArticleLegal>
 
-      <ConditionsOffresDeGroupe reglages={reglagesOffres} />
+      {groupe && <ConditionsOffresDeGroupe reglages={reglagesOffres} iaActive={iaActive} />}
     </PageLegale>
   );
 }

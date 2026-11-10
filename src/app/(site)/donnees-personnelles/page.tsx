@@ -1,16 +1,26 @@
 import type { Metadata } from "next";
 
 import { ArticleLegal, PageLegale } from "@/components/PageLegale";
+import { agentIaActif } from "@/lib/offres-groupe/vitrine";
 import { site } from "@/lib/site";
 import { metadonneesPage } from "@/lib/seo";
 
-export const metadata: Metadata = metadonneesPage({
-  titre: "Protection des données personnelles",
-  description:
-    "Quelles données Bike Land collecte, pourquoi, combien de temps elles sont conservées, ce qui est confié " +
-    "à un assistant d'IA et comment exercer vos droits auprès de l'APDP.",
-  chemin: "/donnees-personnelles",
-});
+/**
+ * L'assistant d'IA n'est cité que s'il est activé (décision 21 : pas au
+ * lancement). La clé se lit sur le serveur et n'en sort jamais. La page ne
+ * lit pas la base : elle s'affiche toujours, base ou pas.
+ */
+export function generateMetadata(): Metadata {
+  return metadonneesPage({
+    titre: "Protection des données personnelles",
+    description: agentIaActif()
+      ? "Quelles données Bike Land collecte, pourquoi, combien de temps elles sont conservées, ce qui est confié " +
+        "à un assistant d'IA et comment exercer vos droits auprès de l'APDP."
+      : "Quelles données Bike Land collecte, pourquoi, combien de temps elles sont conservées et comment " +
+        "exercer vos droits auprès de l'APDP, l'autorité béninoise.",
+    chemin: "/donnees-personnelles",
+  });
+}
 
 /**
  * Les durées de l'agent IA des offres de groupe (src/lib/agent-ia/) : chez
@@ -23,6 +33,7 @@ const CONSERVATION_ANTHROPIC_JOURS = 30;
 const CONSERVATION_CAPTURE_JOURS = 30;
 
 export default function PageDonneesPersonnelles() {
+  const iaActive = agentIaActif();
   return (
     <PageLegale
       titre="Protection des données personnelles"
@@ -94,8 +105,14 @@ export default function PageDonneesPersonnelles() {
           <li>Messages du formulaire de contact&nbsp;: 12&nbsp;mois après la dernière réponse.</li>
           <li>
             Capture d&apos;écran pour la réduction&nbsp;: supprimée dès que la décision est prise, et au
-            plus tard {CONSERVATION_CAPTURE_JOURS}&nbsp;jours après son envoi ;{" "}
-            {CONSERVATION_ANTHROPIC_JOURS}&nbsp;jours chez Anthropic (voir plus bas).
+            plus tard {CONSERVATION_CAPTURE_JOURS}&nbsp;jours après son envoi
+            {iaActive ? (
+              <>
+                {" "}; {CONSERVATION_ANTHROPIC_JOURS}&nbsp;jours chez Anthropic (voir plus bas).
+              </>
+            ) : (
+              "."
+            )}
           </li>
         </ul>
       </ArticleLegal>
@@ -105,11 +122,31 @@ export default function PageDonneesPersonnelles() {
           Les données ne sont ni vendues, ni louées, ni cédées. Elles sont accessibles à
           l&apos;équipe de {site.nom} et à nos sous-traitants techniques, strictement pour ce qui
           leur incombe : l&apos;hébergeur du site et de la base de données, l&apos;agrégateur de
-          paiement, le service d&apos;envoi des emails transactionnels et, pour les offres de groupe,
-          l&apos;assistant d&apos;intelligence artificielle décrit ci-dessous.
+          paiement, le service d&apos;envoi des emails transactionnels
+          {iaActive ? (
+            <> et, pour les offres de groupe, l&apos;assistant d&apos;intelligence artificielle décrit ci-dessous.</>
+          ) : (
+            "."
+          )}
         </p>
       </ArticleLegal>
 
+      {!iaActive && (
+        <ArticleLegal titre="Capture d'écran de la réduction (offres de groupe)">
+          <p>
+            Si vous demandez la réduction du Road trip en groupe, votre capture d&apos;écran est vérifiée
+            à la main par l&apos;équipe de {site.nom}. Nous ne consultons jamais la liste de nos abonnés, et
+            la réduction n&apos;est jamais accordée par défaut.
+          </p>
+          <p>
+            La capture est rangée dans un espace de stockage privé, qui n&apos;est pas public, et notre
+            équipe ne la regarde que pour cette vérification. Elle est supprimée dès que la décision est
+            prise, et au plus tard {CONSERVATION_CAPTURE_JOURS}&nbsp;jours après son envoi.
+          </p>
+        </ArticleLegal>
+      )}
+
+      {iaActive && (
       <ArticleLegal titre="Assistant d'intelligence artificielle (offres de groupe)">
         <p>
           Pour les offres de groupe (Bike for All, Road trip en groupe et Gbashi Bike), nous faisons
@@ -148,6 +185,7 @@ export default function PageDonneesPersonnelles() {
           décision est prise, et au plus tard {CONSERVATION_CAPTURE_JOURS}&nbsp;jours après son envoi.
         </p>
       </ArticleLegal>
+      )}
 
       <ArticleLegal titre="Mesure d'audience">
         <p>
@@ -203,8 +241,11 @@ export default function PageDonneesPersonnelles() {
           Quand vous fermez une annonce de saison, comme celle d&apos;Octobre rose, votre navigateur
           retient sur votre appareil que vous l&apos;avez vue, pour ne pas vous la remontrer. Le
           temps de votre visite, il retient aussi le produit que vous avez choisi, pour ouvrir la
-          réservation dessus. Ces informations ne nous sont pas transmises, et vous pouvez les
-          effacer en vidant les données du site dans votre navigateur.
+          réservation dessus. Si vous utilisez notre assistant de réservation de groupe, il garde
+          aussi vos réponses le temps de votre visite, coordonnées comprises, pour reprendre la
+          discussion si la page se recharge ; elles ne nous parviennent qu&apos;au moment où vous
+          demandez un prix ou réservez. Ces informations ne nous sont pas transmises autrement, et
+          vous pouvez les effacer en vidant les données du site dans votre navigateur.
         </p>
       </ArticleLegal>
     </PageLegale>

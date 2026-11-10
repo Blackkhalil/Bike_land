@@ -39,6 +39,21 @@ export async function offresGroupeEnVente(ouverture?: OuvertureCreneaux): Promis
 }
 
 /**
+ * L'interrupteur « Offres de groupe » est-il ouvert ? Faux s'il est coupé
+ * (par défaut) ou si la base ne répond pas. Les conditions générales s'en
+ * servent : leur article sur les offres de groupe ne paraît qu'interrupteur
+ * ouvert, avec ou sans les chiffres des réglages.
+ */
+export const interrupteurOffresGroupeOuvert = cache(async (): Promise<boolean> => {
+  try {
+    return offresGroupeActives(await lireOuverture());
+  } catch (erreur) {
+    console.error("[offres-groupe] interrupteur illisible : compté comme coupé", erreur);
+    return false;
+  }
+});
+
+/**
  * Ce que le chatbot reçoit du serveur : les réglages et le parc en état,
  * toutes gammes et gamme par gamme. `null` quand les offres de groupe ne se
  * vendent pas en ligne : la bulle n'est alors pas rendue du tout. Une seule
