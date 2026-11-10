@@ -669,6 +669,11 @@ model Remboursement {
   statut     String    @default("a_faire")
   faitPar    String?
   faitLe     DateTime?
+  /// La clé qui désigne la demande (l'identifiant de la transaction reçue,
+  /// par exemple). Unique : la même demande rejouée, même au même instant ou
+  /// après que le remboursement a été noté fait, renvoie le premier au lieu
+  /// d'en créer un second. Vide pour une demande sans clé.
+  cleIdempotence String?  @unique
   createdAt  DateTime  @default(now())
 
   @@index([statut, createdAt])

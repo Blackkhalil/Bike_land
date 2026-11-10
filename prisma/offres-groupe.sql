@@ -7,7 +7,8 @@
 -- facultatives sur les réservations (le créneau au quart d'heure, le retard
 -- et sa pénalité, l'instantané du calcul), deux sur leurs lignes de vélos,
 -- et quatre tables nouvelles : les vélos indisponibles un jour précis, le
--- journal des événements, les preuves de réduction et les remboursements.
+-- journal des événements, les preuves de réduction et les remboursements
+-- (avec leur clé d'idempotence facultative, ajoutée par le lot 3).
 -- Aucune donnée existante n'est touchée, rien n'est renommé ni supprimé.
 --
 -- Rejouable : chaque instruction vérifie d'abord que l'objet n'existe pas.
@@ -105,3 +106,11 @@ CREATE TABLE IF NOT EXISTS "Remboursement" (
 CREATE INDEX IF NOT EXISTS "Remboursement_statut_createdAt_idx" ON "Remboursement"("statut", "createdAt");
 CREATE INDEX IF NOT EXISTS "Remboursement_bookingId_idx" ON "Remboursement"("bookingId");
 ALTER TABLE "Remboursement" ENABLE ROW LEVEL SECURITY;
+
+-- La clé qui désigne une demande de remboursement (la transaction reçue, par
+-- exemple) : unique, la même demande rejouée ne crée pas un second
+-- remboursement, même après que le premier a été noté fait. Facultative :
+-- les lignes déjà écrites restent sans clé (plusieurs valeurs vides ne se
+-- gênent pas dans un index unique).
+ALTER TABLE "Remboursement" ADD COLUMN IF NOT EXISTS "cleIdempotence" TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS "Remboursement_cleIdempotence_key" ON "Remboursement"("cleIdempotence");

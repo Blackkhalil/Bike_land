@@ -36,6 +36,15 @@ import {
 } from "@/data/offres";
 import { blocPadel, lireReglagesAvec } from "@/data/reglages";
 import { lireReglagesOffresAvec } from "@/data/reglages-offres";
+import {
+  attribuerVelos,
+  construireParcDuJour,
+  heureDeMinutes,
+  heuresCouvrantes,
+  minutesDeLigne,
+  seChevauchent,
+  type ParcDuJourDe,
+} from "../disponibilite";
 import { penaliteRetardXof } from "../offres/retard";
 import { calculerDevis } from "../tarification";
 import {
@@ -69,12 +78,24 @@ import type {
   JourFerme,
 } from "../types";
 import {
+  auteurAuJournal,
+  CapaciteInsuffisanteError,
   ConflitDisponibiliteError,
+  controlerDemandeGroupe,
+  detailsReservationGroupe,
+  estDateISO,
   creneauOctobreRoseDemande,
+  journeeIndisponible,
   limiteJournal,
+  memeRemboursement,
+  MESSAGE_VELO_INDISPONIBLE,
   messagePlacesManquantes,
   messageVelosManquants,
+  montantsDeLaDemandeGroupe,
   ordreAttribution,
+  PreuveReductionInutilisableError,
+  prixParLigne,
+  raisonPreuveInutilisable,
   refusRetard,
   reservationsToucheesParmi,
   RETARD_MAX_MINUTES,
@@ -86,6 +107,7 @@ import {
   type Depot,
   type DemandeReservation,
   type FiltreCatalogue,
+  type ParcDuJour,
   type ResultatReservation,
   type ResultatRetard,
 } from "./contrat";
@@ -453,6 +475,62 @@ function conflitHoraire(
 }
 
 /**
+ * Les vélos déclarés indisponibles un jour de cette période, bornes
+ * comprises : ils ne roulent pas ces jours-là, pour aucune offre
+ * (IndisponibiliteVelo, déclarée dans l'administration).
+ */
+async function velosIndisponibles(db: Prisma.TransactionClient, debut: DateISO, fin: DateISO): Promise<Set<string>> {
+  const lignes = await db.indisponibiliteVelo.findMany({
+    where: { date: { gte: new Date(`${debut}T00:00:00Z`), lte: new Date(`${fin}T00:00:00Z`) } },
+    select: { bikeId: true },
+  });
+  return new Set(lignes.map((ligne) => ligne.bikeId));
+}
+
+/** Un vélo du parc d'un jour tel que lu en base, avec son point de retrait, que la réservation reprend. */
+type VeloDuParcEnBase = { id: string; nom: string; gamme: GammeVelo; statut: string; pickupPointId: string | null };
+
+/**
+ * Le parc d'un jour (src/lib/disponibilite), lu avec ce client : la base, ou
+ * la transaction qui va écrire. En isolation sérialisable, ce sont ces
+ * lectures que la transaction protège d'une écriture concurrente. Une
+ * lecture après l'autre : une transaction interactive n'a qu'une connexion.
+ */
+async function lireParcDuJour(db: Prisma.TransactionClient, date: DateISO): Promise<ParcDuJourDe<VeloDuParcEnBase>> {
+  const jour = new Date(`${date}T00:00:00Z`);
+  const bikes = await db.bike.findMany({
+    where: { status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+    select: { id: true, name: true, tier: true, status: true, pickupPointId: true },
+  });
+  const indisponibles = await velosIndisponibles(db, date, date);
+  // Toutes les offres partagent les mêmes vélos : chaque réservation qui
+  // bloque (payée, ou en attente de paiement depuis moins de 30 minutes) et
+  // qui couvre ce jour, à la minute près quand elle en porte, sinon à l'heure.
+  const lignes = await db.bookingItem.findMany({
+    where: { booking: bookingBloquant(), startDate: { lte: jour }, endDate: { gte: jour } },
+    select: { bikeId: true, startHour: true, endHour: true, startMinute: true, endMinute: true },
+  });
+  return construireParcDuJour(
+    date,
+    bikes.map((bike) => ({
+      id: bike.id,
+      nom: bike.name,
+      gamme: bike.tier,
+      statut: bike.status,
+      pickupPointId: bike.pickupPointId,
+    })),
+    indisponibles,
+    lignes.map((ligne) => ({
+      veloId: ligne.bikeId,
+      heureDebut: ligne.startHour,
+      heureFin: ligne.endHour,
+      minuteDebut: ligne.startMinute,
+      minuteFin: ligne.endMinute,
+    })),
+  );
+}
+
+/**
  * Change le statut d'une reservation par sa reference.
  *
  * Une reservation annulee n'est jamais reactivee par un clic sur la
@@ -534,6 +612,17 @@ const depotDirect: Depot = {
       });
       prisParVelo.set(ligne.bikeId, creneaux);
     }
+    // Un vélo déclaré indisponible un jour de la période a ce jour-là pris
+    // en entier, comme en démonstration (`periodesIndisponibles`).
+    const joursIndisponibles = await client().indisponibiliteVelo.findMany({
+      where: {
+        date: { gte: new Date(`${filtre.dateDebut}T00:00:00Z`), lte: new Date(`${filtre.dateFin}T00:00:00Z`) },
+      },
+      select: { bikeId: true, date: true },
+    });
+    for (const jour of joursIndisponibles) {
+      prisParVelo.set(jour.bikeId, [...(prisParVelo.get(jour.bikeId) ?? []), journeeIndisponible(versISO(jour.date))]);
+    }
 
     return bikes
       .filter((bike) =>
@@ -593,24 +682,31 @@ const depotDirect: Depot = {
   },
 
   async periodesIndisponibles(veloId: string) {
-    const lignes = await avecRepriseConnexion(() =>
-      client().bookingItem.findMany({
-        where: { bikeId: veloId, booking: bookingBloquant() },
-        select: {
-          startDate: true,
-          endDate: true,
-          startHour: true,
-          endHour: true,
-        },
-        orderBy: [{ startDate: "asc" }, { startHour: "asc" }],
-      }),
+    const [lignes, jours] = await avecRepriseConnexion(() =>
+      Promise.all([
+        client().bookingItem.findMany({
+          where: { bikeId: veloId, booking: bookingBloquant() },
+          select: {
+            startDate: true,
+            endDate: true,
+            startHour: true,
+            endHour: true,
+          },
+          orderBy: [{ startDate: "asc" }, { startHour: "asc" }],
+        }),
+        // Les jours où le vélo est déclaré indisponible : pris en entier.
+        client().indisponibiliteVelo.findMany({ where: { bikeId: veloId }, select: { date: true } }),
+      ]),
     );
-    return lignes.map((ligne) => ({
-      debut: versISO(ligne.startDate),
-      fin: versISO(ligne.endDate),
-      heureDebut: ligne.startHour,
-      heureFin: ligne.endHour,
-    }));
+    return [
+      ...lignes.map((ligne) => ({
+        debut: versISO(ligne.startDate),
+        fin: versISO(ligne.endDate),
+        heureDebut: ligne.startHour,
+        heureFin: ligne.endHour,
+      })),
+      ...jours.map((jour) => journeeIndisponible(versISO(jour.date))),
+    ].sort((a, b) => a.debut.localeCompare(b.debut) || a.heureDebut - b.heureDebut);
   },
 
   async estDisponible(
@@ -627,6 +723,16 @@ const depotDirect: Depot = {
     if (!bike || bike.status === "RETIRE" || bike.status === "MAINTENANCE")
       return false;
 
+    // Déclaré indisponible un jour de la période : il ne roule pas ce jour-là.
+    const indisponible = await client().indisponibiliteVelo.findFirst({
+      where: {
+        bikeId: veloId,
+        date: { gte: new Date(`${debut}T00:00:00Z`), lte: new Date(`${fin}T00:00:00Z`) },
+      },
+      select: { id: true },
+    });
+    if (indisponible) return false;
+
     const conflit = await client().bookingItem.findFirst({
       where: conflitHoraire(veloId, debut, fin, heureDebut, heureFin),
       select: { id: true },
@@ -636,7 +742,7 @@ const depotDirect: Depot = {
 
   async velosLibres(date: DateISO, heureDebut: number, heureFin: number) {
     const jour = new Date(`${date}T00:00:00Z`);
-    const [bikes, pris] = await avecRepriseConnexion(() =>
+    const [bikes, pris, indisponibles] = await avecRepriseConnexion(() =>
       Promise.all([
         client().bike.findMany({
           where: { status: { notIn: ["RETIRE", "MAINTENANCE"] } },
@@ -652,10 +758,14 @@ const depotDirect: Depot = {
           },
           select: { bikeId: true },
         }),
+        // Les vélos déclarés indisponibles ce jour-là ne sont libres à aucune heure.
+        velosIndisponibles(client(), date, date),
       ]),
     );
     const occupes = new Set(pris.map((ligne) => ligne.bikeId));
-    return ordreAttribution(bikes.filter((bike) => !occupes.has(bike.id)).map(versVelo));
+    return ordreAttribution(
+      bikes.filter((bike) => !occupes.has(bike.id) && !indisponibles.has(bike.id)).map(versVelo),
+    );
   },
 
   async creerReservation(
@@ -750,11 +860,16 @@ const depotDirect: Depot = {
           // lignes : PostgreSQL en annule une (P2034), qui, rejouée, voit
           // les vélos pris par l'autre.
           let velosAttribues: { id: string; pickupPointId: string | null }[];
+          // Les vélos déclarés indisponibles un jour de la période ne roulent
+          // pas, quelle que soit l'offre : relus ici, comme les réservations.
+          const indisponibles = await velosIndisponibles(tx, demande.dateDebut, demande.dateFin);
           if (attribueDOffice) {
-            const enEtat = await tx.bike.findMany({
-              where: { status: { notIn: ["RETIRE", "MAINTENANCE"] } },
-              select: { id: true, name: true, tier: true, pickupPointId: true },
-            });
+            const enEtat = (
+              await tx.bike.findMany({
+                where: { status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+                select: { id: true, name: true, tier: true, pickupPointId: true },
+              })
+            ).filter((velo) => !indisponibles.has(velo.id));
             const pris = await tx.bookingItem.findMany({
               where: {
                 booking: bookingBloquant(),
@@ -778,6 +893,7 @@ const depotDirect: Depot = {
             }
             velosAttribues = libres.slice(0, devisBrut.nombrePersonnes);
           } else if (bike) {
+            if (indisponibles.has(bike.id)) throw new ConflitDisponibiliteError(MESSAGE_VELO_INDISPONIBLE);
             const conflit = await tx.bookingItem.findFirst({
               where: conflitHoraire(
                 bike!.id,
@@ -794,10 +910,12 @@ const depotDirect: Depot = {
             // choisie, libres sur le créneau, relus ici même pour que le
             // niveau Serializable protège aussi leur attribution.
             if (devisBrut.nombrePersonnes > 1) {
-              const memeGamme = await tx.bike.findMany({
-                where: { tier: bike!.tier, id: { not: bike!.id }, status: { notIn: ["RETIRE", "MAINTENANCE"] } },
-                select: { id: true, name: true, tier: true, pickupPointId: true },
-              });
+              const memeGamme = (
+                await tx.bike.findMany({
+                  where: { tier: bike!.tier, id: { not: bike!.id }, status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+                  select: { id: true, name: true, tier: true, pickupPointId: true },
+                })
+              ).filter((velo) => !indisponibles.has(velo.id));
               const pris = await tx.bookingItem.findMany({
                 where: {
                   booking: bookingBloquant(),
@@ -829,10 +947,12 @@ const depotDirect: Depot = {
             // pour Octobre rose. Deux réservations simultanées lisent les
             // mêmes lignes : PostgreSQL en annule une, qui, rejouée, voit les
             // vélos pris par l'autre.
-            const deLaGamme = await tx.bike.findMany({
-              where: { tier: gamme!, status: { notIn: ["RETIRE", "MAINTENANCE"] } },
-              select: { id: true, name: true, tier: true, pickupPointId: true },
-            });
+            const deLaGamme = (
+              await tx.bike.findMany({
+                where: { tier: gamme!, status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+                select: { id: true, name: true, tier: true, pickupPointId: true },
+              })
+            ).filter((velo) => !indisponibles.has(velo.id));
             const pris = await tx.bookingItem.findMany({
               where: {
                 booking: bookingBloquant(),
@@ -1304,7 +1424,15 @@ const depotDirect: Depot = {
               status: true,
               createdAt: true,
               items: {
-                select: { bikeId: true, startDate: true, endDate: true, startHour: true, endHour: true },
+                select: {
+                  bikeId: true,
+                  startDate: true,
+                  endDate: true,
+                  startHour: true,
+                  endHour: true,
+                  startMinute: true,
+                  endMinute: true,
+                },
               },
             },
           });
@@ -1320,7 +1448,14 @@ const depotDirect: Depot = {
             panierExpire(existante.createdAt.toISOString())
           ) {
             for (const ligne of existante.items) {
-              const conflit = await tx.bookingItem.findFirst({
+              // Les réservations qui recouvrent ses jours et ses heures
+              // pleines, puis celles qui recouvrent vraiment ses minutes
+              // (src/lib/disponibilite) : un groupe parti à 8 h 30 n'a pas
+              // repris les vélos d'un groupe de 8 h à 8 h 30, qui sont donc
+              // encore libres pour lui (décision n° 6). À l'heure pleine,
+              // rien ne change : les minutes d'une telle réservation sont
+              // ses heures.
+              const conflits = await tx.bookingItem.findMany({
                 where: {
                   ...conflitHoraire(
                     ligne.bikeId,
@@ -1331,9 +1466,33 @@ const depotDirect: Depot = {
                   ),
                   bookingId: { not: existante.id },
                 },
+                select: { startHour: true, endHour: true, startMinute: true, endMinute: true },
+              });
+              const creneau = minutesDeLigne({
+                heureDebut: ligne.startHour,
+                heureFin: ligne.endHour,
+                minuteDebut: ligne.startMinute,
+                minuteFin: ligne.endMinute,
+              });
+              const repris = conflits.some((autre) =>
+                seChevauchent(
+                  creneau,
+                  minutesDeLigne({
+                    heureDebut: autre.startHour,
+                    heureFin: autre.endHour,
+                    minuteDebut: autre.startMinute,
+                    minuteFin: autre.endMinute,
+                  }),
+                ),
+              );
+              if (repris) throw new ConflitDisponibiliteError();
+              // Déclaré indisponible entre-temps un jour de la sortie : le
+              // vélo n'est plus libre non plus (même règle qu'`estDisponible`).
+              const indisponible = await tx.indisponibiliteVelo.findFirst({
+                where: { bikeId: ligne.bikeId, date: { gte: ligne.startDate, lte: ligne.endDate } },
                 select: { id: true },
               });
-              if (conflit) throw new ConflitDisponibiliteError();
+              if (indisponible) throw new ConflitDisponibiliteError(MESSAGE_VELO_INDISPONIBLE);
             }
           }
 
@@ -2039,44 +2198,77 @@ const depotDirect: Depot = {
     return lignes.map(versEvenement);
   },
 
-  async creerRemboursement({ reference, montantXof, motif, par }) {
+  async creerRemboursement({ reference, montantXof, motif, par, cleIdempotence }) {
     const motifNettoye = motif.trim();
-    return client().$transaction(
-      async (tx) => {
-        const booking = await tx.booking.findUnique({
-          where: { reference: reference.toUpperCase() },
-          select: { id: true, reference: true },
-        });
-        if (!booking) return null;
-        // La même demande deux fois (un webhook rejoué) : la première. En
-        // isolation sérialisable, deux demandes simultanées ne passent pas
-        // toutes les deux : PostgreSQL en annule une (P2034), qui, rejouée,
-        // trouve l'autre.
-        const existant = await tx.remboursement.findFirst({
-          where: { bookingId: booking.id, statut: "a_faire", montantXof, motif: motifNettoye },
+    const cle = cleIdempotence?.trim() || undefined;
+    try {
+      return await client().$transaction(
+        async (tx) => {
+          const booking = await tx.booking.findUnique({
+            where: { reference: reference.toUpperCase() },
+            select: { id: true, reference: true },
+          });
+          if (!booking) return null;
+          // La même demande deux fois (un webhook rejoué) : la première,
+          // qu'elle soit encore à faire ou déjà faite (`memeRemboursement`,
+          // la même règle qu'en démonstration). En isolation sérialisable,
+          // deux demandes simultanées ne passent pas toutes les deux :
+          // PostgreSQL en annule une (P2034), qui, rejouée, trouve l'autre.
+          const demande = { reservationId: booking.id, montantXof, motif: motifNettoye, cleIdempotence: cle };
+          const candidats = await tx.remboursement.findMany({
+            where: {
+              OR: [
+                { bookingId: booking.id, montantXof, motif: motifNettoye },
+                ...(cle ? [{ cleIdempotence: cle }] : []),
+              ],
+            },
+            include: inclusionRemboursement,
+            orderBy: { createdAt: "asc" },
+          });
+          const existant = candidats.find((ligne) =>
+            memeRemboursement(
+              { reservationId: ligne.bookingId, montantXof: ligne.montantXof, motif: ligne.motif, cleIdempotence: ligne.cleIdempotence },
+              demande,
+            ),
+          );
+          if (existant) return versRemboursement(existant);
+          const cree = await tx.remboursement.create({
+            data: { bookingId: booking.id, montantXof, motif: motifNettoye, cleIdempotence: cle ?? null },
+            include: inclusionRemboursement,
+          });
+          await tx.journalEvenement.create({
+            data: {
+              type: "remboursement-cree",
+              reference: booking.reference,
+              details: { remboursementId: cree.id, montantXof, motif: motifNettoye },
+              auteur: par ?? "site",
+            },
+          });
+          return versRemboursement(cree);
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: DELAI_ATTENTE_MS,
+          timeout: DELAI_TRANSACTION_MS,
+        },
+      );
+    } catch (erreur) {
+      // La même clé écrite au même instant par une autre demande : l'index
+      // unique a refusé celle-ci, rien n'a été écrit. La première.
+      if (
+        cle &&
+        erreur instanceof Prisma.PrismaClientKnownRequestError &&
+        erreur.code === "P2002" &&
+        String(erreur.meta?.target ?? "").includes("cleIdempotence")
+      ) {
+        const existant = await client().remboursement.findUnique({
+          where: { cleIdempotence: cle },
           include: inclusionRemboursement,
         });
         if (existant) return versRemboursement(existant);
-        const cree = await tx.remboursement.create({
-          data: { bookingId: booking.id, montantXof, motif: motifNettoye },
-          include: inclusionRemboursement,
-        });
-        await tx.journalEvenement.create({
-          data: {
-            type: "remboursement-cree",
-            reference: booking.reference,
-            details: { remboursementId: cree.id, montantXof, motif: motifNettoye },
-            auteur: par ?? "site",
-          },
-        });
-        return versRemboursement(cree);
-      },
-      {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-        maxWait: DELAI_ATTENTE_MS,
-        timeout: DELAI_TRANSACTION_MS,
-      },
-    );
+      }
+      throw erreur;
+    }
   },
 
   async listerRemboursements(filtre) {
@@ -2188,13 +2380,188 @@ const depotDirect: Depot = {
       depuis,
     );
   },
-  // Offres de groupe : écrites par le lot 3 (disponibilité au quart d'heure).
-  async parcDuJour() {
-    throw new Error("parcDuJour : pas encore écrit (lot 3, disponibilité).");
+  /* ------------------------------------------- Offres de groupe (lot 3) */
+
+  async parcDuJour(date): Promise<ParcDuJour> {
+    if (!estDateISO(date)) throw new Error("Date attendue au format AAAA-MM-JJ.");
+    const parc = await lireParcDuJour(client(), date);
+    return {
+      date: parc.date,
+      velos: parc.velos.map(({ id, nom, gamme }) => ({ id, nom, gamme })),
+      occupations: parc.occupations,
+    };
   },
 
-  async creerReservationGroupe() {
-    throw new Error("creerReservationGroupe : pas encore écrit (lot 3, disponibilité).");
+  /**
+   * Une réservation d'offre de groupe, comme `creerReservation` : une seule
+   * transaction sérialisable, rejouée par `avecRepriseConnexion` quand
+   * PostgreSQL en annule une (P2034). Deux groupes qui veulent les derniers
+   * vélos du même créneau lisent les mêmes lignes ; l'une des deux
+   * transactions est annulée, et, rejouée, voit les vélos pris par l'autre :
+   * elle lève CapaciteInsuffisanteError au lieu de dépasser le parc.
+   *
+   * Les heures pleines rangées couvrent les minutes (8 h 15 - 9 h 15 prend
+   * 8 h - 10 h) : le code qui ne lit que les heures (location libre, road
+   * trip actuel, comptoir) voit le groupe un peu plus large qu'il n'est,
+   * jamais plus étroit. Pas de double réservation possible, et un retour en
+   * arrière du code reste sans danger.
+   */
+  async creerReservationGroupe(demande) {
+    controlerDemandeGroupe(demande);
+    const encaissement = demande.encaissement;
+    const creneau = { debutMinute: demande.debutMinute, finMinute: demande.finMinute };
+    const { heureDebut, heureFin } = heuresCouvrantes(creneau);
+    const depart = heureDeMinutes(demande.debutMinute);
+    const retour = heureDeMinutes(demande.finMinute);
+    const { sousTotalXof, remiseXof } = montantsDeLaDemandeGroupe(demande);
+    // Référence et jeton avant la transaction : rejouée, elle garde les mêmes.
+    const reference = genererReference();
+    const token = genererToken(reference);
+    const jour = new Date(`${demande.date}T00:00:00Z`);
+    const email = demande.client.email.trim().toLowerCase();
+    const prenom = demande.client.prenom.trim();
+    const nom = demande.client.nom.trim();
+    const telephone = demande.client.telephone.trim() || undefined;
+
+    const booking = await avecRepriseConnexion(() =>
+      client().$transaction(
+        async (tx) => {
+          // Le parc relu ici même, dans la transaction qui écrit : les vélos
+          // libres sur tout le créneau, toutes offres confondues.
+          const parc = await lireParcDuJour(tx, demande.date);
+          const { velos: attribues, libres } = attribuerVelos(parc, creneau, demande.velos);
+          if (!attribues) throw new CapaciteInsuffisanteError(libres.total, libres.parGamme);
+
+          // La preuve de réduction du road trip, consommée ici même : validée,
+          // et ne retenant pas déjà la réduction d'une autre réservation (une
+          // par groupe). La mise à jour est conditionnée sur ce qui vient
+          // d'être relu : deux réservations ne la prennent pas toutes les deux.
+          if (demande.preuveId) {
+            const preuve = await tx.preuveReduction.findUnique({
+              where: { id: demande.preuveId },
+              select: { statut: true, reference: true },
+            });
+            const liee = preuve?.reference
+              ? await tx.booking.findUnique({
+                  where: { reference: preuve.reference },
+                  select: { status: true, createdAt: true },
+                })
+              : null;
+            const raison = raisonPreuveInutilisable(
+              preuve,
+              liee ? { statut: liee.status, creeLe: liee.createdAt.toISOString() } : null,
+            );
+            if (raison) throw new PreuveReductionInutilisableError(raison);
+            const { count } = await tx.preuveReduction.updateMany({
+              where: { id: demande.preuveId, statut: "validee", reference: preuve?.reference ?? null },
+              data: { reference },
+            });
+            if (count !== 1) throw new PreuveReductionInutilisableError("deja-utilisee");
+          }
+
+          // Le client, comme `creerReservation` : une fiche existante n'est
+          // jamais réécrite, le contact saisi reste sur la réservation.
+          const customer = await tx.customer.upsert({
+            where: { email },
+            create: { email, firstName: prenom, lastName: nom, phone: telephone },
+            update: {},
+          });
+
+          const prixLigne = prixParLigne(sousTotalXof, attribues.length);
+          const cree = await tx.booking.create({
+            data: {
+              reference,
+              // En attente du paiement Mobile Money, ou confirmée d'emblée
+              // pour une vente au comptoir déjà encaissée.
+              status: encaissement ? "CONFIRMEE" : "EN_ATTENTE_PAIEMENT",
+              confirmedAt: encaissement ? new Date() : undefined,
+              offer: OFFRE_EN_BASE[demande.offre],
+              peopleCount: demande.nombrePersonnes,
+              customerId: customer.id,
+              contactFirstName: prenom,
+              contactLastName: nom,
+              contactPhone: telephone,
+              pickupPointId: attribues[0].pickupPointId,
+              startDate: jour,
+              endDate: jour,
+              days: 1,
+              startHour: heureDebut,
+              endHour: heureFin,
+              // L'horaire exact, que la page de suivi et les emails affichent.
+              startTime: depart,
+              endTime: retour,
+              startMinute: demande.debutMinute,
+              endMinute: demande.finMinute,
+              offreDetails: demande.details as Prisma.InputJsonObject,
+              subtotalXof: sousTotalXof,
+              optionsXof: 0,
+              discountXof: remiseXof,
+              depositXof: 0,
+              totalXof: demande.totalXof,
+              accessTokenHash: hacherToken(token),
+              notes: demande.message,
+              items: {
+                create: attribues.map((velo) => ({
+                  bikeId: velo.id,
+                  startDate: jour,
+                  endDate: jour,
+                  startHour: heureDebut,
+                  endHour: heureFin,
+                  startMinute: demande.debutMinute,
+                  endMinute: demande.finMinute,
+                  unitPriceXof: prixLigne,
+                  lineTotalXof: prixLigne,
+                })),
+              },
+              // Une seule ligne de paiement, comme `creerReservation`.
+              payments: {
+                create: [
+                  {
+                    provider: demande.moyenPaiement === "ESPECES" ? "ESPECES" : "SASPAY",
+                    method: demande.moyenPaiement,
+                    status: encaissement ? "REUSSI" : "INITIE",
+                    amountXof: demande.totalXof,
+                    isDeposit: false,
+                    collectedBy: encaissement?.par,
+                    providerReference: encaissement?.reference,
+                  },
+                ],
+              },
+            },
+            include: inclusionReservation,
+          });
+
+          await tx.journalEvenement.create({
+            data: {
+              type: "reservation-groupe",
+              reference,
+              details: detailsReservationGroupe(demande, attribues.length, depart, retour) as Prisma.InputJsonObject,
+              auteur: auteurAuJournal(encaissement),
+            },
+          });
+          return cree;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: DELAI_ATTENTE_MS,
+          timeout: DELAI_TRANSACTION_MS,
+        },
+      ),
+    ).catch((erreur: unknown) => {
+      // La même vente au comptoir envoyée deux fois : rien n'a été écrit
+      // par cet appel-ci (référence de paiement unique).
+      if (
+        encaissement?.reference &&
+        erreur instanceof Prisma.PrismaClientKnownRequestError &&
+        erreur.code === "P2002" &&
+        String(erreur.meta?.target ?? "").includes("providerReference")
+      ) {
+        throw new TransactionDejaUtiliseeError("Cette vente est déjà enregistrée.");
+      }
+      throw erreur;
+    });
+
+    return { reservation: versReservation(booking), token };
   },
 };
 
@@ -2417,5 +2784,6 @@ function versRemboursement(ligne: Prisma.RemboursementGetPayload<{ include: type
     ...(ligne.faitPar ? { faitPar: ligne.faitPar } : {}),
     ...(ligne.faitLe ? { faitLe: ligne.faitLe.toISOString() } : {}),
     creeLe: ligne.createdAt.toISOString(),
+    ...(ligne.cleIdempotence ? { cleIdempotence: ligne.cleIdempotence } : {}),
   };
 }
