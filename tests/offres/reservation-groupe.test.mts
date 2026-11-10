@@ -67,6 +67,8 @@ interface Options {
   enAttente?: Record<string, unknown>[];
   preuves?: Record<string, Record<string, unknown>>;
   reservationsConnues?: Record<string, unknown>[];
+  /** Les road trips en groupe connus, réduits à ce que regarde la règle « une réduction par client » (décision 25). */
+  reductions?: Record<string, any>[];
   creer?: (demande: Record<string, unknown>) => void;
   dejaVendue?: Record<string, unknown>;
 }
@@ -125,6 +127,9 @@ function faux(options: Options = {}) {
     },
     async trouverReservationParReference(reference: string) {
       return (options.reservationsConnues ?? []).find((r) => r.reference === reference) ?? null;
+    },
+    async listerReservationsRoadTripGroupe(filtre: { avecReduction: boolean }) {
+      return (options.reductions ?? []).filter((r) => (filtre.avecReduction ? r.reductionXof > 0 : r.reductionXof === 0));
     },
     async trouverReservationParPaiement(referencePaiement: string) {
       return options.dejaVendue && options.dejaVendue.referencePaiement === referencePaiement ? options.dejaVendue : null;
@@ -261,6 +266,76 @@ console.log("\n— Devis : la réduction seulement avec une preuve validée et l
   verifier("preuve d'une demande jamais payée, expirée : de nouveau libre", await cas("liberee"), ["validee", 30050, 31250]);
   const bfa = await devis({ ...bikeForAll(), saisie: { ...bikeForAll().saisie, preuveId: "ok" } }, options);
   verifier("Bike for All : une preuve citée ne change rien", [bfa.corps.issue.resultat.totalXof, "preuve" in bfa.corps], [11250, false]);
+}
+
+console.log("\n— Décision 25 : la réduction des abonnés, une seule fois par client");
+{
+  const capture = { id: "pr", statut: "validee", email: "awa.test@example.com", telephone: "+229 01 97 00 00 00" };
+  const dejaReduit = (champs: Record<string, unknown>) => ({
+    reference: "BL-REDUIT",
+    statut: "CONFIRMEE",
+    creeLe: new Date(MAINTENANT - 5 * 24 * 60 * MINUTE).toISOString(),
+    email: "quelquun@example.com",
+    telephone: "+229 01 90 90 90 90",
+    reductionXof: 1200,
+    ...champs,
+  });
+  const auDevis = async (reductions: Record<string, unknown>[]) => {
+    const d = await devis(roadTrip({ preuveId: "pr" }), { preuves: { pr: capture }, reductions });
+    return [d.corps.preuve, d.corps.issue.resultat.totalXof, d.corps.issue.resultat.prixBarreXof];
+  };
+  verifier("au devis, le numéro de la capture a déjà eu la réduction : « deja-eue », prix normal", await auDevis([dejaReduit({ telephone: "0197000000" })]), ["deja-eue", 31250, null]);
+  verifier("au devis, l'email de la capture (casse mise à part) : « deja-eue »", await auDevis([dejaReduit({ email: "AWA.TEST@example.com" })]), ["deja-eue", 31250, null]);
+  verifier("réduction annulée, ou demande jamais payée expirée : de nouveau possible", [
+    await auDevis([dejaReduit({ telephone: "0197000000", statut: "ANNULEE" })]),
+    await auDevis([dejaReduit({ email: "awa.test@example.com", statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 45 * MINUTE).toISOString() })]),
+  ], [["validee", 30050, 31250], ["validee", 30050, 31250]]);
+  verifier("un autre client a eu la réduction : rien ne change", await auDevis([dejaReduit({})]), ["validee", 30050, 31250]);
+
+  // En réservant : le contact de la réservation compte aussi, avant tout paiement.
+  const parLaReservation = await reserver(
+    reservation(roadTrip({ preuveId: "pr" }), 30050, { client: { ...client, email: "nouvelle@example.com", telephone: "+229 01 61 61 61 61" } }),
+    { preuves: { pr: { ...capture, email: "autre.capture@example.com", telephone: "0150505050" } }, reductions: [dejaReduit({ email: "nouvelle@example.com" })] },
+  );
+  verifier("en réservant, l'email de la réservation a déjà eu la réduction : 409 avant tout paiement, avec la phrase", [
+    parLaReservation.statut,
+    parLaReservation.corps.code,
+    espaces(parLaReservation.corps.message),
+    parLaReservation.corps.devis?.preuve,
+    parLaReservation.corps.devis?.issue?.resultat?.totalXof,
+    parLaReservation.etat.creees.length,
+    parLaReservation.etat.encaissements.length,
+  ], [409, "REGLAGES", "Vous avez déjà eu la réduction de 4 % : elle vaut une seule fois par client.", "deja-eue", 31250, 0, 0]);
+  const auPrixNormal = await reserver(reservation(roadTrip({ preuveId: "pr" }), 31250), { preuves: { pr: capture }, reductions: [dejaReduit({ telephone: "0197000000" })] });
+  const ecrite = auPrixNormal.etat.creees[0] as Record<string, any>;
+  verifier("confirmé au prix normal : écrite sans la capture (elle n'est pas consommée)", [auPrixNormal.statut, ecrite.totalXof, "preuveId" in ecrite, ecrite.details.reductionXof], [201, 31250, false, 0]);
+
+  // Deux réservations simultanées : le dépôt refuse la seconde dans sa transaction (« deja-eue »).
+  const reductions: Record<string, unknown>[] = [];
+  const course = await reserver(reservation(roadTrip({ preuveId: "pr" }), 30050), {
+    preuves: { pr: capture },
+    reductions,
+    creer: () => {
+      // L'autre réservation du même client vient de prendre la réduction, à la même seconde.
+      reductions.push(dejaReduit({ reference: "BL-LAUTRE", email: "awa.test@example.com", statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT).toISOString() }));
+      const e = new Error("Ce client a déjà eu la réduction des abonnés : elle vaut une seule fois par client.");
+      e.name = "PreuveReductionInutilisableError";
+      throw e;
+    },
+  });
+  verifier("course perdue : 409 REGLAGES, la phrase de la décision 25, le prix normal à confirmer", [
+    course.statut,
+    course.corps.code,
+    espaces(course.corps.message),
+    course.corps.devis?.preuve,
+    course.corps.devis?.issue?.resultat?.totalXof,
+  ], [409, "REGLAGES", "Vous avez déjà eu la réduction de 4 % : elle vaut une seule fois par client.", "deja-eue", 31250]);
+
+  // Défaut 13 : réduction réglée à 0 %, la capture validée n'est pas consommée.
+  const zero = { reglages: { ...REGLAGES_OFFRES_PAR_DEFAUT, roadTrip: { ...REGLAGES_OFFRES_PAR_DEFAUT.roadTrip, reduction: 0 } }, source: "base" };
+  const aZero = await reserver(reservation(roadTrip({ preuveId: "pr" }), 31250), { preuves: { pr: capture }, lecture: zero });
+  const ecriteAZero = aZero.etat.creees[0] as Record<string, any>;
+  verifier("réduction à 0 % : réservée au prix normal, la capture reste libre pour plus tard", [aZero.statut, ecriteAZero.totalXof, "preuveId" in ecriteAZero], [201, 31250, false]);
 }
 
 console.log("\n— Devis : plein, et le créneau libre le plus proche");
@@ -458,6 +533,14 @@ console.log("\n— Comptoir");
   };
   const devisComptoir = await vendre({ action: "devis", ...bikeForAll() });
   verifier("devis au comptoir : 10 000 F, sans les 125 F, sans commission", [devisComptoir.statut, devisComptoir.corps.issue.resultat.totalXof, devisComptoir.corps.issue.resultat.canal, devisComptoir.corps.commissionXof], [200, 10000, "comptoir", 0]);
+  // Décision 26 : jamais de réduction au comptoir, même pour un groupe qui montre son abonnement.
+  const roadTripComptoir = await vendre({ action: "devis", ...roadTrip() });
+  verifier("décision 26 : road trip au comptoir, 30 000 F, aucune réduction", [
+    roadTripComptoir.corps.issue.resultat.totalXof,
+    roadTripComptoir.corps.issue.resultat.reductionXof,
+    roadTripComptoir.corps.issue.resultat.prixBarreXof,
+    "preuve" in roadTripComptoir.corps,
+  ], [30000, 0, null, false]);
 
   const vente = {
     ...roadTrip(),

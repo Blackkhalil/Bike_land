@@ -16,6 +16,8 @@ const n = await charger("src/lib/offres-groupe/negociation.ts");
 const t = await charger("src/lib/offres-groupe/textes-chat.ts");
 const api = await charger("src/lib/offres-groupe/api.ts");
 const m = await charger("src/lib/offres/index.ts");
+// Les vrais messages du serveur des preuves, pour que la discussion soit essayée avec eux.
+const preuves = await charger("src/lib/offres-groupe/preuves.ts");
 const { REGLAGES_OFFRES_PAR_DEFAUT: R } = await charger("src/data/reglages-offres.ts");
 
 let echecs = 0;
@@ -415,9 +417,9 @@ r = agir(r, { type: "choisir-date", date: SAMEDI });
 verifier("road trip : pas d'heure à choisir, les gâteaux tout de suite", r.etape, "gateaux");
 verifier("le serveur vérifie déjà le parc du jour", c.demandeDevisAttendue(r), { offre: "road-trip-groupe", date: SAMEDI, saisie: { personnes: 10, gateauxParPersonne: 0 } });
 r = agir(r, { type: "choisir-gateaux", gateauxParPersonne: 0 });
-verifier("la question de la réduction, mot pour mot", [r.etape, derniers(r)], [
+verifier("la question de la réduction, celle du cahier, une fois par client (décision 25)", [r.etape, derniers(r)], [
   "reduction",
-  "Voulez-vous une réduction de 4 % ? Abonnez-vous à nos réseaux ou recommandez-nous en story.",
+  "Voulez-vous une réduction de 4 % ? Abonnez-vous à nos réseaux ou recommandez-nous en story. Elle vaut une fois par client.",
 ]);
 const sansReduction = agir(r, { type: "repondre-reduction", veut: false });
 offre = c.offreAffichee(sansReduction, FAITS, LUNDI_10H);
@@ -425,7 +427,7 @@ verifier("cas 7 : 10 personnes sans réduction, 31 250 F, pas de prix barré", [
 let p = agir(r, { type: "repondre-reduction", veut: true });
 verifier("les preuves acceptées : Instagram, TikTok, story Instagram", [p.etape, derniers(p)], [
   "preuve",
-  "Envoyez une seule capture d'écran, au choix : le profil Instagram @bikeland_bj, avec « Abonné(e) » et votre nom d'utilisateur ; le profil TikTok @bikelandbj, avec « Abonné(e) » et votre nom d'utilisateur ; votre story Instagram qui identifie @bikeland_bj. Il nous faut aussi votre téléphone et votre email, pour vous répondre.",
+  "Envoyez une seule capture d'écran, au choix : le profil Instagram @bikeland_bj, avec « Abonné(e) » et votre nom d'utilisateur ; le profil TikTok @bikelandbj, avec « Abonné(e) » et votre nom d'utilisateur ; votre story Instagram qui identifie @bikeland_bj. Il nous faut aussi votre numéro Mobile Money et votre email, pour vous répondre.",
 ]);
 p = agir(p, { type: "preuve-envoi", telephone: " +229 97 00 00 00 ", email: "awa.test@example.com" });
 verifier("l'envoi de la capture garde le téléphone et l'email pour la suite", [p.envoi, p.choix.reduction.etat, p.client.telephone, p.client.email], [
@@ -444,39 +446,103 @@ verifier("capture validée : la réduction s'applique (cas 8 : 30 050 F, barré 
   offre.resultat.prixBarreXof,
 ], ["proposition", null, "C'est validé ! La réduction de 4 % s'applique à votre road trip.", 30050, 31250]);
 verifier("la preuve part dans la demande, jamais un booléen", c.demandeDevisDe(validee.choix).saisie, { personnes: 10, gateauxParPersonne: 0, preuveId: "pr_1" });
-const attente = agir(p, { type: "preuve-recue", statut: 201, corps: { ok: true, preuveId: "pr_2", statut: "en_attente", message: "" } });
-verifier("capture en vérification : le message du cahier, et on peut réserver sans", [attente.etape, derniers(attente)], [
+// La vraie réponse du serveur à l'envoi : elle dit la réponse par email, à quelle adresse, et le prix normal si l'on réserve tout de suite.
+const messageAttente = preuves.messagePreuve("en_attente", "4 %", { email: "awa.test@example.com" });
+const attente = agir(p, { type: "preuve-recue", statut: 201, corps: { ok: true, preuveId: "pr_2", statut: "en_attente", message: messageAttente } });
+verifier("capture en vérification : le message du serveur, tel quel, et on peut réserver sans", [attente.etape, derniers(attente)], [
   "preuve-statut",
-  "Nous vérifions votre capture et vous écrivons très vite. Vous pouvez aussi réserver maintenant sans la réduction.",
+  "Merci, votre capture est bien reçue ! Nous la vérifions et vous répondons par email à awa.test@example.com. Si vous réservez tout de suite, c'est au prix normal : la réduction ne s'ajoutera pas après.",
 ]);
+verifier(
+  "sans message du serveur : le nôtre, avec l'email donné dans la carte",
+  derniers(agir(p, { type: "preuve-recue", statut: 201, corps: { ok: true, preuveId: "pr_2", statut: "en_attente", message: "" } })),
+  t.messageCaptureRecue("awa.test@example.com"),
+);
 verifier("en vérification, pas de réduction dans la demande", c.demandeDevisDe(attente.choix).saisie.preuveId, undefined);
+verifier("la capture en attente est gardée hors des réponses du client", attente.preuveEnCours, { preuveId: "pr_2", statut: "en_attente" });
 const verification = agir(attente, { type: "verifier-preuve" });
 verifier("« Est-ce validé ? » redemande l'état au serveur", verification.choix.reduction, { etat: "a-verifier", preuveId: "pr_2" });
+const pasEncore = agir(verification, {
+  type: "preuve-recue",
+  statut: 200,
+  corps: { ok: true, preuveId: "pr_2", statut: "en_attente", message: preuves.messagePreuve("en_attente", "4 %", { suivi: true }) },
+});
+verifier("« Est-ce validé ? », pas encore : on le dit, sans redire tout l'envoi, la capture reste", [pasEncore.etape, derniers(pasEncore, 2), pasEncore.choix.reduction], [
+  "preuve-statut",
+  "Est-ce que c'est validé ? | Pas encore : votre capture attend notre vérification. Nous vous écrivons par email dès que c'est fait.",
+  { etat: "en_attente", preuveId: "pr_2" },
+]);
 const sansEnAttente = agir(attente, { type: "reduction-sans" });
 verifier("réserver sans la réduction pendant la vérification", [sansEnAttente.etape, c.offreAffichee(sansEnAttente, FAITS, LUNDI_10H).resultat.totalXof], ["proposition", 31250]);
-const refusee = agir(p, { type: "preuve-recue", statut: 201, corps: { ok: true, preuveId: "pr_3", statut: "refusee", message: "On ne voit pas la mention « Abonné(e) »." } });
-verifier("capture refusée : message poli, nouvel essai possible", [refusee.etape, derniers(refusee)], [
+verifier("décision 24 : avant l'offre, Bike Land prévient que c'est le prix normal, sans rattrapage", derniers(sansEnAttente, 3), [
+  "Je réserve sans la réduction",
+  "D'accord ! En réservant maintenant, vous payez le prix normal. La réduction ne pourra pas s'ajouter à cette réservation après coup.",
+  "Voici votre offre, ligne par ligne :",
+].join(" | "));
+verifier("décision 24 : aucune promesse de remboursement", /rembours/i.test(t.MESSAGE_RESERVER_SANS_ATTENDRE), false);
+verifier(
+  "sans capture en attente (« Continuer sans la réduction » sur la carte) : pas d'avertissement",
+  derniers(agir(agir(r, { type: "repondre-reduction", veut: true }), { type: "reduction-sans" }), 2),
+  "Je réserve sans la réduction | Voici votre offre, ligne par ligne :",
+);
+// La vraie réponse du serveur à un refus : le chat ne double plus sa dernière phrase.
+const messageRefus = preuves.messagePreuve("refusee", "4 %");
+const refusee = agir(p, { type: "preuve-recue", statut: 201, corps: { ok: true, preuveId: "pr_3", statut: "refusee", message: messageRefus } });
+verifier("capture refusée : le message du serveur une seule fois, nouvel essai possible", [refusee.etape, derniers(refusee)], [
   "preuve-statut",
-  "On ne voit pas la mention « Abonné(e) ». Vous pouvez en envoyer une autre, ou réserver sans la réduction.",
+  "Nous n'avons pas pu valider cette capture. Vous pouvez en envoyer une autre, ou réserver sans la réduction.",
 ]);
+verifier("capture refusée : la phrase « en envoyer une autre » n'apparaît qu'une fois", derniers(refusee).split("en envoyer une autre").length - 1, 1);
 verifier("renvoyer une capture", agir(refusee, { type: "renvoyer-preuve" }).etape, "preuve");
 const tropLourde = agir(p, { type: "preuve-recue", statut: 413, corps: { ok: false, code: "SAISIE", message: "Image trop lourde." } });
-verifier("capture refusée par la route (taille) : on reste à l'envoi", [tropLourde.etape, tropLourde.envoi, derniers(tropLourde)], [
+verifier("capture refusée par la route (taille) : on reste à l'envoi, le message du serveur seul", [tropLourde.etape, tropLourde.envoi, derniers(tropLourde)], [
   "preuve",
   null,
-  "Image trop lourde. Envoyez une image JPG, PNG ou WebP de 4 Mo au plus.",
+  "Image trop lourde.",
 ]);
+{
+  // Les vraies raisons d'un envoi refusé : le texte du serveur, seul ; « votre connexion » seulement sans réponse.
+  const envoiRate = (statut: number, corps: unknown) => derniers(agir(p, { type: "preuve-recue", statut, corps }));
+  verifier("envoi refusé : chaque raison dite telle quelle", [
+    envoiRate(429, { ok: false, code: "TROP_DE_DEMANDES", message: "Trop de captures envoyées. Réessayez plus tard, ou écrivez-nous sur WhatsApp." }),
+    envoiRate(429, { ok: false, code: "TROP_DE_DEMANDES", message: "Nous avons beaucoup de captures à vérifier en ce moment. Réessayez un peu plus tard, ou réservez sans la réduction." }),
+    envoiRate(400, { ok: false, code: "SAISIE", message: "Envoyez une capture d'écran en JPEG, PNG ou WebP." }),
+    envoiRate(413, { ok: false, code: "SAISIE", message: "Cette image est trop chargée : envoyez une simple capture d'écran de votre profil." }),
+    envoiRate(500, { ok: false, code: "SERVEUR", message: "Un souci technique nous empêche de répondre." }),
+    envoiRate(400, null),
+    envoiRate(502, null),
+    envoiRate(0, null),
+    envoiRate(403, { ok: false, code: "FERME", message: "Fermé." }),
+  ], [
+    "Trop de captures envoyées. Réessayez plus tard, ou écrivez-nous sur WhatsApp.",
+    "Nous avons beaucoup de captures à vérifier en ce moment. Réessayez un peu plus tard, ou réservez sans la réduction.",
+    "Envoyez une capture d'écran en JPEG, PNG ou WebP.",
+    "Cette image est trop chargée : envoyez une simple capture d'écran de votre profil.",
+    "Un souci technique nous empêche de répondre.",
+    "Cette capture n'est pas passée. Envoyez une image JPG, PNG ou WebP de 4 Mo au plus.",
+    "Un souci de notre côté a interrompu la demande. Réessayez dans un instant, ou écrivez-nous sur WhatsApp.",
+    "La capture n'est pas arrivée jusqu'à nous. Vérifiez votre connexion, puis réessayez.",
+    "La réservation en ligne des sorties de groupe est fermée pour le moment. Écrivez-nous sur WhatsApp : nous organisons votre sortie avec vous.",
+  ]);
+}
 
 // Le lien de l'email après une vérification à la main : /?reserver-en-groupe=road-trip-groupe&preuve=<id>.
 let lien = agir(c.etatInitial(), { type: "demarrer", offre: "road-trip-groupe", preuveId: "pr_9" });
-verifier("lien de l'email : le chat s'ouvre sur le road trip et vérifie la capture", [lien.choix.offre, lien.choix.reduction, lien.etape], [
+verifier("lien de l'email : le chat s'ouvre sur le road trip et vérifie la capture, sans poser de question avant", [lien.choix.offre, lien.choix.reduction, lien.etape, derniers(lien)], [
   "road-trip-groupe",
   { etat: "a-verifier", preuveId: "pr_9" },
-  "personnes",
+  "preuve-statut",
+  "Je regarde où en est votre capture d'écran pour la réduction.",
 ]);
+verifier("lien de l'email : Bike Land « écrit » pendant la vérification", c.botEcrit(lien), true);
 const nombreMessages = lien.messages.length;
 lien = agir(lien, { type: "preuve-recue", statut: 200, corps: { ok: true, preuveId: "pr_9", statut: "validee", message: "" } });
-verifier("capture validée en chemin : la question du groupe n'est pas reposée", [lien.etape, lien.messages.length - nombreMessages, lien.choix.reduction.etat], ["personnes", 1, "validee"]);
+verifier("capture validée en chemin : le résultat d'abord, puis la question du groupe, sous lui", [lien.etape, lien.messages.length - nombreMessages, derniers(lien, 2), lien.choix.reduction.etat], [
+  "personnes",
+  2,
+  "C'est validé ! La réduction de 4 % s'applique à votre road trip. | Vous serez combien ? Un vélo par personne, 10 personnes au moins.",
+  "validee",
+]);
 lien = suite([
   { type: "choisir-personnes", personnes: 10 },
   { type: "choisir-date", date: SAMEDI },
@@ -488,8 +554,8 @@ verifier("capture introuvable : on reposera la question de la réduction", incon
 // Le devis dit la vérité sur la preuve.
 const dejaUtilisee = devisRecu(validee, reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(SAMEDI)), { preuve: "deja-utilisee" }));
 verifier("une capture déjà utilisée : sans réduction, et on le dit", [dejaUtilisee.choix.reduction, derniers(dejaUtilisee, 2).split(" | ")[0]], [
-  { etat: "sans" },
-  "Cette capture a déjà servi pour une réservation : la réduction vaut une fois par groupe.",
+  { etat: "sans", raison: "deja-utilisee" },
+  "Cette capture a déjà servi pour une réservation : la réduction vaut une seule fois par client.",
 ]);
 {
   // Le téléphone et l'email donnés avec la capture ne sont pas redemandés.
@@ -510,6 +576,224 @@ verifier("une capture déjà utilisée : sans réduction, et on le dit", [dejaUt
     CLIENT,
     "Houngbo | Avec quel réseau Mobile Money payez-vous ?",
   ]);
+}
+
+/* ------------------------------------------------ La réduction des abonnés : décisions 24 et 25 */
+
+const phraseDejaEue = "Vous avez déjà eu la réduction de 4 % : elle vaut une seule fois par client.";
+const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.resultat.totalXof ?? null;
+{
+  // Décision 25, au devis : le client de la capture a déjà eu la réduction.
+  const dejaEue = devisRecu(validee, reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(SAMEDI)), { preuve: "deja-eue" }));
+  verifier("décision 25, au devis : sans la réduction, la phrase avant l'offre au prix normal", [
+    dejaEue.choix.reduction,
+    derniers(dejaEue, 2),
+    dejaEue.etape,
+    totalAffiche(dejaEue),
+    dejaEue.preuveEnCours,
+  ], [{ etat: "sans", raison: "deja-eue" }, `${phraseDejaEue} | Voici votre offre, ligne par ligne :`, "proposition", 31250, null]);
+  verifier("la phrase de la décision 25 vient des réglages (taux lisible ou non)", [t.phraseReductionDejaEue("4 %"), t.phraseReductionDejaEue()], [
+    phraseDejaEue,
+    "Vous avez déjà eu la réduction : elle vaut une seule fois par client.",
+  ]);
+  const avecGateau = { ...validee.choix, gateauxParPersonne: 1 };
+  verifier("décision 25 : la réduction n'est plus proposée pour faire baisser le prix (elle l'est encore à qui a dit non)", [
+    n.variantesMoinsCheres({ ...avecGateau, reduction: { etat: "sans", raison: "deja-eue" } }, FAITS, LUNDI_10H).map((a: { cle: string }) => a.cle),
+    n.variantesMoinsCheres({ ...avecGateau, reduction: { etat: "sans", raison: "deja-utilisee" } }, FAITS, LUNDI_10H).map((a: { cle: string }) => a.cle),
+    n.variantesMoinsCheres({ ...avecGateau, reduction: { etat: "sans" } }, FAITS, LUNDI_10H).map((a: { cle: string }) => a.cle),
+  ], [["sans-gateaux"], ["sans-gateaux"], ["reduction", "sans-gateaux"]]);
+
+  // Décision 25, à l'envoi : le serveur répond tout de suite, rien n'est gardé.
+  const refusD25 = agir(p, { type: "preuve-recue", statut: 409, corps: { ok: false, code: "REDUCTION_DEJA_EUE", message: phraseDejaEue } });
+  verifier("décision 25, à l'envoi : le client continue sans la réduction, jusqu'à son offre", [
+    refusD25.envoi,
+    refusD25.choix.reduction,
+    refusD25.etape,
+    derniers(refusD25, 2),
+    totalAffiche(refusD25),
+  ], [null, { etat: "sans", raison: "deja-eue" }, "proposition", `${phraseDejaEue} | Voici votre offre, ligne par ligne :`, 31250]);
+  verifier(
+    "décision 25, à l'envoi, sans message du serveur : la phrase avec le taux des réglages",
+    agir(p, { type: "preuve-recue", statut: 409, corps: { ok: false, code: "REDUCTION_DEJA_EUE" } }).messages.at(-2).texte,
+    phraseDejaEue,
+  );
+
+  // Décision 25 et défaut 10, au statut : jamais « C'est validé ! » pour une capture qui ne sert plus.
+  const enVerification = agir(attente, { type: "verifier-preuve" });
+  for (const [statut, phrase] of [["deja-eue", phraseDejaEue], ["deja-utilisee", t.PHRASE_CAPTURE_DEJA_UTILISEE]] as const) {
+    const lu = agir(enVerification, {
+      type: "preuve-recue",
+      statut: 200,
+      corps: { ok: true, preuveId: "pr_2", statut, message: preuves.messagePreuve(statut, "4 %", { suivi: true }) },
+    });
+    verifier(`statut « ${statut} » : la bonne phrase, jamais « C'est validé ! », puis l'offre sans la réduction`, [
+      derniers(lu, 2),
+      lu.messages.some((message: { texte: string }) => message.texte.startsWith("C'est validé")),
+      lu.choix.reduction,
+      lu.etape,
+      lu.preuveEnCours,
+    ], [`${phrase} | Voici votre offre, ligne par ligne :`, false, { etat: "sans", raison: statut }, "proposition", null]);
+  }
+  let lienDejaEue = agir(c.etatInitial(), { type: "demarrer", offre: "road-trip-groupe", preuveId: "pr_8" });
+  lienDejaEue = agir(lienDejaEue, { type: "preuve-recue", statut: 200, corps: { ok: true, preuveId: "pr_8", statut: "deja-eue", message: phraseDejaEue } });
+  verifier("lien de l'email, client qui a déjà eu la réduction : la phrase d'abord, puis la première question", [derniers(lienDejaEue, 2), lienDejaEue.etape], [
+    `${phraseDejaEue} | Vous serez combien ? Un vélo par personne, 10 personnes au moins.`,
+    "personnes",
+  ]);
+  const finDejaEue = suite([
+    { type: "choisir-personnes", personnes: 10 },
+    { type: "choisir-date", date: SAMEDI },
+    { type: "choisir-gateaux", gateauxParPersonne: 0 },
+  ], LUNDI_10H, lienDejaEue);
+  verifier("puis la question de la réduction n'est plus posée : l'offre au prix normal", [finDejaEue.etape, totalAffiche(finDejaEue)], ["proposition", 31250]);
+
+  // Décision 25, en réservant : le contact de la réservation a déjà eu la réduction.
+  let payer = devisRecu(validee, reponseDevis(m.calculerRoadTrip({ personnes: 10, reductionValidee: true }, R, ctx(SAMEDI)), { preuve: "validee" }));
+  payer = suite([
+    { type: "reserver" },
+    { type: "saisir-champ", champ: "prenom", valeur: "Awa" },
+    { type: "saisir-champ", champ: "nom", valeur: "Houngbo" },
+    { type: "choisir-moyen", moyen: "MTN_MONEY" },
+    { type: "accepter-cgv", acceptees: true },
+    { type: "reservation-envoi" },
+  ], LUNDI_10H, payer);
+  verifier("prêt à payer avec la réduction (30 050 F)", [payer.envoi, c.demandeReservationDe({ ...payer, envoi: null })?.attendu], ["reservation", { totalXof: 30050 }]);
+  const devisSansReduction = reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(SAMEDI)), { preuve: "deja-eue" });
+  const auPaiement = agir(payer, { type: "reservation-recue", statut: 409, corps: { ok: false, code: "REGLAGES", message: phraseDejaEue, devis: devisSansReduction } });
+  verifier("décision 25, en réservant : avant de payer, la phrase et le prix normal à confirmer", [
+    auPaiement.etape,
+    auPaiement.envoi,
+    derniers(auPaiement),
+    auPaiement.choix.reduction,
+    c.devisConfirme(auPaiement),
+    totalAffiche(auPaiement),
+  ], [
+    "proposition",
+    null,
+    `${phraseDejaEue} Voici l'offre à jour : 31 250 F. Confirmez pour réserver à ce prix.`,
+    { etat: "sans", raison: "deja-eue" },
+    true,
+    31250,
+  ]);
+  verifier("confirmer ensuite : la réservation part sans la capture, au prix normal", [
+    c.demandeDevisDe(auPaiement.choix).saisie.preuveId,
+    c.demandeReservationDe(agir(agir(agir(auPaiement, { type: "reserver" }), { type: "choisir-moyen", moyen: "MTN_MONEY" }), { type: "accepter-cgv", acceptees: true }))?.attendu,
+  ], [undefined, { totalXof: 31250 }]);
+  const payee = agir(payer, { type: "reservation-recue", statut: 201, corps: reponse201({ statut: "REUSSI" }, { totalXof: 30050, montantADebiterXof: 31027 }) });
+  verifier("payée avec la réduction : la capture a servi, elle n'est plus gardée", [payee.etape, payee.preuveEnCours], ["confirmee", null]);
+}
+{
+  // Défaut 5 : une panne pendant « Est-ce que c'est validé ? » garde la capture.
+  const enVerification = agir(attente, { type: "verifier-preuve" });
+  for (const statut of [0, 500]) {
+    const panne = agir(enVerification, { type: "preuve-recue", statut, corps: statut ? { ok: false, code: "SERVEUR", message: "Un souci." } : null });
+    verifier(`vérification en panne (statut ${statut}) : la capture est gardée, « Est-ce que c'est validé ? » reste possible`, [
+      panne.choix.reduction,
+      derniers(panne),
+      panne.etape,
+      panne.preuveEnCours,
+      agir(panne, { type: "verifier-preuve" }).choix.reduction,
+    ], [
+      { etat: "en_attente", preuveId: "pr_2" },
+      "La connexion est instable : je n'arrive pas à voir où en est votre capture. Réessayez dans un instant.",
+      "preuve-statut",
+      { preuveId: "pr_2", statut: "en_attente" },
+      { etat: "a-verifier", preuveId: "pr_2" },
+    ]);
+  }
+  verifier("capture vraiment introuvable (404) : seulement là, on repart de la question", agir(enVerification, { type: "preuve-recue", statut: 404, corps: { ok: false } }).choix.reduction, { etat: "a-demander" });
+  // Le lien de l'email sans réseau : la capture est gardée, et la discussion avance.
+  let lienSansReseau = agir(agir(c.etatInitial(), { type: "demarrer", offre: "road-trip-groupe", preuveId: "pr_7" }), { type: "preuve-recue", statut: 0, corps: null });
+  verifier("lien de l'email sans réseau : la capture gardée, puis la première question", [lienSansReseau.choix.reduction, derniers(lienSansReseau, 2), lienSansReseau.etape], [
+    { etat: "en_attente", preuveId: "pr_7" },
+    "La connexion est instable : je n'arrive pas à voir où en est votre capture. Réessayez dans un instant. | Vous serez combien ? Un vélo par personne, 10 personnes au moins.",
+    "personnes",
+  ]);
+  lienSansReseau = suite([
+    { type: "choisir-personnes", personnes: 10 },
+    { type: "choisir-date", date: SAMEDI },
+    { type: "choisir-gateaux", gateauxParPersonne: 0 },
+  ], LUNDI_10H, lienSansReseau);
+  verifier("arrivé à la réduction : Bike Land rappelle où en est la capture, avant les réponses", [lienSansReseau.etape, derniers(lienSansReseau)], [
+    "preuve-statut",
+    "Votre capture attend encore notre vérification. Vous pouvez réserver maintenant au prix normal, ou attendre notre réponse.",
+  ]);
+}
+{
+  // Défaut 11 : « Recommencer », ou une autre offre, garde la capture en cours.
+  const recommence = agir(attente, { type: "recommencer" });
+  verifier("« Recommencer » pendant la vérification : la capture en cours est gardée", [recommence.etape, recommence.preuveEnCours], [
+    "offre",
+    { preuveId: "pr_2", statut: "en_attente" },
+  ]);
+  const retour = agir(recommence, { type: "choisir-offre", offre: "road-trip-groupe" });
+  verifier("de retour au road trip : Bike Land regarde où en est la capture, au lieu de reposer la question", [retour.etape, retour.choix.reduction, derniers(retour)], [
+    "preuve-statut",
+    { etat: "a-verifier", preuveId: "pr_2" },
+    "Je regarde où en est votre capture d'écran pour la réduction.",
+  ]);
+  const autreOffre = agir(attente, { type: "demarrer", offre: "bike-for-all" });
+  verifier("une autre offre ouverte depuis une page : la capture reste, et le road trip la retrouve", [
+    autreOffre.choix.offre,
+    autreOffre.preuveEnCours,
+    agir(autreOffre, { type: "choisir-offre", offre: "road-trip-groupe" }).choix.reduction,
+  ], ["bike-for-all", { preuveId: "pr_2", statut: "en_attente" }, { etat: "a-verifier", preuveId: "pr_2" }]);
+  verifier("rechargée, la conversation garde la capture en cours ; abîmée, elle ne la garde pas", [
+    c.relireSauvegarde(c.sauvegarder(attente, true, LUNDI_10H), LUNDI_10H + 1000).etat.preuveEnCours,
+    c.relireSauvegarde(c.sauvegarder({ ...attente, preuveEnCours: { preuveId: "<script>", statut: "en_attente" } }, true, LUNDI_10H), LUNDI_10H + 1000).etat.preuveEnCours,
+    c.relireSauvegarde(c.sauvegarder({ ...attente, preuveEnCours: { preuveId: "pr_2", statut: "refusee" } }, true, LUNDI_10H), LUNDI_10H + 1000).etat.preuveEnCours,
+  ], [{ preuveId: "pr_2", statut: "en_attente" }, null, null]);
+  // « Avec la réduction » proposé pour baisser le prix, alors qu'une capture attend : elle est regardée, pas redemandée.
+  let gateauEtCapture = suite([
+    { type: "choisir-offre", offre: "road-trip-groupe" },
+    { type: "choisir-personnes", personnes: 10 },
+    { type: "choisir-date", date: SAMEDI },
+    { type: "choisir-gateaux", gateauxParPersonne: 1 },
+    { type: "repondre-reduction", veut: true },
+    { type: "preuve-envoi", telephone: "+229 97 00 00 00", email: "awa.test@example.com" },
+    { type: "preuve-recue", statut: 201, corps: { ok: true, preuveId: "pr_5", statut: "en_attente", message: messageAttente } },
+    { type: "reduction-sans" },
+  ]);
+  gateauEtCapture = agir(gateauEtCapture, { type: "trop-cher" });
+  const avecReduction = gateauEtCapture.alternatives.find((a: { cle: string }) => a.cle === "reduction");
+  const regardee = agir(gateauEtCapture, { type: "appliquer", alternative: avecReduction });
+  verifier("« Avec la réduction » pendant la vérification : Bike Land regarde la capture envoyée", [regardee.etape, regardee.choix.reduction, derniers(regardee)], [
+    "preuve-statut",
+    { etat: "a-verifier", preuveId: "pr_5" },
+    "Je regarde où en est votre capture d'écran.",
+  ]);
+}
+{
+  // Défaut 13 : réduction réglée à 0 %, le lien de l'email ne regarde rien.
+  const FAITS0 = { ...FAITS, reglages: { ...R, roadTrip: { ...R.roadTrip, reduction: 0 } } };
+  const lien0 = agir(c.etatInitial(), { type: "demarrer", offre: "road-trip-groupe", preuveId: "pr_9" }, LUNDI_10H, FAITS0);
+  verifier("réduction à 0 % : le lien ne regarde pas la capture, aucune bulle « 0 % », la première question", [
+    lien0.etape,
+    lien0.choix.reduction,
+    lien0.messages.some((message: { texte: string }) => /0 %/.test(message.texte.replace(ESPACES_INSECABLES, " "))),
+    c.botEcrit(lien0),
+  ], ["personnes", { etat: "sans" }, false, false]);
+  verifier(
+    "réduction à 0 % : revenir au road trip avec une capture en cours ne la regarde pas non plus",
+    agir(agir(attente, { type: "recommencer" }, LUNDI_10H, FAITS0), { type: "choisir-offre", offre: "road-trip-groupe" }, LUNDI_10H, FAITS0).choix.reduction,
+    { etat: "sans" },
+  );
+}
+{
+  // Défaut 21 : la capture ne compte plus et le jour est plein : le créneau libre du serveur.
+  const plein = devisRecu(
+    validee,
+    reponseDevis(
+      { ok: false, refus: { code: "PARC", champ: "personnes", maximum: 0, message: "Tous nos vélos sont déjà pris ce jour-là : choisissez un autre jour." } },
+      { preuve: "deja-utilisee", capacite: { velosLibres: 0, parGamme: { CLASSIQUE: 0, PREMIUM: 0, PRESTIGE: 0 } }, prochainCreneau: { date: "2026-11-21", depart: "08:00" } },
+    ),
+  );
+  verifier("capture déjà servie, jour plein : le refus propose d'abord le créneau libre du serveur", [
+    plein.etape,
+    plein.choix.reduction,
+    plein.refus?.prochainCreneau,
+    plein.alternatives[0]?.libelle,
+  ], ["refus", { etat: "sans", raison: "deja-utilisee" }, { date: "2026-11-21", depart: "08:00" }, "Samedi 21 novembre : 31 250 F"]);
 }
 
 /* ------------------------------------------------ Gbashi Bike */

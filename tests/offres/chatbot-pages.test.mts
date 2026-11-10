@@ -130,6 +130,11 @@ verifier("CGV : les preuves de la réduction, la story sur Instagram seulement",
   "au choix : le profil Instagram @bikeland_bj, avec « Abonné(e) » et votre nom d'utilisateur, le profil TikTok @bikelandbj, avec « Abonné(e) » et votre nom d'utilisateur ou votre story Instagram qui identifie @bikeland_bj.",
 ), true);
 verifier("CGV, agent IA pas activé : vérification à la main, pas un mot d'IA", [page.includes("intelligence artificielle"), page.includes("Notre équipe vérifie chaque capture à la main")], [false, true]);
+verifier("CGV : la réduction une fois par client (décision 25), le prix normal pendant l'attente sans rattrapage (décision 24)", [
+  page.includes("ne s'applique qu'une fois par client, reconnu à son numéro ou à son email : une seule réservation, même avec une nouvelle capture."),
+  page.includes("réserver sans attendre, au prix normal : la réduction ne s'ajoute pas ensuite à cette réservation."),
+  page.includes("une seule fois par groupe"),
+], [true, true, false]);
 verifier("CGV : les chiffres des réglages (frais de paiement, retard)", [page.includes("de 125 FCFA par personne"), page.includes("1 000 FCFA par minute")], [true, true]);
 process.env.ANTHROPIC_API_KEY = "cle-de-test-factice";
 page = await rendreCgv();
@@ -160,6 +165,14 @@ verifier("la capture vérifiée à la main, stockage privé, supprimée dès la 
   page.includes("supprimée dès que la décision est prise, et au plus tard 30 jours après son envoi"),
 ], [true, true, true]);
 verifier("la discussion du chatbot gardée dans le navigateur, le temps de la visite", page.includes("le temps de votre visite, coordonnées comprises"), true);
+{
+  // Défaut 19 : la durée du contact des captures, la même que la tâche quotidienne.
+  const { JOURS_CONSERVATION_CONTACT } = await charger("src/lib/offres-groupe/preuves.ts");
+  verifier("le numéro et l'email d'une capture : effacés 30 jours après la décision, ou quand elle a servi", [
+    page.includes(`Le numéro et l'email envoyés avec elle sont effacés ${JOURS_CONSERVATION_CONTACT} jours après la décision, ou dès que la capture a servi à une réservation`),
+    page.includes("n'accorder la réduction qu'une fois par client"),
+  ], [true, true]);
+}
 verifier("description sans IA", String((await donnees.generateMetadata()).description).includes("IA"), false);
 process.env.ANTHROPIC_API_KEY = "cle-de-test-factice";
 page = await rendreDonnees();
