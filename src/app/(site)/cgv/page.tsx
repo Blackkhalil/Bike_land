@@ -174,8 +174,9 @@ function ConditionsOffresDeGroupe({ reglages, iaActive }: { reglages: ReglagesOf
           Elle remercie le groupe qui fait connaître {site.nom}, sur une seule capture d&apos;écran, au
           choix : {preuvesEnClair()}.{" "}
           {r ? null : <>Son taux est celui affiché au moment de la réservation. </>}
-          Elle porte sur le prix du road trip, hors frais de paiement électronique, et s&apos;applique une
-          seule fois par groupe.{" "}
+          Elle porte sur le prix du road trip, hors frais de paiement électronique, et ne s&apos;applique
+          qu&apos;une fois par client, reconnu à son numéro ou à son email : une seule réservation, même avec
+          une nouvelle capture.{" "}
           {iaActive ? (
             <>
               La capture est vérifiée automatiquement par un assistant d&apos;intelligence artificielle (voir
@@ -184,7 +185,8 @@ function ConditionsOffresDeGroupe({ reglages, iaActive }: { reglages: ReglagesOf
           ) : (
             <>
               Notre équipe vérifie chaque capture à la main et vous répond par email ; vous pouvez aussi
-              réserver sans attendre, au prix sans réduction.
+              réserver sans attendre, au prix normal : la réduction ne s&apos;ajoute pas ensuite à cette
+              réservation.
             </>
           )}{" "}
           La réduction n&apos;est jamais appliquée par défaut : tant qu&apos;elle n&apos;est pas validée, le

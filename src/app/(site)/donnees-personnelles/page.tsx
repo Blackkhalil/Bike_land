@@ -40,6 +40,12 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 const CONSERVATION_ANTHROPIC_JOURS = 30;
 const CONSERVATION_CAPTURE_JOURS = 30;
+/**
+ * Le numéro et l'email donnés avec une capture : effacés 30 jours après la
+ * décision, ou dès qu'elle a servi (src/lib/offres-groupe/preuves.ts,
+ * JOURS_CONSERVATION_CONTACT ; le test des preuves vérifie qu'ils concordent).
+ */
+const CONSERVATION_CONTACT_CAPTURE_JOURS = 30;
 
 export default async function PageDonneesPersonnelles() {
   const { groupe, iaActive } = await quoiCiter();
@@ -126,7 +132,11 @@ export default async function PageDonneesPersonnelles() {
                 </>
               ) : (
                 "."
-              )}
+              )}{" "}
+              Le numéro et l&apos;email envoyés avec elle sont effacés {CONSERVATION_CONTACT_CAPTURE_JOURS}&nbsp;jours
+              après la décision, ou dès que la capture a servi à une réservation, qui garde ses propres
+              coordonnées. Ces coordonnées de réservation nous servent aussi à n&apos;accorder la réduction
+              qu&apos;une fois par client.
             </li>
           )}
         </ul>
