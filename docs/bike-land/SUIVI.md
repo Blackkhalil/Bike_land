@@ -56,6 +56,9 @@ responsable notée ici.
 | 21 | Agent IA au lancement | Pas activé (10 novembre, pour ne rien dépenser) : le récapitulatif est le texte fixe du tableur, et chaque capture de réduction est vérifiée à la main dans l'administration. Le code de l'agent reste prêt : il s'active plus tard en ajoutant une clé (le modèle le moins cher, Claude Haiku, est conseillé). Avant d'activer : appliquer les points de la relecture du lot 5a (unités et rôles des montants dans le contrôle du texte, dates en lettres, lieu de traitement). Les pages CGV et données personnelles ne parlent de l'IA que si elle est activée. |
 | 22 | Le but : un chatbot | Précisé le 10 novembre : pas de nouveau site ni de pages de formulaire, mais une nouvelle fonctionnalité du site existant, développée en local sur la branche `feature/offres-groupe` : un chatbot qui se sert du tableur et du cahier pour calculer et négocier les offres de groupe. Il pose ses questions une par une avec des boutons (sans IA, gratuit), calcule avec la calculatrice identique au tableur, et négocie : le client donne son budget, le chatbot dit ce qu'il peut avoir et propose d'autres choix quand c'est trop juste (durée plus courte, sans accompagnateur, autre horaire, autre jour). |
 | 23 | Fin de la discussion | Le client réserve et paie par Mobile Money directement dans le chat (choix du 10 novembre). |
+| 24 | Captures de réduction | À chaque capture envoyée, Bike Land reçoit un email avec le lien pour la vérifier, et le tableau de bord affiche les captures à vérifier. Pas de remboursement : un groupe qui paie le prix normal pendant l'attente garde ce prix, et la discussion le prévient avant (réponse du 10 novembre). |
+| 25 | Réduction du road trip | La réduction des abonnés ne se donne qu'une fois par client (même numéro ou même email). Ensuite, il paie le prix normal (choix du 10 novembre). |
+| 26 | Comptoir | Pas de réduction au comptoir, même si le groupe montre son abonnement (choix du 10 novembre). |
 
 ## Cas de test de référence (après décisions)
 
@@ -69,8 +72,8 @@ Départ 8 h, sans gâteaux sauf mention, paiement électronique inclus.
 | 4 | Bike for All, 13 pers., 10 000 F, avec accompagnateur | aucun coco, 45 min, 14 725 F, barré 22 350 F |
 | 5 | Bike for All, 12 pers., 20 000 F, avec accompagnateur | grand coco, 90 min, 24 650 F, barré 37 950 F |
 | 6 | Bike for All durée, 15 pers., 60 min, petit coco, 1 gâteau | 19 750 F, barré 32 250 F |
-| 7 | Road trip, 10 pers., sans réduction | 31 250 F, pas de prix barré (décision 2) |
-| 8 | Road trip, 10 pers., avec réduction | 30 050 F, barré 31 250 F (réduction de 4 % sur le prix avant frais : 30 000 F - 1 200 F + 1 250 F ; à confirmer en démo) |
+| 7 | Road trip, 10 pers., sans réduction | 31 250 F, pas de prix barré (décision 2). C'est aussi le prix d'un groupe qui réserve pendant que sa capture attend (la discussion le prévient avant, décision 24) et d'un client qui a déjà eu la réduction (décision 25) |
+| 8 | Road trip, 10 pers., avec réduction | 30 050 F, barré 31 250 F (réduction de 4 % sur le prix avant frais : 30 000 F - 1 200 F + 1 250 F), une seule fois par client : même numéro (8 derniers chiffres) ou même email (décision 25). Capture vérifiée à la main, Bike Land prévenu par email à chaque capture (décisions 21 et 24) ; au comptoir, jamais de réduction (décision 26) |
 | 9 | Gbashi, 5 pers. (2 Classique, 2 Premium, 1 Prestige) | 7 000 + 8 000 + 4 500 = 19 500 F + 625 F = 20 125 F (décision 4) |
 
 Refus attendus : 18 personnes et 5 000 F (budget insuffisant pour 30 min,
@@ -78,6 +81,16 @@ minimum 8 200 F) ; parc passé de 18 à 15 vélos, groupe de 16 refusé ; 3 vél
 en réparation un samedi précis, capacité réduite de 3 ce jour-là seulement ;
 parc baissé sous les vélos déjà payés, alerte qui liste les réservations ;
 demande après le vendredi 19 h pour le week-end, refusée.
+
+Captures de réduction attendues (décisions 24 et 25) : une capture envoyée
+part en vérification, Bike Land reçoit l'email « Capture à vérifier :
+réduction du road trip » et le tableau de bord affiche « 1 capture à
+vérifier » ; un client qui a déjà eu la réduction (même numéro ou même
+email) l'apprend dès l'envoi, rien n'est gardé ; « Réserver maintenant, sans
+la réduction » pendant l'attente : Bike Land prévient que c'est le prix
+normal, sans rattrapage ; validée après un paiement au prix normal, l'email
+dit que cette réservation garde son prix et que la réduction servira une
+fois, sur un prochain road trip.
 
 ## Décisions techniques (prises par le chef de projet)
 
@@ -93,7 +106,11 @@ demande après le vendredi 19 h pour le week-end, refusée.
 - Journal des événements : « admin » plus le prénom saisi (compte administrateur
   unique aujourd'hui).
 - Agent IA version 1 : récapitulatif et contrôle des captures, pas de discussion.
-- Captures : stockage privé, supprimées dès la décision, 30 jours au plus.
+- Captures : stockage privé, supprimées dès la décision, 30 jours au plus. Le
+  numéro et l'email donnés avec une capture sont effacés 30 jours après la
+  décision, ou dès qu'elle a servi ; la règle « une réduction par client »
+  (décision 25) s'appuie sur les coordonnées des réservations, et une capture
+  validée qui n'a pas servi reste utilisable par son lien.
 - Toutes les nouvelles tables avec la protection Supabase (RLS).
 - Expiration des demandes vérifiée au fil des requêtes (forfait Vercel gratuit :
   une tâche planifiée par jour) ; nettoyage quotidien.
