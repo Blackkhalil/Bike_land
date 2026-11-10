@@ -322,6 +322,17 @@ verifier(
   "validee",
 );
 
+console.log("\n— Capture : la story, seulement sur Instagram ; le compte du client n'est jamais gardé (lot 5b)");
+{
+  const { r } = await analyser(() => verdict("story", "tiktok", "bikelandbj"));
+  verifier("story TikTok qui identifie @bikelandbj : à la main, jamais validée d'office", r.statut, "en_attente");
+  verifier("le motif dit pourquoi", /story Instagram/.test(r.motif), true);
+  const autre = await analyser(() => verdict("abonne", "instagram", "awa_du_quartier", "Profil de @awa_du_quartier, bouton Suivre."));
+  verifier("compte inconnu (celui du client) : ni rendu, ni cité dans le motif", [autre.r.identifiantVu, autre.r.motif.includes("awa_du_quartier")], [undefined, false]);
+  const refus = await analyser(() => verdict("non", "instagram", null, "La capture montre @awa_du_quartier qui ne suit pas @bikeland_bj."));
+  verifier("indices : le pseudo du client masqué, celui de Bike Land gardé", [refus.r.motif.includes("awa_du_quartier"), refus.r.motif.includes("@bikeland_bj")], [false, true]);
+}
+
 console.log("\n— Capture : refusée ou en attente selon le verdict");
 verifier("« non » : refusée", await statut(() => verdict("non", "instagram", "bikeland_bj", "Bouton Suivre visible.")), "refusee");
 verifier("« incertain » : en attente", await statut(() => verdict("incertain", "instagram", "bikeland_bj", "Image floue.")), "en_attente");
