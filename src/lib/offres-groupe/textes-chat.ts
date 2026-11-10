@@ -62,12 +62,14 @@ const INSECABLE = String.fromCharCode(0xa0);
 /**
  * La typographie française à l'affichage : une espace insécable avant « ? »,
  * « ! », « : », « ; » et « » », et après « « ». Sur un téléphone étroit, le
- * point d'interrogation ne part plus seul à la ligne. Une référence de
- * réservation (« BL-T2K9QX ») ne se coupe pas non plus à son tiret.
+ * point d'interrogation ne part plus seul à la ligne. Un nombre reste collé
+ * au mot qui le suit (« 10 personnes », « 25 km », « 14 novembre »), et une
+ * référence de réservation (« BL-T2K9QX ») ne se coupe pas à son tiret.
  */
 export function insecables(texte: string): string {
   return (
     texte
+      .replace(/(\d) (?=[a-zàâäçéèêëîïôöûùüÿœ])/g, `$1${INSECABLE}`)
       .replace(/ ([?!:;»])/g, " $1")
       .replace(/« /g, "« ")
       .replace(/\b([A-Z]{2})-(?=[A-Z0-9]{4,}\b)/g, `$1-${LIANT}`)

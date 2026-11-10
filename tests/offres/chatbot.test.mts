@@ -1101,11 +1101,13 @@ verifier("typographie à l'affichage : espace insécable avant ? ! : ; » et apr
   AVEC_INSECABLES.includes("« Abonné(e) »"),
   AVEC_INSECABLES.includes("08:00"),
 ], [true, true, true, true, true, true]);
-verifier("une référence ne se coupe pas à son tiret ; le nombre de personnes reste collé à son mot", [
+verifier("une référence ne se coupe pas à son tiret ; un nombre reste collé au mot qui le suit", [
   t.insecables("Votre référence : BL-T2K9QX.").includes(`BL-${String.fromCharCode(0x2060)}T2K9QX`),
   t.insecables("Donnez-le-moi").includes(String.fromCharCode(0x2060)),
-  t.personnesEnClair(10).includes("10 personnes"),
-], [true, false, true]);
+  t.personnesEnClair(10).includes(`10${String.fromCharCode(0xa0)}personnes`),
+  t.insecables("Balade de 25 km, 10 personnes minimum, samedi 14 novembre").split(String.fromCharCode(0xa0)).length - 1,
+  t.insecables("le 01 97 00 00 00, 3 000 F").includes(String.fromCharCode(0xa0)),
+], [true, false, true, 3, false]);
 
 type Recap = { detail?: string; lignes: { libelle: string; valeur: string }[] };
 const textes = traverses.flatMap((etat) => [

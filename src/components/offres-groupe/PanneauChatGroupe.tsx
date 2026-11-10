@@ -212,7 +212,10 @@ export function PanneauChatGroupe({
       aller(0, true);
       return;
     }
-    const premiere = messages.findIndex((message) => message.id >= avant.prochainId);
+    let premiere = messages.findIndex((message) => message.id >= avant.prochainId);
+    // Une carte figée (l'offre, le paiement) prend la place de la carte que le client
+    // vient de lire : la vue vise ce qui suit, sa réponse et celle de Bike Land.
+    while (premiere >= 0 && premiere < messages.length - 1 && messages[premiere].recap) premiere += 1;
     if (premiere >= 0) aller(premiere, true);
   }, [messages, prochainId]);
 
