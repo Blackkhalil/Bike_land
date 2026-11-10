@@ -98,10 +98,13 @@ import {
   messageVelosManquants,
   montantsDeLaDemandeGroupe,
   ordreAttribution,
+  memeClient,
   PreuveReductionInutilisableError,
   prixParLigne,
   raisonPreuveInutilisable,
+  reductionDejaEue,
   refusRetard,
+  reservationRetenue,
   reservationsToucheesParmi,
   RETARD_MAX_MINUTES,
   velosDeLaGamme,
@@ -112,7 +115,9 @@ import {
   type Depot,
   type DemandeReservation,
   type FiltreCatalogue,
+  type IdentiteClient,
   type ParcDuJour,
+  type ReservationRoadTripClient,
   type ResultatReservation,
   type ResultatRetard,
 } from "./contrat";
@@ -501,6 +506,46 @@ type VeloDuParcEnBase = { id: string; nom: string; gamme: GammeVelo; statut: str
  * lectures que la transaction protège d'une écriture concurrente. Une
  * lecture après l'autre : une transaction interactive n'a qu'une connexion.
  */
+/**
+ * Les réservations du Road trip en groupe, sans les annulées, réduites à ce
+ * que regarde la règle « une réduction par client » (décision 25) : avec la
+ * réduction des abonnés (`discountXof` > 0, la seule remise de cette offre)
+ * ou au prix normal. Lue aussi dans la transaction qui consomme une preuve :
+ * deux réservations simultanées du même client se voient l'une l'autre
+ * (transaction sérialisable, rejouée par `avecRepriseConnexion`).
+ */
+async function lireReservationsRoadTripGroupe(
+  db: Prisma.TransactionClient,
+  filtre: { avecReduction: boolean; depuis?: string },
+): Promise<ReservationRoadTripClient[]> {
+  const depuis = filtre.depuis ? new Date(filtre.depuis) : null;
+  const lignes = await db.booking.findMany({
+    where: {
+      offer: "ROAD_TRIP_GROUPE",
+      status: { in: ["EN_ATTENTE_PAIEMENT", "CONFIRMEE", "EN_COURS", "TERMINEE"] },
+      discountXof: filtre.avecReduction ? { gt: 0 } : 0,
+      ...(depuis && !Number.isNaN(depuis.getTime()) ? { createdAt: { gte: depuis } } : {}),
+    },
+    select: {
+      reference: true,
+      status: true,
+      createdAt: true,
+      contactPhone: true,
+      discountXof: true,
+      customer: { select: { email: true, phone: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  return lignes.map((ligne) => ({
+    reference: ligne.reference,
+    statut: ligne.status,
+    creeLe: ligne.createdAt.toISOString(),
+    email: ligne.customer.email,
+    ...((ligne.contactPhone ?? ligne.customer.phone) ? { telephone: (ligne.contactPhone ?? ligne.customer.phone) as string } : {}),
+    reductionXof: ligne.discountXof,
+  }));
+}
+
 async function lireParcDuJour(db: Prisma.TransactionClient, date: DateISO): Promise<ParcDuJourDe<VeloDuParcEnBase>> {
   const jour = new Date(`${date}T00:00:00Z`);
   const bikes = await db.bike.findMany({
@@ -2475,6 +2520,38 @@ const depotDirect: Depot = {
     return lignes.map(versPreuve);
   },
 
+  async compterPreuvesEnAttente() {
+    return client().preuveReduction.count({ where: { statut: "en_attente" } });
+  },
+
+  async effacerContactsPreuves(avant) {
+    const limite = new Date(avant);
+    const { count } = await client().preuveReduction.updateMany({
+      where: {
+        AND: [
+          { OR: [{ email: { not: null } }, { telephone: { not: null } }] },
+          {
+            OR: [
+              { reference: { not: null } },
+              ...(Number.isNaN(limite.getTime()) ? [] : [{ statut: { not: "en_attente" }, decideLe: { lt: limite } }]),
+            ],
+          },
+        ],
+      },
+      data: { email: null, telephone: null },
+    });
+    return count;
+  },
+
+  async purgerCompteursExpires() {
+    const { count } = await client().compteurEssais.deleteMany({ where: { expireLe: { lt: new Date() } } });
+    return count;
+  },
+
+  async listerReservationsRoadTripGroupe(filtre) {
+    return lireReservationsRoadTripGroupe(client(), filtre);
+  },
+
   async enregistrerRetard(reference, minutes, par): Promise<ResultatRetard> {
     // Les réglages du moment : la tolérance et le montant par minute.
     const lecture = await lireReglagesOffresAvec(lireParametre);
@@ -2614,7 +2691,7 @@ const depotDirect: Depot = {
           if (demande.preuveId) {
             const preuve = await tx.preuveReduction.findUnique({
               where: { id: demande.preuveId },
-              select: { statut: true, reference: true },
+              select: { statut: true, reference: true, email: true, telephone: true },
             });
             const liee = preuve?.reference
               ? await tx.booking.findUnique({
@@ -2627,17 +2704,33 @@ const depotDirect: Depot = {
               liee ? { statut: liee.status, creeLe: liee.createdAt.toISOString() } : null,
             );
             if (raison) throw new PreuveReductionInutilisableError(raison);
+            // Décision 25 : la réduction des abonnés, une seule fois par
+            // client, reconnu au contact de la réservation ou à celui de la
+            // capture. Relu ici, dans la transaction qui consomme la preuve :
+            // deux réservations simultanées du même client ne la prennent pas
+            // toutes les deux (l'une est rejouée, et voit l'autre).
+            const identites: IdentiteClient[] = [demande.client, { email: preuve?.email, telephone: preuve?.telephone }];
+            const reductions = await lireReservationsRoadTripGroupe(tx, { avecReduction: true });
+            if (reductionDejaEue(reductions, identites)) throw new PreuveReductionInutilisableError("deja-eue");
             const { count } = await tx.preuveReduction.updateMany({
               where: { id: demande.preuveId, statut: "validee", reference: preuve?.reference ?? null },
               data: { reference },
             });
             if (count !== 1) throw new PreuveReductionInutilisableError("deja-utilisee");
             // Reprise à une demande impayée expirée : celle-ci est annulée ici
-            // même. Son paiement, s'il arrivait quand même, serait remboursé
-            // (chemin « annulée ») au lieu de donner une seconde réduction.
-            if (preuve?.reference && liee?.status === "EN_ATTENTE_PAIEMENT") {
+            // même, comme les autres demandes impayées expirées de ce client
+            // qui portaient la réduction. Leur paiement, s'il arrivait quand
+            // même, serait remboursé (chemin « annulée ») au lieu de donner une
+            // seconde réduction.
+            const expirees = new Set(
+              reductions
+                .filter((r) => r.statut === "EN_ATTENTE_PAIEMENT" && !reservationRetenue(r) && identites.some((i) => memeClient(i, r)))
+                .map((r) => r.reference),
+            );
+            if (preuve?.reference && liee?.status === "EN_ATTENTE_PAIEMENT") expirees.add(preuve.reference);
+            if (expirees.size > 0) {
               await tx.booking.updateMany({
-                where: { reference: preuve.reference, status: "EN_ATTENTE_PAIEMENT" },
+                where: { reference: { in: [...expirees] }, status: "EN_ATTENTE_PAIEMENT" },
                 data: { status: "ANNULEE", cancelledAt: new Date() },
               });
             }

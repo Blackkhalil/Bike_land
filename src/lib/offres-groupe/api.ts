@@ -64,9 +64,10 @@ export const schemaSaisieRoadTrip = z.object({
   personnes: entier(1, 500),
   gateauxParPersonne: gateaux,
   /**
-   * La capture envoyée pour la réduction de 4 % (route des preuves). La
+   * La capture envoyée pour la réduction des abonnés (route des preuves). La
    * réduction ne s'applique que si le serveur retrouve cette preuve validée
-   * (par l'agent IA ou à la main) et pas déjà utilisée (une par groupe).
+   * (par l'agent IA ou à la main), pas déjà utilisée, et si son client ne
+   * l'a pas déjà eue : une seule fois par client (décision 25).
    */
   preuveId: z.string().min(1).max(64).optional(),
 });
@@ -106,12 +107,26 @@ export const schemaDemandeReservation = schemaDemandeDevis.and(
 export type DemandeReservation = z.infer<typeof schemaDemandeReservation>;
 
 /**
+ * Le numéro donné avec une capture, contrôlé comme celui de la réservation :
+ * des chiffres, des espaces et + ( ) . - seulement, et huit chiffres au moins.
+ * C'est le numéro Mobile Money du client, et l'un des deux signes qui le
+ * reconnaissent pour la règle « une réduction par client » (décision 25).
+ */
+export const schemaTelephonePreuve = z
+  .string()
+  .trim()
+  .min(8)
+  .max(20)
+  .regex(/^[+0-9 ().-]+$/)
+  .refine((valeur) => valeur.replace(/[^0-9]/g, "").length >= 8);
+
+/**
  * Preuve de réduction : champs du formulaire multipart, à côté du fichier
  * « capture ». L'email sert à prévenir le client quand la preuve est vérifiée
  * à la main (l'agent IA n'est pas activé au lancement, décision 21).
  */
 export const schemaChampsPreuve = z.object({
-  telephone: z.string().trim().min(8).max(20),
+  telephone: schemaTelephonePreuve,
   email: z.string().trim().email().max(120),
 });
 /** Ce que la route des preuves accepte. */
@@ -167,6 +182,15 @@ export interface ProchainCreneau {
 
 export type StatutPreuve = "validee" | "en_attente" | "refusee";
 
+/**
+ * Ce que le client apprend d'une capture (GET preuve) : son statut, ou, pour
+ * une capture validée qui ne peut plus servir, pourquoi. « deja-utilisee » :
+ * elle a déjà servi à une réservation ; « deja-eue » : son client a déjà eu
+ * la réduction sur une autre réservation, elle vaut une fois par client
+ * (décision 25). Le chatbot ne dit alors jamais « C'est validé ! ».
+ */
+export type EtatPreuveClient = StatutPreuve | "deja-utilisee" | "deja-eue";
+
 /** POST devis : 200, même en cas de refus métier (il est dans `issue`). */
 export interface ReponseDevis {
   ok: true;
@@ -180,8 +204,13 @@ export interface ReponseDevis {
    */
   commissionXof?: number;
   montantADebiterXof?: number;
-  /** Road trip avec `preuveId` : où en est la preuve (« inconnue » si l'identifiant ne correspond à rien). */
-  preuve?: StatutPreuve | "inconnue" | "deja-utilisee";
+  /**
+   * Road trip avec `preuveId` : où en est la preuve (« inconnue » si
+   * l'identifiant ne correspond à rien ; « deja-eue » si son client a déjà
+   * eu la réduction, décision 25). La réduction n'est comptée que pour
+   * « validee ».
+   */
+  preuve?: StatutPreuve | "inconnue" | "deja-utilisee" | "deja-eue";
 }
 
 /** Les refus qui ne sont pas un refus du moteur. */
@@ -192,7 +221,8 @@ export type CodeErreurOffresGroupe =
   | "TROP_DE_DEMANDES" // limite de débit : 429
   | "EN_ATTENTE" // une demande du même client attend déjà son paiement : 409
   | "PAIEMENT" // le paiement n'a pas pu être lancé : 502 (503 sans moyen de payer configuré)
-  | "SERVEUR"; // panne imprévue (base injoignable…) : 500, réessayer un peu plus tard (ajout du lot 5b)
+  | "SERVEUR" // panne imprévue (base injoignable…) : 500, réessayer un peu plus tard (ajout du lot 5b)
+  | "REDUCTION_DEJA_EUE"; // capture refusée d'emblée, rien d'enregistré : ce client a déjà eu la réduction (409, décision 25)
 
 export interface ReponseErreur {
   ok: false;
@@ -242,11 +272,14 @@ export type ReponseVenteComptoir =
   | { ok: false; code: "REFUS"; refus: Refus }
   | ReponseErreur;
 
-/** POST preuves (201) et GET preuve (200). */
+/**
+ * POST preuves (201 ; 200 quand la même capture vient d'être reçue de ce
+ * numéro, sans rien enregistrer de plus) et GET preuve (200).
+ */
 export interface ReponsePreuve {
   ok: true;
   preuveId: string;
-  statut: StatutPreuve;
+  statut: EtatPreuveClient;
   /** Le message pour le client, en français. */
   message: string;
 }

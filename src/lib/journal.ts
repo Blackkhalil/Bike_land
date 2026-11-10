@@ -35,6 +35,7 @@ export const TYPES_EVENEMENT: Readonly<Record<string, string>> = {
   "remboursement-fait": "Remboursement fait",
   "preuve-validee": "Réduction validée",
   "preuve-refusee": "Réduction refusée",
+  "preuve-email-non-envoye": "Email de réduction non parti",
   "vente-comptoir-groupe": "Vente de groupe au comptoir",
 };
 
@@ -159,6 +160,11 @@ export function resumeEvenement(evenement: EvenementJournal): ResumeEvenement {
       return {
         titre: evenement.type === "preuve-validee" ? "Capture de réduction validée" : "Capture de réduction refusée",
         lignes: texte(d.motif) ? [texte(d.motif) as string] : [],
+      };
+    case "preuve-email-non-envoye":
+      return {
+        titre: "L'email au client n'est pas parti : prévenez-le par WhatsApp",
+        lignes: [d.statut === "refusee" ? "Après un refus de sa capture." : "Après la validation de sa capture."],
       };
     case "vente-comptoir-groupe":
       return {

@@ -249,9 +249,12 @@ export function questionAccompagnateur(prixXof: number): string {
   return `Un accompagnateur Bike Land pour vous montrer le circuit et rouler avec vous ? Pour votre groupe, c'est ${formatMontant(prixXof)}.`;
 }
 
-/** La question de la réduction, mot pour mot celle du cahier des charges (étape 6). */
+/**
+ * La question de la réduction, celle du cahier des charges (étape 6), qui
+ * dit en quelques mots qu'elle vaut une fois par client (décision 25).
+ */
 export function questionReduction(reglages: ReglagesOffres): string {
-  return `Voulez-vous une réduction de ${formatPourcentage(reglages.roadTrip.reduction)} ? Abonnez-vous à nos réseaux ou recommandez-nous en story.`;
+  return `Voulez-vous une réduction de ${formatPourcentage(reglages.roadTrip.reduction)} ? Abonnez-vous à nos réseaux ou recommandez-nous en story. Elle vaut une fois par client.`;
 }
 
 /**
@@ -273,8 +276,47 @@ export function preuvesAcceptees(): string[] {
 }
 
 export function consignesPreuve(): string {
-  return `Envoyez une seule capture d'écran, au choix : ${preuvesAcceptees().join(" ; ")}. Il nous faut aussi votre téléphone et votre email, pour vous répondre.`;
+  return `Envoyez une seule capture d'écran, au choix : ${preuvesAcceptees().join(" ; ")}. Il nous faut aussi votre numéro Mobile Money et votre email, pour vous répondre.`;
 }
+
+/* ------------------------------------------- La capture de la réduction */
+
+/**
+ * Décision 25 : la réduction des abonnés ne se donne qu'une fois par client
+ * (« 4 % », lu dans les réglages ; sans taux lisible, « la réduction »).
+ */
+export function phraseReductionDejaEue(taux?: string): string {
+  return `Vous avez déjà eu la réduction${taux ? ` de ${taux}` : ""} : elle vaut une seule fois par client.`;
+}
+
+/** Une capture validée qui a déjà servi pour une réservation. */
+export const PHRASE_CAPTURE_DEJA_UTILISEE =
+  "Cette capture a déjà servi pour une réservation : la réduction vaut une seule fois par client.";
+
+/**
+ * Décision 24 : réserver pendant que la capture attend sa vérification,
+ * c'est payer le prix normal, et la réduction ne s'y ajoute pas ensuite.
+ * Bike Land le dit avant l'offre, sans rien promettre d'autre.
+ */
+export const MESSAGE_RESERVER_SANS_ATTENDRE =
+  "D'accord ! En réservant maintenant, vous payez le prix normal. La réduction ne pourra pas s'ajouter à cette réservation après coup.";
+
+/** La capture bien reçue, en attente de vérification : la réponse part par email, à l'adresse donnée. */
+export function messageCaptureRecue(email?: string): string {
+  const adresse = email?.trim() ? ` à ${email.trim()}` : "";
+  return (
+    `Merci, votre capture est bien reçue ! Nous la vérifions et vous répondons par email${adresse}. ` +
+    "Si vous réservez tout de suite, c'est au prix normal : la réduction ne s'ajoutera pas après."
+  );
+}
+
+/** « Est-ce que c'est validé ? », et pas encore : la réponse viendra par email. */
+export const MESSAGE_CAPTURE_PAS_ENCORE =
+  "Pas encore : votre capture attend notre vérification. Nous vous écrivons par email dès que c'est fait.";
+
+/** L'état d'une capture n'a pas pu être lu (réseau, panne) : la capture est gardée, le client réessaie. */
+export const MESSAGE_CAPTURE_INJOIGNABLE =
+  "La connexion est instable : je n'arrive pas à voir où en est votre capture. Réessayez dans un instant.";
 
 export function questionVelos(personnes: number): string {
   return `Sur quels vélos ? Répartissez vos ${personnesEnClair(personnes)} entre les gammes, un vélo par personne.`;

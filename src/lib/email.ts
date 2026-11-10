@@ -13,6 +13,7 @@ import { formatHeureMinute } from "@/data/reglages";
 import { creneauDuDepart, estOffreGroupe, EXIGENCES, exigencesOctobreRose, nomDeGamme, OFFRES_GROUPE } from "@/data/offres";
 
 import { site, urlDuSite } from "./site";
+import { dateAuBenin } from "./dates";
 import { numeroDeFacture } from "./facture";
 import { formatMontant, formatPourcentage as formatTaux } from "./offres/montants";
 import { fraisEncaissement, TAUX_ENCAISSEMENT } from "./tarifs-paiement";
@@ -21,6 +22,7 @@ import {
   formatDateAvecJour,
   formatDateComplete,
   formatDureeMinutes,
+  formatHeureAuBenin,
   formatXof,
   horaireExact,
   libelleReglement,
@@ -39,6 +41,16 @@ const ROSE = "#e8458b";
  * « ! », et entre un nombre et son unité, « 16 h 30 » ou « 3 vélos ».
  */
 const INSECABLE = String.fromCharCode(0xa0);
+
+/**
+ * L'adresse de Bike Land pour ses notifications (réservation payée,
+ * annulation, message, capture à vérifier) : ADMIN_EMAIL quand plusieurs
+ * personnes lisent une autre boîte, sinon l'adresse publique du site plutôt
+ * que de rester silencieux.
+ */
+function destinataireBikeLand(): string {
+  return process.env.ADMIN_EMAIL || site.email;
+}
 
 /** Une réservation de la sortie Octobre rose : ses emails passent au rose. */
 function enRose(reservation: Reservation): boolean {
@@ -738,7 +750,7 @@ export async function envoyerFacture(reservation: Reservation, numeroFacture: st
 export async function envoyerNotificationAdmin(reservation: Reservation) {
   // Une offre de groupe : tout ce qu'il faut préparer pour le groupe.
   if (estOffreGroupe(reservation.offre)) return envoyerAlerteGroupeAdmin(reservation);
-  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const destinataire = destinataireBikeLand();
   const velos = reservation.lignes.map((ligne) => ligne.veloNom).join(", ") || "non précisé";
   const contact = reservation.client.telephone || reservation.client.email;
   const lienAdmin = `${site.urlAdmin}/admin/reservations?reference=${reservation.reference}`;
@@ -844,7 +856,7 @@ export async function envoyerAnnulationAdmin(
   aRendreXof: number,
   origine: "client" | "comptoir" = "client",
 ) {
-  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const destinataire = destinataireBikeLand();
   const paiement = paiementPrincipal(reservation);
   const especes = paiement?.moyen === "ESPECES";
   const lienAdmin = `${site.urlAdmin}/admin/reservations?reference=${reservation.reference}`;
@@ -945,7 +957,7 @@ export async function envoyerMessageContactAdmin(message: {
   sujet: string;
   message: string;
 }) {
-  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const destinataire = destinataireBikeLand();
 
   return envoyer({
     destinataire,
@@ -1005,7 +1017,7 @@ export async function envoyerAccuseContact(email: string) {
  * lisibles dans l'administration, mais n'arrivent plus par email.
  */
 export async function envoyerAlertePlafondContact() {
-  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const destinataire = destinataireBikeLand();
   const lien = `${site.urlAdmin}/admin/messages`;
   return envoyer({
     destinataire,
@@ -1183,7 +1195,7 @@ async function envoyerConfirmationGroupe(reservation: Reservation, lienSuivi: st
  * quand, figé par le calcul à la réservation.
  */
 async function envoyerAlerteGroupeAdmin(reservation: Reservation) {
-  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const destinataire = destinataireBikeLand();
   const offre = estOffreGroupe(reservation.offre) ? OFFRES_GROUPE[reservation.offre].nom : "Offre de groupe";
   const details = detailsGroupe(reservation);
   const aPreparer = aPreparerOffreGroupe(reservation);
@@ -1205,6 +1217,10 @@ async function envoyerAlerteGroupeAdmin(reservation: Reservation) {
     ["Accompagnateur", details.accompagnateur ? "oui, il part avec le groupe" : "non"],
   ];
   const telephone = reservation.client.telephone || "non renseigné";
+  // La réduction des abonnés comptée (capture validée) : l'équipe peut
+  // demander à voir l'abonnement à la remise des vélos, comme le disent les CGV.
+  const reductionXof = reservation.offreDetails?.reductionXof;
+  const reductionAbonne = typeof reductionXof === "number" && reductionXof > 0 ? `${formatMontant(reductionXof)} (capture validée)` : null;
 
   return envoyer({
     destinataire,
@@ -1229,6 +1245,7 @@ async function envoyerAlerteGroupeAdmin(reservation: Reservation) {
       `Téléphone : ${telephone}`,
       `Email : ${reservation.client.email}`,
       `Montant : ${formatMontant(reservation.totalXof)}`,
+      ...(reductionAbonne ? [`Réduction abonné : ${reductionAbonne}`] : []),
       reservation.message ? `Message du client : ${reservation.message}` : "",
       "",
       `Voir dans l'administration : ${lienAdmin}`,
@@ -1245,6 +1262,7 @@ async function envoyerAlerteGroupeAdmin(reservation: Reservation) {
         ["Client", `${reservation.client.prenom} ${reservation.client.nom}`],
         ["Téléphone", telephone],
         ["Montant payé", formatMontant(reservation.totalXof)],
+        ...(reductionAbonne ? ([["Réduction abonné", reductionAbonne]] as [string, string][]) : []),
         especes ? ["Encaissé par", encaissePar] : ["Référence paiement", referencePaiement],
       ],
       action: { libelle: "Voir la réservation", url: lienAdmin },
@@ -1295,7 +1313,7 @@ export async function envoyerRemboursementGroupe(reservation: Reservation, monta
 
 /** Prévient Bike Land qu'un remboursement est à faire, avec de quoi le faire. */
 export async function envoyerRemboursementGroupeAdmin(reservation: Reservation, montantXof: number, transaction: string) {
-  const destinataire = process.env.ADMIN_EMAIL || site.email;
+  const destinataire = destinataireBikeLand();
   const lien = `${site.urlAdmin}/admin/remboursements`;
   const telephone = reservation.client.telephone || "non renseigné";
   const montant = formatMontant(montantXof);
@@ -1332,20 +1350,126 @@ export async function envoyerRemboursementGroupeAdmin(reservation: Reservation, 
 }
 
 /**
+ * Prévient Bike Land qu'une capture attend sa vérification (décision 24) :
+ * quand elle est arrivée (heure de Cotonou), le contact du client, combien
+ * de captures attendent, et le bouton vers la page des preuves. Le client a
+ * lu que la réponse lui viendrait par email.
+ */
+export async function envoyerAlertePreuve(alerte: { recueLe: string; telephone: string; email: string; enAttente: number }) {
+  const lien = `${site.urlAdmin}/admin/preuves`;
+  const recue = `le ${formatDateAvecJour(dateAuBenin(alerte.recueLe))} à ${formatHeureAuBenin(alerte.recueLe)}`;
+  const intro =
+    "Un client vient d'envoyer une capture pour la réduction du road trip en groupe. Il attend votre réponse par email.";
+  const combien =
+    alerte.enAttente > 1
+      ? `${compte(alerte.enAttente, "capture")} attendent votre vérification, celle-ci comprise.`
+      : "C'est la seule capture qui attend votre vérification.";
+  return envoyer({
+    destinataire: destinataireBikeLand(),
+    sujet: "Capture à vérifier : réduction du road trip",
+    texte: [
+      intro,
+      "",
+      champ("Reçue", recue),
+      champ("Téléphone", alerte.telephone),
+      champ("Email", alerte.email),
+      combien,
+      "",
+      "Regardez-la, puis validez ou refusez :",
+      lien,
+    ].join("\n"),
+    html: gabarit({
+      titre: "Capture à vérifier",
+      intro,
+      lignes: [
+        ["Reçue", recue],
+        ["Téléphone", alerte.telephone],
+        ["Email", alerte.email],
+        ["Captures à vérifier", String(alerte.enAttente)],
+      ],
+      action: { libelle: "Vérifier la capture", url: lien },
+      pied: "Validez si elle montre l'abonnement à l'un de nos comptes, ou une story qui nous identifie. Au moindre doute, refusez : le client peut en envoyer une autre.",
+    }),
+  });
+}
+
+/**
  * La réponse au client dont la capture de réduction a été vérifiée à la main
  * (décision 21) : validée, avec le lien qui rouvre le chatbot sur le road
  * trip et cette preuve ; refusée, un mot poli et ce qu'il peut faire.
+ *
+ * Validée, elle dit la vérité sur ce que le client a déjà réservé : une
+ * réservation au prix normal faite pendant l'attente garde ce prix, et la
+ * réduction servira une fois, sur un prochain road trip (décision 24, pas de
+ * remboursement) ; un client qui a déjà eu la réduction ne l'a pas une
+ * seconde fois (décision 25).
  */
 export async function envoyerDecisionPreuve(champs: {
   email: string;
   statut: "validee" | "refusee";
-  /** Le lien qui rouvre la discussion sur le road trip en groupe avec cette preuve. */
+  /** Le lien qui rouvre la discussion sur le road trip en groupe, avec cette preuve quand elle peut servir. */
   lienReprise: string;
   /** « 4 % », lu dans les réglages ; absent, on dit « la réduction ». */
   reduction?: string;
   motif?: string;
+  /** La réservation au prix normal que ce client a faite pendant l'attente : elle garde ce prix. */
+  reservationPrixNormal?: string;
+  /** La réservation où ce client a déjà eu la réduction. */
+  reductionDejaEue?: string;
 }) {
   const reduction = champs.reduction ? `la réduction de ${champs.reduction}` : "la réduction";
+  if (champs.statut === "validee" && champs.reductionDejaEue) {
+    const constat = `Vous avez déjà eu ${reduction} sur votre réservation ${champs.reductionDejaEue} : elle vaut une seule fois par client.`;
+    return envoyer({
+      destinataire: champs.email,
+      sujet: "Votre capture pour la réduction du road trip",
+      texte: [
+        "Bonjour,",
+        "",
+        `Merci pour votre capture. ${constat}`,
+        "Vos prochains road trips se réservent au prix normal :",
+        champs.lienReprise,
+        "",
+        `Une question ? Écrivez-nous sur WhatsApp ou appelez-nous au ${site.telephone}.`,
+        `L'équipe ${site.nom}`,
+      ].join("\n"),
+      html: gabarit({
+        titre: "Votre capture",
+        intro: `Bonjour, merci pour votre capture. ${constat}`,
+        lignes: [],
+        action: { libelle: "Réserver un road trip", url: champs.lienReprise },
+        pied: `Vos prochains road trips se réservent au prix normal. Une question ? ${site.telephone}.`,
+      }),
+    });
+  }
+  if (champs.statut === "validee" && champs.reservationPrixNormal) {
+    const constat =
+      `Votre réservation ${champs.reservationPrixNormal} reste au prix normal : la réduction ne s'ajoute pas à une réservation déjà faite. ` +
+      `${majuscule(reduction)} vous servira une seule fois, sur votre prochain road trip en groupe.`;
+    return envoyer({
+      destinataire: champs.email,
+      sujet: `Votre capture est validée : ${reduction} pour votre prochain road trip`,
+      texte: [
+        "Bonjour,",
+        "",
+        "Merci pour votre capture : elle est validée.",
+        constat,
+        "",
+        "Réservez votre prochain road trip ici, la réduction y sera comptée :",
+        champs.lienReprise,
+        "",
+        `À bientôt sur la route,`,
+        `L'équipe ${site.nom}, ${site.telephone}`,
+      ].join("\n"),
+      html: gabarit({
+        titre: "Capture validée",
+        intro: `Bonjour, merci pour votre capture : elle est validée. ${constat}`,
+        lignes: [],
+        action: { libelle: "Réserver avec la réduction", url: champs.lienReprise },
+        pied: "La réduction est comptée quand vous réservez depuis ce bouton. Elle vaut une seule fois par client.",
+      }),
+    });
+  }
   if (champs.statut === "validee") {
     return envoyer({
       destinataire: champs.email,
@@ -1353,7 +1477,7 @@ export async function envoyerDecisionPreuve(champs: {
       texte: [
         "Bonjour,",
         "",
-        `Merci pour votre capture : elle est validée. ${majuscule(reduction)} s'applique à votre road trip en groupe, une fois pour le groupe.`,
+        `Merci pour votre capture : elle est validée. ${majuscule(reduction)} s'applique à votre road trip en groupe, une seule fois par client.`,
         "",
         "Reprenez votre réservation ici, la réduction est déjà comptée :",
         champs.lienReprise,
@@ -1363,7 +1487,7 @@ export async function envoyerDecisionPreuve(champs: {
       ].join("\n"),
       html: gabarit({
         titre: "Réduction validée",
-        intro: `Bonjour, merci pour votre capture : elle est validée. ${majuscule(reduction)} s'applique à votre road trip en groupe, une fois pour le groupe.`,
+        intro: `Bonjour, merci pour votre capture : elle est validée. ${majuscule(reduction)} s'applique à votre road trip en groupe, une seule fois par client.`,
         lignes: [],
         action: { libelle: "Reprendre ma réservation", url: champs.lienReprise },
         pied: "La réduction est déjà comptée quand vous reprenez la discussion depuis ce bouton.",

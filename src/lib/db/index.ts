@@ -109,4 +109,8 @@ export const depot: Depot = {
   deciderPreuve: async (id, decision) => (await obtenirDepot()).deciderPreuve(id, decision),
   effacerFichierPreuve: async (id) => (await obtenirDepot()).effacerFichierPreuve(id),
   listerFichiersPreuvesAEffacer: async (avant) => (await obtenirDepot()).listerFichiersPreuvesAEffacer(avant),
+  compterPreuvesEnAttente: async () => (await obtenirDepot()).compterPreuvesEnAttente(),
+  effacerContactsPreuves: async (avant) => (await obtenirDepot()).effacerContactsPreuves(avant),
+  purgerCompteursExpires: async () => (await obtenirDepot()).purgerCompteursExpires(),
+  listerReservationsRoadTripGroupe: async (filtre) => (await obtenirDepot()).listerReservationsRoadTripGroupe(filtre),
 };

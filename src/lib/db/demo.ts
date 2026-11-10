@@ -75,11 +75,14 @@ import {
   messagePlacesManquantes,
   messageVelosManquants,
   montantsDeLaDemandeGroupe,
+  memeClient,
   ordreAttribution,
   PreuveReductionInutilisableError,
   prixParLigne,
   raisonPreuveInutilisable,
+  reductionDejaEue,
   refusRetard,
+  reservationRetenue,
   reservationsToucheesParmi,
   resteUneHeureLibre,
   RETARD_MAX_MINUTES,
@@ -90,8 +93,10 @@ import {
   type Depot,
   type DemandeReservation,
   type FiltreCatalogue,
+  type IdentiteClient,
   type NouvelEvenement,
   type ParcDuJour,
+  type ReservationRoadTripClient,
   type ResultatReservation,
 } from "./contrat";
 import { construireHistorique } from "./historique";
@@ -187,6 +192,31 @@ function etat(): EtatDemo {
   porteur[cle].preuves ??= [];
   porteur[cle].fichiersPreuves ??= new Map();
   return porteur[cle]!;
+}
+
+/**
+ * Les road trips en groupe, sans les annulés, réduits à ce que regarde la
+ * règle « une réduction par client » (décision 25), comme en base : la
+ * remise de cette offre est la réduction des abonnés.
+ */
+function reservationsRoadTripGroupe(filtre: { avecReduction: boolean; depuis?: string }): ReservationRoadTripClient[] {
+  return etat()
+    .reservations.filter(
+      (r) =>
+        r.offre === "road-trip-groupe" &&
+        r.statut !== "ANNULEE" &&
+        (filtre.avecReduction ? r.remiseXof > 0 : r.remiseXof === 0) &&
+        (!filtre.depuis || r.creeLe >= filtre.depuis),
+    )
+    .sort((a, b) => a.creeLe.localeCompare(b.creeLe))
+    .map((r) => ({
+      reference: r.reference,
+      statut: r.statut,
+      creeLe: r.creeLe,
+      email: r.client.email,
+      ...(r.client.telephone ? { telephone: r.client.telephone } : {}),
+      reductionXof: r.remiseXof,
+    }));
 }
 
 /** Pour des identifiants uniques même à la même milliseconde. */
@@ -1506,6 +1536,39 @@ export const depotDemo: Depot = {
     return copie(etat().preuves.filter((p) => p.fichierCle && (p.statut !== "en_attente" || p.creeLe < avant)));
   },
 
+  async compterPreuvesEnAttente() {
+    return etat().preuves.filter((p) => p.statut === "en_attente").length;
+  },
+
+  async effacerContactsPreuves(avant) {
+    let effaces = 0;
+    for (const preuve of etat().preuves) {
+      if (!preuve.email && !preuve.telephone) continue;
+      const decideeAvant = preuve.statut !== "en_attente" && Boolean(preuve.decideLe) && preuve.decideLe! < avant;
+      if (!preuve.reference && !decideeAvant) continue;
+      delete preuve.email;
+      delete preuve.telephone;
+      effaces += 1;
+    }
+    return effaces;
+  },
+
+  async purgerCompteursExpires() {
+    const maintenant = Date.now();
+    let effaces = 0;
+    for (const [cleCompteur, compteur] of compteursDemo) {
+      if (compteur.expireLe < maintenant) {
+        compteursDemo.delete(cleCompteur);
+        effaces += 1;
+      }
+    }
+    return effaces;
+  },
+
+  async listerReservationsRoadTripGroupe(filtre) {
+    return copie(reservationsRoadTripGroupe(filtre));
+  },
+
   async enregistrerRetard(reference, minutes, par) {
     // Les réglages d'abord : l'attente vient avant les contrôles et
     // l'écriture, qui se suivent sans attente (voir `creneauxBloquants`).
@@ -1582,9 +1645,22 @@ export const depotDemo: Depot = {
 
     const preuve = demande.preuveId ? (donnees.preuves.find((p) => p.id === demande.preuveId) ?? null) : null;
     const lieeAvant = preuve?.reference ? trouver(preuve.reference) : undefined;
+    // Les demandes impayées expirées de ce client qui portaient la réduction,
+    // annulées avec l'écriture (décision 25), comme en base.
+    let expireesDuClient: string[] = [];
     if (demande.preuveId) {
       const raison = raisonPreuveInutilisable(preuve, lieeAvant ? { statut: lieeAvant.statut, creeLe: lieeAvant.creeLe } : null);
       if (raison) throw new PreuveReductionInutilisableError(raison);
+      // Décision 25 : la réduction des abonnés, une seule fois par client,
+      // reconnu au contact de la réservation ou à celui de la capture. Sans
+      // aucune attente entre ce contrôle et l'écriture : deux réservations
+      // simultanées du même client ne la prennent pas toutes les deux.
+      const identites: IdentiteClient[] = [demande.client, { email: preuve?.email, telephone: preuve?.telephone }];
+      const reductions = reservationsRoadTripGroupe({ avecReduction: true });
+      if (reductionDejaEue(reductions, identites)) throw new PreuveReductionInutilisableError("deja-eue");
+      expireesDuClient = reductions
+        .filter((r) => r.statut === "EN_ATTENTE_PAIEMENT" && !reservationRetenue(r) && identites.some((i) => memeClient(i, r)))
+        .map((r) => r.reference);
     }
 
     // Le client, comme `creerReservation` : une fiche existante n'est jamais
@@ -1667,10 +1743,18 @@ export const depotDemo: Depot = {
     };
     donnees.reservations.push(reservation);
     if (preuve) {
-      // Reprise à une demande impayée expirée : annulée, comme en base.
+      // Reprise à une demande impayée expirée : annulée, comme en base, avec
+      // les autres demandes impayées expirées de ce client qui portaient la réduction.
       if (lieeAvant?.statut === "EN_ATTENTE_PAIEMENT") {
         lieeAvant.statut = "ANNULEE";
         lieeAvant.annuleLe = maintenant;
+      }
+      for (const ancienne of expireesDuClient) {
+        const demandeExpiree = trouver(ancienne);
+        if (demandeExpiree?.statut === "EN_ATTENTE_PAIEMENT") {
+          demandeExpiree.statut = "ANNULEE";
+          demandeExpiree.annuleLe = maintenant;
+        }
       }
       preuve.reference = reference;
     }

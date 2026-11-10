@@ -635,8 +635,119 @@ export function auteurAuJournal(encaissement?: { par: string }): string {
   return par ? `admin (${par})` : "admin";
 }
 
-/** Pourquoi une preuve de réduction ne peut pas servir à cette réservation. */
-export type RaisonPreuveInutilisable = "inconnue" | "en_attente" | "refusee" | "deja-utilisee" | "offre";
+/**
+ * Pourquoi une preuve de réduction ne peut pas servir à cette réservation.
+ * « deja-eue » : le client a déjà eu la réduction des abonnés sur une autre
+ * réservation, elle ne se donne qu'une fois par client (décision 25).
+ */
+export type RaisonPreuveInutilisable = "inconnue" | "en_attente" | "refusee" | "deja-utilisee" | "deja-eue" | "offre";
+
+/**
+ * Ce qu'une réservation retient tant qu'elle compte (ses vélos, sa
+ * réduction) : payée, ou en attente de paiement depuis moins de 30 minutes.
+ * Une réservation annulée, ou jamais payée et expirée, ne retient plus rien.
+ */
+export function reservationRetenue(reservation: { statut: StatutReservation; creeLe: string }, maintenant = Date.now()): boolean {
+  return (
+    reservation.statut === "CONFIRMEE" ||
+    reservation.statut === "EN_COURS" ||
+    reservation.statut === "TERMINEE" ||
+    (reservation.statut === "EN_ATTENTE_PAIEMENT" && !panierExpire(reservation.creeLe, maintenant))
+  );
+}
+
+/* --------------- La réduction des abonnés, une seule fois par client (décision 25) */
+
+/**
+ * Qui est un client pour la réduction du road trip (décision 25 du
+ * responsable, 10 novembre 2026) : un numéro de téléphone, reconnu à ses
+ * huit derniers chiffres comme pour la limite de débit (« +229 01 97… » et
+ * « 0197… » se reconnaissent), ou une adresse email, sans espaces autour et
+ * en minuscules. L'un ou l'autre suffit.
+ */
+export interface IdentiteClient {
+  email?: string | null;
+  telephone?: string | null;
+}
+
+/** L'email d'un client tel qu'il se compare : sans espaces autour, en minuscules. */
+export function emailDuClient(email?: string | null): string {
+  return (email ?? "").trim().toLowerCase();
+}
+
+/** Les huit derniers chiffres d'un numéro ; vide s'il en a moins de huit. */
+export function numeroDuClient(telephone?: string | null): string {
+  const chiffres = (telephone ?? "").replace(/[^0-9]/g, "");
+  return chiffres.length >= 8 ? chiffres.slice(-8) : "";
+}
+
+/** Le même client : la même adresse email, ou le même numéro (ses huit derniers chiffres). */
+export function memeClient(a: IdentiteClient, b: IdentiteClient): boolean {
+  const email = emailDuClient(a.email);
+  if (email && email === emailDuClient(b.email)) return true;
+  const numero = numeroDuClient(a.telephone);
+  return numero !== "" && numero === numeroDuClient(b.telephone);
+}
+
+/**
+ * Une réservation du Road trip en groupe, réduite à ce que regarde la règle
+ * « une réduction par client » : son contact, son état et sa réduction.
+ */
+export interface ReservationRoadTripClient {
+  reference: string;
+  statut: StatutReservation;
+  creeLe: string;
+  email: string;
+  telephone?: string;
+  /** La réduction des abonnés comptée sur cette réservation ; 0 au prix normal. */
+  reductionXof: number;
+}
+
+/**
+ * La réservation où l'un de ces clients a déjà eu la réduction des abonnés
+ * (décision 25) : un road trip en groupe avec la réduction, qui la retient
+ * encore (payée, ou en attente de paiement depuis moins de 30 minutes).
+ * `null` s'il ne l'a jamais eue, ou si elle ne compte plus (annulée, jamais
+ * payée et expirée). La même règle en démonstration et en base.
+ */
+export function reductionDejaEue(
+  reservations: readonly ReservationRoadTripClient[],
+  identites: readonly IdentiteClient[],
+  maintenant = Date.now(),
+): ReservationRoadTripClient | null {
+  return (
+    reservations.find(
+      (reservation) =>
+        reservation.reductionXof > 0 &&
+        reservationRetenue(reservation, maintenant) &&
+        identites.some((identite) => memeClient(identite, reservation)),
+    ) ?? null
+  );
+}
+
+/**
+ * Une preuve validée peut-elle encore servir ? « deja-utilisee » : elle
+ * retient déjà la réduction d'une réservation (payée, ou en attente de
+ * paiement depuis moins de 30 minutes) ; « deja-eue » : son client, reconnu
+ * au contact de la capture ou à l'un des contacts `autres` (celui de la
+ * réservation en cours), a déjà eu la réduction sur une autre réservation
+ * (décision 25). Le devis, le statut de la capture et la transaction qui
+ * écrit la réservation appliquent tous cette règle.
+ */
+export async function usageDUnePreuveValidee(
+  preuve: Pick<PreuveReduction, "reference" | "email" | "telephone">,
+  depot: Pick<Depot, "trouverReservationParReference" | "listerReservationsRoadTripGroupe">,
+  maintenant = Date.now(),
+  autres: readonly IdentiteClient[] = [],
+): Promise<"validee" | "deja-utilisee" | "deja-eue"> {
+  if (preuve.reference) {
+    const liee = await depot.trouverReservationParReference(preuve.reference);
+    if (liee && reservationRetenue(liee, maintenant)) return "deja-utilisee";
+  }
+  const reductions = await depot.listerReservationsRoadTripGroupe({ avecReduction: true });
+  const identites: IdentiteClient[] = [{ email: preuve.email, telephone: preuve.telephone }, ...autres];
+  return reductionDejaEue(reductions, identites, maintenant) ? "deja-eue" : "validee";
+}
 
 /**
  * La preuve de réduction peut-elle servir ? Elle doit être validée (par
@@ -655,12 +766,7 @@ export function raisonPreuveInutilisable(
   if (!preuve) return "inconnue";
   if (preuve.statut !== "validee") return preuve.statut === "refusee" ? "refusee" : "en_attente";
   if (!preuve.reference || !reservationLiee) return null;
-  const retient =
-    reservationLiee.statut === "CONFIRMEE" ||
-    reservationLiee.statut === "EN_COURS" ||
-    reservationLiee.statut === "TERMINEE" ||
-    (reservationLiee.statut === "EN_ATTENTE_PAIEMENT" && !panierExpire(reservationLiee.creeLe, maintenant));
-  return retient ? "deja-utilisee" : null;
+  return reservationRetenue(reservationLiee, maintenant) ? "deja-utilisee" : null;
 }
 
 export interface Depot {
@@ -1084,6 +1190,42 @@ export interface Depot {
    */
   listerFichiersPreuvesAEffacer(avant: string): Promise<PreuveReduction[]>;
 
+  /**
+   * Le nombre de captures qui attendent d'être vérifiées, en une seule
+   * requête de comptage : le tableau de bord et le menu le montrent sur
+   * chaque page de l'administration (décision 24).
+   */
+  compterPreuvesEnAttente(): Promise<number>;
+
+  /**
+   * Efface l'email et le téléphone des preuves décidées avant `avant` (un
+   * instant ISO, 30 jours plus tôt) et de celles qui ont servi à une
+   * réservation. La preuve reste, sans eux : une capture validée qui n'a pas
+   * servi garde son identifiant et reste utilisable une fois. La règle « une
+   * réduction par client » (décision 25) s'appuie sur le contact des
+   * réservations, pas sur celui des captures. Rend le nombre de preuves
+   * dont le contact a été effacé.
+   */
+  effacerContactsPreuves(avant: string): Promise<number>;
+
+  /**
+   * Efface les compteurs d'essais expirés (clés faites d'une adresse IP ou
+   * de chiffres de téléphone). Un compteur expiré repart de zéro de toute
+   * façon : rien ne change pour les limites, la trace seulement disparaît.
+   */
+  purgerCompteursExpires(): Promise<number>;
+
+  /* ------------------------- Offres de groupe : une réduction par client (décision 25) */
+
+  /**
+   * Les réservations du Road trip en groupe, jamais les annulées, réduites à
+   * leur contact, leur état et leur réduction (`ReservationRoadTripClient`) :
+   * avec la réduction des abonnés (`avecReduction`), ou au prix normal ;
+   * `depuis` (instant ISO) : créées depuis cet instant. Une demande en attente
+   * de paiement y figure même expirée : `reservationRetenue` en décide.
+   */
+  listerReservationsRoadTripGroupe(filtre: { avecReduction: boolean; depuis?: string }): Promise<ReservationRoadTripClient[]>;
+
   /* ------------------------------------------- Offres de groupe (lot 3) */
 
   /**
@@ -1100,7 +1242,10 @@ export interface Depot {
    * vélos libres sur le créneau, attribue les vélos (toutes gammes, ou le
    * nombre exact de chaque gamme pour Gbashi Bike), écrit la réservation, ses
    * vélos et son paiement, et consomme la preuve de réduction citée.
-   * Lève CapaciteInsuffisanteError si les vélos viennent d'être pris.
+   * Lève CapaciteInsuffisanteError si les vélos viennent d'être pris, et
+   * PreuveReductionInutilisableError si la preuve ne peut pas servir, entre
+   * autres quand le client (contact de la réservation ou de la capture) a
+   * déjà eu la réduction sur une autre réservation (« deja-eue », décision 25).
    */
   creerReservationGroupe(demande: DemandeReservationGroupe): Promise<ResultatReservation>;
 }
@@ -1198,6 +1343,7 @@ export class PreuveReductionInutilisableError extends Error {
         en_attente: "Cette preuve de réduction n'est pas encore vérifiée.",
         refusee: "Cette preuve de réduction n'a pas été acceptée.",
         "deja-utilisee": "Cette preuve de réduction a déjà servi pour une autre réservation.",
+        "deja-eue": "Ce client a déjà eu la réduction des abonnés : elle vaut une seule fois par client.",
         offre: "La réduction sur preuve ne vaut que pour le road trip en groupe.",
       }[raison],
     );

@@ -13,7 +13,8 @@
  * Le navigateur ne décide de rien : le canal est fixé par la route, le prix
  * est refait par le moteur (src/lib/offres) avec les réglages et le parc du
  * moment, et la réduction du road trip ne vient que d'une preuve que le
- * serveur retrouve validée et libre (décision 8). Le total envoyé par le
+ * serveur retrouve validée et libre (décision 8), une seule fois par client
+ * (décision 25) ; la vente au comptoir n'en cite jamais (décision 26). Le total envoyé par le
  * navigateur (`attendu`) sert seulement à voir si le client a vu un autre
  * prix : il revoit alors le nouveau montant avant de payer.
  */
@@ -26,8 +27,10 @@ import { ajouterJours, type DateISO } from "@/lib/dates";
 import {
   CapaciteInsuffisanteError,
   TransactionDejaUtiliseeError,
+  usageDUnePreuveValidee,
   type DemandeReservationGroupe,
   type Depot,
+  type IdentiteClient,
   type ParcDuJour,
   type ResultatReservation,
 } from "@/lib/db/contrat";
@@ -47,6 +50,7 @@ import {
   calculerGbashi,
   calculerRoadTrip,
   formatMontant,
+  formatPourcentage,
   type CanalVente,
   type HeureMinute,
   type IssueOffre,
@@ -54,7 +58,6 @@ import {
 } from "@/lib/offres";
 import { jourDeLaSemaine } from "@/lib/offres/calendrier";
 import type { DemandePaiement, FournisseurActif, ResultatPaiement } from "@/lib/paiement";
-import { estPayee } from "@/lib/reservations";
 import { site } from "@/lib/site";
 import { fraisEncaissement } from "@/lib/tarifs-paiement";
 import { genererToken } from "@/lib/tokens";
@@ -71,8 +74,8 @@ import {
   type ReponseErreur,
   type ReponseReservation,
   type ReponseVenteComptoir,
-  type StatutPreuve,
 } from "./api";
+import { PHRASE_CAPTURE_DEJA_UTILISEE, phraseReductionDejaEue } from "./textes-chat";
 
 /* --------------------------------------------------------- Dépendances */
 
@@ -89,6 +92,7 @@ export type DepotOffresGroupe = Pick<
   | "trouverReservationParPaiement"
   | "journaliser"
   | "listerJournal"
+  | "listerReservationsRoadTripGroupe"
 >;
 
 export interface DependancesOffresGroupe {
@@ -407,20 +411,35 @@ function depasseLeParc(demande: DemandeDevis, parc: ParcDuJour): boolean {
  * réservation (payée, ou en attente de paiement depuis moins de 30 minutes)
  * est « deja-utilisee » ; rattachée à une réservation qui ne retient plus
  * rien (annulée, ou jamais payée), elle redevient libre, comme au dépôt.
+ *
+ * Décision 25 : la réduction ne se donne qu'une fois par client. Quand le
+ * contact de la capture, ou celui de la réservation (`client`, connu au
+ * moment de réserver), a déjà eu la réduction sur une autre réservation qui
+ * la retient encore, la preuve est « deja-eue » : prix normal, et la preuve
+ * n'est pas consommée. Le dépôt refait ce contrôle dans la transaction qui
+ * écrit la réservation.
  */
 async function etatPreuve(
   preuveId: string,
   deps: DependancesOffresGroupe,
   maintenant: number,
-): Promise<StatutPreuve | "inconnue" | "deja-utilisee"> {
+  client?: IdentiteClient,
+): Promise<NonNullable<ReponseDevis["preuve"]>> {
   const preuve = await deps.depot.trouverPreuve(preuveId);
   if (!preuve) return "inconnue";
   if (preuve.statut !== "validee") return preuve.statut;
-  if (!preuve.reference) return "validee";
-  const liee = await deps.depot.trouverReservationParReference(preuve.reference);
-  if (!liee) return "validee";
-  const retient = estPayee(liee) || (liee.statut === "EN_ATTENTE_PAIEMENT" && !panierExpire(liee.creeLe, maintenant));
-  return retient ? "deja-utilisee" : "validee";
+  return usageDUnePreuveValidee(preuve, deps.depot, maintenant, client ? [client] : []);
+}
+
+/**
+ * Ce que le client lit quand le serveur ne compte pas la réduction d'une
+ * capture validée : elle a déjà servi, ou il l'a déjà eue (décision 25) ;
+ * sinon, le prix a simplement changé.
+ */
+function messagePrixSansReduction(preuve: ReponseDevis["preuve"], reglages: ReglagesOffres): string {
+  if (preuve === "deja-eue") return phraseReductionDejaEue(formatPourcentage(reglages.roadTrip.reduction));
+  if (preuve === "deja-utilisee") return PHRASE_CAPTURE_DEJA_UTILISEE;
+  return MESSAGE_PRIX_CHANGE;
 }
 
 /* -------------------------------------------------------------- Devis */
@@ -439,10 +458,12 @@ async function etablirDevis(
   canal: CanalVente,
   prealable: Prealable,
   deps: DependancesOffresGroupe,
+  /** Le contact de la réservation, quand on réserve : la règle « une réduction par client » le regarde aussi. */
+  client?: IdentiteClient,
 ): Promise<DevisEtabli> {
   const maintenant = deps.maintenant();
   const preuveId = demande.offre === "road-trip-groupe" ? demande.saisie.preuveId : undefined;
-  const preuve = preuveId ? await etatPreuve(preuveId, deps, maintenant) : null;
+  const preuve = preuveId ? await etatPreuve(preuveId, deps, maintenant, client) : null;
   const contexte: ContexteCalcul = {
     canal,
     reglages: prealable.reglages,
@@ -470,7 +491,9 @@ async function etablirDevis(
     reponse,
     issue,
     contexte,
-    ...(issue.ok && preuveId && preuve === "validee" ? { preuveRetenue: preuveId } : {}),
+    // Consommée seulement si la réduction compte vraiment : à 0 % dans les
+    // réglages, la capture reste libre pour un autre jour.
+    ...(issue.ok && preuveId && preuve === "validee" && issue.resultat.reductionXof > 0 ? { preuveRetenue: preuveId } : {}),
   };
 }
 
@@ -685,15 +708,18 @@ export async function reserverOffreGroupe(
     );
   }
 
-  // Tout se recalcule ici, avec les réglages et le parc de cet instant.
-  const devis = await etablirDevis(demandeDevisDe(demande), "en-ligne", prealable, deps);
+  // Tout se recalcule ici, avec les réglages et le parc de cet instant, et
+  // le contact de la réservation pour la règle « une réduction par client ».
+  const devis = await etablirDevis(demandeDevisDe(demande), "en-ligne", prealable, deps, demande.client);
   if (!devis.issue.ok) {
     if (estPlein(devis.issue)) return reponseDispo(devis.issue.refus.message, devis.reponse.prochainCreneau);
     return { statut: 422, corps: { ok: false, code: "REFUS", refus: devis.issue.refus } };
   }
   const resultat = devis.issue.resultat;
   if (demande.attendu.totalXof !== resultat.totalXof) {
-    return { statut: 409, corps: { ok: false, code: "REGLAGES", message: MESSAGE_PRIX_CHANGE, devis: devis.reponse } };
+    // Le client revoit le prix, et pourquoi la réduction n'y est plus, avant de payer.
+    const message = messagePrixSansReduction(devis.reponse.preuve, prealable.reglages);
+    return { statut: 409, corps: { ok: false, code: "REGLAGES", message, devis: devis.reponse } };
   }
 
   let ecrite: ResultatReservation;
@@ -718,9 +744,12 @@ export async function reserverOffreGroupe(
       return reponseDispo(MESSAGE_VELOS_PRIS, await chercherProchainCreneau(demande, contexte));
     }
     if (estRefusDePreuve(e)) {
-      // La preuve vient de servir ailleurs : le client revoit le prix sans la réduction.
-      const nouveau = await etablirDevis(demandeDevisDe(demande), "en-ligne", prealable, deps);
-      return { statut: 409, corps: { ok: false, code: "REGLAGES", message: MESSAGE_PRIX_CHANGE, devis: nouveau.reponse } };
+      // La preuve vient de servir ailleurs, ou le client vient d'avoir la
+      // réduction sur une autre réservation (décision 25) : il revoit le prix
+      // sans la réduction, et pourquoi.
+      const nouveau = await etablirDevis(demandeDevisDe(demande), "en-ligne", prealable, deps, demande.client);
+      const message = messagePrixSansReduction(nouveau.reponse.preuve, prealable.reglages);
+      return { statut: 409, corps: { ok: false, code: "REGLAGES", message, devis: nouveau.reponse } };
     }
     throw e;
   }
