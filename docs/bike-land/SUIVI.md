@@ -111,6 +111,11 @@ fois, sur un prochain road trip.
   décision, ou dès qu'elle a servi ; la règle « une réduction par client »
   (décision 25) s'appuie sur les coordonnées des réservations, et une capture
   validée qui n'a pas servi reste utilisable par son lien.
+- Jour plein dans la discussion : tant que le serveur n'a pas compté les vélos
+  libres d'un jour (ou d'un créneau de Bike for All), Bike Land « écrit » et
+  retient sa question suivante ; un jour plein se dit donc avant elle, jamais
+  après : « Je viens de vérifier : il ne reste que 9 vélos libres le dimanche
+  15 novembre, pas assez pour votre groupe. Choisissez un autre jour : ».
 - Toutes les nouvelles tables avec la protection Supabase (RLS).
 - Expiration des demandes vérifiée au fil des requêtes (forfait Vercel gratuit :
   une tâche planifiée par jour) ; nettoyage quotidien.
