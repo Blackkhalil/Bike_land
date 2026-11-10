@@ -6,6 +6,8 @@ import { ajouterJours, aujourdhui } from "@/lib/dates";
 import { depot } from "@/lib/db";
 import { envoyerRappel } from "@/lib/email";
 import { lienDeSuivi } from "@/lib/lien-suivi";
+import { effacerFichiersPreuves } from "@/lib/offres-groupe/preuves";
+import { stockagePreuves } from "@/lib/offres-groupe/stockage-preuves";
 
 /** Quelques rappels par soir, envoyés l'un après l'autre par Gmail. */
 export const maxDuration = 60;
@@ -22,6 +24,11 @@ export const maxDuration = 60;
  * requête est refusée. Sans CRON_SECRET, la tâche ne tourne pas du tout :
  * un serveur de développement branché sur la vraie base ne doit jamais
  * pouvoir écrire aux clients.
+ *
+ * C'est la seule tâche planifiée (forfait Vercel gratuit) : elle efface
+ * aussi les captures envoyées pour la réduction des offres de groupe,
+ * celles déjà décidées dont le fichier serait resté, et toutes celles
+ * reçues il y a plus de 30 jours (lot 5b).
  */
 export async function GET(requete: Request) {
   const secret = process.env.CRON_SECRET;
@@ -54,7 +61,20 @@ export async function GET(requete: Request) {
   }
 
   console.info(`[rappels] départs du ${demain} : ${envoyes} rappel(s) envoyé(s), ${echecs} échec(s).`);
-  return NextResponse.json({ date: demain, envoyes, echecs });
+
+  // Les captures de réduction : un échec ici ne retient pas les rappels,
+  // déjà partis, et la tâche de demain reprendra ce qui reste.
+  let preuves: { effaces: number; echecs: number; expirees: number } | null = null;
+  try {
+    preuves = await effacerFichiersPreuves({ depot, stockage: stockagePreuves({ depot }), maintenant: () => Date.now() });
+    if (preuves.effaces || preuves.echecs) {
+      console.info(`[rappels] captures de réduction : ${preuves.effaces} effacée(s), ${preuves.echecs} échec(s).`);
+    }
+  } catch (erreur) {
+    console.error("[rappels] effacement des captures de réduction impossible", erreur);
+  }
+
+  return NextResponse.json({ date: demain, envoyes, echecs, preuves });
 }
 
 /** Comparaison en temps constant, pour ne rien laisser deviner du secret. */

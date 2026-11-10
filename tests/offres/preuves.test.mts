@@ -407,5 +407,19 @@ console.log("\n— Routes, branchées au dépôt de démonstration");
   delete process.env.BIKELAND_ROLE;
 }
 
+console.log("\n— La tâche quotidienne efface les captures");
+{
+  const { GET: tache } = await charger("src/app/api/cron/rappels/route.ts");
+  process.env.CRON_SECRET = "secret-de-test-assez-long";
+  const decidee = await depot.creerPreuve({ typeMime: "image/webp", tailleOctets: 1, email: "f@example.com", telephone: "0192000000", octets: new Uint8Array([1]) });
+  await depot.deciderPreuve(decidee.id, { statut: "validee", par: "admin (Koffi)" });
+  const sansCle = await tache(new Request("http://localhost/api/cron/rappels"));
+  verifier("sans le secret : refusée, rien d'effacé", [sansCle.status, Boolean((await depot.trouverPreuve(decidee.id))?.fichierCle)], [401, true]);
+  const reponse = await tache(new Request("http://localhost/api/cron/rappels", { headers: { authorization: "Bearer secret-de-test-assez-long" } }));
+  const corps = await reponse.json();
+  verifier("avec le secret : 200, la capture décidée effacée", [reponse.status, corps.preuves?.effaces >= 1, (await depot.trouverPreuve(decidee.id))?.fichierCle], [200, true, undefined]);
+  delete process.env.CRON_SECRET;
+}
+
 console.log(echecs ? `\n${echecs} échec(s).` : "\nTout est bon.");
 process.exit(echecs ? 1 : 0);
