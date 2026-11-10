@@ -590,7 +590,7 @@ export function PanneauChatGroupe({
               onClick={voirLaSuite}
               aria-label="Voir la suite"
               title="Voir la suite"
-              className="rond-suite absolute bottom-3 right-3 grid h-11 w-11 place-items-center rounded-full bg-white text-noir-piste shadow-[0_2px_10px_rgba(14,14,14,0.22)] ring-1 ring-noir-piste/10 transition-colors hover:bg-craie"
+              className="rond-suite absolute bottom-2.5 right-2.5 grid h-10 w-10 place-items-center rounded-full bg-white text-noir-piste shadow-[0_2px_10px_rgba(14,14,14,0.22)] ring-1 ring-noir-piste/10 transition-colors hover:bg-craie"
             >
               <IconeVersLeBas />
             </button>
