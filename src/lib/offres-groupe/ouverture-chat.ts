@@ -10,12 +10,19 @@
  *    (`lienChatGroupe`). La bulle le lit à l'arrivée sur la page, ouvre la
  *    discussion sur l'offre, puis retire ces paramètres de l'adresse.
  *
- * Rien ici ne dépend du serveur.
+ * Rien ici ne dépend du serveur. Module léger, sans le moteur de calcul :
+ * la bulle, présente sur toutes les pages, s'en sert sans charger le chatbot.
  */
 
 import type { CodeOffreGroupe } from "@/lib/offres";
 
-import { estCodeOffreGroupe } from "./textes-chat";
+/** Les trois offres de groupe, dans l'ordre de la discussion. */
+export const CODES_OFFRES_GROUPE: readonly CodeOffreGroupe[] = ["bike-for-all", "road-trip-groupe", "gbashi-groupe"];
+
+/** Une offre de groupe connue ? Sert à relire l'adresse et le stockage du navigateur. */
+export function estCodeOffreGroupe(valeur: unknown): valeur is CodeOffreGroupe {
+  return typeof valeur === "string" && (CODES_OFFRES_GROUPE as readonly string[]).includes(valeur);
+}
 
 /** L'événement que la bulle écoute. */
 export const EVENEMENT_CHAT_GROUPE = "bikeland:chat-groupe";

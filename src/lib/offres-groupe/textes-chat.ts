@@ -25,6 +25,8 @@ import {
 } from "@/lib/offres";
 import { dureeEnClair, joursEnClair, NOMS_JOURS } from "@/lib/offres/calendrier";
 
+import { CODES_OFFRES_GROUPE, estCodeOffreGroupe } from "./ouverture-chat";
+
 export { dureeEnClair, heureEnClair };
 
 /** Le nom des trois offres, comme le client les lit. */
@@ -35,12 +37,9 @@ export const NOMS_OFFRES: Record<CodeOffreGroupe, string> = {
 };
 
 /** L'ordre des offres dans la discussion. */
-export const ORDRE_OFFRES: readonly CodeOffreGroupe[] = ["bike-for-all", "road-trip-groupe", "gbashi-groupe"];
+export const ORDRE_OFFRES: readonly CodeOffreGroupe[] = CODES_OFFRES_GROUPE;
 
-/** Une offre de groupe connue ? Sert à relire l'adresse et le stockage du navigateur. */
-export function estCodeOffreGroupe(valeur: unknown): valeur is CodeOffreGroupe {
-  return typeof valeur === "string" && (ORDRE_OFFRES as readonly string[]).includes(valeur);
-}
+export { estCodeOffreGroupe };
 
 const FORMAT_JOUR = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
