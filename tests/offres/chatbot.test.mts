@@ -1142,11 +1142,29 @@ verifier("prendre le créneau libre le plus proche", [creneau.choix.date, crenea
     false,
     false,
   ]);
-  verifier("L2, road trip : les autres jours suivent, le créneau libre du serveur d'abord", pleinRt.alternatives.map((a: { libelle: string }) => a.libelle), [
+  verifier("L2, road trip : les autres jours suivent, le créneau libre du serveur d'abord, puis seulement des jours après lui", pleinRt.alternatives.map((a: { libelle: string }) => a.libelle), [
     "Samedi 21 novembre : 31 250 F",
     "Dimanche 22 novembre : 31 250 F",
+    "Samedi 28 novembre : 31 250 F",
     "Choisir une autre date",
   ]);
+  {
+    // Le serveur cherche dans l'ordre : un jour d'ici à son créneau libre est plein, il n'est jamais proposé.
+    const samediPlein = devisRecu(
+      sansServeur(() => rt(SAMEDI)),
+      reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(SAMEDI, LUNDI_10H, 1)), {
+        capacite: { velosLibres: 1, parGamme: { CLASSIQUE: 1, PREMIUM: 0, PRESTIGE: 0 } },
+        prochainCreneau: { date: "2026-11-21", depart: "08:00" },
+      }),
+    );
+    verifier("samedi plein, dimanche plein aussi (le serveur propose le samedi suivant) : le dimanche n'est pas proposé", [
+      derniers(samediPlein),
+      samediPlein.alternatives.map((a: { libelle: string }) => a.libelle),
+    ], [
+      "Je viens de vérifier : il ne reste qu'un vélo libre le samedi 14 novembre, pas assez pour votre groupe. Choisissez un autre jour :",
+      ["Samedi 21 novembre : 31 250 F", "Dimanche 22 novembre : 31 250 F", "Samedi 28 novembre : 31 250 F", "Choisir une autre date"],
+    ]);
+  }
   // Un groupe plus grand que les vélos libres, qui tiendrait à moins : le groupe du client, et « Passer à… ».
   const grand = devisRecu(
     sansServeur(() => rt(DIMANCHE, LUNDI_10H, 15)),

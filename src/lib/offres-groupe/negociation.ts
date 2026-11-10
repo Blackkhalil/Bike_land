@@ -431,8 +431,11 @@ export function alternativesDuRefus(
           prochainPropose = true;
         }
       }
+      // Le serveur a regardé les jours dans l'ordre : ceux d'ici à son créneau
+      // libre sont pleins pour ce groupe. Les autres jours proposés viennent après lui.
+      const apresLeCreneauLibre = prochainCreneau ? { ...choix, date: prochainCreneau.date } : choix;
       alternatives.push(
-        ...autresJours(choix, faits, maintenant).filter((jour) => !prochainPropose || jour.changement.date !== prochainCreneau?.date),
+        ...autresJours(apresLeCreneauLibre, faits, maintenant).filter((jour) => !prochainPropose || jour.changement.date !== prochainCreneau?.date),
       );
       alternatives.push(autreDate());
       break;
