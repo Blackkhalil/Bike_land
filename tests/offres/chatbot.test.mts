@@ -161,6 +161,35 @@ verifier("ce que comprend l'offre", c.inclusDans(offre.resultat, R), [
 verifier("la règle de retard des réglages", t.regleRetard(R), "Merci de rendre les vélos à l'heure : 7 minutes de marge, puis 1 000 F par minute de retard pour le groupe, à régler en espèces au retour.");
 e = agir(e, { type: "reserver" });
 verifier("les coordonnées", e.etape, "coordonnees");
+{
+  // Comme sur un téléphone, la carte de l'offre ne disparaît pas : figée au-dessus de « Je réserve ».
+  const carte = e.messages.at(-4);
+  verifier("« Je réserve » : l'offre reste dans la discussion, figée, avec les montants confirmés", [
+    carte.de,
+    carte.texte,
+    carte.recap.detail,
+    carte.recap.lignes,
+    e.messages.at(-3).texte,
+  ], [
+    "bot",
+    "Bike for All",
+    "Samedi 14 novembre, de 8 h à 8 h 45, 10 personnes",
+    [
+      ...offre.resultat.lignes.map((l: { libelle: string; montantXof: number }) => ({ libelle: l.libelle, valeur: m.formatMontant(l.montantXof) })),
+      { libelle: "Prix de l'offre", valeur: "11 250 F", fort: true },
+      { libelle: "Frais Mobile Money", valeur: "+ 366 F" },
+      { libelle: "Débité de votre compte", valeur: "11 616 F", fort: true },
+    ],
+    "Je réserve",
+  ]);
+  verifier("les lignes figées sont celles du moteur (budget, frais de paiement)", carte.recap.lignes.slice(0, 2).map((l: { valeur: string }) => l.valeur), ["10 000 F", "1 250 F"]);
+  // « Non, je continue » aux coordonnées : la coordonnée attendue est redemandée.
+  const question = agir(e, { type: "proposer-recommencer" });
+  verifier("« Recommencer » aux coordonnées, puis « Non, je continue » : le prénom est redemandé", [
+    question.confirmerRecommencer,
+    derniers(agir(question, { type: "annuler-recommencer" }), 3),
+  ], [true, "Non, je continue | Très bien, on continue. | Votre prénom ?"]);
+}
 verifier("les coordonnées, une question à la fois : d'abord le prénom", [c.champDemande(e.client), derniers(e, 3)], [
   "prenom",
   "Je réserve | Parfait ! Il me faut quelques coordonnées pour la réservation, une par une. | Votre prénom ?",
@@ -213,12 +242,51 @@ verifier("les coordonnées, une question à la fois : d'abord le prénom", [c.ch
     "Ce prénom est un peu long pour notre fiche : 60 lettres au plus, s'il vous plaît. | Votre prénom ?",
   ]);
   const modifie = agir(un, { type: "modifier-coordonnees" });
-  verifier("modifier ses coordonnées avant de payer : on les reprend depuis le prénom", [modifie.etape, modifie.client, modifie.moyen, derniers(modifie, 2)], [
-    "coordonnees",
-    { prenom: "", nom: "", email: "", telephone: "" },
+  verifier("modifier ses coordonnées avant de payer : Bike Land demande laquelle, rien n'est effacé", [modifie.etape, modifie.client, modifie.moyen, derniers(modifie, 2)], [
+    "modifier",
+    CLIENT,
     null,
-    "Je modifie mes coordonnées | Votre prénom ?",
+    "Je modifie mes coordonnées | Que voulez-vous modifier ? J'ai noté : Awa Houngbo, awa.test@example.com, +229 97 00 00 00.",
   ]);
+  const seulNumero = agir(modifie, { type: "modifier-champ", champ: "telephone" });
+  verifier("seul le numéro est redemandé, les trois autres restent", [seulNumero.etape, c.champDemande(seulNumero.client), seulNumero.client.prenom, seulNumero.client.email, derniers(seulNumero, 2)], [
+    "coordonnees",
+    "telephone",
+    "Awa",
+    CLIENT.email,
+    "Mon numéro | Votre numéro Mobile Money ? (la demande de paiement part sur ce numéro)",
+  ]);
+  const numeroCorrige = agir(seulNumero, { type: "saisir-champ", champ: "telephone", valeur: "01 97 11 22 33" });
+  verifier("le numéro corrigé : retour au réseau Mobile Money, pas encore choisi", [numeroCorrige.etape, numeroCorrige.client.telephone, derniers(numeroCorrige)], [
+    "moyen",
+    "01 97 11 22 33",
+    "Avec quel réseau Mobile Money payez-vous ?",
+  ]);
+  {
+    // Depuis le paiement, réseau déjà choisi : la correction ramène au paiement, sans redemander le réseau.
+    const auPaiement = agir(un, { type: "choisir-moyen", moyen: "MOOV_MONEY" });
+    const emailCorrige = suite([
+      { type: "modifier-coordonnees" },
+      { type: "modifier-champ", champ: "email" },
+      { type: "saisir-champ", champ: "email", valeur: "awa.h@example.com" },
+    ], LUNDI_10H, auPaiement);
+    verifier("l'email corrigé au paiement : retour au paiement, réseau gardé", [emailCorrige.etape, emailCorrige.moyen, emailCorrige.client.email, emailCorrige.client.telephone], [
+      "payer",
+      "MOOV_MONEY",
+      "awa.h@example.com",
+      CLIENT.telephone,
+    ]);
+    const rien = agir(agir(auPaiement, { type: "modifier-coordonnees" }), { type: "garder-coordonnees" });
+    verifier("« Rien, je continue » : retour au paiement, coordonnées intactes", [rien.etape, rien.client, derniers(rien, 2)], [
+      "payer",
+      CLIENT,
+      `Rien, je continue | ${t.QUESTION_PAYER}`,
+    ]);
+    verifier("modifier-champ ou garder-coordonnees hors de « Modifier » : ignorés", [
+      agir(auPaiement, { type: "modifier-champ", champ: "nom" }) === auPaiement,
+      agir(auPaiement, { type: "garder-coordonnees" }) === auPaiement,
+    ], [true, true]);
+  }
   verifier("modifier ses coordonnées pendant qu'on les donne : ignoré", agir(e, { type: "modifier-coordonnees" }), e);
   const parLeChat = c.demandeReservationDe(agir(agir(un, { type: "choisir-moyen", moyen: "MTN_MONEY" }), { type: "accepter-cgv", acceptees: true }));
   verifier("les coordonnées tapées une par une partent dans la demande de réservation", [parLeChat?.client, api.schemaDemandeReservation.safeParse(parLeChat).success], [CLIENT, true]);
@@ -242,6 +310,21 @@ verifier("la demande de réservation : client, réseau, CGV, total vu", [demande
 verifier("la demande de réservation passe le schéma du contrat", api.schemaDemandeReservation.safeParse(demandeResa).success, true);
 e = agir(e, { type: "reservation-envoi" });
 verifier("envoi en cours", e.envoi, "reservation");
+verifier("« Payer » : la carte du paiement reste, puis la bulle du client avec le montant débité", [
+  derniers(e, 2),
+  e.messages.at(-2).recap.lignes,
+  e.messages.at(-1).de,
+], [
+  "Votre paiement | Je paie 11 616 F",
+  [
+    { libelle: "Prix de l'offre", valeur: "11 250 F" },
+    { libelle: "Frais Mobile Money", valeur: "+ 366 F" },
+    { libelle: "Débité sur le +229 97 00 00 00 (MTN MoMo)", valeur: "11 616 F", fort: true },
+    { libelle: "Conditions générales de vente", valeur: "acceptées" },
+  ],
+  "client",
+]);
+verifier("un second « Payer » pendant l'envoi : ignoré", agir(e, { type: "reservation-envoi" }), e);
 const lienSuivi = "https://bike-land.vercel.app/reservation/jeton-abc_123";
 const reponse201 = (paiement: Record<string, unknown>, plus: Record<string, unknown> = {}) => ({
   ok: true,
@@ -279,9 +362,9 @@ verifier("après une réservation, un bouton de page repart de zéro, même sur 
   apresReservation.client.email,
 ], ["personnes", null, null, CLIENT.email]);
 const confirmee = agir(enAttente, { type: "paiement-confirme" });
-verifier("paiement validé : bulle de confirmation", [confirmee.etape, derniers(confirmee)], [
+verifier("paiement validé : bulle de confirmation, avec le montant payé", [confirmee.etape, derniers(confirmee)], [
   "confirmee",
-  "C'est réservé, merci ! Votre référence : BL-T2K9QX. Le récapitulatif et la facture partent sur awa.test@example.com. Votre lien de suivi est juste en dessous.",
+  "C'est réservé, merci ! Paiement de 11 616 F reçu. Votre référence : BL-T2K9QX. Le récapitulatif et la facture partent sur awa.test@example.com. Votre lien de suivi est juste en dessous.",
 ]);
 const echoue = agir(enAttente, { type: "paiement-echoue", message: "Solde insuffisant" });
 verifier("paiement refusé : diagnostic et reprise depuis le lien de suivi", [
@@ -444,6 +527,7 @@ verifier("une demande provisoire pour connaître ce qu'il reste", c.demandeDevis
   saisie: { velos: { CLASSIQUE: 5 }, gateauxParPersonne: 0 },
 });
 verifier("avant la réponse : le parc en état, à confirmer", c.stockGbashi(g, FAITS), { stock: PAR_GAMME, confirme: false });
+verifier("pas de petits points sous la carte des vélos : elle dit déjà qu'elle vérifie", [c.demandeDevisAttendue(g) !== null, c.botEcrit(g)], [true, false]);
 g = devisRecu(g, reponseDevis(m.calculerGbashi({ velos: { CLASSIQUE: 5 } }, R, { ...ctx(DIMANCHE), stockParGamme: { CLASSIQUE: 3, PREMIUM: 6, PRESTIGE: 2 } }), {
   capacite: { velosLibres: 11, parGamme: { CLASSIQUE: 3, PREMIUM: 6, PRESTIGE: 2 } },
 }));
@@ -583,6 +667,7 @@ parc = devisRecu(parc, reponseDevis(m.calculerBikeForAllBudget({ personnes: 16, 
   capacite: { velosLibres: 15, parGamme: { CLASSIQUE: 8, PREMIUM: 5, PRESTIGE: 2 } },
   prochainCreneau: { date: SAMEDI, depart: "09:30" },
 }));
+verifier("parc de 15 vélos à 8 h, un départ libre le même jour : le chatbot parle de l'heure, pas du jour", parc.messages.at(-2).texte, "Je viens de vérifier : il reste 15 vélos libres pour un départ à 8 h, donc 15 personnes au plus.");
 verifier("parc de 15 vélos, groupe de 16 : moins de personnes, le créneau libre le plus proche, un autre jour", refusDe(parc), [
   "refus",
   "PARC",
@@ -596,6 +681,25 @@ verifier("parc de 15 vélos, groupe de 16 : moins de personnes, le créneau libr
 ]);
 const creneau = agir(parc, { type: "appliquer", alternative: parc.alternatives[1] });
 verifier("prendre le créneau libre le plus proche", [creneau.choix.date, creneau.choix.depart, creneau.etape], [SAMEDI, "09:30", "gateaux"]);
+{
+  // Le créneau de 8 h complet (la question des gâteaux attend encore) : le serveur propose 9 h 30 le même jour.
+  const complet = (prochainCreneau: Record<string, string> | null) =>
+    devisRecu(bfa(10, 10000), reponseDevis(
+      { ok: false, refus: { code: "PARC", champ: "personnes", maximum: 0, message: "Tous nos vélos sont déjà pris ce jour-là : choisissez un autre jour." } },
+      { capacite: { velosLibres: 0, parGamme: { CLASSIQUE: 0, PREMIUM: 0, PRESTIGE: 0 } }, prochainCreneau },
+    ));
+  const memeJour = complet({ date: SAMEDI, depart: "09:30" });
+  verifier("tous les vélos pris à 8 h, libres à 9 h 30 : « Je viens de vérifier », l'heure, puis le même jour proposé", [
+    memeJour.etape,
+    derniers(memeJour, 2),
+    memeJour.alternatives[0].libelle,
+  ], [
+    "refus",
+    "Je viens de vérifier : il n'y a plus assez de vélos libres pour un départ à 8 h. | Voici ce que je peux vous proposer :",
+    "Samedi 14 novembre à 9 h 30 : 11 250 F",
+  ]);
+  verifier("libres seulement un autre jour : le message du moteur, tel quel", complet({ date: DIMANCHE, depart: "08:00" }).messages.at(-2).texte, "Tous nos vélos sont déjà pris ce jour-là : choisissez un autre jour.");
+}
 const minimum = agir(c.etatInitial(), { type: "choisir-offre", offre: "bike-for-all" });
 const refusMin = n.alternativesDuRefus({ ...minimum.choix, personnes: 8, date: SAMEDI, depart: "08:00", mode: "budget", budgetXof: 10000 }, { code: "PERSONNES_MIN", message: "Bike for All se réserve pour 10 personnes au moins, un vélo par personne." }, null, FAITS, LUNDI_10H);
 verifier("moins que le minimum : passer au minimum de l'offre", refusMin.map((a: { libelle: string }) => a.libelle), ["Passer à 10 personnes : 11 250 F"]);
@@ -627,6 +731,15 @@ verifier("des variantes moins chères, chacune avec son total du moteur, les plu
     "30 minutes de vélo : 21 000 F",
   ],
 ]);
+verifier("« C'est un peu cher » : l'offre figée reste au-dessus, puis Bike Land redit son prix", [
+  derniers(negociation, 3),
+  negociation.messages.at(-3).recap.lignes.at(-1),
+], [
+  "Bike for All | C'est un peu cher pour nous | Je comprends. Votre offre est à 27 000 F. Voici ce qui fait baisser le prix, pour le même groupe :",
+  // Prix pas encore confirmé par le serveur : la carte figée s'arrête au prix de l'offre.
+  { libelle: "Prix de l'offre", valeur: "27 000 F", fort: true },
+]);
+verifier("« C'est un peu cher » ailleurs qu'à l'offre chiffrée : ignoré", agir(negociation, { type: "trop-cher" }), negociation);
 const sansGuide = negociation.alternatives.find((a: { cle: string }) => a.cle === "sans-accompagnateur");
 const moinsCher = agir(negociation, { type: "appliquer", alternative: sansGuide });
 verifier("choisir une variante : la nouvelle offre, avec l'ancien prix", [moinsCher.etape, moinsCher.choix.accompagnateur, derniers(moinsCher)], [
@@ -634,7 +747,8 @@ verifier("choisir une variante : la nouvelle offre, avec l'ancien prix", [moinsC
   false,
   "Voici la nouvelle offre : 23 500 F au lieu de 27 000 F.",
 ]);
-verifier("garder l'offre", agir(negociation, { type: "garder-offre" }).etape, "proposition");
+const garde = agir(negociation, { type: "garder-offre" });
+verifier("garder l'offre : Bike Land la présente de nouveau", [garde.etape, derniers(garde, 2)], ["proposition", "Je garde cette offre | Très bien, la voici de nouveau :"]);
 const cherBudget = suite([
   { type: "choisir-offre", offre: "bike-for-all" },
   { type: "choisir-personnes", personnes: 12 },
@@ -771,6 +885,35 @@ verifier("le jeton d'un lien de suivi", [c.jetonDuLien(lienSuivi), c.jetonDuLien
 
 const recommence = agir(cher, { type: "recommencer" });
 verifier("recommencer : tout repart de zéro, les coordonnées restent", [recommence.etape, recommence.choix.offre, recommence.messages.length, recommence.client], ["offre", null, 2, cher.client]);
+const aConfirmer = agir(cher, { type: "proposer-recommencer" });
+verifier("« Recommencer » en pleine discussion : Bike Land demande d'abord, rien n'est effacé", [
+  aConfirmer.etape,
+  aConfirmer.confirmerRecommencer,
+  aConfirmer.choix,
+  derniers(aConfirmer),
+], ["proposition", true, cher.choix, "Tout recommencer ? Vos réponses seront effacées."]);
+verifier("la question déjà posée : un second appui ne la repose pas", agir(aConfirmer, { type: "proposer-recommencer" }), aConfirmer);
+const onContinue = agir(aConfirmer, { type: "annuler-recommencer" });
+verifier("« Non, je continue » : la discussion reprend où elle en était", [onContinue.etape, onContinue.confirmerRecommencer, onContinue.choix, derniers(onContinue, 2)], [
+  "proposition",
+  false,
+  cher.choix,
+  "Non, je continue | Très bien, on continue.",
+]);
+verifier("« Non, je continue » sans question posée : ignoré", agir(cher, { type: "annuler-recommencer" }), cher);
+const ouiRecommencer = agir(aConfirmer, { type: "recommencer" });
+verifier("« Oui, recommencer » : tout repart de zéro, la question s'efface", [ouiRecommencer.etape, Boolean(ouiRecommencer.confirmerRecommencer), ouiRecommencer.messages.length], [
+  "offre",
+  false,
+  2,
+]);
+verifier("sans réponse à perdre : on recommence tout de suite", agir(c.etatInitial(undefined, FAITS, LUNDI_10H), { type: "proposer-recommencer" }).messages[0].texte, "On recommence ! Voici nos trois sorties :");
+verifier("pendant l'attente du paiement : rien ne se recommence", agir(enAttente, { type: "proposer-recommencer" }), enAttente);
+verifier(
+  "après une réservation confirmée : Bike Land rappelle qu'elle reste confirmée",
+  derniers(agir(confirmee, { type: "proposer-recommencer" })),
+  "Tout recommencer ? Votre réservation reste confirmée : son lien de suivi est aussi dans votre email.",
+);
 verifier("le message WhatsApp résume les choix", c.messageWhatsApp(cher, FAITS, LUNDI_10H), [
   "Bonjour Bike Land, je prépare une sortie en groupe avec l'assistant du site.",
   "Formule : Bike for All",
@@ -799,6 +942,53 @@ const rechargeAttente = c.relireSauvegarde(c.sauvegarder(enAttente, true, LUNDI_
 verifier("attente de paiement plus vieille que la garde des vélos : expirée", rechargeAttente.etat.etape, "echec");
 verifier("attente de paiement récente : le suivi reprend", c.relireSauvegarde(c.sauvegarder(enAttente, true, LUNDI_10H), LUNDI_10H + 60_000).etat.etape, "attente");
 verifier("rechargé pendant l'envoi : l'avertissement porte l'heure de la relecture", rechargeEnvoi.etat.messages.at(-1).a, LUNDI_10H + 1000);
+{
+  const relire = (etat: Etat) => c.relireSauvegarde(c.sauvegarder(etat, true, LUNDI_10H), LUNDI_10H + 1000).etat;
+  // Les cartes figées et la question « Tout recommencer ? » survivent au rechargement.
+  const avecCartes = relire(pret);
+  verifier("rechargement : les cartes figées reviennent telles quelles", avecCartes.messages.filter((x: { recap?: unknown }) => x.recap).map((x: { recap: unknown }) => x.recap), pret.messages.filter((x: { recap?: unknown }) => x.recap).map((x: { recap: unknown }) => x.recap));
+  verifier("rechargement : « Tout recommencer ? » attend toujours sa réponse", [relire(aConfirmer).confirmerRecommencer, relire(cher).confirmerRecommencer], [true, false]);
+  const abimees = JSON.parse(c.sauvegarder(pretAPayer, true, LUNDI_10H));
+  abimees.etat.confirmerRecommencer = "oui";
+  abimees.etat.messages.push(
+    { id: 95, de: "bot", texte: "Carte abîmée", recap: { lignes: [{ libelle: 3, valeur: "1 F" }] } },
+    { id: 96, de: "bot", texte: "Carte à moitié lisible", recap: { detail: 7, lignes: [{ libelle: "Prix", valeur: "1 000 F", fort: "oui" }, null] } },
+  );
+  const reluesAbimees = c.relireSauvegarde(JSON.stringify(abimees), LUNDI_10H + 1000).etat;
+  verifier("cartes figées abîmées : retirées, ou réduites à leurs lignes lisibles", [reluesAbimees.confirmerRecommencer, reluesAbimees.messages.slice(-2)], [
+    false,
+    [
+      { id: 95, de: "bot", texte: "Carte abîmée" },
+      { id: 96, de: "bot", texte: "Carte à moitié lisible", recap: { lignes: [{ libelle: "Prix", valeur: "1 000 F" }] } },
+    ],
+  ]);
+
+  // Une conversation rangée par la version d'avant (formulaire des coordonnées d'un seul bloc) ne reste jamais bloquée.
+  const avantCoordonnees = agir(reglages409, { type: "reserver" });
+  const ancienneToutConnu = { ...avantCoordonnees, etape: "coordonnees", moyen: null, messages: avantCoordonnees.messages.slice(0, -2) };
+  const debloquee = relire(ancienneToutConnu);
+  verifier("ancienne sauvegarde aux coordonnées, toutes déjà valables : rappelées, puis le réseau", [debloquee.etape, derniers(debloquee, 2), debloquee.messages.at(-1).a], [
+    "moyen",
+    "Je reprends vos coordonnées : Awa Houngbo, awa.test@example.com, +229 97 00 00 00. | Avec quel réseau Mobile Money payez-vous ?",
+    LUNDI_10H + 1000,
+  ]);
+  const ancienneVide = { ...ancienneToutConnu, client: { prenom: "", nom: "", email: "", telephone: "" } };
+  verifier("ancienne sauvegarde aux coordonnées, rien de rempli : la question du prénom est posée", [relire(ancienneVide).etape, derniers(relire(ancienneVide))], ["coordonnees", "Votre prénom ?"]);
+  const prenomDonne = agir(saisie400, { type: "saisir-champ", champ: "prenom", valeur: "Awa" });
+  verifier("sauvegarde récente aux coordonnées : la question posée n'est pas reposée", [
+    relire(saisie400).messages.length === saisie400.messages.length,
+    relire(prenomDonne).messages.length === prenomDonne.messages.length,
+    derniers(relire(prenomDonne)),
+  ], [true, true, "Merci Awa ! Votre nom ?"]);
+  const emailAncien = { ...pretAPayer, client: { ...CLIENT, email: "awa@exemple.c" } };
+  const emailRepris = relire(emailAncien);
+  verifier("ancienne sauvegarde au paiement, email refusé par le serveur : corrigé, puis redemandé", [emailRepris.etape, c.champDemande(emailRepris.client), derniers(emailRepris, 2)], [
+    "coordonnees",
+    "email",
+    "Il manque quelque chose dans cette adresse, je crois. Elle s'écrit comme nom@exemple.com. | Votre email ? (pour le récapitulatif, la facture et le lien de suivi)",
+  ]);
+  verifier("sauvegarde au paiement, coordonnées valables : rien ne change", [relire(pretAPayer).etape, relire(pretAPayer).messages.length], ["payer", pretAPayer.messages.length]);
+}
 
 /* ------------------------------------------------ Comme sur un téléphone */
 
@@ -912,9 +1102,13 @@ verifier("typographie à l'affichage : espace insécable avant ? ! : ; » et apr
   AVEC_INSECABLES.includes("08:00"),
 ], [true, true, true, true, true, true]);
 
+type Recap = { detail?: string; lignes: { libelle: string; valeur: string }[] };
 const textes = traverses.flatMap((etat) => [
   ...etat.messages.map((message: { texte: string }) => message.texte),
   ...etat.messages.flatMap((message: { points?: { titre: string; texte: string }[] }) => (message.points ?? []).flatMap((point) => [point.titre, point.texte])),
+  ...etat.messages.flatMap((message: { recap?: Recap }) =>
+    message.recap ? [message.recap.detail ?? "", ...message.recap.lignes.flatMap((ligne) => [ligne.libelle, ligne.valeur])].filter(Boolean) : [],
+  ),
   ...etat.alternatives.map((alternative: { libelle: string }) => alternative.libelle),
 ]);
 textes.push(

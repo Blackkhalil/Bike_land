@@ -297,7 +297,48 @@ export function rappelCoordonnees(client: Record<ChampCoordonnees, string>): str
 /** Quand le serveur refuse les coordonnées : on les reprend toutes. */
 export const MESSAGE_REPRISE_COORDONNEES = "Reprenons vos coordonnées, une par une.";
 
+/** Les réponses « Modifier mes coordonnées » : le client dit laquelle, seule celle-là est redemandée. */
+export const LIBELLES_CHAMPS: Record<ChampCoordonnees, string> = {
+  prenom: "Mon prénom",
+  nom: "Mon nom",
+  email: "Mon email",
+  telephone: "Mon numéro",
+};
+
+/** La question qui suit « Je modifie mes coordonnées », avec ce qui est noté. */
+export function questionModifier(client: Record<ChampCoordonnees, string>): string {
+  return `Que voulez-vous modifier ? J'ai noté : ${client.prenom.trim()} ${client.nom.trim()}, ${client.email.trim()}, ${client.telephone.trim()}.`;
+}
+
+/** « Recommencer » touché en pleine discussion : Bike Land demande d'abord. */
+export function questionRecommencer(reservee: boolean): string {
+  return reservee
+    ? "Tout recommencer ? Votre réservation reste confirmée : son lien de suivi est aussi dans votre email."
+    : "Tout recommencer ? Vos réponses seront effacées.";
+}
+
+/** Le client ne recommence pas finalement. */
+export const MESSAGE_ON_CONTINUE = "Très bien, on continue.";
+
+/**
+ * Bike for All : plus assez de vélos libres à l'heure demandée, mais un autre
+ * départ le même jour en a. Le moteur dit « ce jour-là » ; le chatbot dit
+ * l'heure, puisqu'il propose ensuite le même jour à une autre heure.
+ */
+export function refusCreneauPlein(depart: HeureMinute, velosLibres: number, personnesMin: number): string {
+  const heure = heureEnClair(depart);
+  if (velosLibres >= personnesMin) {
+    return `Je viens de vérifier : il reste ${velosLibres} vélos libres pour un départ à ${heure}, donc ${personnesEnClair(velosLibres)} au plus.`;
+  }
+  return `Je viens de vérifier : il n'y a plus assez de vélos libres pour un départ à ${heure}.`;
+}
+
 export const QUESTION_MOYEN = "Avec quel réseau Mobile Money payez-vous ?";
+
+/** Le paiement lancé : la bulle du client, avec le montant débité quand le serveur l'a donné. */
+export function messageJePaie(montantXof: number | null): string {
+  return montantXof === null ? "Je paie" : `Je paie ${formatMontant(montantXof)}`;
+}
 
 export const QUESTION_PAYER =
   "Dernière étape : acceptez nos conditions générales de vente, puis lancez le paiement. La demande arrive sur votre téléphone.";

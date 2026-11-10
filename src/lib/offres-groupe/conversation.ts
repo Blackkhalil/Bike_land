@@ -72,12 +72,15 @@ import {
   estCodeOffreGroupe,
   gateauxEnClair,
   jourEnClair,
+  LIBELLES_CHAMPS,
   ligneDeLOffre,
   majuscule,
   MESSAGE_ACCUEIL,
   MESSAGE_ACCUEIL_OFFRES,
+  MESSAGE_ON_CONTINUE,
   MESSAGE_RECOMMENCER,
   MESSAGE_REPRISE_COORDONNEES,
+  messageJePaie,
   NOMS_OFFRES,
   ORDRE_OFFRES,
   personnesEnClair,
@@ -96,10 +99,14 @@ import {
   questionDate,
   questionGateaux,
   questionHeure,
+  questionModifier,
   questionPersonnes,
+  questionRecommencer,
   questionReduction,
+  QUESTIONS_CHAMPS,
   questionVelos,
   rappelCoordonnees,
+  refusCreneauPlein,
   velosEnClair,
   type ChampCoordonnees,
 } from "./textes-chat";
@@ -175,6 +182,8 @@ export type Etape =
   | "negociation"
   | "refus"
   | "coordonnees"
+  /** « Modifier mes coordonnées » : le client dit laquelle. */
+  | "modifier"
   | "moyen"
   | "payer"
   | "attente"
@@ -201,6 +210,7 @@ const ETAPES: readonly Etape[] = [
   "negociation",
   "refus",
   "coordonnees",
+  "modifier",
   "moyen",
   "payer",
   "attente",
@@ -228,9 +238,30 @@ export interface PointMessage {
   texte: string;
 }
 
+/** Une ligne d'une carte figée : un libellé et sa valeur, un montant déjà écrit (« 11 250 F »). */
+export interface LigneRecap {
+  libelle: string;
+  valeur: string;
+  /** Un total : en gras, sous un trait. */
+  fort?: boolean;
+}
+
+/**
+ * Une carte de Bike Land figée dans la discussion, telle que le client l'a
+ * vue quand il y a répondu : l'offre chiffrée (« Je réserve », « C'est un peu
+ * cher pour nous ») ou le paiement (« Payer »). Comme sur un téléphone, un
+ * message envoyé reste dans la discussion.
+ */
+export interface RecapMessage {
+  /** Sous le titre (le texte de la bulle) : le jour, l'heure, le groupe. */
+  detail?: string;
+  lignes: LigneRecap[];
+}
+
 export interface MessageChat {
   id: number;
   de: "bot" | "client";
+  /** Le texte de la bulle ; pour une carte figée, son titre. */
   texte: string;
   ton?: TonMessage;
   /**
@@ -241,6 +272,8 @@ export interface MessageChat {
   a?: number;
   /** Une liste sous le texte de la bulle (l'accueil présente ainsi les trois sorties). */
   points?: PointMessage[];
+  /** Une carte figée (l'offre, le paiement), sous son titre. */
+  recap?: RecapMessage;
 }
 
 /** Ce que le navigateur doit savoir pour suivre un paiement en cours (comme src/lib/paiement.ts). */
@@ -287,6 +320,12 @@ export interface EtatChat {
   reservation: ReservationCreee | null;
   /** Un envoi en cours : les boutons attendent sa réponse. */
   envoi: "preuve" | "reservation" | null;
+  /**
+   * « Recommencer » touché en pleine discussion : Bike Land demande « Tout
+   * recommencer ? », les réponses de l'étape attendent la sienne. Absent des
+   * conversations rangées avant : vaut non.
+   */
+  confirmerRecommencer?: boolean;
 }
 
 /** La version de l'état rangé dans le navigateur : à changer quand sa forme change. */
@@ -365,6 +404,10 @@ type Horodatee<T> = T & { maintenant: number };
 export type ActionChat = Horodatee<
   | { type: "demarrer"; offre?: CodeOffreGroupe; preuveId?: string }
   | { type: "recommencer" }
+  /** « Recommencer » dans l'en-tête : Bike Land demande d'abord, dès qu'il y a des réponses à perdre. */
+  | { type: "proposer-recommencer" }
+  /** « Non, je continue » : la discussion reprend où elle en était. */
+  | { type: "annuler-recommencer" }
   | { type: "choisir-offre"; offre: CodeOffreGroupe }
   | { type: "choisir-personnes"; personnes: number }
   | { type: "choisir-date"; date: DateISO }
@@ -392,8 +435,12 @@ export type ActionChat = Horodatee<
   | { type: "saisir-coordonnees"; client: Coordonnees }
   /** Une coordonnée tapée dans la barre du bas, en réponse à la question posée (`champDemande`). */
   | { type: "saisir-champ"; champ: ChampCoordonnees; valeur: string }
-  /** Revenir sur des coordonnées déjà données, avant de payer. */
+  /** Revenir sur des coordonnées déjà données, avant de payer : Bike Land demande laquelle. */
   | { type: "modifier-coordonnees" }
+  /** La coordonnée à corriger : seule celle-là est redemandée. */
+  | { type: "modifier-champ"; champ: ChampCoordonnees }
+  /** Finalement rien à corriger : retour au réseau ou au paiement. */
+  | { type: "garder-coordonnees" }
   | { type: "choisir-moyen"; moyen: MoyenPaiement }
   | { type: "accepter-cgv"; acceptees: boolean }
   | { type: "reservation-envoi" }
@@ -640,16 +687,69 @@ export function champDemande(client: Coordonnees): ChampCoordonnees | null {
   return ORDRE_CHAMPS.find((champ) => !champValide(champ, client[champ])) ?? null;
 }
 
-/** Pose la question de la coordonnée qui manque, ou passe au réseau Mobile Money quand tout est là. */
+/**
+ * Pose la question de la coordonnée qui manque. Quand tout est là : le
+ * réseau Mobile Money, ou directement le paiement s'il est déjà choisi (une
+ * coordonnée corrigée juste avant de payer).
+ */
 function demanderCoordonnees(etat: EtatChat, faits: FaitsChat, maintenant: number, ...avant: Omit<MessageChat, "id">[]): EtatChat {
   const champ = champDemande(etat.client);
-  if (!champ) return poser(ajouter(etat, ...avant), "moyen", faits, maintenant);
+  if (!champ) return poser(ajouter(etat, ...avant), etat.moyen ? "payer" : "moyen", faits, maintenant);
   return {
     ...ajouter(etat, ...avant, bot(questionChamp(champ, etat.client.prenom))),
     etape: "coordonnees",
     refus: null,
     alternatives: [],
   };
+}
+
+/* ------------------------------------------------------- Les cartes figées */
+
+/**
+ * L'offre chiffrée telle que le client l'a vue, figée dans la discussion
+ * quand il y répond (« Je réserve », « C'est un peu cher pour nous ») :
+ * comme sur un téléphone, le message reste. Les montants sont ceux de la
+ * carte : le moteur, confirmé par le serveur quand son devis est arrivé.
+ */
+function carteOffreFigee(etat: EtatChat, faits: FaitsChat, maintenant: number): Omit<MessageChat, "id">[] {
+  if (etat.etape !== "proposition") return [];
+  const offre = offreAffichee(etat, faits, maintenant);
+  if (!offre) return [];
+  const { resultat } = offre;
+  const lignes: LigneRecap[] = [
+    ...resultat.lignes.map((ligne) => ({ libelle: ligne.libelle, valeur: formatMontant(ligne.montantXof) })),
+    { libelle: "Prix de l'offre", valeur: formatMontant(resultat.totalXof), fort: true },
+  ];
+  if (offre.confirme && typeof offre.montantADebiterXof === "number") {
+    if (typeof offre.commissionXof === "number") {
+      lignes.push({ libelle: "Frais Mobile Money", valeur: `+ ${formatMontant(offre.commissionXof)}` });
+    }
+    lignes.push({ libelle: "Débité de votre compte", valeur: formatMontant(offre.montantADebiterXof), fort: true });
+  }
+  const detail =
+    `${majuscule(jourEnClair(resultat.date))}, de ${departEnClair(resultat.depart)} à ${departEnClair(resultat.fin)}, ` +
+    personnesEnClair(resultat.personnes);
+  return [{ de: "bot", texte: NOMS_OFFRES[resultat.offre], recap: { detail, lignes } }];
+}
+
+/** La carte du paiement telle que le client l'a validée, figée dans la discussion quand il touche « Payer ». */
+function cartePaiementFigee(etat: EtatChat): Omit<MessageChat, "id">[] {
+  const devis = devisCourant(etat);
+  if (!devis?.issue.ok) return [];
+  const lignes: LigneRecap[] = [{ libelle: "Prix de l'offre", valeur: formatMontant(devis.issue.resultat.totalXof) }];
+  if (typeof devis.commissionXof === "number") {
+    lignes.push({ libelle: "Frais Mobile Money", valeur: `+ ${formatMontant(devis.commissionXof)}` });
+  }
+  if (typeof devis.montantADebiterXof === "number") {
+    const reseau = etat.moyen ? ` (${NOMS_MOYENS[etat.moyen]})` : "";
+    lignes.push({
+      libelle: `Débité sur le ${etat.client.telephone.trim()}${reseau}`,
+      valeur: formatMontant(devis.montantADebiterXof),
+      fort: true,
+    });
+  }
+  lignes.push({ libelle: "Conditions générales de vente", valeur: "acceptées" });
+  return [{ de: "bot", texte: "Votre paiement", recap: { lignes } }];
 }
 
 /** La machine elle-même, sans l'heure des bulles. */
@@ -683,6 +783,29 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
     case "recommencer":
       // Tout repart de zéro, les coordonnées restent : l'accueil présente de nouveau les trois sorties.
       return ajouter({ ...etatInitial(etat.client), messages: [], prochainId: 1 }, ...messagesAccueil(reglages, true));
+
+    case "proposer-recommencer": {
+      // Un paiement en cours ne se recommence pas ; la question est déjà posée.
+      if (etat.etape === "attente" || etat.envoi || etat.confirmerRecommencer) return etat;
+      // Aucune réponse à perdre : on recommence tout de suite.
+      if (!etat.messages.some((message) => message.de === "client")) return transition(etat, { type: "recommencer", maintenant }, faits);
+      return { ...ajouter(etat, bot(questionRecommencer(etat.etape === "confirmee"))), confirmerRecommencer: true };
+    }
+
+    case "annuler-recommencer": {
+      if (!etat.confirmerRecommencer) return etat;
+      // La coordonnée attendue se redemande : sans pastille, la barre du bas seule dit quoi taper.
+      const champ = etat.etape === "coordonnees" ? champDemande(etat.client) : null;
+      return {
+        ...ajouter(
+          etat,
+          duClient("Non, je continue"),
+          bot(MESSAGE_ON_CONTINUE),
+          ...(champ ? [bot(questionChamp(champ, etat.client.prenom))] : []),
+        ),
+        confirmerRecommencer: false,
+      };
+    }
 
     case "choisir-offre": {
       if (!estCodeOffreGroupe(action.offre)) return etat;
@@ -831,7 +954,10 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
       return { ...etat, devisEnEchec: null };
 
     case "trop-cher": {
-      const suivant = ajouter(etat, duClient("C'est un peu cher pour nous"));
+      if (etat.etape !== "proposition") return etat;
+      // L'offre reste dans la discussion, au-dessus de la réponse du client.
+      const total = totalAffiche(etat, faits, maintenant);
+      const suivant = ajouter(etat, ...carteOffreFigee(etat, faits, maintenant), duClient("C'est un peu cher pour nous"));
       const variantes = variantesMoinsCheres(suivant.choix, faits, maintenant, parcConnu(suivant, faits));
       if (variantes.length === 0) {
         return ajouter(
@@ -839,15 +965,21 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
           bot("C'est déjà le prix le plus doux pour ce groupe et ce créneau. Si vous voulez en parler, écrivez-nous sur WhatsApp."),
         );
       }
+      const prix = total !== null ? ` Votre offre est à ${formatMontant(total)}.` : "";
       return {
-        ...ajouter(suivant, bot("Je comprends. Voici ce qui fait baisser le prix, pour le même groupe :")),
+        ...ajouter(suivant, bot(`Je comprends.${prix} Voici ce qui fait baisser le prix, pour le même groupe :`)),
         etape: "negociation",
         alternatives: variantes,
       };
     }
 
     case "garder-offre":
-      return { ...ajouter(etat, duClient("Je garde cette offre")), etape: "proposition", alternatives: [] };
+      if (etat.etape !== "negociation") return etat;
+      return {
+        ...ajouter(etat, duClient("Je garde cette offre"), bot("Très bien, la voici de nouveau :")),
+        etape: "proposition",
+        alternatives: [],
+      };
 
     case "appliquer": {
       const precedent = etat.etape === "negociation" ? totalAffiche(etat, faits, maintenant) : null;
@@ -863,7 +995,9 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
 
     case "reserver": {
       if (!devisConfirme(etat)) return etat;
-      const suivant = ajouter(etat, duClient("Je réserve"));
+      // L'offre reste dans la discussion, au-dessus de « Je réserve ». Le
+      // réseau Mobile Money se choisit pour cette réservation.
+      const suivant = { ...ajouter(etat, ...carteOffreFigee(etat, faits, maintenant), duClient("Je réserve")), moyen: null };
       // Les coordonnées déjà connues (une réservation précédente, la capture
       // de la réduction) ne sont pas redemandées : tout est connu, on les
       // rappelle ; sinon, les autres une par une.
@@ -891,19 +1025,35 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
       if (!champ || action.champ !== champ || !valeur) return etat;
       const suivant = ajouter(etat, duClient(valeur));
       if (!champValide(champ, valeur)) {
-        // Une correction chaleureuse, puis la même question.
-        return ajouter(suivant, bot(CORRECTIONS_CHAMPS[champ]), bot(questionChamp(champ, etat.client.prenom)));
+        // Une correction chaleureuse, puis la même question (le merci n'est dit qu'une fois).
+        return ajouter(suivant, bot(CORRECTIONS_CHAMPS[champ]), bot(QUESTIONS_CHAMPS[champ]));
       }
       return demanderCoordonnees({ ...suivant, client: { ...suivant.client, [champ]: valeur } }, faits, maintenant);
     }
 
     case "modifier-coordonnees": {
       if ((etat.etape !== "moyen" && etat.etape !== "payer") || etat.envoi) return etat;
-      return demanderCoordonnees(
-        { ...ajouter(etat, duClient("Je modifie mes coordonnées")), client: CLIENT_VIDE, moyen: null },
-        faits,
-        maintenant,
-      );
+      // Bike Land demande laquelle : seule celle-là sera redemandée.
+      return {
+        ...ajouter(etat, duClient("Je modifie mes coordonnées"), bot(questionModifier(etat.client))),
+        etape: "modifier",
+        refus: null,
+        alternatives: [],
+      };
+    }
+
+    case "modifier-champ": {
+      if (etat.etape !== "modifier" || !ORDRE_CHAMPS.includes(action.champ)) return etat;
+      return {
+        ...ajouter(etat, duClient(LIBELLES_CHAMPS[action.champ]), bot(QUESTIONS_CHAMPS[action.champ])),
+        client: { ...etat.client, [action.champ]: "" },
+        etape: "coordonnees",
+      };
+    }
+
+    case "garder-coordonnees": {
+      if (etat.etape !== "modifier") return etat;
+      return poser(ajouter(etat, duClient("Rien, je continue")), etat.moyen ? "payer" : "moyen", faits, maintenant);
     }
 
     case "choisir-moyen":
@@ -912,8 +1062,15 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
     case "accepter-cgv":
       return { ...etat, cgv: action.acceptees };
 
-    case "reservation-envoi":
-      return demandeReservationDe(etat) ? { ...etat, envoi: "reservation" } : etat;
+    case "reservation-envoi": {
+      if (etat.envoi || !demandeReservationDe(etat)) return etat;
+      // La carte du paiement reste dans la discussion, puis la bulle du client, tout de suite.
+      const montant = devisCourant(etat)?.montantADebiterXof;
+      return {
+        ...ajouter(etat, ...cartePaiementFigee(etat), duClient(messageJePaie(typeof montant === "number" ? montant : null))),
+        envoi: "reservation",
+      };
+    }
 
     case "reservation-recue":
       return recevoirReservation({ ...etat, envoi: null }, action.statut, action.corps, faits, maintenant);
@@ -1078,11 +1235,12 @@ export function devisConfirme(etat: EtatChat): boolean {
 }
 
 /**
- * Les étapes où l'écran attend le devis pour avancer : le stock des gammes
- * (Gbashi Bike), l'offre chiffrée, le montant à payer. Ailleurs, le devis
- * se vérifie en silence, pendant que la question attend sa réponse.
+ * Les étapes où l'écran attend le devis pour avancer : l'offre chiffrée, le
+ * montant à payer. Ailleurs, le devis se vérifie en silence, pendant que la
+ * question attend sa réponse. Les vélos de Gbashi Bike non plus : leur carte
+ * dit elle-même « Je vérifie ce qu'il reste ce jour-là… », à la même place.
  */
-const ETAPES_DEVIS_ATTENDU: readonly Etape[] = ["velos", "proposition", "negociation", "payer"];
+const ETAPES_DEVIS_ATTENDU: readonly Etape[] = ["proposition", "negociation", "payer"];
 
 /**
  * Bike Land « écrit » : une réponse du serveur est attendue et l'écran en
@@ -1378,7 +1536,9 @@ function recevoirDevis(
     return continuer(suivant, faits, maintenant);
   }
 
-  if (!reponse.issue.ok) return versRefus(suivant, reponse.issue.refus, reponse.prochainCreneau, faits, maintenant);
+  if (!reponse.issue.ok) {
+    return versRefus(suivant, refusDuCreneau(reponse.issue.refus, etat.choix, reponse.prochainCreneau, faits), reponse.prochainCreneau, faits, maintenant);
+  }
 
   // Le moteur du navigateur et celui du serveur ne donnent pas le même prix :
   // les réglages ont changé depuis l'ouverture de la page. Le serveur fait foi.
@@ -1389,6 +1549,18 @@ function recevoirDevis(
     }
   }
   return suivant;
+}
+
+/**
+ * Le refus du serveur tel que le chatbot le dit. Bike for All : le serveur
+ * compte les vélos libres sur le créneau demandé (le départ et la durée).
+ * Quand il propose un autre départ le même jour, le « ce jour-là » du moteur
+ * tromperait : le chatbot parle de l'heure (le moteur n'est pas touché).
+ */
+function refusDuCreneau(refus: Refus, choix: Choix, prochainCreneau: ProchainCreneau | null, faits: FaitsChat): Refus {
+  const memeJour = Boolean(choix.date) && prochainCreneau?.date === choix.date;
+  if (choix.offre !== "bike-for-all" || refus.code !== "PARC" || !choix.depart || !memeJour) return refus;
+  return { ...refus, message: refusCreneauPlein(choix.depart, refus.maximum ?? 0, faits.reglages.bikeForAll.personnesMin) };
 }
 
 /** Le serveur a répondu à l'envoi d'une capture, ou à la question de son état. */
@@ -1526,7 +1698,7 @@ function recevoirReservation(etat: EtatChat, statut: number, corps: unknown, fai
 
 function messageConfirmation(reservation: ReservationCreee, client: Coordonnees): string {
   return (
-    `C'est réservé, merci ! Votre référence : ${reservation.reference}. ` +
+    `C'est réservé, merci ! Paiement de ${formatMontant(reservation.montantADebiterXof)} reçu. Votre référence : ${reservation.reference}. ` +
     `Le récapitulatif et la facture partent sur ${client.email || "votre email"}. Votre lien de suivi est juste en dessous.`
   );
 }
@@ -1670,9 +1842,20 @@ function estChoix(valeur: unknown): valeur is Choix {
   return valeur.offre === null || estCodeOffreGroupe(valeur.offre);
 }
 
+/** Une carte figée rangée, remise d'aplomb : ses lignes illisibles écartées, `null` s'il n'en reste aucune. */
+function recapLisible(valeur: unknown): RecapMessage | null {
+  if (!estObjet(valeur) || !Array.isArray(valeur.lignes)) return null;
+  const lignes = valeur.lignes
+    .filter((ligne): ligne is LigneRecap => estObjet(ligne) && typeof ligne.libelle === "string" && typeof ligne.valeur === "string")
+    .map(({ libelle, valeur: montant, fort }) => ({ libelle, valeur: montant, ...(fort === true ? { fort: true } : {}) }));
+  if (lignes.length === 0) return null;
+  return { ...(typeof valeur.detail === "string" && valeur.detail ? { detail: valeur.detail } : {}), lignes };
+}
+
 /**
  * Les bulles rangées, remises d'aplomb : une bulle illisible est écartée,
- * une heure ou une liste mal formée est retirée (l'heure ne s'affiche pas).
+ * une heure, une liste ou une carte mal formée est retirée (l'heure ne
+ * s'affiche pas).
  */
 function messagesLisibles(brut: unknown[]): MessageChat[] {
   const messages: MessageChat[] = [];
@@ -1682,6 +1865,7 @@ function messagesLisibles(brut: unknown[]): MessageChat[] {
     const points = Array.isArray(valeur.points)
       ? valeur.points.filter((point): point is PointMessage => estObjet(point) && typeof point.titre === "string" && typeof point.texte === "string")
       : [];
+    const recap = valeur.de === "bot" ? recapLisible(valeur.recap) : null;
     messages.push({
       id: valeur.id,
       de: valeur.de,
@@ -1689,9 +1873,43 @@ function messagesLisibles(brut: unknown[]): MessageChat[] {
       ...(valeur.ton === "alerte" || valeur.ton === "succes" ? { ton: valeur.ton } : {}),
       ...(typeof valeur.a === "number" && Number.isFinite(valeur.a) ? { a: valeur.a } : {}),
       ...(points.length ? { points: points.map(({ titre, texte }) => ({ titre, texte })) } : {}),
+      ...(recap ? { recap } : {}),
     });
   }
   return messages.slice(-MESSAGES_MAX);
+}
+
+/**
+ * Les coordonnées d'une conversation rangée, accordées à son étape : une
+ * conversation rangée par une version d'avant (le formulaire d'un seul bloc,
+ * des règles d'email plus souples) ne reste jamais bloquée.
+ *  - Aux coordonnées, tout est déjà là : on les rappelle, puis le réseau.
+ *  - Aux coordonnées, la question du champ attendu manque : on la pose.
+ *  - Au réseau, au paiement ou à « Modifier », une coordonnée ne passe plus
+ *    les règles du serveur : on la redemande.
+ */
+function coordonneesAccordees(etat: EtatChat): EtatChat {
+  const { etape, client } = etat;
+  const champ = champDemande(client);
+  if (etape === "coordonnees" && !champ) {
+    const vers: Etape = etat.moyen ? "payer" : "moyen";
+    return {
+      ...ajouter(etat, bot(rappelCoordonnees(client)), bot(vers === "payer" ? QUESTION_PAYER : QUESTION_MOYEN)),
+      etape: vers,
+      refus: null,
+      alternatives: [],
+    };
+  }
+  if (etape === "coordonnees" && champ) {
+    const derniere = etat.messages.at(-1);
+    const posee = derniere?.de === "bot" && [QUESTIONS_CHAMPS[champ], questionChamp(champ, client.prenom)].includes(derniere.texte);
+    return posee ? etat : ajouter(etat, bot(QUESTIONS_CHAMPS[champ]));
+  }
+  if ((etape === "moyen" || etape === "payer" || etape === "modifier") && champ) {
+    const correction = client[champ].trim() ? [bot(CORRECTIONS_CHAMPS[champ])] : [];
+    return { ...ajouter(etat, ...correction, bot(QUESTIONS_CHAMPS[champ])), etape: "coordonnees", refus: null, alternatives: [] };
+  }
+  return etat;
 }
 
 /**
@@ -1715,7 +1933,22 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
   if (!estChoix(etat.choix) || !Array.isArray(etat.messages) || typeof etat.prochainId !== "number" || !estObjet(etat.client)) return null;
 
   const lus = messagesLisibles(etat.messages);
-  let relu: EtatChat = { ...(etat as unknown as EtatChat), messages: lus, devis: null, devisEnEchec: null, capacite: null };
+  const texteDe = (valeur: unknown) => (typeof valeur === "string" ? valeur : "");
+  const client: Coordonnees = {
+    prenom: texteDe(etat.client.prenom),
+    nom: texteDe(etat.client.nom),
+    email: texteDe(etat.client.email),
+    telephone: texteDe(etat.client.telephone),
+  };
+  let relu: EtatChat = {
+    ...(etat as unknown as EtatChat),
+    client,
+    messages: lus,
+    devis: null,
+    devisEnEchec: null,
+    capacite: null,
+    confirmerRecommencer: etat.confirmerRecommencer === true,
+  };
   // Un envoi interrompu par le rechargement.
   if (relu.envoi === "preuve" || relu.choix.reduction.etat === "envoi") {
     relu = {
@@ -1742,6 +1975,7 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
   if (relu.etape === "attente" && maintenant - demandeLe > EXPIRATION_PANIER_MINUTES * 60_000) {
     relu = { ...ajouter(relu, bot(MESSAGE_PAIEMENT_EXPIRE, "alerte")), etape: "echec" };
   }
-  // Les bulles ajoutées ici (envoi interrompu, attente expirée) portent l'heure de la relecture.
+  relu = coordonneesAccordees(relu);
+  // Les bulles ajoutées ici (envoi interrompu, attente expirée, coordonnées) portent l'heure de la relecture.
   return { etat: horodater(lus, relu, maintenant), ouvert: brut.ouvert === true };
 }
