@@ -160,6 +160,19 @@ verifier(
   [422, "0 au moins.", "Nombre entier attendu."],
 );
 verifier("rien n'a changé après ce refus", (await lireReglagesOffres()).reglages.delaiMinimumMinutes, 90);
+const pourcents = await appeler(routeReglages, "/api/admin/reglages-offres", {
+  reglages: {
+    ...ajoutes,
+    roadTrip: { ...ajoutes.roadTrip, reduction: 0.6 },
+    bikeForAll: { ...ajoutes.bikeForAll, partMaxCocos: -0.1 },
+  },
+  prenom: "Koffi",
+});
+verifier(
+  "réduction à 60 %, part des cocos négative : la borne redite en pour cent, comme la case",
+  [pourcents.statut, pourcents.donnees.champs?.["roadTrip.reduction"], pourcents.donnees.champs?.["bikeForAll.partMaxCocos"]],
+  [422, "50 % au plus.", "0 % au moins."],
+);
 await depot.ecrireParametreAdmin(CLE, "{oups");
 const casse = await lireReglagesOffres();
 verifier("enregistrement cassé : « illisible », avec le problème", [casse.source, typeof casse.probleme], ["illisible", "string"]);

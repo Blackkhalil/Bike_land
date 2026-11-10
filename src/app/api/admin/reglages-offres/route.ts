@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { CHAMPS_REGLAGES_OFFRES } from "@/data/libelles-reglages-offres";
 import { schemaReglagesOffres } from "@/data/reglages-offres";
 import { sessionAdminValide } from "@/lib/admin";
 import { auteurAdmin } from "@/lib/journal";
@@ -25,6 +26,30 @@ const schema = z.object({
   prenom: schemaPrenom,
 });
 
+/** Une fraction en pour cent, à la française : 0,5 → « 50 », 0,035 → « 3,5 ». */
+function pourCent(fraction: number): string {
+  return String(Math.round(fraction * 10_000) / 100).replace(".", ",");
+}
+
+/**
+ * Les cases en pourcentage se tapent en pour cent (60) et partent en
+ * fraction (0,6) : la borne du schéma est une fraction. Le message la redit
+ * en pour cent, comme la case : « 50 % au plus. », jamais « 1 au plus. ».
+ */
+function bornesEnPourCent(erreur: z.ZodError, champs: Record<string, string>): Record<string, string> {
+  for (const probleme of erreur.errors) {
+    if (probleme.path[0] !== "reglages") continue;
+    const chemin = probleme.path.slice(1).join(".");
+    if (CHAMPS_REGLAGES_OFFRES.get(chemin)?.unite !== "%") continue;
+    if (probleme.code === z.ZodIssueCode.too_big && probleme.type === "number") {
+      champs[chemin] = `${pourCent(Number(probleme.maximum))} % au plus.`;
+    } else if (probleme.code === z.ZodIssueCode.too_small && probleme.type === "number") {
+      champs[chemin] = `${pourCent(Number(probleme.minimum))} % au moins.`;
+    }
+  }
+  return champs;
+}
+
 export async function POST(requete: Request) {
   if (!(await sessionAdminValide())) {
     return NextResponse.json({ erreur: "Accès refusé." }, { status: 401 });
@@ -35,7 +60,7 @@ export async function POST(requete: Request) {
     return NextResponse.json(
       {
         erreur: "Certains réglages ne conviennent pas : voyez les cases signalées.",
-        champs: champsEnErreur(analyse.error, "reglages"),
+        champs: bornesEnPourCent(analyse.error, champsEnErreur(analyse.error, "reglages")),
       },
       { status: 422 },
     );

@@ -20,6 +20,9 @@ import { penaliteRetardXof } from "@/lib/offres/retard";
 /** Les jours dans l'ordre de la semaine, lundi d'abord. */
 const ORDRE_JOURS = [1, 2, 3, 4, 5, 6, 0];
 
+/** Les messages que zod écrit de lui-même, en anglais (même liste que src/lib/saisie-admin.ts). */
+const MESSAGE_ANGLAIS = /^(Required|Expected |Invalid |Number must|String must|Array must|Too )/;
+
 /** Le formulaire tient ses valeurs comme les cases : du texte, ou une liste de jours. */
 type Formulaire = Record<string, string | number[]>;
 
@@ -114,6 +117,10 @@ export function ReglagesOffresGroupe({
   const [erreurs, setErreurs] = useState<Record<string, string>>({});
   const [succes, setSucces] = useState<string | null>(null);
   const { prenom, setPrenom, retenir } = usePrenomRetenu();
+  // Le problème trouvé, seulement s'il est en français (un message que zod
+  // écrit de lui-même est en anglais), et en phrase finie.
+  const problemeLisible =
+    probleme && !MESSAGE_ANGLAIS.test(probleme) ? `${probleme.trim().replace(/[.\s]+$/, "")}.` : null;
 
   const modifie = JSON.stringify(valeurs) !== JSON.stringify(reference);
   // Illisibles en base : il faut enregistrer, même sans rien changer, pour
@@ -231,7 +238,7 @@ export function ReglagesOffresGroupe({
           <p className="font-semibold">Les réglages enregistrés ne se lisent plus.</p>
           <p className="mt-1">
             Tant qu&apos;ils ne sont pas corrigés, les offres de groupe ne se vendent pas : le site
-            refuse de calculer un prix au hasard.{probleme ? ` Problème trouvé : ${probleme}` : ""} Les
+            refuse de calculer un prix au hasard.{problemeLisible ? ` Problème trouvé : ${problemeLisible}` : ""} Les
             cases montrent les valeurs de départ. Vérifiez-les, puis enregistrez.
           </p>
         </div>

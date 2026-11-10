@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { usePrenomRetenu } from "@/components/admin/ChampPrenom";
+import { ChampPrenom, usePrenomRetenu } from "@/components/admin/ChampPrenom";
 import { formatDate } from "@/lib/format";
 import type { FormuleFermee, JourFerme } from "@/lib/types";
 
@@ -62,7 +62,7 @@ export function PilotageOuverture({
 }) {
   const routeur = useRouter();
   const [enCours, demarrerTransition] = useTransition();
-  const { prenom } = usePrenomRetenu();
+  const { prenom, setPrenom, retenir } = usePrenomRetenu();
   const [envoi, setEnvoi] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [date, setDate] = useState("");
@@ -83,6 +83,7 @@ export function PilotageOuverture({
         setErreur(donnees.erreur ?? "Le réglage n'a pas pu être enregistré.");
         return false;
       }
+      retenir();
       demarrerTransition(() => routeur.refresh());
       return true;
     } catch {
@@ -112,6 +113,16 @@ export function PilotageOuverture({
           Un départ fermé ne se réserve plus en ligne, toutes les semaines, jusqu&apos;à ce que
           vous le rouvriez. Le site l&apos;affiche «&nbsp;Sold out&nbsp;» au lieu de le retirer.
         </p>
+        {creneaux.some((c) => c.mots) && (
+          <div className="mt-4 max-w-xs">
+            <ChampPrenom
+              id="prenom-pilotage"
+              valeur={prenom}
+              onChange={setPrenom}
+              aide="Il signe le journal quand vous activez ou désactivez les offres de groupe. Retenu sur ce téléphone."
+            />
+          </div>
+        )}
         <ul className="mt-4 divide-y divide-noir-piste/10">
           {creneaux.map((c) => (
             <li key={c.code} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -145,9 +156,20 @@ export function PilotageOuverture({
                 <button
                   type="button"
                   onClick={() => {
-                    // Ouvrir ce qui change beaucoup pour les clients se confirme.
-                    if (!c.actif && c.confirmationOuverture && !window.confirm(c.confirmationOuverture)) return;
-                    // Le prénom retenu sur ce téléphone signe le journal, quand il y en a un.
+                    // Le prénom affiché au-dessus signe le journal ; sans prénom, « admin ».
+                    const signe = `Signé au journal : ${prenom.trim() || "admin"}.`;
+                    if (c.mots) {
+                      // Un interrupteur (les offres de groupe) se confirme dans les deux sens.
+                      const question = c.actif
+                        ? `${c.mots.fermer} : ${c.libelle} ? Les clients ne les verront plus.`
+                        : (c.confirmationOuverture ?? `${c.mots.ouvrir} : ${c.libelle} ?`);
+                      if (!window.confirm(`${question}
+
+${signe}`)) return;
+                    } else if (!c.actif && c.confirmationOuverture && !window.confirm(c.confirmationOuverture)) {
+                      // Ouvrir ce qui change beaucoup pour les clients se confirme.
+                      return;
+                    }
                     void envoyer(c.code, {
                       action: "creneau",
                       code: c.code,
