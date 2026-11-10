@@ -102,7 +102,14 @@ export async function confirmerParSasPay(parametres: {
   // quelqu'un d'autre : confirmer ici créerait une double réservation.
   // Ce premier contrôle épargne une transaction ; celui qui fait foi est
   // refait par `confirmerPaiement`, dans la transaction qui confirme.
-  if (panierExpire(reservation.creeLe)) {
+  //
+  // Une offre de groupe porte son créneau à la minute : ce contrôle-ci, à
+  // l'heure pleine, la croirait reprise par un groupe parti à 8 h 30 alors
+  // qu'elle rend ses vélos à 8 h 30, et ferait rembourser un client dont
+  // les vélos sont encore libres (décision 6). Elle passe directement au
+  // contrôle à la minute de `confirmerPaiement`, qui lui seul fait foi.
+  const creneauALaMinute = reservation.minuteDebut !== undefined && reservation.minuteFin !== undefined;
+  if (panierExpire(reservation.creeLe) && !creneauALaMinute) {
     // Tous les vélos de la réservation : une inscription à Octobre rose en
     // retient un par participant.
     const disponibles = await Promise.all(
