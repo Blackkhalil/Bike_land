@@ -105,6 +105,14 @@ export function creerClientAgentIa(): ClientAgentIa | null {
   });
 }
 
+/**
+ * L'agent IA est-il activé (une clé est réglée) ? Sans lui, chaque capture
+ * de réduction est vérifiée à la main dans l'administration (décision 21).
+ */
+export function agentIaActif(): boolean {
+  return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+}
+
 /** Le client injecté, ou celui de la clé, ou `null`. */
 export function clientDeLAgent(options: OptionsAgentIa | undefined): ClientAgentIa | null {
   return options?.client === undefined ? creerClientAgentIa() : options.client;
