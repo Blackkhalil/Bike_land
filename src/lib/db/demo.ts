@@ -11,6 +11,8 @@
 
 import { optionsLocation, pointsDeRetrait, velos } from "@/data/catalogue";
 import { aujourdhui, nombreDeJours, type DateISO } from "../dates";
+// Les preuves de réduction des offres de groupe (lot 5b).
+import { limitePreuves, motifDecisionPreuve, PREFIXE_FICHIER_EN_BASE } from "./contrat";
 import {
   DUREE_ROAD_TRIP_HEURES,
   estSurCommande,
@@ -39,6 +41,8 @@ import type {
   MessageContact,
   Partenaire,
   PointDeRetrait,
+  PreuveReduction,
+  StatutPreuveReduction,
   Remboursement,
   Reservation,
   StatutRemboursement,
@@ -109,6 +113,12 @@ interface EtatDemo {
   journal: EvenementJournal[];
   /** L'argent à rendre, rattaché à la réservation par son identifiant. */
   remboursements: Omit<Remboursement, "reference" | "offre" | "client">[];
+  /**
+   * Les preuves de réduction du road trip, comme les lignes de
+   * PreuveReduction, et le fichier de celles gardées « en base » (lot 5b).
+   */
+  preuves: PreuveReduction[];
+  fichiersPreuves: Map<string, Uint8Array>;
 }
 
 // L'état vit sur `globalThis` : en développement, le rechargement à chaud
@@ -141,6 +151,8 @@ function etat(): EtatDemo {
       indisponibilites: [],
       journal: [],
       remboursements: [],
+      preuves: [],
+      fichiersPreuves: new Map(),
     };
   }
   // Un état créé avant l'ajout de ces réglages, gardé par le rechargement à chaud.
@@ -150,6 +162,8 @@ function etat(): EtatDemo {
   porteur[cle].indisponibilites ??= [];
   porteur[cle].journal ??= [];
   porteur[cle].remboursements ??= [];
+  porteur[cle].preuves ??= [];
+  porteur[cle].fichiersPreuves ??= new Map();
   return porteur[cle]!;
 }
 
@@ -1276,6 +1290,92 @@ export const depotDemo: Depot = {
       auteur: par,
     });
     return copie(remboursement);
+  },
+
+  /* ------------------------- Offres de groupe : preuves de réduction (lot 5b) */
+
+  async creerPreuve(champs) {
+    const donnees = etat();
+    const preuve: PreuveReduction = {
+      id: identifiant("preuve"),
+      typeMime: champs.typeMime,
+      tailleOctets: champs.tailleOctets,
+      statut: "en_attente",
+      email: champs.email.trim().toLowerCase(),
+      telephone: champs.telephone.trim(),
+      creeLe: new Date().toISOString(),
+    };
+    // Gardé « en base » : la clé désigne la preuve elle-même, comme en base.
+    if (champs.octets) {
+      donnees.fichiersPreuves.set(preuve.id, new Uint8Array(champs.octets));
+      preuve.fichierCle = `${PREFIXE_FICHIER_EN_BASE}${preuve.id}`;
+    } else if (champs.fichierCle) {
+      preuve.fichierCle = champs.fichierCle;
+    }
+    donnees.preuves.push(preuve);
+    return copie(preuve);
+  },
+
+  async trouverPreuve(id) {
+    const preuve = etat().preuves.find((p) => p.id === id);
+    return preuve ? copie(preuve) : null;
+  },
+
+  async listerPreuves(filtre) {
+    const ordre = (statut: StatutPreuveReduction) =>
+      etat()
+        .preuves.filter((p) => p.statut === statut)
+        // À vérifier : la plus ancienne d'abord. Décidées : la plus récente d'abord.
+        .sort((a, b) =>
+          statut === "en_attente"
+            ? a.creeLe.localeCompare(b.creeLe)
+            : (b.decideLe ?? b.creeLe).localeCompare(a.decideLe ?? a.creeLe),
+        );
+    const lignes = filtre?.statut
+      ? ordre(filtre.statut)
+      : [...ordre("en_attente"), ...[...ordre("validee"), ...ordre("refusee")].sort((a, b) =>
+          (b.decideLe ?? b.creeLe).localeCompare(a.decideLe ?? a.creeLe),
+        )];
+    return copie(lignes.slice(0, limitePreuves(filtre?.limite)));
+  },
+
+  async lireFichierPreuve(id) {
+    const octets = etat().fichiersPreuves.get(id);
+    return octets ? new Uint8Array(octets) : null;
+  },
+
+  async deciderPreuve(id, decision) {
+    const preuve = etat().preuves.find((p) => p.id === id);
+    // Sous condition, comme en base : une preuve ne se décide qu'une fois.
+    if (!preuve || preuve.statut !== "en_attente") return null;
+    const motif = motifDecisionPreuve(decision.motif);
+    preuve.statut = decision.statut;
+    preuve.decidePar = decision.par;
+    preuve.decideLe = new Date().toISOString();
+    if (motif) preuve.motif = motif;
+    if (decision.verdict) preuve.verdict = copie(decision.verdict);
+    ecrireAuJournal({
+      type: decision.statut === "validee" ? "preuve-validee" : "preuve-refusee",
+      details: { preuveId: preuve.id, motif: motif ?? null },
+      auteur: decision.par,
+    });
+    return copie(preuve);
+  },
+
+  async effacerFichierPreuve(id) {
+    const donnees = etat();
+    const preuve = donnees.preuves.find((p) => p.id === id);
+    if (!preuve) return null;
+    donnees.fichiersPreuves.delete(id);
+    if (preuve.fichierCle) {
+      delete preuve.fichierCle;
+      preuve.supprimeLe = new Date().toISOString();
+    }
+    return copie(preuve);
+  },
+
+  async listerFichiersPreuvesAEffacer(avant) {
+    return copie(etat().preuves.filter((p) => p.fichierCle && (p.statut !== "en_attente" || p.creeLe < avant)));
   },
 
   async enregistrerRetard(reference, minutes, par) {

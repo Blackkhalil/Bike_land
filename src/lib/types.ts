@@ -465,3 +465,37 @@ export interface ReservationTouchee {
   client: { prenom: string; nom: string; telephone?: string };
   velos: { veloId: string; veloNom: string; raison: RaisonVeloTouche; date?: DateISO; motif?: string }[];
 }
+
+/** Où en est une preuve de réduction : à vérifier, validée, ou refusée. */
+export type StatutPreuveReduction = "en_attente" | "validee" | "refusee";
+
+/**
+ * Une capture d'écran envoyée pour la réduction du Road trip en groupe
+ * (abonné à un réseau de Bike Land, ou story qui l'identifie), et la décision
+ * prise : par l'agent IA quand il est activé, sinon à la main dans
+ * l'administration (décisions 8 et 21). Le fichier est privé, effacé dès la
+ * décision et 30 jours au plus tard ; la ligne reste, sans lui, pour la trace.
+ */
+export interface PreuveReduction {
+  id: string;
+  /** La réservation qui a retenu la réduction, une fois la preuve servie (une par groupe). */
+  reference?: string;
+  /** Où le fichier est rangé (« blob:… » ou « base:… ») ; absent une fois effacé. */
+  fichierCle?: string;
+  typeMime: string;
+  tailleOctets: number;
+  statut: StatutPreuveReduction;
+  /** Ce que l'agent IA a lu, réduit au réseau et au compte de Bike Land reconnus. */
+  verdict?: Record<string, unknown>;
+  /** La raison de la décision, pour l'administration. */
+  motif?: string;
+  /** « admin (Koffi) », « agent IA » ou « site ». */
+  decidePar?: string;
+  decideLe?: string;
+  /** Quand le fichier a été effacé. */
+  supprimeLe?: string;
+  /** Pour prévenir le client de la décision prise à la main (décision 14). */
+  email?: string;
+  telephone?: string;
+  creeLe: string;
+}

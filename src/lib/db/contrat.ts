@@ -29,6 +29,8 @@ import type {
   MoyenPaiement,
   Partenaire,
   PointDeRetrait,
+  PreuveReduction,
+  StatutPreuveReduction,
   RaisonVeloTouche,
   Remboursement,
   Reservation,
@@ -880,6 +882,48 @@ export interface Depot {
    */
   reservationsTouchees(depuis: DateISO): Promise<ReservationTouchee[]>;
 
+  /* ------------------------- Offres de groupe : preuves de réduction (lot 5b) */
+
+  /**
+   * Enregistre une capture reçue pour la réduction du road trip, « en_attente ».
+   * Le fichier, déjà réencodé, est soit rangé hors de la base (`fichierCle`,
+   * « blob:… »), soit gardé dans la base elle-même (`octets`, table
+   * FichierPreuve), dans la même transaction : sa clé vaut alors « base:<id> ».
+   */
+  creerPreuve(champs: NouvellePreuve): Promise<PreuveReduction>;
+
+  trouverPreuve(id: string): Promise<PreuveReduction | null>;
+
+  /**
+   * Les preuves : celles qui attendent, la plus ancienne d'abord (c'est la
+   * plus pressée) ; les décidées, la plus récente d'abord. 200 au plus.
+   */
+  listerPreuves(filtre?: { statut?: StatutPreuveReduction; limite?: number }): Promise<PreuveReduction[]>;
+
+  /** Le fichier d'une preuve gardé dans la base (« base:… »), ou `null`. */
+  lireFichierPreuve(id: string): Promise<Uint8Array | null>;
+
+  /**
+   * Note la décision sur une preuve encore « en_attente », et l'écrit au
+   * journal. Sous condition : `null` si elle n'existe pas ou si elle était
+   * déjà décidée ; deux clics, ou l'agent IA et l'administration au même
+   * instant, ne décident pas deux fois.
+   */
+  deciderPreuve(id: string, decision: DecisionPreuve): Promise<PreuveReduction | null>;
+
+  /**
+   * Efface le fichier d'une preuve : les octets gardés dans la base et la
+   * clé, avec la date de l'effacement. Un fichier rangé hors de la base est
+   * effacé avant, par l'appelant. `null` si la preuve n'existe pas.
+   */
+  effacerFichierPreuve(id: string): Promise<PreuveReduction | null>;
+
+  /**
+   * Les preuves dont le fichier est encore là alors qu'il ne devrait plus :
+   * décidées, ou reçues avant `avant` (un instant ISO, 30 jours plus tôt).
+   */
+  listerFichiersPreuvesAEffacer(avant: string): Promise<PreuveReduction[]>;
+
   /* ------------------------------------------- Offres de groupe (lot 3) */
 
   /**
@@ -1001,4 +1045,51 @@ export class TransactionDejaUtiliseeError extends Error {
     super(message);
     this.name = "TransactionDejaUtiliseeError";
   }
+}
+
+/* ------------------------- Offres de groupe : preuves de réduction (lot 5b) */
+
+/** Une capture reçue pour la réduction du road trip, déjà contrôlée et réencodée. */
+export interface NouvellePreuve {
+  typeMime: string;
+  tailleOctets: number;
+  /** Pour écrire au client quand la preuve est vérifiée à la main. */
+  email: string;
+  telephone: string;
+  /** Le fichier rangé hors de la base, dans un stockage privé (« blob:… »). */
+  fichierCle?: string;
+  /** Ou le fichier lui-même, gardé dans la base (table FichierPreuve). */
+  octets?: Uint8Array;
+}
+
+/** La décision prise sur une preuve de réduction. */
+export interface DecisionPreuve {
+  statut: "validee" | "refusee";
+  /** « admin (Koffi) », « agent IA » ou « site » : signe la ligne du journal. */
+  par: string;
+  motif?: string;
+  /** Ce que l'agent IA a lu (réseau, compte de Bike Land), jamais le compte du client. */
+  verdict?: Record<string, unknown>;
+}
+
+/** La clé d'un fichier de preuve gardé dans la base : « base:<id de la preuve> ». */
+export const PREFIXE_FICHIER_EN_BASE = "base:";
+
+/** Combien de preuves une liste rend au plus. */
+export const LIMITE_PREUVES_MAX = 200;
+
+/** Le nombre de preuves à rendre, borné. */
+export function limitePreuves(limite?: number): number {
+  const demandee = Math.floor(limite ?? LIMITE_PREUVES_MAX);
+  return Math.max(1, Math.min(LIMITE_PREUVES_MAX, Number.isFinite(demandee) ? demandee : LIMITE_PREUVES_MAX));
+}
+
+/**
+ * Le motif d'une décision, en une ligne courte et propre pour
+ * l'administration : sans retour à la ligne, 300 signes au plus.
+ */
+export function motifDecisionPreuve(motif?: string): string | undefined {
+  const ligne = motif?.replace(/\s+/g, " ").trim();
+  if (!ligne) return undefined;
+  return ligne.length > 300 ? `${ligne.slice(0, 299)}…` : ligne;
 }

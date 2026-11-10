@@ -22,6 +22,9 @@ import type {
   Customer,
   Payment,
 } from "@prisma/client";
+// Les preuves de réduction des offres de groupe (lot 5b).
+import type { PreuveReduction as LignePreuve } from "@prisma/client";
+import { LIMITE_PREUVES_MAX, limitePreuves, motifDecisionPreuve, PREFIXE_FICHIER_EN_BASE } from "./contrat";
 
 import { nombreDeJours, versISO, type DateISO } from "../dates";
 import {
@@ -61,6 +64,7 @@ import type {
   MessageContact,
   Partenaire,
   PointDeRetrait,
+  PreuveReduction,
   Remboursement,
   Reservation,
   StatutRemboursement,
@@ -2120,6 +2124,124 @@ const depotDirect: Depot = {
     );
   },
 
+  /* ------------------------- Offres de groupe : preuves de réduction (lot 5b) */
+
+  async creerPreuve(champs) {
+    const donnees = {
+      typeMime: champs.typeMime,
+      tailleOctets: champs.tailleOctets,
+      email: champs.email.trim().toLowerCase(),
+      telephone: champs.telephone.trim(),
+    };
+    const octets = champs.octets;
+    if (!octets) {
+      const ligne = await client().preuveReduction.create({
+        data: { ...donnees, fichierCle: champs.fichierCle ?? null },
+      });
+      return versPreuve(ligne);
+    }
+    // Le fichier gardé dans la base, avec sa preuve, dans la même
+    // transaction : jamais une preuve qui annonce un fichier absent.
+    return client().$transaction(
+      async (tx) => {
+        const creee = await tx.preuveReduction.create({ data: { ...donnees, fichier: { create: { octets: Buffer.from(octets) } } } });
+        const ligne = await tx.preuveReduction.update({
+          where: { id: creee.id },
+          data: { fichierCle: `${PREFIXE_FICHIER_EN_BASE}${creee.id}` },
+        });
+        return versPreuve(ligne);
+      },
+      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
+    );
+  },
+
+  async trouverPreuve(id) {
+    const ligne = await client().preuveReduction.findUnique({ where: { id } });
+    return ligne ? versPreuve(ligne) : null;
+  },
+
+  async listerPreuves(filtre) {
+    const take = limitePreuves(filtre?.limite);
+    // À vérifier : la plus ancienne d'abord. Décidées : la plus récente d'abord.
+    const enAttente = () =>
+      client().preuveReduction.findMany({ where: { statut: "en_attente" }, orderBy: { createdAt: "asc" }, take });
+    const decidees = (statut?: string) =>
+      client().preuveReduction.findMany({
+        where: statut ? { statut } : { statut: { not: "en_attente" } },
+        orderBy: [{ decideLe: "desc" }, { createdAt: "desc" }],
+        take,
+      });
+    const lignes =
+      filtre?.statut === "en_attente"
+        ? await enAttente()
+        : filtre?.statut
+          ? await decidees(filtre.statut)
+          : (await Promise.all([enAttente(), decidees()])).flat();
+    return lignes.slice(0, take).map(versPreuve);
+  },
+
+  async lireFichierPreuve(id) {
+    const ligne = await client().fichierPreuve.findUnique({ where: { preuveId: id } });
+    return ligne ? new Uint8Array(ligne.octets) : null;
+  },
+
+  async deciderPreuve(id, decision) {
+    const motif = motifDecisionPreuve(decision.motif);
+    return client().$transaction(
+      async (tx) => {
+        // Sous condition : seul l'appel qui la trouve encore « en_attente » décide.
+        const { count } = await tx.preuveReduction.updateMany({
+          where: { id, statut: "en_attente" },
+          data: {
+            statut: decision.statut,
+            decidePar: decision.par,
+            decideLe: new Date(),
+            motif: motif ?? null,
+            ...(decision.verdict ? { verdict: decision.verdict as Prisma.InputJsonObject } : {}),
+          },
+        });
+        if (count === 0) return null;
+        const ligne = await tx.preuveReduction.findUniqueOrThrow({ where: { id } });
+        await tx.journalEvenement.create({
+          data: {
+            type: decision.statut === "validee" ? "preuve-validee" : "preuve-refusee",
+            details: { preuveId: id, motif: motif ?? null },
+            auteur: decision.par,
+          },
+        });
+        return versPreuve(ligne);
+      },
+      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
+    );
+  },
+
+  async effacerFichierPreuve(id) {
+    return client().$transaction(
+      async (tx) => {
+        const preuve = await tx.preuveReduction.findUnique({ where: { id } });
+        if (!preuve) return null;
+        await tx.fichierPreuve.deleteMany({ where: { preuveId: id } });
+        if (!preuve.fichierCle) return versPreuve(preuve);
+        const ligne = await tx.preuveReduction.update({ where: { id }, data: { fichierCle: null, supprimeLe: new Date() } });
+        return versPreuve(ligne);
+      },
+      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
+    );
+  },
+
+  async listerFichiersPreuvesAEffacer(avant) {
+    const limite = new Date(avant);
+    const lignes = await client().preuveReduction.findMany({
+      where: {
+        fichierCle: { not: null },
+        OR: [{ statut: { not: "en_attente" } }, ...(Number.isNaN(limite.getTime()) ? [] : [{ createdAt: { lt: limite } }])],
+      },
+      orderBy: { createdAt: "asc" },
+      take: LIMITE_PREUVES_MAX,
+    });
+    return lignes.map(versPreuve);
+  },
+
   async enregistrerRetard(reference, minutes, par): Promise<ResultatRetard> {
     // Les réglages du moment : la tolérance et le montant par minute.
     const lecture = await lireReglagesOffresAvec(lireParametre);
@@ -2392,6 +2514,31 @@ function versEvenement(ligne: {
     ...(ligne.reference ? { reference: ligne.reference } : {}),
     details,
     auteur: ligne.auteur,
+    creeLe: ligne.createdAt.toISOString(),
+  };
+}
+
+/** Traduit une preuve de réduction de la base vers le domaine (lot 5b). */
+function versPreuve(ligne: LignePreuve): PreuveReduction {
+  const statut = ligne.statut === "validee" || ligne.statut === "refusee" ? ligne.statut : "en_attente";
+  const verdict =
+    ligne.verdict !== null && typeof ligne.verdict === "object" && !Array.isArray(ligne.verdict)
+      ? (ligne.verdict as Record<string, unknown>)
+      : undefined;
+  return {
+    id: ligne.id,
+    ...(ligne.reference ? { reference: ligne.reference } : {}),
+    ...(ligne.fichierCle ? { fichierCle: ligne.fichierCle } : {}),
+    typeMime: ligne.typeMime,
+    tailleOctets: ligne.tailleOctets,
+    statut,
+    ...(verdict ? { verdict } : {}),
+    ...(ligne.motif ? { motif: ligne.motif } : {}),
+    ...(ligne.decidePar ? { decidePar: ligne.decidePar } : {}),
+    ...(ligne.decideLe ? { decideLe: ligne.decideLe.toISOString() } : {}),
+    ...(ligne.supprimeLe ? { supprimeLe: ligne.supprimeLe.toISOString() } : {}),
+    ...(ligne.email ? { email: ligne.email } : {}),
+    ...(ligne.telephone ? { telephone: ligne.telephone } : {}),
     creeLe: ligne.createdAt.toISOString(),
   };
 }

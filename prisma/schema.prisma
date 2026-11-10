@@ -648,7 +648,13 @@ model PreuveReduction {
   decidePar    String?
   decideLe     DateTime?
   supprimeLe   DateTime?
+  /// Pour prévenir le client de la décision prise à la main (lot 5b).
+  email        String?
+  telephone    String?
   createdAt    DateTime  @default(now())
+  /// Le fichier, quand il est gardé dans la base plutôt que dans un
+  /// stockage privé de fichiers (voir FichierPreuve).
+  fichier      FichierPreuve?
 
   @@index([statut, createdAt])
 }
@@ -673,4 +679,15 @@ model Remboursement {
 
   @@index([statut, createdAt])
   @@index([bookingId])
+}
+
+/// Le fichier d'une preuve de réduction, gardé dans la base quand aucun
+/// stockage privé de fichiers n'est configuré (lot 5b). Déjà réencodé :
+/// tourné, réduit, sans métadonnées (ni EXIF, ni position GPS). Effacé dès
+/// la décision, 30 jours au plus tard ; supprimé avec sa preuve.
+model FichierPreuve {
+  preuveId  String          @id
+  preuve    PreuveReduction @relation(fields: [preuveId], references: [id], onDelete: Cascade)
+  octets    Bytes
+  createdAt DateTime        @default(now())
 }
