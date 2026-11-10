@@ -25,6 +25,7 @@ import { occupationsDeLaGamme } from "@/lib/db/contrat";
 import { filDAriane } from "@/lib/donnees-structurees";
 import { formatXof } from "@/lib/format";
 import { departsDeLaGamme, joursFermesCommeOccupes, lireOuverture } from "@/lib/ouverture";
+import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { DESCRIPTION_MAX, metadonneesPage, premierQuiTient } from "@/lib/seo";
 
 type Params = Promise<{ gamme: string }>;
@@ -89,6 +90,9 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
   if (!gamme) notFound();
 
   const [parc, ouverture] = await Promise.all([depot.listerVelos(), lireOuverture()]);
+  // Offres de groupe ouvertes (décision 1) : le road trip par gamme ne se
+  // réserve plus ici, il passe en groupe, toutes gammes, avec le chatbot.
+  const roadTripEnGroupe = (await offresGroupeEnVente(ouverture)) !== null;
   const deLaGamme = parc.filter((velo) => velo.gamme === gamme.code);
   const enEtat = deLaGamme.filter((velo) => velo.statut !== "MAINTENANCE" && velo.statut !== "RETIRE");
 
@@ -102,20 +106,18 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
 
   // Les départs encadrés : complets pour la gamme, ils s'affichent « Sold out ».
   const maintenant = new Date();
-  const departs = await departsDeLaGamme(
-    gamme.code,
-    creneauxDisponibles(maintenant, ouverture),
-    departsComplets(maintenant, ouverture),
-  );
+  const departs = roadTripEnGroupe
+    ? { creneaux: [], complets: [] }
+    : await departsDeLaGamme(gamme.code, creneauxDisponibles(maintenant, ouverture), departsComplets(maintenant, ouverture));
 
   const lePlusPris = gamme.code === GAMME_LA_PLUS_PRISE;
   const autres = GAMMES.filter((autre) => autre.code !== gamme.code);
   const nombre = deLaGamme.length;
-  const sortie = sortieEncadreeDe(gamme.code, enEtat.length);
+  const sortie = roadTripEnGroupe ? null : sortieEncadreeDe(gamme.code, enEtat.length);
   // « Le road trip du samedi se fait en vélo Premium ou Prestige » : sur la
   // page Classique, sous le prix. Sur celle du Prestige : le groupe de dix
   // ne tient pas sur son seul vélo.
-  const horsGamme = noteDepartsHorsGamme(gamme.code, enEtat.length);
+  const horsGamme = roadTripEnGroupe ? null : noteDepartsHorsGamme(gamme.code, enEtat.length);
 
   return (
     <>
@@ -211,6 +213,7 @@ export default async function PageReserverGamme({ params }: { params: Params }) 
                   complets={departs.complets}
                   periodesOccupees={periodesOccupees}
                   aucunVelo={enEtat.length === 0}
+                  roadTripEnGroupe={roadTripEnGroupe}
                 />
               </Suspense>
             </div>
