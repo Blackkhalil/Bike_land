@@ -49,6 +49,7 @@ export function SuiviPaiementMomo({
   onConfirme,
   onEchec,
   expiration = "La demande de paiement a expiré et le vélo n'est plus retenu. Rechargez cette page pour en relancer une.",
+  variante = "page",
 }: {
   token: string;
   paiementId: string;
@@ -63,6 +64,13 @@ export function SuiviPaiementMomo({
   onEchec: (message: string) => void;
   /** Ce que dit l'encart quand la demande a expiré. */
   expiration?: string;
+  /**
+   * « page » : l'encart des pages de réservation. « chat » : le contenu
+   * d'une carte de la discussion du chatbot des offres de groupe, sans
+   * cadre (la carte le porte), sans redire le montant ni le numéro (la
+   * bulle juste au-dessus les donne). La même attente dans les deux cas.
+   */
+  variante?: "page" | "chat";
 }) {
   const [message, setMessage] = useState<string | null>(null);
   const [expire, setExpire] = useState(false);
@@ -148,6 +156,53 @@ export function SuiviPaiementMomo({
   }, [interroger]);
 
   const operateur = OPERATEURS[moyen] ?? "Mobile Money";
+
+  if (variante === "chat") {
+    return (
+      <div className="flex items-start gap-3">
+        {!expire && (
+          <span
+            aria-hidden="true"
+            className="mt-1 h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-noir-piste/25 border-t-noir-piste"
+          />
+        )}
+        <div className="min-w-0">
+          <p className="font-display text-[1.1rem] font-semibold leading-tight">
+            {expire ? "Demande expirée" : "Validez sur votre téléphone"}
+          </p>
+          {expire ? (
+            <p className="mt-1.5 text-[0.88rem] leading-snug">{expiration}</p>
+          ) : (
+            <>
+              <p className="mt-1.5 text-[0.88rem] leading-snug">
+                Ouvrez la notification de {operateur} et saisissez votre code secret.
+              </p>
+              <p className="mt-1.5 text-[0.8rem] leading-snug text-noir-piste/80">
+                Cette discussion se met à jour toute seule dès que le paiement est validé. Si rien
+                n&apos;arrive, composez le code de votre opérateur pour retrouver la demande en
+                attente.
+              </p>
+            </>
+          )}
+          {urlCheckout && !expire && (
+            <a
+              href={urlCheckout}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block text-[0.86rem] font-semibold underline decoration-noir-piste/40 underline-offset-2"
+            >
+              Ouvrir la page de paiement sécurisée
+            </a>
+          )}
+          {message && (
+            <p role="status" className="mt-2 text-[0.82rem] leading-snug text-orange-sourd">
+              {message}
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-6 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-5 py-5">

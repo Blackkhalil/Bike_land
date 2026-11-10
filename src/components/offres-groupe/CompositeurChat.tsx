@@ -43,7 +43,10 @@ export function CompositeurChat({
   return (
     <form
       onSubmit={envoyer}
-      className="shrink-0 border-t border-noir-piste/10 bg-white px-3 pb-[max(0.625rem,env(safe-area-inset-bottom))] pt-2.5"
+      // La machine vérifie chaque réponse et répond par une bulle (un email incomplet, par
+      // exemple) : le navigateur ne la bloque pas avant. Seule la date garde ses bornes.
+      noValidate={mode?.type !== "date"}
+      className="shrink-0 border-t border-noir-piste/10 bg-white px-3 pb-[max(0.625rem,env(safe-area-inset-bottom))] pt-2.5 md:rounded-b-[24px]"
     >
       {mode?.legende && (
         <label htmlFor="chat-saisie" className="mb-1.5 block px-1 text-[0.8rem] font-semibold text-noir-piste">

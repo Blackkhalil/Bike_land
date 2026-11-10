@@ -59,6 +59,9 @@ function Bulle({ message, premier, dernier }: { message: MessageChat; premier: b
   const client = message.de === "client";
   const heure = heureDuMessage(message.a);
   const points = message.points?.length ? message.points : null;
+  const recap = !client && message.recap?.lignes.length ? message.recap : null;
+  // Une liste ou une carte figée prend toute la largeur ; l'heure passe alors dessous, à droite.
+  const large = Boolean(points || recap);
   // Les coins du côté de la bulle se resserrent dans un groupe ; la dernière porte la pointe.
   const coins = client
     ? `${premier ? "" : "rounded-tr-md"} ${dernier ? "rounded-br-none" : "rounded-br-md"}`
@@ -68,7 +71,7 @@ function Bulle({ message, premier, dernier }: { message: MessageChat; premier: b
     <div
       className={`relative max-w-[85%] rounded-2xl ${coins} pb-1.5 pr-3 pt-2 text-[0.92rem] leading-snug text-noir-piste ${TRAIT} ${
         client ? "self-end bg-orange-signal" : "self-start bg-white"
-      } ${ton ? "pl-4" : "pl-3"} ${points ? "w-full" : ""}`}
+      } ${ton ? "pl-4" : "pl-3"} ${large ? "w-full" : ""}`}
     >
       <span className="sr-only">{client ? "Vous : " : "Bike Land : "}</span>
       {ton && (
@@ -77,7 +80,11 @@ function Bulle({ message, premier, dernier }: { message: MessageChat; premier: b
           className={`absolute bottom-2 left-1.5 top-2 w-1 rounded-full ${ton === "alerte" ? "bg-orange-signal" : "bg-vert-lagune"}`}
         />
       )}
-      <span className="whitespace-pre-line [overflow-wrap:anywhere]">{insecables(message.texte)}</span>
+      {recap ? (
+        <CarteFigee titre={message.texte} recap={recap} />
+      ) : (
+        <span className="whitespace-pre-line [overflow-wrap:anywhere]">{insecables(message.texte)}</span>
+      )}
       {points && (
         <ul className="mt-2 space-y-1.5">
           {points.map((point) => (
@@ -88,7 +95,7 @@ function Bulle({ message, premier, dernier }: { message: MessageChat; premier: b
           ))}
         </ul>
       )}
-      {heure && !points && (
+      {heure && !large && (
         // La place de l'heure au bout de la dernière ligne : le texte ne passe jamais dessous.
         <span aria-hidden="true" className={`inline-block ${client ? "w-[3.6rem]" : "w-[2.7rem]"}`} />
       )}
@@ -96,7 +103,7 @@ function Bulle({ message, premier, dernier }: { message: MessageChat; premier: b
         <span
           aria-hidden="true"
           className={`whitespace-nowrap text-[0.68rem] leading-none tabular-nums ${client ? "text-noir-piste/80" : "text-gris-cadre"} ${
-            points ? "mt-1.5 block text-right" : "absolute bottom-1.5 right-2.5"
+            large ? "mt-1.5 block text-right" : "absolute bottom-1.5 right-2.5"
           }`}
         >
           {heure}
@@ -104,6 +111,31 @@ function Bulle({ message, premier, dernier }: { message: MessageChat; premier: b
         </span>
       )}
       {dernier && <Pointe cote={client ? "droite" : "gauche"} />}
+    </div>
+  );
+}
+
+/**
+ * Une carte de Bike Land figée dans la discussion (l'offre chiffrée, le
+ * paiement), telle que le client l'a vue quand il y a répondu : son titre,
+ * le jour et le groupe, puis chaque ligne et son montant, les totaux en gras.
+ */
+function CarteFigee({ titre, recap }: { titre: string; recap: NonNullable<MessageChat["recap"]> }) {
+  return (
+    <div>
+      <p className="font-display text-[1.05rem] font-semibold leading-tight">{insecables(titre)}</p>
+      {recap.detail && <p className="mt-0.5 text-[0.8rem] leading-snug text-gris-cadre">{insecables(recap.detail)}</p>}
+      <dl className="mt-2 space-y-1 text-[0.84rem]">
+        {recap.lignes.map((ligne, rang) => (
+          <div
+            key={`${rang}-${ligne.libelle}`}
+            className={`flex items-baseline justify-between gap-3 ${ligne.fort ? "border-t border-noir-piste/10 pt-1 font-semibold" : ""}`}
+          >
+            <dt className="min-w-0 [overflow-wrap:anywhere]">{insecables(ligne.libelle)}</dt>
+            <dd className="shrink-0 whitespace-nowrap tabular-nums">{ligne.valeur}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   );
 }

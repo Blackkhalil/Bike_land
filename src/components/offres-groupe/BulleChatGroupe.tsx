@@ -143,22 +143,31 @@ export function BulleChatGroupe({ faits }: { faits: FaitsChat }) {
     };
   }, []);
 
+  // La bulle monte au-dessus de ce qu'elle ne doit pas couvrir. Elle reste
+  // rendue pendant la discussion (sous le panneau, la page est inerte) : le
+  // panneau fermé, le focus lui revient tout seul.
+  const visible = !masquee;
+  const invitationAffichee = visible && !ouvert && (invitation === "visible" || invitation === "sortie");
+
   // L'invitation : une fois par session, jamais si le chatbot s'est déjà
   // ouvert. Une ouverture entre-temps (bouton, lien, rechargement) la
-  // passe à « finie » : elle n'arrive plus.
+  // passe à « finie » : elle n'arrive plus. Le délai ne court que sur une
+  // page qui montre la bulle (pas sur le suivi d'une réservation) : arrivé
+  // par le lien de suivi, le client la verra sur la page suivante.
   useEffect(() => {
-    if (invitationDejaPassee()) return;
+    if (!visible || invitationDejaPassee()) return;
     const arrivee = window.setTimeout(() => setInvitation((avant) => (avant === "attente" ? "visible" : avant)), DELAI_INVITATION_MS);
     return () => window.clearTimeout(arrivee);
-  }, []);
+  }, [visible]);
+  // Comptée comme vue seulement une fois vraiment à l'écran.
   useEffect(() => {
-    if (invitation !== "visible") return;
+    if (!invitationAffichee) return;
     try {
       window.sessionStorage.setItem(CLE_INVITATION, "vue");
     } catch {
       // Sans stockage, elle ne reviendra pas sur cette page de toute façon.
     }
-  }, [invitation]);
+  }, [invitationAffichee]);
   useEffect(() => {
     if (invitation !== "visible" || invitationTenue) return;
     const depart = window.setTimeout(() => setInvitation("sortie"), DUREE_INVITATION_MS);
@@ -170,10 +179,6 @@ export function BulleChatGroupe({ faits }: { faits: FaitsChat }) {
     return () => window.clearTimeout(fin);
   }, [invitation]);
 
-  // La bulle monte au-dessus de ce qu'elle ne doit pas couvrir. Elle reste
-  // rendue pendant la discussion (sous le panneau, la page est inerte) : le
-  // panneau fermé, le focus lui revient tout seul.
-  const visible = !masquee;
   useEffect(() => {
     if (!visible || ouvert) return;
     let image = 0;
@@ -218,8 +223,6 @@ export function BulleChatGroupe({ faits }: { faits: FaitsChat }) {
   // Le panneau rend lui-même le focus à ce qui l'a ouvert (dialogue natif).
   const fermer = () => setOuvert(false);
 
-  const invitationAffichee = visible && !ouvert && (invitation === "visible" || invitation === "sortie");
-
   return (
     <>
       {visible && (
@@ -230,7 +233,12 @@ export function BulleChatGroupe({ faits }: { faits: FaitsChat }) {
           {invitationAffichee && (
             <Invitation
               sortie={invitation === "sortie"}
-              onOuvrir={ouvrir}
+              onOuvrir={() => {
+                // Le message disparaît à l'ouverture : la bulle prend le focus d'abord, pour le
+                // retrouver quand la discussion se ferme (le dialogue le rend à ce qui l'avait).
+                bouton.current?.focus();
+                ouvrir();
+              }}
               onMasquer={() => {
                 setInvitation("sortie");
                 // La croix disparaît avec le message : le focus passe à la bulle.
@@ -293,7 +301,8 @@ function Invitation({
       }`}
     >
       <button type="button" onClick={onOuvrir} className="min-h-11 rounded-l-2xl py-2 pl-4 pr-1 text-left text-[0.9rem] font-semibold leading-tight">
-        Réserver en groupe ?
+        {/* Espace insécable : le « ? » ne part jamais seul à la ligne. */}
+        Réserver en groupe{" "}?
       </button>
       <button
         type="button"
@@ -320,13 +329,15 @@ function ChargementPanneau() {
   return (
     <div
       role="status"
-      className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-craie text-noir-piste md:inset-auto md:bottom-4 md:right-4 md:h-[min(680px,calc(100dvh-32px))] md:w-[400px] md:rounded-[24px] md:shadow-[0_24px_60px_rgba(14,14,14,0.35)]"
+      className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-craie text-noir-piste md:inset-auto md:bottom-4 md:right-4 md:h-[min(680px,calc(100dvh-32px))] md:w-[400px] md:rounded-[24px] md:bg-transparent md:shadow-[0_24px_60px_rgba(14,14,14,0.35)]"
     >
-      <div aria-hidden="true" className="h-16 shrink-0 bg-noir-piste" />
-      <p className="m-auto flex items-center gap-3 text-[0.92rem]">
-        <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-noir-piste/25 border-t-noir-piste" />
-        Un instant, j&apos;arrive…
-      </p>
+      <div aria-hidden="true" className="h-16 shrink-0 bg-noir-piste md:rounded-t-[24px]" />
+      <div className="flex flex-1 bg-craie md:rounded-b-[24px]">
+        <p className="m-auto flex items-center gap-3 text-[0.92rem]">
+          <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-noir-piste/25 border-t-noir-piste" />
+          Un instant, j&apos;arrive…
+        </p>
+      </div>
     </div>
   );
 }

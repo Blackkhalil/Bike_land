@@ -33,7 +33,16 @@ import {
   repartitionParDefaut,
   totalVelos,
 } from "@/lib/offres-groupe/negociation";
-import { insecables, jourCourt, majuscule, NOMS_OFFRES, ORDRE_OFFRES, personnesEnClair, personnesMinDe } from "@/lib/offres-groupe/textes-chat";
+import {
+  insecables,
+  jourCourt,
+  LIBELLES_CHAMPS,
+  majuscule,
+  NOMS_OFFRES,
+  ORDRE_OFFRES,
+  personnesEnClair,
+  personnesMinDe,
+} from "@/lib/offres-groupe/textes-chat";
 import { lienWhatsApp } from "@/lib/site";
 
 import { CarteOffreChat } from "./CarteOffreChat";
@@ -147,7 +156,8 @@ const CHAMPS_SAISIE: Record<ChampCoordonnees, Pick<ModeSaisie, "etiquette" | "in
  */
 export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: number): ModeSaisie | null {
   const { etape, choix } = etat;
-  if (etat.envoi) return null;
+  // Un envoi en cours, ou « Tout recommencer ? » qui attend sa réponse : rien à taper.
+  if (etat.envoi || etat.confirmerRecommencer) return null;
   switch (etape) {
     case "personnes": {
       if (!choix.offre || faits.velosEnEtat < personnesMinDe(choix.offre, faits.reglages)) return null;
@@ -171,7 +181,7 @@ export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: numbe
         cle: "date",
         etiquette: "Une autre date",
         indication: "Une autre date",
-        legende: "Ou choisissez une autre date :",
+        legende: insecables("Ou choisissez une autre date :"),
         type: "date",
         autoComplete: "off",
         min: aujourdhui,
@@ -231,6 +241,20 @@ export function ReponsesDeLEtape({ etat, faits, maintenant, actions }: Propriete
   const whatsApp = lienWhatsApp(messageWhatsApp(etat, faits, maintenant));
   const autreDate = () =>
     envoyer({ type: "appliquer", alternative: { cle: "autre-date", libelle: "Choisir une autre date", changement: { date: null } } });
+
+  // « Tout recommencer ? » : ses deux réponses, à la place de celles de l'étape.
+  if (etat.confirmerRecommencer) {
+    return (
+      <Puces>
+        <button type="button" className={PUCE} onClick={() => envoyer({ type: "recommencer" })}>
+          Oui, recommencer
+        </button>
+        <button type="button" className={PUCE} onClick={() => envoyer({ type: "annuler-recommencer" })}>
+          Non, je continue
+        </button>
+      </Puces>
+    );
+  }
 
   switch (etape) {
     case "offre":
@@ -317,7 +341,11 @@ export function ReponsesDeLEtape({ etat, faits, maintenant, actions }: Propriete
           {budgetsProposes(choix, faits, maintenant).map((budget) => (
             <button key={budget.budgetXof} type="button" className={`${PUCE} tabular-nums`} onClick={() => envoyer({ type: "choisir-budget", budgetXof: budget.budgetXof })}>
               {formatMontant(budget.budgetXof)}
-              <span className="font-normal">, {dureeCourte(budget.minutes)}</span>
+              {/* Ce que le budget achète : le temps de vélo, et le coco quand il en comprend un. */}
+              <span className="font-normal">
+                , {dureeCourte(budget.minutes)}
+                {budget.coco !== "aucun" && `, ${budget.coco} coco`}
+              </span>
             </button>
           ))}
         </Puces>
@@ -443,6 +471,20 @@ export function ReponsesDeLEtape({ etat, faits, maintenant, actions }: Propriete
         </Puces>
       );
 
+    case "modifier":
+      return (
+        <Puces>
+          {(Object.keys(LIBELLES_CHAMPS) as ChampCoordonnees[]).map((champ) => (
+            <button key={champ} type="button" className={PUCE} onClick={() => envoyer({ type: "modifier-champ", champ })}>
+              {LIBELLES_CHAMPS[champ]}
+            </button>
+          ))}
+          <button type="button" className={PUCE_DISCRETE} onClick={() => envoyer({ type: "garder-coordonnees" })}>
+            Rien, je continue
+          </button>
+        </Puces>
+      );
+
     case "moyen":
       return (
         <Puces>
@@ -531,6 +573,8 @@ function LienWhatsApp({ href }: { href: string }) {
 export function CarteDeLEtape({ etat, faits, maintenant, actions }: ProprietesEtape) {
   const { choix } = etat;
   const reglages = faits.reglages;
+  // « Tout recommencer ? » attend sa réponse : la carte revient avec « Non, je continue ».
+  if (etat.confirmerRecommencer) return null;
   switch (etat.etape) {
     case "preuve":
       return (
@@ -547,8 +591,7 @@ export function CarteDeLEtape({ etat, faits, maintenant, actions }: ProprietesEt
       const { stock, confirme } = stockGbashi(etat, faits);
       return (
         <ChoixVelos
-          // Une nouvelle mesure du serveur repart d'une répartition qui tient dans le stock.
-          key={confirme ? "confirme" : "provisoire"}
+          // La même carte quand le stock du serveur arrive : le focus y reste, rien ne saute.
           personnes={choix.personnes}
           minimum={reglages.gbashi.personnesMin}
           stock={stock}
@@ -572,17 +615,21 @@ export function CarteDeLEtape({ etat, faits, maintenant, actions }: ProprietesEt
     }
 
     case "payer":
+      // « Payer » touché : la carte est figée dans la discussion, suivie de « Je paie… ». Elle revient si l'envoi échoue.
+      if (etat.envoi === "reservation") return null;
       return <Paiement etat={etat} faits={faits} maintenant={maintenant} actions={actions} />;
 
     case "attente": {
       const reservation = etat.reservation;
       if (!reservation?.suivi || !reservation.token) return null;
       return (
-        <div data-focus-etape tabIndex={-1} className="mt-3 [&>div]:mt-0">
+        <section data-focus-etape tabIndex={-1} aria-label="Votre paiement Mobile Money" className={CARTE}>
           {typeof reservation.demandeLe === "number" && (
             <MinuteurExpiration demandeLe={reservation.demandeLe} onExpire={() => actions.envoyer({ type: "paiement-expire" })} />
           )}
+          {/* La bulle juste au-dessus dit le montant et le numéro : la carte dit quoi faire. */}
           <SuiviPaiementMomo
+            variante="chat"
             token={reservation.token}
             paiementId={reservation.suivi.paiementId}
             moyen={reservation.suivi.moyen}
@@ -593,7 +640,7 @@ export function CarteDeLEtape({ etat, faits, maintenant, actions }: ProprietesEt
             onConfirme={() => actions.envoyer({ type: "paiement-confirme" })}
             onEchec={(message) => actions.envoyer({ type: "paiement-echoue", message })}
           />
-        </div>
+        </section>
       );
     }
 
@@ -730,16 +777,25 @@ function ChoixVelos({
   initiale: Partial<Record<GammeVelo, number>>;
   onValider: (velos: Record<GammeVelo, number>) => void;
 }) {
-  const [velos, setVelos] = useState<Record<GammeVelo, number>>(() => ({
-    CLASSIQUE: Math.min(initiale.CLASSIQUE ?? 0, stock.CLASSIQUE),
-    PREMIUM: Math.min(initiale.PREMIUM ?? 0, stock.PREMIUM),
-    PRESTIGE: Math.min(initiale.PRESTIGE ?? 0, stock.PRESTIGE),
-  }));
+  // Les vélos touchés par le client ; tant qu'il n'a rien touché, la répartition proposée.
+  // Toujours ramenés dans le stock : quand celui du serveur arrive, la même carte s'ajuste.
+  const [saisis, setSaisis] = useState<Record<GammeVelo, number> | null>(null);
+  const dansLeStock = (base: Partial<Record<GammeVelo, number>>): Record<GammeVelo, number> => ({
+    CLASSIQUE: Math.max(0, Math.min(base.CLASSIQUE ?? 0, stock.CLASSIQUE)),
+    PREMIUM: Math.max(0, Math.min(base.PREMIUM ?? 0, stock.PREMIUM)),
+    PRESTIGE: Math.max(0, Math.min(base.PRESTIGE ?? 0, stock.PRESTIGE)),
+  });
+  const velos = dansLeStock(saisis ?? initiale);
   const total = totalVelos(velos);
-  const changer = (gamme: GammeVelo, ecart: number) =>
-    setVelos((avant) => ({ ...avant, [gamme]: Math.max(0, Math.min(stock[gamme], avant[gamme] + ecart)) }));
+  const changer = (gamme: GammeVelo, ecart: number) => setSaisis(dansLeStock({ ...velos, [gamme]: velos[gamme] + ecart }));
   const compteur =
     "grid h-11 w-11 place-items-center rounded-full border-2 border-orange-signal bg-white text-[1.25rem] font-semibold leading-none text-noir-piste transition-colors hover:bg-orange-signal/10 disabled:border-noir-piste/15 disabled:text-noir-piste/35 disabled:hover:bg-white";
+  // La vérification du stock du jour, à une place réservée de deux lignes : son texte change sur place.
+  const verification = stockConfirme
+    ? "C'est vérifié : voici ce qu'il reste ce jour-là."
+    : verificationEnEchec
+      ? "Je n'ai pas pu vérifier ce qu'il reste ce jour-là : ce sera fait avant le paiement."
+      : "Je vérifie ce qu'il reste ce jour-là…";
   return (
     <section data-focus-etape tabIndex={-1} aria-label="Vos vélos" className={CARTE}>
       <ul className="divide-y divide-noir-piste/10">
@@ -780,19 +836,19 @@ function ChoixVelos({
       <p className={`mt-2 ${AIDE}`} aria-live="polite">
         {total === personnes
           ? `${total} vélos pour ${personnesEnClair(personnes)}.`
-          : `${total} vélo${total > 1 ? "s" : ""} choisi${total > 1 ? "s" : ""} pour ${personnesEnClair(personnes)} : le groupe comptera ${personnesEnClair(total)}.`}
-        {stockConfirme
-          ? ""
-          : verificationEnEchec
-            ? " Je n'ai pas pu vérifier ce qu'il reste ce jour-là : ce sera fait avant le paiement."
-            : " Je vérifie ce qu'il reste ce jour-là…"}
+          : insecables(
+              `${total} vélo${total > 1 ? "s" : ""} choisi${total > 1 ? "s" : ""} pour ${personnesEnClair(personnes)} : le groupe comptera ${personnesEnClair(total)}.`,
+            )}
+      </p>
+      <p role="status" className={`mt-1 min-h-[2.75em] ${AIDE}`}>
+        {insecables(verification)}
       </p>
       {!stockConfirme && verificationEnEchec && (
         <button type="button" onClick={onRelancer} className={`${PUCE_DISCRETE} -ml-3`}>
           Vérifier de nouveau
         </button>
       )}
-      <button type="button" className={`${BOUTON_CARTE} mt-3`} disabled={total < minimum} onClick={() => onValider(velos)}>
+      <button type="button" className={`${BOUTON_CARTE} mt-2`} disabled={total < minimum} onClick={() => onValider(velos)}>
         {total < minimum ? `Au moins ${minimum} vélos` : "Valider les vélos"}
       </button>
     </section>
@@ -829,15 +885,26 @@ function EnvoiPreuve({
 
   return (
     <form data-focus-etape tabIndex={-1} onSubmit={envoyer} noValidate aria-label="Votre capture d'écran" className={`${CARTE} space-y-3`}>
-      <label className="block">
-        <span className={ETIQUETTE}>Votre capture d&apos;écran (JPG, PNG ou WebP, 4 Mo au plus)</span>
-        <input
-          type="file"
-          accept={TYPES_CAPTURE.join(",")}
-          onChange={(evenement) => setCapture(evenement.target.files?.[0] ?? null)}
-          className="mt-1 block w-full text-[0.84rem] file:mr-3 file:rounded-full file:border-0 file:bg-noir-piste file:px-4 file:py-2 file:text-[0.84rem] file:font-semibold file:text-craie"
-        />
-      </label>
+      {/* Le champ de fichier du navigateur coupe son texte à 320 px : un bouton à nous, et le nom de l'image sur sa ligne. */}
+      <div>
+        <span id="etiquette-capture" className={ETIQUETTE}>
+          Votre capture d&apos;écran (JPG, PNG ou WebP, 4 Mo au plus)
+        </span>
+        <label className="mt-1.5 inline-flex min-h-11 cursor-pointer items-center rounded-full bg-noir-piste px-4 text-[0.88rem] font-semibold text-craie transition-colors hover:bg-noir-releve has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-noir-piste">
+          <input
+            type="file"
+            accept={TYPES_CAPTURE.join(",")}
+            aria-labelledby="etiquette-capture"
+            aria-describedby="nom-capture"
+            onChange={(evenement) => setCapture(evenement.target.files?.[0] ?? null)}
+            className="sr-only"
+          />
+          <span aria-hidden="true">{capture ? "Changer d'image" : "Choisir une image"}</span>
+        </label>
+        <p id="nom-capture" className={`mt-1 truncate ${AIDE}`}>
+          {capture ? capture.name : "Aucune image choisie"}
+        </p>
+      </div>
       <label className="block">
         <span className={ETIQUETTE}>Votre téléphone</span>
         <input
@@ -863,7 +930,7 @@ function EnvoiPreuve({
       </label>
       {erreur && (
         <p role="alert" className="text-[0.82rem] text-orange-sourd">
-          {erreur}
+          {insecables(erreur)}
         </p>
       )}
       <button type="submit" className={BOUTON_CARTE} disabled={envoi}>

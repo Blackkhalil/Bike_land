@@ -19,6 +19,7 @@ import {
   type ActionChat,
   type EtatChat,
   type FaitsChat,
+  type MessageChat,
 } from "@/lib/offres-groupe/conversation";
 import type { DemandeOuverture } from "@/lib/offres-groupe/ouverture-chat";
 import { lienWhatsApp } from "@/lib/site";
@@ -134,8 +135,11 @@ export function PanneauChatGroupe({
   const dialogue = useRef<HTMLDialogElement>(null);
   const defilement = useRef<HTMLDivElement>(null);
   const zoneEtape = useRef<HTMLDivElement>(null);
+  const zonePoints = useRef<HTMLDivElement>(null);
   const saisie = useRef<HTMLInputElement>(null);
-  const premierDefilement = useRef(true);
+  // Les bulles déjà montrées (le défilement vise les nouvelles) et l'étape qui a déjà reçu le focus.
+  const bullesVues = useRef<{ messages: readonly MessageChat[]; prochainId: number } | null>(null);
+  const focusVu = useRef<string | null>(null);
   const [etat, envoyer] = useReducer(
     (actuel: EtatChat, action: ActionChat) => reduire(actuel, action, faits),
     ouvertA,
@@ -176,35 +180,88 @@ export function PanneauChatGroupe({
     ranger(etat, true);
   }, [etat]);
 
-  // Chaque nouvelle bulle se montre, son début en haut de l'écran : une
-  // offre chiffrée se lit depuis sa première ligne. Aussi quand le clavier
-  // du téléphone s'ouvre et réduit la discussion.
+  // Le défilement, comme sur un téléphone. Les bulles arrivées avec une
+  // action se montrent depuis la première : si tout tient, la vue descend en
+  // bas ; sinon la première nouvelle bulle se cale en haut, et une offre
+  // chiffrée se lit depuis sa première ligne. Une discussion neuve s'ouvre en
+  // haut, sur « Bonjour » ; une discussion reprise, sur la dernière réponse
+  // du client. Recommencer remonte en haut.
   const ecrit = botEcrit(etat);
-  const nombreMessages = etat.messages.length;
   const hauteurVisible = zoneVisible?.hauteur ?? null;
+  const { messages, prochainId } = etat;
   useEffect(() => {
     const zone = defilement.current;
     if (!zone) return;
-    const derniere = zone.querySelector<HTMLElement>("[data-bulle]:last-of-type");
-    const haut = derniere ? Math.max(0, derniere.offsetTop - 12) : 0;
-    const doux = !premierDefilement.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    premierDefilement.current = false;
-    zone.scrollTo({ top: haut, behavior: doux ? "smooth" : "auto" });
-  }, [nombreMessages, etat.etape, ecrit, hauteurVisible]);
+    const avant = bullesVues.current;
+    bullesVues.current = { messages, prochainId };
+    if (avant?.messages === messages) return;
+    const reduit = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const bulles = zone.querySelectorAll<HTMLElement>("[data-bulle]");
+    const aller = (rang: number, doux: boolean) => {
+      // La première bulle de la discussion : tout en haut, avec la pastille du jour.
+      const haut = rang <= 0 ? 0 : Math.max(0, (bulles[rang]?.offsetTop ?? 0) - 12);
+      zone.scrollTo({ top: haut, behavior: doux && !reduit ? "smooth" : "auto" });
+    };
+    if (!avant) {
+      aller(messages.findLastIndex((message) => message.de === "client"), false);
+      return;
+    }
+    const repartie =
+      prochainId < avant.prochainId || (messages[0] !== avant.messages[0] && (messages[0]?.id ?? 0) <= (avant.messages[0]?.id ?? 0));
+    if (repartie) {
+      aller(0, true);
+      return;
+    }
+    const premiere = messages.findIndex((message) => message.id >= avant.prochainId);
+    if (premiere >= 0) aller(premiere, true);
+  }, [messages, prochainId]);
 
-  // Chaque nouvelle étape, ou chaque coordonnée demandée, prend le focus :
-  // le champ du bas quand la réponse se tape, sinon la carte qui arrive ou
-  // la première réponse.
+  // « Bike Land écrit… » : les trois petits points ne font descendre la vue
+  // que si elle était déjà en bas. Personne n'est tiré de sa lecture, et
+  // leur départ ne fait rien bouger.
+  useEffect(() => {
+    const zone = defilement.current;
+    const points = zonePoints.current;
+    if (!ecrit || !zone || !points) return;
+    const reste = zone.scrollHeight - zone.scrollTop - zone.clientHeight;
+    if (reste > points.offsetHeight + 24) return;
+    const reduit = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    zone.scrollTo({ top: zone.scrollHeight, behavior: reduit ? "auto" : "smooth" });
+  }, [ecrit]);
+
+  // Le clavier du téléphone s'ouvre et réduit la discussion : la question
+  // posée reste juste au-dessus de la barre du bas.
+  useEffect(() => {
+    const zone = defilement.current;
+    if (hauteurVisible === null || !zone) return;
+    zone.scrollTo({ top: zone.scrollHeight });
+  }, [hauteurVisible]);
+
+  // Le focus. Chaque nouvelle étape, chaque coordonnée demandée, chaque fin
+  // d'envoi : le champ du bas quand la réponse se tape, sinon la carte qui
+  // arrive ou la première réponse. Et s'il s'est perdu (un bouton qui
+  // disparaît ou se grise, une carte qui change), il revient au même endroit
+  // au lieu de rester sur la page.
   const mode = modeSaisieDe(etat, faits, maintenant);
   const saisiePrioritaire = mode?.prioritaire === true;
   const champ = etat.etape === "coordonnees" ? champDemande(etat.client) : null;
+  const cleFocus = [etat.etape, champ ?? "", saisiePrioritaire ? "saisie" : "", etat.envoi ?? "", etat.confirmerRecommencer ? "recommencer" : ""].join("|");
   useEffect(() => {
+    const nouvelle = focusVu.current !== cleFocus;
+    focusVu.current = cleFocus;
+    const actif = document.activeElement;
+    const perdu =
+      !(actif instanceof HTMLElement) ||
+      actif === document.body ||
+      !dialogue.current?.contains(actif) ||
+      (actif instanceof HTMLButtonElement && actif.disabled);
+    if (!nouvelle && !perdu) return;
     const champDuBas = saisie.current && !saisie.current.disabled ? saisie.current : null;
     const cible = saisiePrioritaire
       ? champDuBas
       : (zoneEtape.current?.querySelector<HTMLElement>(PREMIER_CONTROLE) ?? champDuBas ?? zoneEtape.current);
     cible?.focus({ preventScroll: true });
-  }, [etat.etape, champ, saisiePrioritaire]);
+  });
 
   // Le devis : demandé au serveur dès que le prix est à confirmer.
   const demandeDevis = demandeDevisAttendue(etat);
@@ -310,10 +367,12 @@ export function PanneauChatGroupe({
         if (evenement.target === evenement.currentTarget) fermer();
       }}
       style={zoneVisible ? { height: zoneVisible.hauteur, top: zoneVisible.haut } : undefined}
-      className="fixed inset-0 z-[70] m-0 h-[100dvh] max-h-none w-full max-w-none overflow-hidden bg-craie p-0 text-noir-piste md:inset-auto md:bottom-4 md:right-4 md:h-[min(680px,calc(100dvh-32px))] md:w-[400px] md:rounded-[24px] md:shadow-[0_24px_60px_rgba(14,14,14,0.35)]"
+      // Sur ordinateur, le fond de la fenêtre reste transparent : l'en-tête noir et la barre du
+      // bas portent eux-mêmes leurs coins arrondis, sans liseré clair autour des coins.
+      className="fixed inset-0 z-[70] m-0 h-[100dvh] max-h-none w-full max-w-none overflow-hidden bg-craie p-0 text-noir-piste md:inset-auto md:bottom-4 md:right-4 md:h-[min(680px,calc(100dvh-32px))] md:w-[400px] md:rounded-[24px] md:bg-transparent md:shadow-[0_24px_60px_rgba(14,14,14,0.35)]"
     >
       <div className="flex h-full flex-col">
-        <header className="flex shrink-0 items-center gap-2.5 bg-noir-piste pb-2 pl-3 pr-1.5 pt-[max(0.5rem,env(safe-area-inset-top))] text-craie">
+        <header className="flex shrink-0 items-center gap-2.5 bg-noir-piste pb-2 pl-3 pr-1.5 pt-[max(0.5rem,env(safe-area-inset-top))] text-craie md:rounded-t-[24px]">
           <span aria-hidden="true" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-orange-signal text-noir-piste">
             <SymboleMarque taille={26} />
           </span>
@@ -339,7 +398,8 @@ export function PanneauChatGroupe({
           </a>
           <button
             type="button"
-            onClick={() => actions.envoyer({ type: "recommencer" })}
+            // Bike Land demande d'abord « Tout recommencer ? » dès qu'il y a des réponses à perdre.
+            onClick={() => actions.envoyer({ type: "proposer-recommencer" })}
             disabled={recommencerBloque}
             aria-label="Recommencer la discussion"
             title="Recommencer"
@@ -352,7 +412,7 @@ export function PanneauChatGroupe({
           </button>
         </header>
 
-        <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-5 pt-3">
+        <div ref={defilement} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain bg-craie px-3 pb-5 pt-3">
           <JourDeLaDiscussion messages={etat.messages} maintenant={maintenant} />
           {/* Le rôle « log » sur un conteneur : la liste garde son rôle de liste. */}
           <div role="log" aria-live="polite" aria-relevant="additions" aria-label="La discussion">
@@ -360,7 +420,9 @@ export function PanneauChatGroupe({
           </div>
           <div ref={zoneEtape} tabIndex={-1}>
             <CarteDeLEtape etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
-            <div role="status">{ecrit && <BulleEcrit />}</div>
+            <div ref={zonePoints} role="status">
+              {ecrit && <BulleEcrit />}
+            </div>
             <div role="group" aria-label="Vos réponses">
               <ReponsesDeLEtape etat={etat} faits={faits} maintenant={maintenant} actions={actions} />
             </div>
