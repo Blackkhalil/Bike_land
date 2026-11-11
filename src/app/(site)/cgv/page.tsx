@@ -15,6 +15,7 @@ import { lireReglagesOffresAvec, type ReglagesOffres } from "@/data/reglages-off
 import { depot } from "@/lib/db";
 import { formatXof } from "@/lib/format";
 import { penaliteRetardXof } from "@/lib/offres/retard";
+import { JOURS_CONSERVATION_CONTACT } from "@/lib/offres-groupe/preuves";
 import { preuvesAcceptees } from "@/lib/offres-groupe/textes-chat";
 import { agentIaActif, interrupteurOffresGroupeOuvert } from "@/lib/offres-groupe/vitrine";
 import { site } from "@/lib/site";
@@ -176,7 +177,9 @@ function ConditionsOffresDeGroupe({ reglages, iaActive }: { reglages: ReglagesOf
           {r ? null : <>Son taux est celui affiché au moment de la réservation. </>}
           Elle porte sur le prix du road trip, hors frais de paiement électronique, et ne s&apos;applique
           qu&apos;une fois par client, reconnu à son numéro ou à son email : une seule réservation, même avec
-          une nouvelle capture.{" "}
+          une nouvelle capture. Une capture validée ne sert qu&apos;à la personne qui l&apos;a envoyée (la
+          réservation porte son numéro ou son email), dans les {JOURS_CONSERVATION_CONTACT}&nbsp;jours qui
+          suivent sa validation.{" "}
           {iaActive ? (
             <>
               La capture est vérifiée automatiquement par un assistant d&apos;intelligence artificielle (voir

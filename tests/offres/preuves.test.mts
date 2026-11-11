@@ -611,6 +611,7 @@ console.log("\n— Administration : Valider, Refuser");
     [decor.etat.emails[0].email, decor.etat.emails[0].statut, decor.etat.emails[0].lienReprise, espaces(decor.etat.emails[0].reduction), valide.corps.emailEnvoye],
     ["awa.test@example.com", "validee", "https://site.test/?reserver-en-groupe=road-trip-groupe&preuve=p1", "4 %", true],
   );
+  verifier("validée : l'email dit que la capture sert 30 jours (son contact est effacé ensuite)", decor.etat.emails[0].valableJours, preuves.JOURS_CONSERVATION_CONTACT);
   const encore = await decider({ action: "refuser", id: "p1", prenom: "Awa" });
   verifier("une preuve ne se décide qu'une fois : 409", encore.statut, 409);
   const refuse = await decider({ action: "refuser", id: "p2", prenom: "Koffi", motif: "Bouton « Suivre » visible." });

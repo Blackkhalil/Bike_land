@@ -81,6 +81,13 @@ const lienSans = "https://site.test/?reserver-en-groupe=road-trip-groupe";
     lisible(ordinaire.texte).includes("Reprenez votre réservation ici, la réduction est déjà comptée :"),
     ordinaire.html.includes("Reprendre ma réservation"),
   ], ["awa@example.com", "Bonne nouvelle : la réduction de 4 % est validée", true, true, true]);
+  // La capture validée sert 30 jours (son contact est effacé ensuite) : l'email le dit.
+  await email.envoyerDecisionPreuve({ email: "awa@example.com", statut: "validee", lienReprise: lienAvec, reduction: "4 %", valableJours: 30 });
+  const avecDelai = dernier();
+  verifier("validée : le lien vaut 30 jours, l'email le dit", [
+    lisible(avecDelai.texte).includes("Reprenez votre réservation ici dans les 30 jours, la réduction est déjà comptée :"),
+    lisible(avecDelai.html).includes("depuis ce bouton dans les 30 jours."),
+  ], [true, true]);
 
   await email.envoyerDecisionPreuve({ email: "awa@example.com", statut: "validee", lienReprise: lienAvec, reduction: "4 %", reservationPrixNormal: "BL-NORMAL" });
   const prochain = dernier();

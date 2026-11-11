@@ -218,6 +218,11 @@ export interface DependancesPreuves {
     reductionDejaEue?: string;
     /** Validée, alors que la réduction est réglée à 0 % : rien à appliquer, ni pourcentage ni lien de reprise. */
     sansReduction?: boolean;
+    /**
+     * Validée : la capture sert pendant tant de jours (son contact est effacé
+     * ensuite, et elle ne sert plus) ; l'email le dit.
+     */
+    valableJours?: number;
   }) => Promise<{ envoye: boolean }>;
   /** Prévient Bike Land qu'une capture attend sa vérification (décision 24). */
   alerterBikeLand: (alerte: AlerteCapture) => Promise<{ envoye: boolean }>;
@@ -728,6 +733,7 @@ export async function deciderPreuveParAdmin(
         ...(taux.texte && !sansReduction ? { reduction: taux.texte } : {}),
         ...(statut === "refusee" && motif ? { motif } : {}),
         ...(sansReduction ? { sansReduction: true } : {}),
+        ...(avecLaPreuve ? { valableJours: JOURS_CONSERVATION_CONTACT } : {}),
         ...(!sansReduction && situation.dejaEue ? { reductionDejaEue: situation.dejaEue } : {}),
         ...(!sansReduction && !situation.dejaEue && situation.prixNormal ? { reservationPrixNormal: situation.prixNormal.reference } : {}),
       })

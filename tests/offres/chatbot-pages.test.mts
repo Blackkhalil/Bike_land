@@ -132,9 +132,10 @@ verifier("CGV : les preuves de la réduction, la story sur Instagram seulement",
 verifier("CGV, agent IA pas activé : vérification à la main, pas un mot d'IA", [page.includes("intelligence artificielle"), page.includes("Notre équipe vérifie chaque capture à la main")], [false, true]);
 verifier("CGV : la réduction une fois par client (décision 25), le prix normal pendant l'attente sans rattrapage (décision 24)", [
   page.includes("ne s'applique qu'une fois par client, reconnu à son numéro ou à son email : une seule réservation, même avec une nouvelle capture."),
+  page.includes("Une capture validée ne sert qu'à la personne qui l'a envoyée (la réservation porte son numéro ou son email), dans les 30 jours qui suivent sa validation."),
   page.includes("réserver sans attendre, au prix normal : la réduction ne s'ajoute pas ensuite à cette réservation."),
   page.includes("une seule fois par groupe"),
-], [true, true, false]);
+], [true, true, true, false]);
 verifier("CGV : les chiffres des réglages (frais de paiement, retard)", [page.includes("de 125 FCFA par personne"), page.includes("1 000 FCFA par minute")], [true, true]);
 process.env.ANTHROPIC_API_KEY = "cle-de-test-factice";
 page = await rendreCgv();
