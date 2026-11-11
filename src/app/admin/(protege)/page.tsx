@@ -242,7 +242,8 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
           <strong className="font-semibold">
             {capturesAVerifier} capture{capturesAVerifier > 1 ? "s" : ""} à vérifier
           </strong>
-          , pour la réduction du road trip en groupe : le client attend votre réponse par email.{" "}
+          , pour la réduction du road trip en groupe :{" "}
+          {capturesAVerifier > 1 ? "les clients attendent votre réponse par email." : "le client attend votre réponse par email."}{" "}
           <Link href="/admin/preuves" className="lien-souligne font-semibold">
             Voir les captures
           </Link>

@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 
 import { ChampPrenom, usePrenomRetenu } from "@/components/admin/ChampPrenom";
 import { schemaPrenom } from "@/lib/saisie-admin";
+import { lienWhatsAppClient } from "@/lib/site";
 
 /** Une capture à vérifier, déjà mise en mots par le serveur. */
 export interface PreuveAVerifier {
@@ -30,8 +31,15 @@ interface ReponseDecision {
   champs?: Record<string, string>;
 }
 
-/** Le message après une décision, en clair, avec ce qu'il reste à faire. */
-function messageApresDecision(preuve: PreuveAVerifier, action: "valider" | "refuser", reponse: ReponseDecision): string {
+/** Ce qui reste à l'écran après une décision : ce qui a été fait, et le client à prévenir si l'email n'est pas parti. */
+interface MessageDecision {
+  texte: string;
+  /** L'email au client n'est pas parti : son numéro, pour le prévenir par WhatsApp (vide s'il n'en a plus). */
+  aPrevenir?: { telephone?: string };
+}
+
+/** Le message après une décision, en clair. */
+function messageApresDecision(preuve: PreuveAVerifier, action: "valider" | "refuser", reponse: ReponseDecision): MessageDecision {
   const morceaux: string[] = [];
   if (action === "refuser") morceaux.push("Capture refusée.");
   else if (reponse.dejaEue) {
@@ -41,12 +49,24 @@ function messageApresDecision(preuve: PreuveAVerifier, action: "valider" | "refu
       `Réduction validée. Sa réservation ${reponse.prixNormal} reste au prix normal : l'email lui dit que la réduction servira sur son prochain road trip.`,
     );
   } else morceaux.push("Réduction validée.");
-  morceaux.push(
-    reponse.emailEnvoye
-      ? "Le client est prévenu par email."
-      : `L'email au client n'est pas parti : prévenez-le par WhatsApp${preuve.telephone ? ` (${preuve.telephone})` : ""}.`,
+  if (reponse.emailEnvoye) morceaux.push("Le client est prévenu par email.");
+  return {
+    texte: morceaux.join(" "),
+    ...(reponse.emailEnvoye ? {} : { aPrevenir: preuve.telephone ? { telephone: preuve.telephone } : {} }),
+  };
+}
+
+/** Un texte dont les références de réservation (« BL-TR2ZZE ») ne se coupent jamais au trait d'union. */
+function avecReferences(texte: string): ReactNode {
+  return texte.split(/(BL-[A-Z0-9]+)/).map((morceau, index) =>
+    /^BL-[A-Z0-9]+$/.test(morceau) ? (
+      <span key={index} className="whitespace-nowrap">
+        {morceau}
+      </span>
+    ) : (
+      <Fragment key={index}>{morceau}</Fragment>
+    ),
   );
-  return morceaux.join(" ");
 }
 
 /**
@@ -69,7 +89,7 @@ export function PreuvesAVerifier({ preuves, comptes }: { preuves: PreuveAVerifie
   const [envoi, setEnvoi] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [erreurPrenom, setErreurPrenom] = useState<string | undefined>(undefined);
-  const [succes, setSucces] = useState<string | null>(null);
+  const [succes, setSucces] = useState<MessageDecision | null>(null);
   const zoneMessage = useRef<HTMLDivElement>(null);
 
   // Le message d'une décision prise plus bas dans la liste vient à l'écran.
@@ -148,7 +168,31 @@ export function PreuvesAVerifier({ preuves, comptes }: { preuves: PreuveAVerifie
         )}
         {succes && (
           <p role="status" className="mt-4 rounded-[var(--radius-carte)] bg-vert-lagune/12 px-4 py-3 text-[0.86rem] text-vert-lagune">
-            {succes}
+            {avecReferences(succes.texte)}
+          </p>
+        )}
+        {/* L'email au client n'est pas parti : une action à faire, à part, en alerte, avec son numéro à toucher. */}
+        {succes?.aPrevenir && (
+          <p
+            role="alert"
+            className="mt-3 rounded-[var(--radius-carte)] border-l-4 border-orange-signal bg-orange-signal/10 px-4 py-3 text-[0.86rem] font-semibold leading-relaxed text-noir-piste"
+          >
+            L&apos;email au client n&apos;est pas parti : prévenez-le par WhatsApp
+            {succes.aPrevenir.telephone ? (
+              <>
+                {" ("}
+                <a
+                  href={lienWhatsAppClient(succes.aPrevenir.telephone)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="cible-elargie whitespace-nowrap underline underline-offset-2"
+                >
+                  {succes.aPrevenir.telephone}
+                </a>
+                {")"}
+              </>
+            ) : null}
+            .
           </p>
         )}
       </div>
@@ -186,14 +230,18 @@ export function PreuvesAVerifier({ preuves, comptes }: { preuves: PreuveAVerifie
               {/* Avant de décider : ce que ce client a déjà réservé. */}
               {preuve.dejaEue && (
                 <p className="mt-3 rounded-[var(--radius-bouton)] border-l-4 border-orange-signal bg-orange-signal/10 px-3 py-2 text-[0.82rem] leading-snug">
-                  <strong className="font-semibold">A déjà eu la réduction : {preuve.dejaEue}.</strong> Elle vaut une seule fois
+                  <strong className="font-semibold">
+                    A déjà eu la réduction : <span className="whitespace-nowrap">{preuve.dejaEue}</span>.
+                  </strong>{" "}
+                  Elle vaut une seule fois
                   par client : refusez cette capture.
                 </p>
               )}
               {!preuve.dejaEue && preuve.prixNormal && (
                 <p className="mt-3 rounded-[var(--radius-bouton)] border-l-4 border-noir-piste/40 bg-craie px-3 py-2 text-[0.82rem] leading-snug">
                   <strong className="font-semibold">
-                    A déjà {preuve.prixNormal.payee ? "payé" : "réservé"} {preuve.prixNormal.reference} au prix normal
+                    A déjà {preuve.prixNormal.payee ? "payé" : "réservé"}{" "}
+                    <span className="whitespace-nowrap">{preuve.prixNormal.reference}</span> au prix normal
                     {preuve.prixNormal.payee ? "" : " (paiement en attente)"}.
                   </strong>{" "}
                   Cette réservation garde ce prix. Si vous validez, la réduction servira sur son prochain road trip.

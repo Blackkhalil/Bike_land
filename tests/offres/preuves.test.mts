@@ -677,6 +677,25 @@ console.log("\n— Décision 24 : valider après une réservation au prix normal
     false,
     [{ type: "preuve-email-non-envoye", details: { preuveId: "pc", statut: "validee", finNumero: "0000" }, auteur: "admin (Koffi)" }],
   ]);
+  // Le journal dit qui prévenir (les quatre derniers chiffres) et mène à la page où se lit le numéro entier.
+  const journal = await charger("src/lib/journal.ts");
+  verifier("au journal : après quoi, la fin du numéro, et le lien vers les preuves", journal.resumeEvenement({
+    id: "j1",
+    type: "preuve-email-non-envoye",
+    details: { preuveId: "pc", statut: "refusee", finNumero: "2222" },
+    auteur: "admin (Koffi)",
+    creeLe: new Date(MAINTENANT).toISOString(),
+  }), {
+    titre: "L'email au client n'est pas parti : prévenez-le par WhatsApp",
+    lignes: ["Après un refus de sa capture.", "Son numéro finit par 2222."],
+    lien: { href: "/admin/preuves", libelle: "Voir son numéro dans les preuves de réduction" },
+  });
+  const { lienWhatsAppClient } = await charger("src/lib/site.ts");
+  verifier("le numéro du client à toucher : WhatsApp, avec l'indicatif du Bénin s'il manque", [
+    lienWhatsAppClient("01 90 22 22 22"),
+    lienWhatsAppClient("+229 01 90 22 22 22"),
+    lienWhatsAppClient("00229 0190222222"),
+  ], ["https://wa.me/2290190222222", "https://wa.me/2290190222222", "https://wa.me/2290190222222"]);
   verifier("la situation du client, pour l'écran des preuves", preuves.situationDuClient(capture, [roadTrip({ reference: "BL-R", telephone: "0197000000" })], [], MAINTENANT), { dejaEue: "BL-R" });
 }
 
@@ -964,12 +983,20 @@ console.log("\n— Routes, branchées au dépôt de démonstration");
     new Request("http://localhost/api/admin/preuves", { method: "POST", body: JSON.stringify({ action: "valider", id: p.id, prenom: "Koffi" }) }),
   );
   verifier("décision par la route : 200, capture effacée", [decision.status, (await decision.json()).fichierEfface], [200, true]);
+  const { GET: routeCompte } = await charger("src/app/api/admin/preuves/route.ts");
+  const compte = await routeCompte();
+  verifier("le nombre de captures à vérifier, pour le menu : 200, un nombre, jamais en cache", [
+    compte.status,
+    typeof (await compte.json()).enAttente,
+    compte.headers.get("cache-control"),
+  ], [200, "number", "no-store"]);
   verifier("après la décision, l'image n'existe plus", (await routeImage(new Request("http://localhost/x"), parametres(p.id))).status, 404);
 
   process.env.BIKELAND_ROLE = "site";
   verifier("sur le site public : image refusée (401)", (await routeImage(new Request("http://localhost/x"), parametres(p.id))).status, 401);
   const refusee = await routeDecision(new Request("http://localhost/api/admin/preuves", { method: "POST", body: "{}" }));
   verifier("sur le site public : décision refusée (401)", refusee.status, 401);
+  verifier("sur le site public : le nombre de captures refusé aussi (401)", (await routeCompte()).status, 401);
   delete process.env.BIKELAND_ROLE;
 }
 

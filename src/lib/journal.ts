@@ -57,10 +57,11 @@ export function prenomDeAuteur(auteur: string): string {
   return correspondance ? correspondance[1] : auteur;
 }
 
-/** Une phrase pour l'événement, et quelques lignes de détail. */
+/** Une phrase pour l'événement, quelques lignes de détail, et la page où agir s'il y en a une. */
 export interface ResumeEvenement {
   titre: string;
   lignes: string[];
+  lien?: { href: string; libelle: string };
 }
 
 const texte = (valeur: unknown): string | undefined => (typeof valeur === "string" && valeur.trim() ? valeur : undefined);
@@ -164,7 +165,12 @@ export function resumeEvenement(evenement: EvenementJournal): ResumeEvenement {
     case "preuve-email-non-envoye":
       return {
         titre: "L'email au client n'est pas parti : prévenez-le par WhatsApp",
-        lignes: [d.statut === "refusee" ? "Après un refus de sa capture." : "Après la validation de sa capture."],
+        lignes: [
+          d.statut === "refusee" ? "Après un refus de sa capture." : "Après la validation de sa capture.",
+          // Les quatre derniers chiffres seulement : la page des preuves montre le numéro entier.
+          ...(texte(d.finNumero) ? [`Son numéro finit par ${texte(d.finNumero)}.`] : []),
+        ],
+        lien: { href: "/admin/preuves", libelle: "Voir son numéro dans les preuves de réduction" },
       };
     case "vente-comptoir-groupe":
       return {

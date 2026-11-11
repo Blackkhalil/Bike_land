@@ -137,6 +137,11 @@ export default async function PageJournal({ searchParams }: { searchParams: Rech
                           ))}
                         </ul>
                       )}
+                      {resume.lien && (
+                        <Link href={resume.lien.href} className="cible-elargie mt-1.5 inline-block text-[0.8rem] font-semibold underline underline-offset-2">
+                          {resume.lien.libelle}
+                        </Link>
+                      )}
                     </li>
                   );
                 })}

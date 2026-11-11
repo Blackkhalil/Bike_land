@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Marque } from "@/components/Marque";
 import { site } from "@/lib/site";
@@ -32,6 +32,27 @@ const liens = [
   { href: "/admin/journal", libelle: "Journal" },
 ];
 
+/**
+ * Le nombre de captures à vérifier, relu à chaque page : le layout qui le
+ * donne au premier chargement ne se re-rend pas quand on navigue dans
+ * l'administration. Une lecture qui échoue garde le dernier nombre connu.
+ */
+function usePreuvesAVerifier(chemin: string, auChargement: number): number {
+  const [lu, setLu] = useState<{ pour: number; valeur: number } | null>(null);
+  useEffect(() => {
+    const controleur = new AbortController();
+    fetch("/api/admin/preuves", { cache: "no-store", signal: controleur.signal })
+      .then((reponse) => (reponse.ok ? reponse.json() : null))
+      .then((corps: { enAttente?: unknown } | null) => {
+        if (typeof corps?.enAttente === "number") setLu({ pour: auChargement, valeur: corps.enAttente });
+      })
+      .catch(() => undefined);
+    return () => controleur.abort();
+  }, [chemin, auChargement]);
+  // Le layout vient de se re-rendre (une décision, un rechargement) : son nombre est le plus récent.
+  return lu && lu.pour === auChargement ? lu.valeur : auChargement;
+}
+
 export function NavigationAdmin({
   protege,
   modeDonnees,
@@ -39,12 +60,13 @@ export function NavigationAdmin({
 }: {
   protege: boolean;
   modeDonnees: "postgres" | "demo";
-  /** Les captures de réduction qui attendent : leur nombre à côté de « Preuves de réduction » (décision 24). */
+  /** Les captures de réduction qui attendent, au chargement : leur nombre à côté de « Preuves de réduction » (décision 24). */
   preuvesAVerifier?: number;
 }) {
   const chemin = usePathname();
   const routeur = useRouter();
   const [ouvert, setOuvert] = useState(false);
+  const enAttenteDeVerification = usePreuvesAVerifier(chemin, preuvesAVerifier);
 
   const deconnecter = async () => {
     await fetch("/api/admin/connexion", { method: "DELETE" });
@@ -83,7 +105,7 @@ export function NavigationAdmin({
         <ul className="mt-3 space-y-1">
           {liens.map((lien) => {
             const actif = lien.exact ? chemin === lien.href : chemin.startsWith(lien.href);
-            const enAttente = lien.href === "/admin/preuves" ? preuvesAVerifier : 0;
+            const enAttente = lien.href === "/admin/preuves" ? enAttenteDeVerification : 0;
             return (
               <li key={lien.href}>
                 <Link

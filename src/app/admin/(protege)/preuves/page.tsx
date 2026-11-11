@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { PreuvesAVerifier, type PreuveAVerifier } from "@/components/admin/PreuvesAVerifier";
+import { lienWhatsAppClient } from "@/lib/site";
 import { comptesBikeLand, NOMS_RESEAUX } from "@/lib/agent-ia/comptes";
 import { exigerSessionAdmin } from "@/lib/admin";
 import { dateAuBenin } from "@/lib/dates";
@@ -151,14 +152,24 @@ export default async function PagePreuves() {
                   </p>
                   {sansEmail.has(preuve.id) && (
                     <p className="mt-1 text-[0.8rem] font-semibold text-orange-sourd">
-                      L&apos;email au client n&apos;est pas parti : prévenez-le par WhatsApp.
+                      L&apos;email au client n&apos;est pas parti : prévenez-le par WhatsApp
+                      {preuve.telephone ? (
+                        <>
+                          {" ("}
+                          <a href={lienWhatsAppClient(preuve.telephone)} target="_blank" rel="noreferrer noopener" className="underline cible-elargie whitespace-nowrap">
+                            {preuve.telephone}
+                          </a>
+                          {")"}
+                        </>
+                      ) : null}
+                      .
                     </p>
                   )}
                 </div>
                 {preuve.reference && (
                   <Link
                     href={`/admin/reservations?detail=${encodeURIComponent(preuve.reference)}`}
-                    className="lien-souligne cible-elargie font-mono text-[0.78rem]"
+                    className="lien-souligne cible-elargie whitespace-nowrap font-mono text-[0.78rem]"
                   >
                     {preuve.reference}
                   </Link>
@@ -169,7 +180,8 @@ export default async function PagePreuves() {
         )}
         <p className="mt-2 text-[0.78rem] text-gris-cadre">
           Toutes les décisions restent dans le{" "}
-          <Link href="/admin/journal" className="lien-souligne">
+          {/* Souligné et d'une autre couleur que le texte : il se voit comme un lien, et se touche au doigt. */}
+          <Link href="/admin/journal" className="cible-elargie font-semibold text-noir-piste underline underline-offset-2">
             journal
           </Link>
           .

@@ -138,6 +138,18 @@ export function lienWhatsApp(message: string): string {
   return `${site.whatsapp[1].lien}?text=${encodeURIComponent(message)}`;
 }
 
+/**
+ * Une discussion WhatsApp avec un client, depuis l'administration (le
+ * prévenir quand son email n'est pas parti) : son numéro avec l'indicatif
+ * du Bénin (229) s'il ne l'a pas déjà.
+ */
+export function lienWhatsAppClient(telephone: string): string {
+  let chiffres = telephone.replace(/[^0-9]/g, "");
+  if (chiffres.startsWith("00")) chiffres = chiffres.slice(2);
+  if (!chiffres.startsWith("229")) chiffres = `229${chiffres}`;
+  return `https://wa.me/${chiffres}`;
+}
+
 export const navigationPrincipale = [
   { libelle: "Nos produits", href: "/produits" },
   { libelle: "Nos vélos", href: "/velos" },
