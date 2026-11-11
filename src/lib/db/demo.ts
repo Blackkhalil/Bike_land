@@ -63,6 +63,7 @@ import {
   auteurAuJournal,
   CapaciteInsuffisanteError,
   ConflitDisponibiliteError,
+  contactDeCaptureAEffacer,
   controlerDemandeGroupe,
   creneauOctobreRoseDemande,
   creneauxSeChevauchent,
@@ -1548,12 +1549,14 @@ export const depotDemo: Depot = {
     return etat().preuves.filter((p) => p.statut === "en_attente").length;
   },
 
-  async effacerContactsPreuves(avant) {
+  async effacerContactsPreuves(refuseesAvant) {
     let effaces = 0;
     for (const preuve of etat().preuves) {
-      if (!preuve.email && !preuve.telephone) continue;
-      const decideeAvant = preuve.statut !== "en_attente" && Boolean(preuve.decideLe) && preuve.decideLe! < avant;
-      if (!decideeAvant) continue;
+      // La réservation que la capture a réduite, telle que la règle la regarde : son état, et le contact gardé.
+      const liee = preuve.reference ? trouver(preuve.reference) : undefined;
+      const preuveClient = liee ? preuveClientDes(liee.offreDetails) : undefined;
+      const reservation = liee ? { reference: liee.reference, statut: liee.statut, ...(preuveClient ? { preuveClient } : {}) } : null;
+      if (!contactDeCaptureAEffacer(preuve, reservation, refuseesAvant)) continue;
       delete preuve.email;
       delete preuve.telephone;
       effaces += 1;

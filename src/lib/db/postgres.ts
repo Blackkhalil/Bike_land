@@ -86,6 +86,7 @@ import {
   auteurAuJournal,
   CapaciteInsuffisanteError,
   ConflitDisponibiliteError,
+  contactDeCaptureAEffacer,
   controlerDemandeGroupe,
   detailsReservationGroupe,
   estDateISO,
@@ -2534,20 +2535,43 @@ const depotDirect: Depot = {
     return client().preuveReduction.count({ where: { statut: "en_attente" } });
   },
 
-  async effacerContactsPreuves(avant) {
-    const limite = new Date(avant);
+  async effacerContactsPreuves(refuseesAvant) {
+    const limite = new Date(refuseesAvant);
     if (Number.isNaN(limite.getTime())) return 0;
-    // Décidées il y a plus de 30 jours, servies ou non : une capture qui a
-    // servi a laissé son contact sur la réservation qu'elle a réduite.
-    const { count } = await client().preuveReduction.updateMany({
-      where: {
-        OR: [{ email: { not: null } }, { telephone: { not: null } }],
-        statut: { not: "en_attente" },
-        decideLe: { lt: limite },
-      },
+    const avecContact = { OR: [{ email: { not: null } }, { telephone: { not: null } }] };
+    // Refusées il y a plus de 30 jours.
+    const refusees = await client().preuveReduction.updateMany({
+      where: { ...avecContact, statut: "refusee", decideLe: { lt: limite } },
       data: { email: null, telephone: null },
     });
-    return count;
+    // Validées et servies : effacées seulement quand leur réservation est
+    // payée et garde leur contact (`contactDeCaptureAEffacer`). Une capture
+    // validée qui n'a pas servi garde le sien : elle sert encore, une fois.
+    const servies = await client().preuveReduction.findMany({
+      where: { ...avecContact, statut: "validee", reference: { not: null } },
+      select: { id: true, statut: true, reference: true, email: true, telephone: true },
+    });
+    if (servies.length === 0) return refusees.count;
+    const reservations = await client().booking.findMany({
+      where: { reference: { in: [...new Set(servies.map((preuve) => (preuve.reference ?? "").toUpperCase()))] } },
+      select: { reference: true, status: true, offreDetails: true },
+    });
+    const parReference = new Map(
+      reservations.map((ligne) => {
+        const preuveClient = preuveClientDes(ligne.offreDetails);
+        return [ligne.reference, { reference: ligne.reference, statut: ligne.status, ...(preuveClient ? { preuveClient } : {}) }] as const;
+      }),
+    );
+    const aEffacer = servies
+      .filter((preuve) => contactDeCaptureAEffacer(preuve, parReference.get((preuve.reference ?? "").toUpperCase()) ?? null, refuseesAvant))
+      .map((preuve) => preuve.id);
+    if (aEffacer.length === 0) return refusees.count;
+    // Sous condition : une capture toujours validée.
+    const effacees = await client().preuveReduction.updateMany({
+      where: { id: { in: aEffacer }, statut: "validee" },
+      data: { email: null, telephone: null },
+    });
+    return refusees.count + effacees.count;
   },
 
   async purgerCompteursExpires() {

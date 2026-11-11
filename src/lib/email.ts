@@ -1409,11 +1409,8 @@ export async function envoyerDecisionPreuve(champs: {
   reductionDejaEue?: string;
   /** La réduction est réglée à 0 % : rien à appliquer, ni pourcentage ni lien de reprise. */
   sansReduction?: boolean;
-  /** La capture validée sert pendant tant de jours : le lien le dit. */
-  valableJours?: number;
 }) {
   const reduction = champs.reduction ? `la réduction de ${champs.reduction}` : "la réduction";
-  const delai = champs.valableJours ? ` dans les ${champs.valableJours} jours` : "";
   if (champs.statut === "validee" && champs.sansReduction) {
     const constat =
       "Merci pour votre capture : elle est validée. La réduction des abonnés n'est pas proposée en ce moment : vos road trips en groupe se réservent au prix normal.";
@@ -1476,7 +1473,7 @@ export async function envoyerDecisionPreuve(champs: {
         "Merci pour votre capture : elle est validée.",
         constat,
         "",
-        `Réservez votre prochain road trip ici${delai}, la réduction y sera comptée :`,
+        "Réservez votre prochain road trip ici, la réduction y sera comptée :",
         champs.lienReprise,
         "",
         `À bientôt sur la route,`,
@@ -1487,7 +1484,7 @@ export async function envoyerDecisionPreuve(champs: {
         intro: `Bonjour, merci pour votre capture : elle est validée. ${constat}`,
         lignes: [],
         action: { libelle: "Réserver avec la réduction", url: champs.lienReprise },
-        pied: `La réduction est comptée quand vous réservez depuis ce bouton${delai}. Elle vaut une seule fois par client.`,
+        pied: "La réduction est comptée quand vous réservez depuis ce bouton. Elle vaut une seule fois par client.",
       }),
     });
   }
@@ -1500,7 +1497,7 @@ export async function envoyerDecisionPreuve(champs: {
         "",
         `Merci pour votre capture : elle est validée. ${majuscule(reduction)} s'applique à votre road trip en groupe, une seule fois par client.`,
         "",
-        `Reprenez votre réservation ici${delai}, la réduction est déjà comptée :`,
+        "Reprenez votre réservation ici, la réduction est déjà comptée :",
         champs.lienReprise,
         "",
         `À bientôt sur la route,`,
@@ -1511,7 +1508,7 @@ export async function envoyerDecisionPreuve(champs: {
         intro: `Bonjour, merci pour votre capture : elle est validée. ${majuscule(reduction)} s'applique à votre road trip en groupe, une seule fois par client.`,
         lignes: [],
         action: { libelle: "Reprendre ma réservation", url: champs.lienReprise },
-        pied: `La réduction est déjà comptée quand vous reprenez la discussion depuis ce bouton${delai}.`,
+        pied: "La réduction est déjà comptée quand vous reprenez la discussion depuis ce bouton.",
       }),
     });
   }

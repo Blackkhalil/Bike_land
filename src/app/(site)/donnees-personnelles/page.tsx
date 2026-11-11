@@ -41,16 +41,17 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 const CONSERVATION_ANTHROPIC_JOURS = 30;
 const CONSERVATION_CAPTURE_JOURS = 30;
-// Le numéro et l'email donnés avec une capture : la durée vient du code qui
-// les efface (JOURS_CONSERVATION_CONTACT, src/lib/offres-groupe/preuves.ts),
-// une seule source pour la promesse et pour l'effacement.
+// Le numéro et l'email donnés avec une capture : la durée après un refus vient
+// du code qui les efface (JOURS_CONSERVATION_CONTACT, src/lib/offres-groupe/
+// preuves.ts), une seule source pour la promesse et pour l'effacement ; la
+// règle entière est `contactDeCaptureAEffacer` (src/lib/db/contrat.ts).
 
 export default async function PageDonneesPersonnelles() {
   const { groupe, iaActive } = await quoiCiter();
   return (
     <PageLegale
       titre="Protection des données personnelles"
-      miseAJour={groupe ? "10 novembre 2026" : "14 octobre 2026"}
+      miseAJour={groupe ? "11 novembre 2026" : "14 octobre 2026"}
       sousTitre="Nous collectons le strict nécessaire à la location, et rien de plus. Cette page dit précisément quoi, pourquoi et pour combien de temps."
     >
       <ArticleLegal titre="Responsable du traitement">
@@ -132,9 +133,10 @@ export default async function PageDonneesPersonnelles() {
                 "."
               )}{" "}
               Le numéro et l&apos;email envoyés avec elle sont effacés {JOURS_CONSERVATION_CONTACT}&nbsp;jours
-              après la décision. Si la capture a servi à une réservation, ils restent avec cette réservation,
-              comme ses propres coordonnées : ils nous servent à n&apos;accorder la réduction qu&apos;une fois
-              par client.
+              après un refus. Si elle est validée, ils sont gardés tant qu&apos;elle n&apos;a pas servi&nbsp;: elle
+              sert une fois, à la personne qui l&apos;a envoyée. Une fois payée la réservation qu&apos;elle a
+              réduite, ils restent avec cette réservation, comme ses propres coordonnées, et sont effacés de
+              la capture&nbsp;: ils nous servent à n&apos;accorder la réduction qu&apos;une fois par client.
             </li>
           )}
         </ul>

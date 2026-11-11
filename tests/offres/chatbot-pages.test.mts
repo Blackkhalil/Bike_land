@@ -132,10 +132,12 @@ verifier("CGV : les preuves de la réduction, la story sur Instagram seulement",
 verifier("CGV, agent IA pas activé : vérification à la main, pas un mot d'IA", [page.includes("intelligence artificielle"), page.includes("Notre équipe vérifie chaque capture à la main")], [false, true]);
 verifier("CGV : la réduction une fois par client (décision 25), le prix normal pendant l'attente sans rattrapage (décision 24)", [
   page.includes("ne s'applique qu'une fois par client, reconnu à son numéro ou à son email : une seule réservation, même avec une nouvelle capture."),
-  page.includes("Une capture validée ne sert qu'à la personne qui l'a envoyée (la réservation porte son numéro ou son email), dans les 30 jours qui suivent sa validation."),
+  page.includes("Une capture validée ne sert qu'à la personne qui l'a envoyée (la réservation porte son numéro ou son email), et reste valable tant qu'elle n'a pas servi."),
   page.includes("réserver sans attendre, au prix normal : la réduction ne s'ajoute pas ensuite à cette réservation."),
   page.includes("une seule fois par groupe"),
-], [true, true, true, false]);
+  // Le responsable n'a jamais demandé de durée de validité : aucune n'est écrite.
+  /qui suivent sa validation|dans les \d+ jours/.test(page),
+], [true, true, true, false, false]);
 verifier("CGV : les chiffres des réglages (frais de paiement, retard)", [page.includes("de 125 FCFA par personne"), page.includes("1 000 FCFA par minute")], [true, true]);
 process.env.ANTHROPIC_API_KEY = "cle-de-test-factice";
 page = await rendreCgv();
@@ -169,11 +171,14 @@ verifier("la discussion du chatbot gardée dans le navigateur, le temps de la vi
 {
   // Défaut 19 : la durée du contact des captures, la même que la tâche quotidienne.
   const { JOURS_CONSERVATION_CONTACT } = await charger("src/lib/offres-groupe/preuves.ts");
-  verifier("le numéro et l'email d'une capture : effacés 30 jours après la décision, gardés avec la réservation qu'elle a réduite", [
-    page.includes(`Le numéro et l'email envoyés avec elle sont effacés ${JOURS_CONSERVATION_CONTACT} jours après la décision.`),
-    page.includes("Si la capture a servi à une réservation, ils restent avec cette réservation"),
-    page.includes("n'accorder la réduction qu'une fois par client"),
-  ], [true, true, true]);
+  verifier("le numéro et l'email d'une capture : effacés 30 jours après un refus, gardés tant qu'une capture validée n'a pas servi, puis avec la réservation payée", [
+    page.includes(`Le numéro et l'email envoyés avec elle sont effacés ${JOURS_CONSERVATION_CONTACT} jours après un refus.`),
+    page.includes("Si elle est validée, ils sont gardés tant qu'elle n'a pas servi : elle sert une fois, à la personne qui l'a envoyée."),
+    page.includes(
+      "Une fois payée la réservation qu'elle a réduite, ils restent avec cette réservation, comme ses propres coordonnées, et sont effacés de la capture : ils nous servent à n'accorder la réduction qu'une fois par client.",
+    ),
+    page.includes("jours après la décision"),
+  ], [true, true, true, false]);
 }
 verifier("description sans IA", String((await donnees.generateMetadata()).description).includes("IA"), false);
 process.env.ANTHROPIC_API_KEY = "cle-de-test-factice";

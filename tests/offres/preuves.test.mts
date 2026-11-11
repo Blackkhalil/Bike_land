@@ -584,10 +584,12 @@ console.log("\n— Où en est une preuve");
   const d404 = fauxDecor();
   d404.etat.preuves.set("v2", { ...validee, id: "v2", email: undefined, telephone: undefined });
   const sansContact = (await preuves.statutPreuve("v2", d404.deps)) as { statut: number; corps: Record<string, any> };
-  verifier("validée, contact effacé (30 jours après la décision) : ne sert plus, 404 comme une capture inconnue", [sansContact.statut, sansContact.corps.message], [
+  verifier("validée sans contact, rattachée à rien : on ne sait plus à qui elle est, 404 comme une capture inconnue", [sansContact.statut, sansContact.corps.message], [
     404,
     "Cette capture n'est plus valable : envoyez-en une nouvelle.",
   ]);
+  const servieSansContact = await statutDe({ ...validee, id: "v3", email: undefined, telephone: undefined, reference: "BL-SERVIE" }, [roadTrip({ reference: "BL-SERVIE" })]);
+  verifier("validée, servie à une réservation payée, son contact effacé depuis : « deja-utilisee », pas 404", servieSansContact.statut, "deja-utilisee");
   const refuseeMotif = await statutDe({ ...validee, id: "r1", statut: "refusee", decidePar: "admin (Koffi)", motif: "On ne voit pas le mot « Abonné »." });
   verifier("refusée à la main avec un motif : le message le dit, pour ne pas renvoyer la même", espaces(refuseeMotif.message), espaces(
     "Nous n'avons pas pu valider cette capture. Ce que nous avons vu : On ne voit pas le mot « Abonné ». Vous pouvez en envoyer une autre, ou réserver sans la réduction.",
@@ -621,7 +623,7 @@ console.log("\n— Administration : Valider, Refuser");
     [decor.etat.emails[0].email, decor.etat.emails[0].statut, decor.etat.emails[0].lienReprise, espaces(decor.etat.emails[0].reduction), valide.corps.emailEnvoye],
     ["awa.test@example.com", "validee", "https://site.test/?reserver-en-groupe=road-trip-groupe&preuve=p1", "4 %", true],
   );
-  verifier("validée : l'email dit que la capture sert 30 jours (son contact est effacé ensuite)", decor.etat.emails[0].valableJours, preuves.JOURS_CONSERVATION_CONTACT);
+  verifier("validée : l'email ne donne aucune durée (la capture sert tant qu'elle n'a pas servi)", "valableJours" in decor.etat.emails[0], false);
   const encore = await decider({ action: "refuser", id: "p1", prenom: "Awa" });
   verifier("une preuve ne se décide qu'une fois : 409", encore.statut, 409);
   const refuse = await decider({ action: "refuser", id: "p2", prenom: "Koffi", motif: "Bouton « Suivre » visible." });
@@ -846,33 +848,39 @@ console.log("\n— Effacement quotidien");
   verifier("refus automatique impossible : l'image n'est pas effacée, la tâche de demain reprendra", [resultat, effacees], [{ effaces: 0, echecs: 1, expirees: 0 }, []]);
 }
 
-console.log("\n— Défaut 19 : le contact des captures s'efface, 30 jours après la décision ou dès qu'elle a servi");
+console.log("\n— Défaut 19 : le contact d'une capture refusée s'efface 30 jours après, celui d'une validée reste tant qu'elle n'a pas servi");
 {
   const tout = await depot.listerPreuves();
   const cree = async (email: string) => depot.creerPreuve({ typeMime: "image/webp", tailleOctets: 1, email, telephone: "0190112233", octets: new Uint8Array([1]) });
-  const ancienne = await cree("ancienne.decision@example.com");
-  await depot.deciderPreuve(ancienne.id, { statut: "refusee", par: "admin (Koffi)" });
-  const recente = await cree("recente.decision@example.com");
-  await depot.deciderPreuve(recente.id, { statut: "validee", par: "admin (Koffi)" });
+  const refusee = await cree("ancienne.decision@example.com");
+  await depot.deciderPreuve(refusee.id, { statut: "refusee", par: "admin (Koffi)" });
+  const libre = await cree("validee.libre@example.com");
+  await depot.deciderPreuve(libre.id, { statut: "validee", par: "admin (Koffi)" });
   const attente = await cree("attente@example.com");
-  const effaces = await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() + (preuves.JOURS_CONSERVATION_CONTACT + 1) * JOUR });
   const relue = async (id: string) => {
     const p = await depot.trouverPreuve(id);
     return [p?.email ?? null, p?.telephone ?? null, p?.statut];
   };
-  verifier(`${preuves.JOURS_CONSERVATION_CONTACT + 1} jours après : décidées sans contact, l'attente garde le sien, la validée reste validée`, [
-    effaces >= 2,
-    await relue(ancienne.id),
-    await relue(recente.id),
-    await relue(attente.id),
-  ], [true, [null, null, "refusee"], [null, null, "validee"], ["attente@example.com", "0190112233", "en_attente"]]);
-  const demain = await cree("demain@example.com");
-  await depot.deciderPreuve(demain.id, { statut: "validee", par: "admin (Koffi)" });
-  const etatDemoMenage = (globalThis as Record<symbol, any>)[Symbol.for("bikeland.demo.etat")];
-  // Une capture validée qui vient de servir : son contact reste jusqu'aux 30 jours (elle peut resservir si la réservation tombe).
-  etatDemoMenage.preuves.find((p: { id: string }) => p.id === demain.id).reference = "BL-SERVIE";
   await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() });
-  verifier("décidée hier, même servie : le contact reste encore", (await relue(demain.id))[0], "demain@example.com");
+  verifier("le jour de la décision : chacune garde son contact", [(await relue(refusee.id))[0], (await relue(libre.id))[0]], [
+    "ancienne.decision@example.com",
+    "validee.libre@example.com",
+  ]);
+  const effaces = await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() + (preuves.JOURS_CONSERVATION_CONTACT + 1) * JOUR });
+  verifier(`${preuves.JOURS_CONSERVATION_CONTACT + 1} jours après : la refusée sans contact ; la validée qui n'a pas servi et celle qui attend gardent le leur`, [
+    effaces >= 1,
+    await relue(refusee.id),
+    await relue(libre.id),
+    await relue(attente.id),
+  ], [true, [null, null, "refusee"], ["validee.libre@example.com", "0190112233", "validee"], ["attente@example.com", "0190112233", "en_attente"]]);
+  await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() + 400 * JOUR });
+  verifier("plus d'un an après : la validée qui n'a pas servi garde encore son contact (aucune durée de validité)", (await relue(libre.id))[0], "validee.libre@example.com");
+  const etatDemoMenage = (globalThis as Record<symbol, any>)[Symbol.for("bikeland.demo.etat")];
+  // Rattachée à une réservation inconnue du dépôt : rien ne garde son contact ailleurs, il reste.
+  etatDemoMenage.preuves.find((p: { id: string }) => p.id === libre.id).reference = "BL-INCONNUE";
+  await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() + 400 * JOUR });
+  verifier("rattachée à une réservation introuvable : le contact reste", (await relue(libre.id))[0], "validee.libre@example.com");
+  delete etatDemoMenage.preuves.find((p: { id: string }) => p.id === libre.id).reference;
   // Une seule source pour la durée promise : la page des données personnelles importe JOURS_CONSERVATION_CONTACT.
   const { readFileSync } = await import("node:fs");
   const pageDonnees = readFileSync(join(projet, "src/app/(site)/donnees-personnelles/page.tsx"), "utf8");
@@ -998,12 +1006,40 @@ console.log("\n— Décision 25 dans le dépôt de démonstration : la transacti
   );
   verifier("H1 : la carte de l'administration avertit « A déjà eu la réduction », même par le contact de la capture", parLaCarte.dejaEue, r1.reservation.reference);
 
-  // S6 : 31 jours après la décision, le contact d'une capture validée qui n'a pas servi est effacé : elle ne sert plus.
+  // S6 : aucune durée de validité. Le ménage, même un an plus tard, laisse son contact à une capture validée qui n'a pas servi.
   const vieilleCapture = await valideePour("vieille.capture@example.com", "+229 01 56 00 00 01");
-  await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() + (preuves.JOURS_CONSERVATION_CONTACT + 1) * JOUR });
-  verifier("S6 : après l'effacement du contact (30 jours), la capture validée ne sert plus à personne", await raisonDe(
+  await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() + 400 * JOUR });
+  verifier("S6 : après le ménage d'un an plus tard, une autre personne (ni son numéro ni son email) : toujours « autre-client »", await raisonDe(
     depot.creerReservationGroupe(demande(vieilleCapture, { email: "nouveau.contact@example.com", telephone: "+229 01 56 77 77 77" }, "2027-02-21")),
-  ), "inconnue");
+  ), "autre-client");
+  const servieS6 = await depot.creerReservationGroupe(demande(vieilleCapture, { email: "vieille.capture@example.com", telephone: "+229 01 56 77 77 77" }, "2027-02-21"));
+  verifier("S6 : son expéditeur (son email suffit) a encore la réduction", servieS6.reservation.remiseXof, 1200);
+  // Servie, réservation en attente de paiement : le contact reste (la capture redevient libre si la demande expire).
+  await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() });
+  verifier("servie, réservation en attente de paiement : la capture garde son contact", (await depot.trouverPreuve(vieilleCapture))?.email, "vieille.capture@example.com");
+  // Payée : la réservation garde le contact de la capture (offreDetails.preuveClient), la capture le perd.
+  etatDemo.reservations.find((r: { reference: string }) => r.reference === servieS6.reservation.reference).statut = "CONFIRMEE";
+  const effacesServie = await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() });
+  const capturePayee = await depot.trouverPreuve(vieilleCapture);
+  const reservationPayee = (await depot.listerReservationsRoadTripGroupe({ avecReduction: true })).find(
+    (r: { reference: string }) => r.reference === servieS6.reservation.reference,
+  );
+  verifier("servie, réservation payée : le contact part de la capture, la réservation le garde", [
+    effacesServie >= 1,
+    capturePayee?.email ?? null,
+    capturePayee?.telephone ?? null,
+    reservationPayee?.preuveClient,
+  ], [true, null, null, { email: "vieille.capture@example.com", telephone: "+229 01 56 00 00 01" }]);
+  const nouvelleCapture = await valideePour("autre.vieille@example.com", "0156000001");
+  verifier("la décision 25 tient encore : une nouvelle capture au numéro de la première, refusée « deja-eue »", await raisonDe(
+    depot.creerReservationGroupe(demande(nouvelleCapture, { email: "autre.vieille@example.com", telephone: "0156000001" }, "2027-02-27")),
+  ), "deja-eue");
+  const statutServie = (await preuves.statutPreuve(vieilleCapture, {
+    depot,
+    lireReglages: async () => ({ reglages: REGLAGES_OFFRES_PAR_DEFAUT, source: "defaut" }),
+    maintenant: () => Date.now(),
+  })) as { statut: number; corps: Record<string, any> };
+  verifier("la capture servie, sans contact : « deja-utilisee », jamais 404", [statutServie.statut, statutServie.corps.statut], [200, "deja-utilisee"]);
   const apresMenage = (await depot.listerReservationsRoadTripGroupe({ avecReduction: true })).find((r: { reference: string }) => r.reference === r1.reservation.reference);
   verifier("le ménage des captures ne touche pas au contact gardé sur la réservation (décision 25 tient encore)", apresMenage?.preuveClient?.telephone, "+229 01 52 00 00 01");
 }

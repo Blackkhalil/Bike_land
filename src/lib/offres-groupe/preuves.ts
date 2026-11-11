@@ -6,12 +6,13 @@
  * vérifiée : par l'agent IA quand il est activé, sinon à la main dans
  * l'administration, qui répond au client par email. Bike Land reçoit un
  * email à chaque capture qui attend (décision 24). La réduction ne se donne
- * qu'une fois par client (décision 25), et une capture ne sert qu'à la
- * personne qui l'a envoyée (son numéro ou son email sur la réservation). Le
- * fichier est effacé dès la décision, et 30 jours au plus tard (tâche
- * quotidienne) ; le contact du client 30 jours après la décision : la
- * capture ne sert plus ensuite, et celle qui a servi l'a laissé sur la
- * réservation qu'elle a réduite. Jamais de réduction par défaut.
+ * qu'une fois par client (décision 25), et une capture validée sert une
+ * fois, sans limite de temps, à la personne qui l'a envoyée (son numéro ou
+ * son email sur la réservation). Le fichier est effacé dès la décision, et
+ * 30 jours au plus tard (tâche quotidienne). Le contact du client : 30 jours
+ * après un refus ; gardé tant qu'une capture validée n'a pas servi ; effacé
+ * de la capture une fois sa réservation payée, qui le garde. Jamais de
+ * réduction par défaut.
  *
  * Comme le service des réservations, ces fonctions reçoivent leurs
  * dépendances : les routes passent les vraies, les tests des faux.
@@ -97,11 +98,12 @@ export const PIXELS_MAX = 40_000_000;
 /** Un fichier de preuve ne vit pas plus longtemps. */
 export const JOURS_CONSERVATION_MAX = 30;
 /**
- * L'email et le téléphone donnés avec une capture sont effacés tant de
- * jours après la décision. Une capture validée qui n'a pas servi ne peut
- * plus servir ensuite (on ne sait plus à qui elle est) ; celle qui a servi a
- * laissé son contact sur la réservation qu'elle a réduite (décision 25). La
- * page Données personnelles lit cette durée ici.
+ * L'email et le téléphone donnés avec une capture refusée sont effacés tant
+ * de jours après le refus. Ceux d'une capture validée restent tant qu'elle
+ * n'a pas servi (elle sert une fois, sans limite de temps, à la personne qui
+ * l'a envoyée), puis partent quand sa réservation est payée : celle-ci les
+ * garde (décision 25). Voir `contactDeCaptureAEffacer`. La page Données
+ * personnelles lit cette durée ici.
  */
 export const JOURS_CONSERVATION_CONTACT = 30;
 /**
@@ -221,11 +223,6 @@ export interface DependancesPreuves {
     reductionDejaEue?: string;
     /** Validée, alors que la réduction est réglée à 0 % : rien à appliquer, ni pourcentage ni lien de reprise. */
     sansReduction?: boolean;
-    /**
-     * Validée : la capture sert pendant tant de jours (son contact est effacé
-     * ensuite, et elle ne sert plus) ; l'email le dit.
-     */
-    valableJours?: number;
   }) => Promise<{ envoye: boolean }>;
   /** Prévient Bike Land qu'une capture attend sa vérification (décision 24). */
   alerterBikeLand: (alerte: AlerteCapture) => Promise<{ envoye: boolean }>;
@@ -616,7 +613,7 @@ async function alerterBikeLand(alerte: AlerteCapture, preuveId: string, deps: Pi
  * « Est-ce que c'est validé ? » ou le lien de l'email). Une capture validée
  * qui ne peut plus servir le dit (« deja-utilisee », « deja-eue ») : le
  * chatbot n'annonce alors jamais « C'est validé ! ». Une capture validée
- * dont le contact a été effacé (30 jours après la décision) ne sert plus :
+ * sans contact qui ne retient plus rien (on ne sait plus à qui elle est) :
  * 404, comme une capture inconnue. Refusée à la main, le message dit ce que
  * Bike Land a vu, s'il l'a écrit ; refusée alors que son client a déjà eu
  * la réduction, « deja-eue » (décision 25). Ne rend jamais le contact du
@@ -750,7 +747,6 @@ export async function deciderPreuveParAdmin(
         ...(taux.texte && !taux.inactive ? { reduction: taux.texte } : {}),
         ...(statut === "refusee" && motif && !dejaEue ? { motif } : {}),
         ...(sansReduction ? { sansReduction: true } : {}),
-        ...(avecLaPreuve ? { valableJours: JOURS_CONSERVATION_CONTACT } : {}),
         ...(dejaEue ? { reductionDejaEue: dejaEue } : {}),
         ...(statut === "validee" && !sansReduction && !dejaEue && situation.prixNormal
           ? { reservationPrixNormal: situation.prixNormal.reference }
@@ -830,11 +826,12 @@ export async function effacerFichiersPreuves(
 }
 
 /**
- * L'effacement quotidien du contact des captures : l'email et le téléphone
- * d'une capture décidée il y a plus de 30 jours. Une capture validée qui n'a
- * pas servi ne peut plus servir ensuite (on ne sait plus à qui elle est) ;
- * celle qui a servi a laissé son contact sur la réservation qu'elle a
- * réduite, où la règle « une réduction par client » le retrouve.
+ * L'effacement quotidien du contact des captures (`contactDeCaptureAEffacer`) :
+ * l'email et le téléphone d'une capture refusée il y a plus de 30 jours, et
+ * ceux d'une capture validée qui a servi, une fois sa réservation payée :
+ * celle-ci les garde, et la règle « une réduction par client » les retrouve
+ * là. Une capture validée qui n'a pas servi garde son contact : elle sert
+ * encore, une fois, à la personne qui l'a envoyée.
  */
 export async function effacerContactsPreuves(
   deps: { depot: Pick<Depot, "effacerContactsPreuves">; maintenant: () => number },

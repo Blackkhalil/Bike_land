@@ -106,12 +106,15 @@ fois, sur un prochain road trip.
 - Journal des événements : « admin » plus le prénom saisi (compte administrateur
   unique aujourd'hui).
 - Agent IA version 1 : récapitulatif et contrôle des captures, pas de discussion.
-- Captures : stockage privé, supprimées dès la décision, 30 jours au plus. Le
-  numéro et l'email donnés avec une capture sont effacés 30 jours après la
-  décision ; une capture validée qui n'a pas servi ne sert plus ensuite. Celle
-  qui sert laisse son numéro et son email sur la réservation qu'elle réduit
-  (offreDetails.preuveClient) : la règle « une réduction par client »
-  (décision 25) regarde le contact de la réservation et celui de sa capture.
+- Captures : stockage privé, supprimées dès la décision, 30 jours au plus.
+  Une capture validée n'a pas de durée de validité : elle sert une fois, à
+  la personne qui l'a envoyée, tant qu'elle n'a pas servi. Le numéro et
+  l'email donnés avec une capture sont effacés 30 jours après un refus ;
+  ceux d'une capture validée restent tant qu'elle n'a pas servi, puis partent
+  quand la réservation qu'elle a réduite est payée. Celle-ci garde son numéro
+  et son email (offreDetails.preuveClient) : la règle « une réduction par
+  client » (décision 25) regarde le contact de la réservation et celui de sa
+  capture.
   Une capture ne sert qu'à la personne qui l'a envoyée : la réservation doit
   porter son numéro ou son email (sinon « autre-client », prix normal avant
   de payer).

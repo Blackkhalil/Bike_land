@@ -15,7 +15,6 @@ import { lireReglagesOffresAvec, type ReglagesOffres } from "@/data/reglages-off
 import { depot } from "@/lib/db";
 import { formatXof } from "@/lib/format";
 import { penaliteRetardXof } from "@/lib/offres/retard";
-import { JOURS_CONSERVATION_CONTACT } from "@/lib/offres-groupe/preuves";
 import { preuvesAcceptees } from "@/lib/offres-groupe/textes-chat";
 import { agentIaActif, interrupteurOffresGroupeOuvert } from "@/lib/offres-groupe/vitrine";
 import { site } from "@/lib/site";
@@ -178,8 +177,7 @@ function ConditionsOffresDeGroupe({ reglages, iaActive }: { reglages: ReglagesOf
           Elle porte sur le prix du road trip, hors frais de paiement électronique, et ne s&apos;applique
           qu&apos;une fois par client, reconnu à son numéro ou à son email : une seule réservation, même avec
           une nouvelle capture. Une capture validée ne sert qu&apos;à la personne qui l&apos;a envoyée (la
-          réservation porte son numéro ou son email), dans les {JOURS_CONSERVATION_CONTACT}&nbsp;jours qui
-          suivent sa validation.{" "}
+          réservation porte son numéro ou son email), et reste valable tant qu&apos;elle n&apos;a pas servi.{" "}
           {iaActive ? (
             <>
               La capture est vérifiée automatiquement par un assistant d&apos;intelligence artificielle (voir
@@ -230,7 +228,7 @@ export default async function PageCGV() {
   return (
     <PageLegale
       titre="Conditions générales de vente"
-      miseAJour="10 novembre 2026"
+      miseAJour="11 novembre 2026"
       sousTitre="Ce que nous nous engageons à faire, et ce que nous vous demandons en retour. Elles s'appliquent à toute réservation effectuée sur ce site."
     >
       <ArticleLegal titre="Article 1. Objet">

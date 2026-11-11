@@ -641,8 +641,9 @@ export function auteurAuJournal(encaissement?: { par: string }): string {
  * réservation, elle ne se donne qu'une fois par client (décision 25).
  * « autre-client » : la réservation n'a ni le numéro ni l'email donnés avec
  * la capture ; la réduction vaut pour la personne qui l'a envoyée.
- * « inconnue » vaut aussi pour une capture validée dont le contact a été
- * effacé (30 jours après la décision) : on ne sait plus à qui elle est.
+ * « inconnue » vaut aussi pour une capture validée sans contact (effacé
+ * après avoir servi à une réservation payée, qui l'a annulée depuis) : on ne
+ * sait plus à qui elle est.
  */
 export type RaisonPreuveInutilisable =
   | "inconnue"
@@ -796,10 +797,12 @@ export function captureDuClient(preuve: { email?: string | null; telephone?: str
 }
 
 /**
- * Une preuve validée peut-elle encore servir ? « inconnue » : son contact a
- * été effacé (30 jours après la décision), on ne sait plus à qui elle est ;
+ * Une preuve validée peut-elle encore servir ? Tant qu'elle n'a pas servi,
+ * oui, sans limite de temps, à la personne qui l'a envoyée.
  * « deja-utilisee » : elle retient déjà la réduction d'une réservation
- * (payée, ou en attente de paiement depuis moins de 30 minutes) ;
+ * (payée, ou en attente de paiement depuis moins de 30 minutes), même si son
+ * contact a été effacé depuis ; « inconnue » : elle n'a plus de contact et
+ * ne retient plus rien, on ne sait plus à qui elle est ;
  * « autre-client » : le contact de la réservation (`client`, connu au moment
  * de réserver) n'est pas celui de la capture ; « deja-eue » : son client,
  * reconnu au contact de la capture ou à celui de la réservation, a déjà eu
@@ -813,11 +816,11 @@ export async function usageDUnePreuveValidee(
   maintenant = Date.now(),
   client?: IdentiteClient,
 ): Promise<"validee" | "deja-utilisee" | "deja-eue" | "autre-client" | "inconnue"> {
-  if (identiteVide(preuve)) return "inconnue";
   if (preuve.reference) {
     const liee = await depot.trouverReservationParReference(preuve.reference);
     if (liee && reservationRetenue(liee, maintenant)) return "deja-utilisee";
   }
+  if (identiteVide(preuve)) return "inconnue";
   if (client && !captureDuClient(preuve, client)) return "autre-client";
   const reductions = await depot.listerReservationsRoadTripGroupe({ avecReduction: true });
   const identites: IdentiteClient[] = [{ email: preuve.email, telephone: preuve.telephone }, ...(client ? [client] : [])];
@@ -843,10 +846,42 @@ export function raisonPreuveInutilisable(
 ): RaisonPreuveInutilisable | null {
   if (!preuve) return "inconnue";
   if (preuve.statut !== "validee") return preuve.statut === "refusee" ? "refusee" : "en_attente";
-  if (identiteVide(preuve)) return "inconnue";
   if (preuve.reference && reservationLiee && reservationRetenue(reservationLiee, maintenant)) return "deja-utilisee";
+  if (identiteVide(preuve)) return "inconnue";
   if (client && !captureDuClient(preuve, client)) return "autre-client";
   return null;
+}
+
+/**
+ * Le contact d'une capture (son email, son numéro) peut-il s'effacer ? La
+ * règle de la tâche quotidienne, la même en démonstration et en base :
+ *  - refusée : oui, décidée avant `refuseesAvant` (30 jours plus tôt) ;
+ *  - validée et pas encore servie : non, jamais. Elle sert une fois, sans
+ *    limite de temps, à la personne qui l'a envoyée (même numéro ou même
+ *    email, décision 25), et ce contact la reconnaît ;
+ *  - validée et servie : oui, dès que sa réservation est payée (confirmée,
+ *    en cours ou terminée) et garde ce contact (offreDetails.preuveClient),
+ *    où la règle « une réduction par client » le retrouve. Tant que la
+ *    réservation attend son paiement, non : la capture redevient libre si
+ *    la demande expire ;
+ *  - en attente : non (elle sera refusée par le site au bout de 30 jours).
+ */
+export function contactDeCaptureAEffacer(
+  preuve: { statut: string; decideLe?: string | null; reference?: string | null; email?: string | null; telephone?: string | null },
+  reservationLiee: { reference: string; statut: StatutReservation; preuveClient?: IdentiteClient } | null,
+  refuseesAvant: string,
+): boolean {
+  if (!preuve.email && !preuve.telephone) return false;
+  if (preuve.statut === "refusee") return Boolean(preuve.decideLe) && (preuve.decideLe as string) < refuseesAvant;
+  if (preuve.statut !== "validee" || !preuve.reference || !reservationLiee) return false;
+  if (reservationLiee.reference.toUpperCase() !== preuve.reference.toUpperCase()) return false;
+  const payee = reservationLiee.statut === "CONFIRMEE" || reservationLiee.statut === "EN_COURS" || reservationLiee.statut === "TERMINEE";
+  const gardee = reservationLiee.preuveClient;
+  if (!payee || !gardee) return false;
+  // Chaque moyen de reconnaître ce client (son email, son numéro) reste sur la réservation.
+  const email = emailDuClient(preuve.email);
+  const numero = numeroDuClient(preuve.telephone);
+  return (!email || emailDuClient(gardee.email) === email) && (!numero || numeroDuClient(gardee.telephone) === numero);
 }
 
 export interface Depot {
@@ -1278,15 +1313,15 @@ export interface Depot {
   compterPreuvesEnAttente(): Promise<number>;
 
   /**
-   * Efface l'email et le téléphone des preuves décidées avant `avant` (un
-   * instant ISO, 30 jours plus tôt). La preuve reste, sans eux, et ne peut
-   * plus servir : on ne sait plus à qui elle est. Une capture qui a servi
-   * a laissé son contact sur la réservation qu'elle a réduite
-   * (offreDetails.preuveClient) : la règle « une réduction par client »
-   * (décision 25) le retrouve là. Rend le nombre de preuves dont le contact
-   * a été effacé.
+   * Efface l'email et le téléphone des preuves selon `contactDeCaptureAEffacer` :
+   * celles refusées avant `refuseesAvant` (un instant ISO, 30 jours plus
+   * tôt), et celles validées qui ont servi à une réservation payée, qui
+   * garde leur contact (offreDetails.preuveClient) : la règle « une
+   * réduction par client » (décision 25) le retrouve là. Une capture validée
+   * qui n'a pas servi garde le sien. La preuve reste, sans eux. Rend le
+   * nombre de preuves dont le contact a été effacé.
    */
-  effacerContactsPreuves(avant: string): Promise<number>;
+  effacerContactsPreuves(refuseesAvant: string): Promise<number>;
 
   /**
    * Efface les compteurs d'essais expirés (clés faites d'une adresse IP ou

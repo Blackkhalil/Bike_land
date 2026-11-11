@@ -29,8 +29,9 @@ export const maxDuration = 60;
  * aussi les captures envoyées pour la réduction des offres de groupe,
  * celles déjà décidées dont le fichier serait resté, et toutes celles
  * reçues il y a plus de 30 jours (lot 5b) ; le contact donné avec une
- * capture, 30 jours après la décision (celle qui a servi l'a laissé sur la
- * réservation qu'elle a réduite) ; et les
+ * capture, 30 jours après un refus, ou quand la réservation qu'elle a
+ * réduite est payée (celle-ci le garde), jamais tant qu'une capture validée
+ * n'a pas servi ; et les
  * compteurs d'essais expirés. Ce ménage passe en premier, à part : une
  * panne des rappels ne l'empêche pas.
  */
