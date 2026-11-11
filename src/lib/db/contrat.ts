@@ -787,30 +787,6 @@ export function reductionDejaEue(
 }
 
 /**
- * Comme `reductionDejaEue`, mais seulement quand le numéro ET l'email de
- * cette identité sont tous deux ceux de la même réservation réduite. Sert à
- * l'envoi d'une capture : le refus immédiat ne dit rien d'un tiers dont on
- * n'aurait que le numéro ou l'email. Dans les autres cas, la capture est
- * reçue ; l'écran des preuves, le devis et la réservation appliquent la règle.
- */
-export function reductionDejaEueAuMemeContact(
-  reservations: readonly ReservationRoadTripClient[],
-  identite: IdentiteClient,
-  maintenant = Date.now(),
-): ReservationRoadTripClient | null {
-  const email = emailDuClient(identite.email);
-  const numero = numeroDuClient(identite.telephone);
-  if (!email || !numero) return null;
-  return (
-    reservations.find((reservation) => {
-      if (reservation.reductionXof <= 0 || !reservationRetenue(reservation, maintenant)) return false;
-      const autres = identitesDe(reservation);
-      return autres.some((autre) => emailDuClient(autre.email) === email) && autres.some((autre) => numeroDuClient(autre.telephone) === numero);
-    }) ?? null
-  );
-}
-
-/**
  * La capture appartient-elle à ce client ? La réservation doit porter le
  * numéro ou l'email donnés avec la capture : une capture validée ne sert
  * qu'à la personne qui l'a envoyée, même si son lien circule.

@@ -115,10 +115,9 @@ fois, sur un prochain road trip.
   Une capture ne sert qu'à la personne qui l'a envoyée : la réservation doit
   porter son numéro ou son email (sinon « autre-client », prix normal avant
   de payer).
-- Envoi d'une capture : le refus immédiat « déjà eu la réduction » (409) ne
-  vient que si le numéro ET l'email sont ceux d'une même réservation réduite ;
-  avec un seul des deux, la capture est reçue et la carte de l'administration
-  le signale (rien n'apprend à un inconnu qu'un numéro a déjà réservé).
+- Envoi d'une capture : le refus immédiat « déjà eu la réduction » (409)
+  suit la règle du responsable (décision 25) : le même numéro OU le même
+  email qu'une réservation réduite, ou que la capture qui l'a réduite.
   L'email « Capture à vérifier » part après la réponse au client, sans le
   contact du client, dix par heure au plus. 20 captures par jour au plus
   depuis une même adresse ; la limite par email compte une boîte Gmail une

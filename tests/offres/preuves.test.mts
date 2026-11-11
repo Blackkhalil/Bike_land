@@ -443,15 +443,25 @@ console.log("\n— Décision 25 : la réduction, une seule fois par client, dès
     reservations: [roadTrip({ email: "awa.test@example.com", telephone: "+229 01 52 99 99 99", preuveClient: { email: "ami@example.com", telephone: "0197000000" } })],
   });
   verifier("le numéro dans le contact de la capture qui a réduit la réservation, l'email dans le sien : 409 aussi", parLaCapture.statut, 409);
-  // Un seul des deux : la capture est reçue. Le refus immédiat ne dirait rien d'un tiers dont on n'aurait que
-  // le numéro ou l'email ; l'écran des preuves, le devis et la réservation appliquent la règle (décision 25).
+  // Un seul des deux suffit : un client, c'est le même numéro OU le même email (décision 25), dès l'envoi aussi.
   const parNumero = await envoyer(formulaire(petitPng, { telephone: "0197000000", email: "nouvel.email@example.com" }), {
     reservations: [roadTrip({ telephone: "+229 01 97 00 00 00" })],
   });
   const parEmail = await envoyer(formulaire(petitPng, { telephone: "0161000000", email: "Awa.Test@Example.com" }), {
     reservations: [roadTrip({ email: "awa.test@example.com" })],
   });
-  verifier("même numéro seul, ou même email seul : la capture est reçue, l'écran des preuves le signalera", [parNumero.statut, parEmail.statut], [201, 201]);
+  verifier("même numéro seul, ou même email seul : 409 tout de suite aussi, rien gardé, personne de prévenu", [
+    parNumero.statut,
+    parNumero.corps.code,
+    parEmail.statut,
+    parEmail.corps.code,
+    parNumero.etat.creees.length + parEmail.etat.creees.length,
+    parNumero.etat.alertes.length + parEmail.etat.alertes.length,
+  ], [409, "REDUCTION_DEJA_EUE", 409, "REDUCTION_DEJA_EUE", 0, 0]);
+  const parLaCaptureSeule = await envoyer(formulaire(petitPng, { telephone: "0162000000", email: "ami@example.com" }), {
+    reservations: [roadTrip({ preuveClient: { email: "ami@example.com", telephone: "0163000000" } })],
+  });
+  verifier("l'email seul de la capture qui a réduit une réservation : 409 aussi", parLaCaptureSeule.statut, 409);
   const enAttenteRecente = await envoyer(formulaire(petitPng), {
     reservations: [roadTrip({ ...memeContact, statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 10 * 60_000).toISOString() })],
   });

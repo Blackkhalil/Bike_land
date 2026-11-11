@@ -28,7 +28,6 @@ import {
   memeClient,
   numeroDuClient,
   reductionDejaEue,
-  reductionDejaEueAuMemeContact,
   reservationRetenue,
   usageDUnePreuveValidee,
   type Depot,
@@ -409,8 +408,8 @@ export function situationDuClient(
  * client. Réponse 201 avec le statut : « en_attente » tant que personne n'a
  * vérifié (sans agent IA, toujours), sinon la décision de l'agent. Une
  * capture qui attend sa vérification prévient Bike Land par email, après la
- * réponse au client (décision 24). Le client dont le numéro et l'email ont
- * déjà eu la réduction ensemble l'apprend tout de suite (409
+ * réponse au client (décision 24). Le client qui a déjà eu la réduction,
+ * reconnu à son numéro ou à son email, l'apprend tout de suite (409
  * REDUCTION_DEJA_EUE), rien n'est gardé ni envoyé (décision 25). La même
  * capture renvoyée juste après (envoi interrompu) rend la première (200),
  * sans doublon. Réduction réglée à 0 % : refusée (409 SANS_REDUCTION).
@@ -488,16 +487,15 @@ export async function recevoirPreuve(
 
   const maintenant = deps.maintenant();
 
-  // Décision 25 : ce numéro et cet email ont déjà eu la réduction, ensemble,
-  // sur une même réservation. Le client l'apprend tout de suite et continue
-  // sans elle ; rien n'est gardé, personne n'est prévenu. Avec un seul des
-  // deux, la capture est reçue : le refus immédiat ne dirait rien d'un tiers
-  // dont on n'aurait que le numéro ou l'email. L'écran des preuves, le devis
-  // et la réservation appliquent la règle ; la réservation fait foi. Les
-  // réservations illisibles n'empêchent pas l'envoi.
+  // Décision 25 : ce client a déjà eu la réduction, reconnu à son numéro OU à
+  // son email, comme partout ailleurs (le contact d'une réservation réduite,
+  // ou celui de la capture qui l'a réduite). Il l'apprend tout de suite et
+  // continue sans elle ; rien n'est gardé, personne n'est prévenu. La
+  // réservation refait ce contrôle et fait foi. Les réservations illisibles
+  // n'empêchent pas l'envoi.
   try {
     const reductions = await deps.depot.listerReservationsRoadTripGroupe({ avecReduction: true });
-    if (reductionDejaEueAuMemeContact(reductions, champs.data, maintenant)) {
+    if (reductionDejaEue(reductions, [champs.data], maintenant)) {
       return erreur(409, "REDUCTION_DEJA_EUE", phraseReductionDejaEue(taux.texte));
     }
   } catch (e) {
