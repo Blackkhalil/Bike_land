@@ -7,13 +7,6 @@ import { dependancesPreuves } from "@/lib/offres-groupe/dependances-preuves";
 import { deciderPreuveParAdmin } from "@/lib/offres-groupe/preuves";
 
 /**
- * Valider ou refuser une capture de réduction, depuis la page « Preuves de
- * réduction » (décision 21 : sans agent IA, chaque capture est vérifiée à la
- * main). La décision est signée du prénom saisi (journal), sous condition :
- * deux clics ne décident pas deux fois. La capture est effacée aussitôt, et
- * le client reçoit la réponse par email.
- */
-/**
  * Le nombre de captures qui attendent d'être vérifiées, pour le chiffre à
  * côté de « Preuves de réduction » dans le menu (décision 24) : relu à
  * chaque page de l'administration, le layout ne se re-rendant pas quand on
@@ -31,6 +24,13 @@ export async function GET() {
   }
 }
 
+/**
+ * Valider ou refuser une capture de réduction, depuis la page « Preuves de
+ * réduction » (décision 21 : sans agent IA, chaque capture est vérifiée à la
+ * main). La décision est signée du prénom saisi (journal), sous condition :
+ * deux clics ne décident pas deux fois. La capture est effacée aussitôt, et
+ * le client reçoit la réponse par email.
+ */
 export async function POST(requete: Request) {
   if (!(await sessionAdminValide())) {
     return NextResponse.json({ erreur: "Accès refusé." }, { status: 401 });
