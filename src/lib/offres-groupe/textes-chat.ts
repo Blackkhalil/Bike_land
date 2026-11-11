@@ -294,6 +294,31 @@ export const PHRASE_CAPTURE_DEJA_UTILISEE =
   "Cette capture a déjà servi pour une réservation : la réduction vaut une seule fois par client.";
 
 /**
+ * Une capture validée citée pour une réservation qui n'a ni son numéro ni
+ * son email (un lien transféré, des coordonnées changées) : la réduction
+ * vaut pour la personne qui l'a envoyée.
+ */
+export const PHRASE_CAPTURE_AUTRE_CLIENT =
+  "Cette capture a été envoyée avec un autre numéro et un autre email : la réduction vaut pour la personne qui l'a envoyée.";
+
+/** La réduction des abonnés réglée à 0 % : une capture envoyée quand même n'est pas gardée. */
+export const MESSAGE_REDUCTION_INACTIVE =
+  "La réduction des abonnés n'est pas proposée en ce moment : votre road trip se réserve au prix normal.";
+
+/**
+ * La capture refusée : avec ce que Bike Land y a vu, quand il l'a écrit en
+ * refusant, pour que le client n'envoie pas la même.
+ */
+export function messageCaptureRefusee(motif?: string): string {
+  const vu = motif?.trim().replace(/[.\s]+$/, "");
+  return (
+    "Nous n'avons pas pu valider cette capture. " +
+    (vu ? `Ce que nous avons vu : ${vu}. ` : "") +
+    "Vous pouvez en envoyer une autre, ou réserver sans la réduction."
+  );
+}
+
+/**
  * Décision 24 : réserver pendant que la capture attend sa vérification,
  * c'est payer le prix normal, et la réduction ne s'y ajoute pas ensuite.
  * Bike Land le dit avant l'offre, sans rien promettre d'autre.
@@ -317,6 +342,13 @@ export const MESSAGE_CAPTURE_PAS_ENCORE =
 /** L'état d'une capture n'a pas pu être lu (réseau, panne) : la capture est gardée, le client réessaie. */
 export const MESSAGE_CAPTURE_INJOIGNABLE =
   "La connexion est instable : je n'arrive pas à voir où en est votre capture. Réessayez dans un instant.";
+
+/**
+ * Revenu à la réduction alors que l'état de la capture n'a pas pu être lu :
+ * rien n'est affirmé (elle est peut-être déjà validée), le client réessaie.
+ */
+export const MESSAGE_STATUT_CAPTURE_INCONNU =
+  "Je n'ai pas pu voir où en est votre capture. Touchez « Est-ce que c'est validé ? » pour réessayer.";
 
 export function questionVelos(personnes: number): string {
   return `Sur quels vélos ? Répartissez vos ${personnesEnClair(personnes)} entre les gammes, un vélo par personne.`;

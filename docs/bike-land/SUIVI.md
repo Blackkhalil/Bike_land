@@ -108,9 +108,22 @@ fois, sur un prochain road trip.
 - Agent IA version 1 : récapitulatif et contrôle des captures, pas de discussion.
 - Captures : stockage privé, supprimées dès la décision, 30 jours au plus. Le
   numéro et l'email donnés avec une capture sont effacés 30 jours après la
-  décision, ou dès qu'elle a servi ; la règle « une réduction par client »
-  (décision 25) s'appuie sur les coordonnées des réservations, et une capture
-  validée qui n'a pas servi reste utilisable par son lien.
+  décision ; une capture validée qui n'a pas servi ne sert plus ensuite. Celle
+  qui sert laisse son numéro et son email sur la réservation qu'elle réduit
+  (offreDetails.preuveClient) : la règle « une réduction par client »
+  (décision 25) regarde le contact de la réservation et celui de sa capture.
+  Une capture ne sert qu'à la personne qui l'a envoyée : la réservation doit
+  porter son numéro ou son email (sinon « autre-client », prix normal avant
+  de payer).
+- Envoi d'une capture : le refus immédiat « déjà eu la réduction » (409) ne
+  vient que si le numéro ET l'email sont ceux d'une même réservation réduite ;
+  avec un seul des deux, la capture est reçue et la carte de l'administration
+  le signale (rien n'apprend à un inconnu qu'un numéro a déjà réservé).
+  L'email « Capture à vérifier » part après la réponse au client, sans le
+  contact du client, dix par heure au plus. 20 captures par jour au plus
+  depuis une même adresse ; la limite par email compte une boîte Gmail une
+  seule fois (alias « + » et points). Réduction réglée à 0 % : capture
+  refusée (409), et une validation tardive envoie un email sans pourcentage.
 - Jour plein dans la discussion : tant que le serveur n'a pas compté les vélos
   libres d'un jour (ou d'un créneau de Bike for All), Bike Land « écrit » et
   retient sa question suivante ; un jour plein se dit donc avant elle, jamais

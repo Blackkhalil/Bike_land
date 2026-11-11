@@ -95,8 +95,12 @@ interface Options {
   analyser?: (entree: { image: Uint8Array; typeMime: string }) => Promise<Record<string, unknown>>;
   /** Les road trips en groupe connus (`ReservationRoadTripClient`), pour la règle « une réduction par client ». */
   reservations?: Record<string, any>[];
-  /** L'email de Bike Land échoue (décision 24) : l'envoi de la capture ne doit pas échouer pour autant. */
-  alerteEnPanne?: boolean;
+  /** L'email de Bike Land échoue (décision 24), ou ne répond jamais : l'envoi de la capture ne doit pas échouer pour autant. */
+  alerteEnPanne?: boolean | "jamais";
+  /** Les tâches d'après la réponse sont gardées (comme `after` dans la route), pas attendues. */
+  differer?: boolean;
+  /** Le taux de la réduction dans les réglages (4 % par défaut). */
+  reduction?: number;
   /** L'email au client ne part pas. */
   emailClientEnPanne?: boolean;
 }
@@ -112,6 +116,10 @@ function fauxDecor(options: Options = {}) {
     journal: [] as Record<string, any>[],
     compteurs: new Map<string, number>(),
     vuParAgent: [] as { image: Uint8Array; typeMime: string }[],
+    /** Les octets rangés avec chaque preuve (en base), que le stockage relit. */
+    octets: new Map<string, Uint8Array>(),
+    /** Les tâches lancées après la réponse (l'email à Bike Land). */
+    differees: [] as (() => Promise<void>)[],
   };
   const depot = {
     async compterEssai(cle: string) {
@@ -122,6 +130,7 @@ function fauxDecor(options: Options = {}) {
     async creerPreuve(champs: Record<string, any>) {
       const id = `p${etat.creees.length + 1}`;
       etat.creees.push(champs);
+      if (champs.octets) etat.octets.set(id, champs.octets);
       const preuve = {
         id,
         typeMime: champs.typeMime,
@@ -163,9 +172,12 @@ function fauxDecor(options: Options = {}) {
     async trouverReservationParReference(reference: string) {
       return (options.reservations ?? []).find((r) => r.reference === reference) ?? null;
     },
-    async listerReservationsRoadTripGroupe(filtre: { avecReduction: boolean; depuis?: string }) {
+    async listerReservationsRoadTripGroupe(filtre: { avecReduction: boolean; departDepuis?: string }) {
       return (options.reservations ?? []).filter(
-        (r) => r.statut !== "ANNULEE" && (filtre.avecReduction ? r.reductionXof > 0 : r.reductionXof === 0) && (!filtre.depuis || r.creeLe >= filtre.depuis),
+        (r) =>
+          r.statut !== "ANNULEE" &&
+          (filtre.avecReduction ? r.reductionXof > 0 : r.reductionXof === 0) &&
+          (!filtre.departDepuis || !r.date || r.date >= filtre.departDepuis),
       );
     },
     async journaliser(evenement: Record<string, any>) {
@@ -179,8 +191,8 @@ function fauxDecor(options: Options = {}) {
       etat.rangees.push(typeMime);
       return "blob:preuves/capture-abc.webp";
     },
-    async lire() {
-      return null;
+    async lire(preuve: { id: string }) {
+      return etat.octets.get(preuve.id) ?? null;
     },
     async effacer(preuve: { fichierCle?: string }) {
       if (preuve.fichierCle?.startsWith("blob:")) etat.effaces.push(preuve.fichierCle);
@@ -190,7 +202,13 @@ function fauxDecor(options: Options = {}) {
     depot,
     stockage,
     lireOuverture: async () => ({ offresGroupeActives: options.actives ?? true }),
-    lireReglages: async () => ({ reglages: REGLAGES_OFFRES_PAR_DEFAUT, source: "defaut" }),
+    lireReglages: async () => ({
+      reglages:
+        options.reduction === undefined
+          ? REGLAGES_OFFRES_PAR_DEFAUT
+          : { ...REGLAGES_OFFRES_PAR_DEFAUT, roadTrip: { ...REGLAGES_OFFRES_PAR_DEFAUT.roadTrip, reduction: options.reduction } },
+      source: "defaut",
+    }),
     analyser: options.analyser
       ? async (entree: { image: Uint8Array; typeMime: string }) => {
           etat.vuParAgent.push(entree);
@@ -205,9 +223,11 @@ function fauxDecor(options: Options = {}) {
     },
     alerterBikeLand: async (alerte: Record<string, any>) => {
       etat.alertes.push(alerte);
+      if (options.alerteEnPanne === "jamais") return new Promise<{ envoye: boolean }>(() => undefined);
       if (options.alerteEnPanne) throw new Error("Gmail injoignable");
       return { envoye: true };
     },
+    ...(options.differer ? { differer: (tache: () => Promise<void>) => void etat.differees.push(tache) } : {}),
     urlSite: () => "https://site.test",
   };
   return { deps, etat };
@@ -316,9 +336,9 @@ console.log("\n— Sans agent IA (décision 21) : vérifiée à la main");
 console.log("\n— Décision 24 : Bike Land reçoit un email à chaque capture qui attend");
 {
   const r = await envoyer(formulaire(petitPng));
-  verifier("capture en attente : un email à Bike Land, avec l'heure, le contact et le nombre en attente", [r.statut, r.etat.alertes], [
+  verifier("capture en attente : un email à Bike Land, avec l'heure et le nombre en attente, jamais le contact du client", [r.statut, r.etat.alertes], [
     201,
-    [{ recueLe: new Date(MAINTENANT).toISOString(), telephone: "+229 01 97 00 00 00", email: "awa.test@example.com", enAttente: 1 }],
+    [{ recueLe: new Date(MAINTENANT).toISOString(), enAttente: 1 }],
   ]);
   verifier("le message au client dit que la réponse vient par email, à son adresse, et le prix normal s'il réserve tout de suite", r.corps.message, [
     "Merci, votre capture est bien reçue ! Nous la vérifions et vous répondons par email à awa.test@example.com.",
@@ -333,33 +353,114 @@ console.log("\n— Décision 24 : Bike Land reçoit un email à chaque capture q
   const valideeParIa = await envoyer(formulaire(petitPng), { analyser: async () => ({ statut: "validee", motif: "Abonné.", reseau: "instagram", identifiantVu: "bikeland_bj" }) });
   const refuseeParIa = await envoyer(formulaire(petitPng), { analyser: async () => ({ statut: "refusee", motif: "Bouton Suivre." }) });
   verifier("capture répondue d'emblée (agent IA) : personne n'est dérangé", [valideeParIa.etat.alertes.length, refuseeParIa.etat.alertes.length], [0, 0]);
+
+  // L'email part après la réponse au client (`after` dans la route) : un Gmail lent ne retient jamais la discussion.
+  const differe = fauxDecor({ differer: true, alerteEnPanne: "jamais" });
+  const reponse = (await preuves.recevoirPreuve(formulaire(petitPng), { ip: "10.6.6.9" }, differe.deps)) as { statut: number };
+  verifier("l'email à Bike Land ne répond jamais : le client a sa réponse (201), l'email est lancé après", [
+    reponse.statut,
+    differe.etat.alertes.length,
+    differe.etat.differees.length,
+  ], [201, 0, 1]);
+  void differe.etat.differees[0]();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  verifier("la tâche d'après la réponse envoie bien l'email à Bike Land", differe.etat.alertes.length, 1);
+
+  // Pas plus de ALERTES_PAR_HEURE emails par heure : qui enverrait des captures à la chaîne ne remplit pas la boîte de Bike Land.
+  const inonde = fauxDecor();
+  for (let i = 0; i < preuves.ALERTES_PAR_HEURE + 3; i += 1) {
+    await preuves.recevoirPreuve(formulaire(petitPng, { telephone: `01960000${String(i).padStart(2, "0")}`, email: `client${i}@example.com` }), { ip: `10.8.${i}.1` }, inonde.deps);
+  }
+  verifier(`${preuves.ALERTES_PAR_HEURE + 3} captures dans l'heure : ${preuves.ALERTES_PAR_HEURE} emails à Bike Land, pas plus`, [
+    inonde.etat.creees.length,
+    inonde.etat.alertes.length,
+  ], [preuves.ALERTES_PAR_HEURE + 3, preuves.ALERTES_PAR_HEURE]);
+}
+
+console.log("\n— Réduction réglée à 0 % : la capture n'est pas gardée");
+{
+  const aZero = await envoyer(formulaire(petitPng), { reduction: 0 });
+  verifier("409 SANS_REDUCTION, rien gardé, personne de prévenu, le message le dit", [
+    aZero.statut,
+    aZero.corps.code,
+    aZero.corps.message,
+    aZero.etat.creees.length,
+    aZero.etat.alertes.length,
+    aZero.etat.compteurs.size,
+  ], [409, "SANS_REDUCTION", "La réduction des abonnés n'est pas proposée en ce moment : votre road trip se réserve au prix normal.", 0, 0, 0]);
+  // Une capture qui attendait, validée après le passage à 0 % : l'email ne parle ni de pourcentage ni de lien qui la promettrait.
+  const d = fauxDecor({ reduction: 0 });
+  d.etat.preuves.set("z1", { id: "z1", statut: "en_attente", email: "awa.test@example.com", telephone: "+229 01 97 00 00 00", creeLe: new Date(MAINTENANT).toISOString() });
+  const valide = (await preuves.deciderPreuveParAdmin({ action: "valider", id: "z1", prenom: "Koffi" }, d.deps)) as { statut: number };
+  verifier("validée à 0 % : un email sans pourcentage, lien sans la capture", [
+    valide.statut,
+    d.etat.emails[0].sansReduction,
+    "reduction" in d.etat.emails[0],
+    d.etat.emails[0].lienReprise,
+  ], [200, true, false, "https://site.test/?reserver-en-groupe=road-trip-groupe"]);
+}
+
+console.log("\n— Limites : une même boîte Gmail, et 20 captures par jour depuis une adresse");
+{
+  verifier("une boîte aux lettres : alias « + » et points de Gmail retirés, les autres domaines gardent leurs points", [
+    preuves.boiteAuxLettres(" A.Y.O+2@GMail.com "),
+    preuves.boiteAuxLettres("ayo@googlemail.com"),
+    preuves.boiteAuxLettres("jean.dupont+bike@exemple.bj"),
+  ], ["ayo@gmail.com", "ayo@gmail.com", "jean.dupont@exemple.bj"]);
+  const alias = fauxDecor();
+  const statuts: number[] = [];
+  for (let i = 0; i < preuves.PREUVES_PAR_JOUR_EMAIL + 2; i += 1) {
+    const r = (await preuves.recevoirPreuve(formulaire(petitPng, { telephone: `01950000${String(i).padStart(2, "0")}`, email: `gm+${i}@gmail.com` }), { ip: `10.9.${i}.1` }, alias.deps)) as { statut: number };
+    statuts.push(r.statut);
+  }
+  verifier(`alias gm+0 … gm+${preuves.PREUVES_PAR_JOUR_EMAIL + 1}@gmail.com : la même boîte, ${preuves.PREUVES_PAR_JOUR_EMAIL} captures par jour au plus`, statuts.filter((s) => s === 429).length, 2);
+  const adresse = fauxDecor();
+  // Le compteur par heure est remis à zéro pour simuler une journée entière depuis la même adresse.
+  let dernier = 0;
+  for (let i = 0; i < preuves.PREUVES_PAR_JOUR_ADRESSE + 1; i += 1) {
+    adresse.etat.compteurs.delete("preuve:10.10.10.10");
+    const r = (await preuves.recevoirPreuve(formulaire(petitPng, { telephone: `01940000${String(i).padStart(2, "0")}`, email: `jour${i}@example.com` }), { ip: "10.10.10.10" }, adresse.deps)) as { statut: number };
+    dernier = r.statut;
+  }
+  verifier(`une même adresse : ${preuves.PREUVES_PAR_JOUR_ADRESSE} captures par jour au plus, même espacées`, [adresse.etat.creees.length, dernier], [preuves.PREUVES_PAR_JOUR_ADRESSE, 429]);
 }
 
 console.log("\n— Décision 25 : la réduction, une seule fois par client, dès l'envoi");
 {
-  const dejaParNumero = await envoyer(formulaire(petitPng, { telephone: "0197000000", email: "nouvel.email@example.com" }), {
+  // Le numéro ET l'email de la capture sont ceux d'une réservation réduite : le client l'apprend tout de suite.
+  const memeContact = { telephone: "+229 01 97 00 00 00", email: "awa.test@example.com" };
+  const deja = await envoyer(formulaire(petitPng, { telephone: "0197000000", email: " Awa.Test@Example.com " }), {
+    reservations: [roadTrip(memeContact)],
+  });
+  verifier("même numéro (8 derniers chiffres) et même email (casse, espaces) : 409 tout de suite, rien gardé, personne de prévenu", [
+    deja.statut,
+    deja.corps.code,
+    deja.corps.message,
+    deja.etat.creees.length,
+    deja.etat.alertes.length,
+  ], [409, "REDUCTION_DEJA_EUE", "Vous avez déjà eu la réduction de 4 % : elle vaut une seule fois par client.", 0, 0]);
+  const parLaCapture = await envoyer(formulaire(petitPng), {
+    reservations: [roadTrip({ email: "awa.test@example.com", telephone: "+229 01 52 99 99 99", preuveClient: { email: "ami@example.com", telephone: "0197000000" } })],
+  });
+  verifier("le numéro dans le contact de la capture qui a réduit la réservation, l'email dans le sien : 409 aussi", parLaCapture.statut, 409);
+  // Un seul des deux : la capture est reçue. Le refus immédiat ne dirait rien d'un tiers dont on n'aurait que
+  // le numéro ou l'email ; l'écran des preuves, le devis et la réservation appliquent la règle (décision 25).
+  const parNumero = await envoyer(formulaire(petitPng, { telephone: "0197000000", email: "nouvel.email@example.com" }), {
     reservations: [roadTrip({ telephone: "+229 01 97 00 00 00" })],
   });
-  verifier("même numéro (8 derniers chiffres), autre email : 409 tout de suite, rien gardé, personne de prévenu", [
-    dejaParNumero.statut,
-    dejaParNumero.corps.code,
-    dejaParNumero.corps.message,
-    dejaParNumero.etat.creees.length,
-    dejaParNumero.etat.alertes.length,
-  ], [409, "REDUCTION_DEJA_EUE", "Vous avez déjà eu la réduction de 4 % : elle vaut une seule fois par client.", 0, 0]);
-  const dejaParEmail = await envoyer(formulaire(petitPng, { telephone: "0161000000", email: "Awa.Test@Example.com" }), {
+  const parEmail = await envoyer(formulaire(petitPng, { telephone: "0161000000", email: "Awa.Test@Example.com" }), {
     reservations: [roadTrip({ email: "awa.test@example.com" })],
   });
-  verifier("même email, en majuscules, autre numéro : 409", [dejaParEmail.statut, dejaParEmail.corps.code], [409, "REDUCTION_DEJA_EUE"]);
+  verifier("même numéro seul, ou même email seul : la capture est reçue, l'écran des preuves le signalera", [parNumero.statut, parEmail.statut], [201, 201]);
   const enAttenteRecente = await envoyer(formulaire(petitPng), {
-    reservations: [roadTrip({ telephone: "0197000000", statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 10 * 60_000).toISOString() })],
+    reservations: [roadTrip({ ...memeContact, statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 10 * 60_000).toISOString() })],
   });
   verifier("réduction sur une demande qui attend son paiement depuis 10 min : elle compte", enAttenteRecente.statut, 409);
   const expiree = await envoyer(formulaire(petitPng), {
-    reservations: [roadTrip({ telephone: "0197000000", statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 45 * 60_000).toISOString() })],
+    reservations: [roadTrip({ ...memeContact, statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 45 * 60_000).toISOString() })],
   });
-  const annulee = await envoyer(formulaire(petitPng), { reservations: [roadTrip({ telephone: "0197000000", statut: "ANNULEE" })] });
-  const prixNormal = await envoyer(formulaire(petitPng), { reservations: [roadTrip({ telephone: "0197000000", reductionXof: 0 })] });
+  const annulee = await envoyer(formulaire(petitPng), { reservations: [roadTrip({ ...memeContact, statut: "ANNULEE" })] });
+  const prixNormal = await envoyer(formulaire(petitPng), { reservations: [roadTrip({ ...memeContact, reductionXof: 0 })] });
   verifier("réduction jamais payée et expirée, annulée, ou road trip au prix normal : la capture est reçue", [expiree.statut, annulee.statut, prixNormal.statut], [201, 201, 201]);
   const autreClient = await envoyer(formulaire(petitPng), { reservations: [roadTrip({})] });
   verifier("un autre client a eu la réduction : rien ne change pour celui-ci", autreClient.statut, 201);
@@ -386,6 +487,40 @@ console.log("\n— Défaut 9 : la même capture renvoyée juste après n'est pas
   plusTard.deps.maintenant = () => MAINTENANT + (preuves.DOUBLON_MINUTES + 1) * 60_000;
   const apresLeDelai = (await preuves.recevoirPreuve(formulaire(petitPng), { ip: "10.7.7.6" }, plusTard.deps)) as { statut: number };
   verifier(`la même image ${preuves.DOUBLON_MINUTES + 1} minutes plus tard : une nouvelle capture`, [apresLeDelai.statut, plusTard.etat.creees.length], [201, 2]);
+
+  // La même image, renvoyée pour corriger une faute dans l'email : une nouvelle capture, qui garde le bon email.
+  const corrige = fauxDecor();
+  await preuves.recevoirPreuve(formulaire(petitPng, { telephone: "+229 01 54 00 00 01", email: "faute@exmaple.com" }), { ip: "10.7.8.1" }, corrige.deps);
+  const bonne = (await preuves.recevoirPreuve(formulaire(petitPng, { telephone: "+229 01 54 00 00 01", email: "bon@example.com" }), { ip: "10.7.8.2" }, corrige.deps)) as {
+    statut: number;
+    corps: Record<string, any>;
+  };
+  verifier("même image, email corrigé : une nouvelle capture avec le bon email, et le message nomme l'adresse gardée", [
+    bonne.statut,
+    corrige.etat.creees.length,
+    corrige.etat.preuves.get(bonne.corps.preuveId)?.email,
+    bonne.corps.message.includes("bon@example.com"),
+  ], [201, 2, "bon@example.com", true]);
+
+  // Deux images différentes qui pèsent le même poids une fois réencodées : la seconde n'est pas avalée.
+  const parPoids = new Map<number, Uint8Array>();
+  let paire: [Uint8Array, Uint8Array] | null = null;
+  for (let i = 0; i < 60 && !paire; i += 1) {
+    const image = new Uint8Array(
+      await sharp({ create: { width: 64, height: 64, channels: 3, background: { r: (i * 37) % 256, g: (i * 91) % 256, b: (i * 53) % 256 } } }).png().toBuffer(),
+    );
+    const poids = (await preuves.reencoderCapture(image)).octets.byteLength;
+    const deja = parPoids.get(poids);
+    if (deja) paire = [deja, image];
+    else parPoids.set(poids, image);
+  }
+  verifier("deux images différentes de même poids réencodé trouvées pour l'essai", paire !== null, true);
+  if (paire) {
+    const memePoids = fauxDecor();
+    await preuves.recevoirPreuve(formulaire(paire[0]), { ip: "10.7.9.1" }, memePoids.deps);
+    const seconde = (await preuves.recevoirPreuve(formulaire(paire[1]), { ip: "10.7.9.2" }, memePoids.deps)) as { statut: number };
+    verifier("une autre image de même poids, même numéro et même email : une nouvelle capture (comparée octet pour octet)", [seconde.statut, memePoids.etat.creees.length], [201, 2]);
+  }
 }
 
 console.log("\n— Avec l'agent IA : décidée, et la capture effacée aussitôt");
@@ -436,8 +571,19 @@ console.log("\n— Où en est une preuve");
     roadTrip({ reference: "BL-EXPIRE", email: "awa.test@example.com", statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 45 * 60_000).toISOString() }),
   ]);
   verifier("validée, rattachée à une demande jamais payée et expirée : de nouveau « validee »", liberee.statut, "validee");
-  const sansContact = await statutDe({ ...validee, email: undefined, telephone: undefined }, [roadTrip({ telephone: "0197000000" })]);
-  verifier("validée, contact effacé après 30 jours : toujours utilisable par son identifiant", sansContact.statut, "validee");
+  const d404 = fauxDecor();
+  d404.etat.preuves.set("v2", { ...validee, id: "v2", email: undefined, telephone: undefined });
+  const sansContact = (await preuves.statutPreuve("v2", d404.deps)) as { statut: number; corps: Record<string, any> };
+  verifier("validée, contact effacé (30 jours après la décision) : ne sert plus, 404 comme une capture inconnue", [sansContact.statut, sansContact.corps.message], [
+    404,
+    "Cette capture n'est plus valable : envoyez-en une nouvelle.",
+  ]);
+  const refuseeMotif = await statutDe({ ...validee, id: "r1", statut: "refusee", decidePar: "admin (Koffi)", motif: "On ne voit pas le mot « Abonné »." });
+  verifier("refusée à la main avec un motif : le message le dit, pour ne pas renvoyer la même", espaces(refuseeMotif.message), espaces(
+    "Nous n'avons pas pu valider cette capture. Ce que nous avons vu : On ne voit pas le mot « Abonné ». Vous pouvez en envoyer une autre, ou réserver sans la réduction.",
+  ));
+  const refuseeSite = await statutDe({ ...validee, id: "r2", statut: "refusee", decidePar: "site", motif: "Capture restée 30 jours sans vérification : effacée." });
+  verifier("refusée par le site (30 jours) : le message ordinaire, sans le motif technique", refuseeSite.message, "Nous n'avons pas pu valider cette capture. Vous pouvez en envoyer une autre, ou réserver sans la réduction.");
   const enPanne = fauxDecor();
   enPanne.etat.preuves.set("v1", validee);
   enPanne.deps.depot.listerReservationsRoadTripGroupe = async () => {
@@ -502,11 +648,20 @@ console.log("\n— Décision 24 : valider après une réservation au prix normal
     roadTrip({ reference: "BL-ATTEND", telephone: "0197000000", reductionXof: 0, statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 5 * 60_000).toISOString() }),
   ]);
   verifier("même chose pour une réservation au prix normal qui attend son paiement (même numéro)", enAttente.email.reservationPrixNormal, "BL-ATTEND");
-  const avant = await valider([roadTrip({ reference: "BL-AVANT", email: "awa.test@example.com", reductionXof: 0, creeLe: new Date(MAINTENANT - 5 * JOUR).toISOString() })]);
-  verifier("une réservation faite avant la capture ne change rien à l'email", ["reservationPrixNormal" in avant.email, avant.email.lienReprise], [
+  const avant = await valider([
+    roadTrip({ reference: "BL-AVANT", email: "awa.test@example.com", reductionXof: 0, creeLe: new Date(MAINTENANT - 5 * JOUR).toISOString(), date: "2026-11-12" }),
+  ]);
+  verifier("une réservation faite avant la capture, déjà partie : rien ne change à l'email", ["reservationPrixNormal" in avant.email, avant.email.lienReprise], [
     false,
     "https://site.test/?reserver-en-groupe=road-trip-groupe&preuve=pc",
   ]);
+  const aVenir = await valider([
+    roadTrip({ reference: "BL-AVENIR", email: "awa.test@example.com", reductionXof: 0, creeLe: new Date(MAINTENANT - 5 * JOUR).toISOString(), date: "2026-11-21" }),
+  ]);
+  verifier("payée au prix normal un peu avant la capture, départ à venir : l'email et l'écran le disent aussi", [
+    aVenir.corps.prixNormal,
+    aVenir.email.reservationPrixNormal,
+  ], ["BL-AVENIR", "BL-AVENIR"]);
   const dejaEue = await valider([
     roadTrip({ reference: "BL-REDUIT", email: "awa.test@example.com" }),
     roadTrip({ reference: "BL-NORMAL", email: "awa.test@example.com", reductionXof: 0, creeLe: new Date(MAINTENANT - 60 * 60_000).toISOString() }),
@@ -520,7 +675,7 @@ console.log("\n— Décision 24 : valider après une réservation au prix normal
   const sansEmail = await valider([], { emailClientEnPanne: true });
   verifier("l'email au client ne part pas : noté au journal, pour le rappeler sous « Décidées »", [sansEmail.corps.emailEnvoye, sansEmail.journal], [
     false,
-    [{ type: "preuve-email-non-envoye", details: { preuveId: "pc", statut: "validee" }, auteur: "admin (Koffi)" }],
+    [{ type: "preuve-email-non-envoye", details: { preuveId: "pc", statut: "validee", finNumero: "0000" }, auteur: "admin (Koffi)" }],
   ]);
   verifier("la situation du client, pour l'écran des preuves", preuves.situationDuClient(capture, [roadTrip({ reference: "BL-R", telephone: "0197000000" })], [], MAINTENANT), { dejaEue: "BL-R" });
 }
@@ -639,9 +794,19 @@ console.log("\n— Défaut 19 : le contact des captures s'efface, 30 jours aprè
   ], [true, [null, null, "refusee"], [null, null, "validee"], ["attente@example.com", "0190112233", "en_attente"]]);
   const demain = await cree("demain@example.com");
   await depot.deciderPreuve(demain.id, { statut: "validee", par: "admin (Koffi)" });
+  const etatDemoMenage = (globalThis as Record<symbol, any>)[Symbol.for("bikeland.demo.etat")];
+  // Une capture validée qui vient de servir : son contact reste jusqu'aux 30 jours (elle peut resservir si la réservation tombe).
+  etatDemoMenage.preuves.find((p: { id: string }) => p.id === demain.id).reference = "BL-SERVIE";
   await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() });
-  verifier("décidée hier : le contact reste encore", (await relue(demain.id))[0], "demain@example.com");
-  verifier("la page des données personnelles dit la même durée (30 jours)", preuves.JOURS_CONSERVATION_CONTACT, 30);
+  verifier("décidée hier, même servie : le contact reste encore", (await relue(demain.id))[0], "demain@example.com");
+  // Une seule source pour la durée promise : la page des données personnelles importe JOURS_CONSERVATION_CONTACT.
+  const { readFileSync } = await import("node:fs");
+  const pageDonnees = readFileSync(join(projet, "src/app/(site)/donnees-personnelles/page.tsx"), "utf8");
+  verifier("la page des données personnelles lit la durée dans preuves.ts, sans chiffre écrit en dur", [
+    /import \{[^}]*JOURS_CONSERVATION_CONTACT[^}]*\} from "@\/lib\/offres-groupe\/preuves"/.test(pageDonnees),
+    /\{JOURS_CONSERVATION_CONTACT\}/.test(pageDonnees),
+    /CONSERVATION_CONTACT_CAPTURE_JOURS\s*=/.test(pageDonnees),
+  ], [true, true, false]);
   verifier("les autres preuves du dépôt de démonstration n'ont pas disparu", (await depot.listerPreuves()).length >= tout.length, true);
 }
 
@@ -710,6 +875,63 @@ console.log("\n— Décision 25 dans le dépôt de démonstration : la transacti
     liste.some((r: { reference: string }) => r.reference === vieille.reservation.reference),
     liste.find((r: { reference: string }) => r.reference === nouvelle.reservation.reference)?.email,
   ], [false, "expire.client@example.com"]);
+
+  // Revue « client adverse », cas H2 / S3 : le lien d'une capture validée transféré à quelqu'un d'autre.
+  const titulaire = await valideePour("titulaire.h2@example.com", "+229 01 53 00 00 01");
+  verifier("une autre personne (ni le numéro ni l'email de la capture) : refusée « autre-client », rien d'écrit", await raisonDe(
+    depot.creerReservationGroupe(demande(titulaire, { email: "inconnu.h2@example.com", telephone: "+229 01 53 88 88 88" }, "2027-02-13")),
+  ), "autre-client");
+  verifier("la capture n'est pas consommée : le titulaire l'a encore", (await depot.trouverPreuve(titulaire))?.reference, undefined);
+  const parSonNumero = await depot.creerReservationGroupe(demande(titulaire, { email: "autre.adresse.h2@example.com", telephone: "0153000001" }, "2027-02-13"));
+  verifier("le titulaire, même avec un autre email (son numéro suffit) : la réduction", parSonNumero.reservation.remiseXof, 1200);
+
+  // Revue « client adverse », cas H1 / S2 et S2b : payer avec le Mobile Money d'un ami, puis renvoyer une capture.
+  const koffi = { email: "koffi.h1@example.com", telephone: "+229 01 52 00 00 01" };
+  const premiereCapture = await valideePour(koffi.email, koffi.telephone);
+  const avecLAmi = await raisonDe(
+    depot.creerReservationGroupe(demande(premiereCapture, { email: "ami.h1@example.com", telephone: "+229 01 52 99 99 99" }, "2027-02-14")),
+  );
+  verifier("S2 : la réservation entièrement au nom de l'ami : refusée « autre-client »", avecLAmi, "autre-client");
+  const r1 = await depot.creerReservationGroupe(demande(premiereCapture, { email: koffi.email, telephone: "+229 01 52 99 99 99" }, "2027-02-14"));
+  verifier("S2b : l'email du client, le numéro de l'ami : la réduction, et la réservation garde le contact de la capture", [
+    r1.reservation.remiseXof,
+    r1.reservation.offreDetails?.preuveClient,
+  ], [1200, { email: "koffi.h1@example.com", telephone: "+229 01 52 00 00 01" }]);
+  const deuxiemeCapture = await valideePour("koffi.h1+2@example.com", koffi.telephone);
+  verifier("S2b : une 2e capture avec son propre numéro et un alias : refusée « deja-eue » (le numéro de la 1re capture)", await raisonDe(
+    depot.creerReservationGroupe(demande(deuxiemeCapture, { email: "koffi.h1+2@example.com", telephone: koffi.telephone }, "2027-02-20")),
+  ), "deja-eue");
+  const relue = (await depot.listerReservationsRoadTripGroupe({ avecReduction: true })).find((r: { reference: string }) => r.reference === r1.reservation.reference);
+  verifier("la liste des réductions porte le contact de la capture qui a réduit la réservation", relue?.preuveClient, {
+    email: "koffi.h1@example.com",
+    telephone: "+229 01 52 00 00 01",
+  });
+  // L'envoi lit les réductions du vrai dépôt de démonstration.
+  const decorH1 = fauxDecor();
+  decorH1.deps.depot.listerReservationsRoadTripGroupe = depot.listerReservationsRoadTripGroupe;
+  // L'heure réelle : la réservation vient d'être écrite et attend son paiement (elle retient la réduction 30 minutes).
+  decorH1.deps.maintenant = () => Date.now();
+  const aLEnvoi = (await preuves.recevoirPreuve(formulaire(petitPng, { telephone: "0152000001", email: "KOFFI.H1@example.com" }), { ip: "10.12.0.1" }, decorH1.deps)) as {
+    statut: number;
+    corps: Record<string, any>;
+  };
+  verifier("H1 : une nouvelle capture au numéro et à l'email de la 1re capture : 409 dès l'envoi", [aLEnvoi.statut, aLEnvoi.corps.code], [409, "REDUCTION_DEJA_EUE"]);
+  const parLaCarte = preuves.situationDuClient(
+    { email: "koffi.h1+3@example.com", telephone: "0152000001", creeLe: new Date().toISOString() },
+    await depot.listerReservationsRoadTripGroupe({ avecReduction: true }),
+    [],
+    Date.now(),
+  );
+  verifier("H1 : la carte de l'administration avertit « A déjà eu la réduction », même par le contact de la capture", parLaCarte.dejaEue, r1.reservation.reference);
+
+  // S6 : 31 jours après la décision, le contact d'une capture validée qui n'a pas servi est effacé : elle ne sert plus.
+  const vieilleCapture = await valideePour("vieille.capture@example.com", "+229 01 56 00 00 01");
+  await preuves.effacerContactsPreuves({ depot, maintenant: () => Date.now() + (preuves.JOURS_CONSERVATION_CONTACT + 1) * JOUR });
+  verifier("S6 : après l'effacement du contact (30 jours), la capture validée ne sert plus à personne", await raisonDe(
+    depot.creerReservationGroupe(demande(vieilleCapture, { email: "nouveau.contact@example.com", telephone: "+229 01 56 77 77 77" }, "2027-02-21")),
+  ), "inconnue");
+  const apresMenage = (await depot.listerReservationsRoadTripGroupe({ avecReduction: true })).find((r: { reference: string }) => r.reference === r1.reservation.reference);
+  verifier("le ménage des captures ne touche pas au contact gardé sur la réservation (décision 25 tient encore)", apresMenage?.preuveClient?.telephone, "+229 01 52 00 00 01");
 }
 
 /* ------------------------------------------------------------- Routes */

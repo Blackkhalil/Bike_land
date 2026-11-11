@@ -38,16 +38,16 @@ const dernier = () => envois[envois.length - 1];
 console.log("\n— Une capture attend : l'email à Bike Land");
 {
   // Mardi 10 novembre 2026, 14 h 32 à Londres : 15 h 32 à Cotonou.
-  const parti = await email.envoyerAlertePreuve({ recueLe: "2026-11-10T14:32:00.000Z", telephone: "+229 01 97 11 22 33", email: "awa@example.com", enAttente: 1 });
+  const parti = await email.envoyerAlertePreuve({ recueLe: "2026-11-10T14:32:00.000Z", enAttente: 1 });
   const alerte = dernier();
   verifier("envoyé, à l'adresse des notifications (sans ADMIN_EMAIL : celle du site)", [parti.envoye, alerte.a], [true, site.email]);
   verifier("l'objet", alerte.sujet, "Capture à vérifier : réduction du road trip");
-  verifier("le texte : l'heure de Cotonou, le contact, combien attendent, le lien vers les preuves", lisible(alerte.texte).split("\n"), [
+  // Jamais le contact du client : il resterait dans la messagerie (et dans le journal du serveur sans
+  // fournisseur d'email) après l'effacement promis par la page Données personnelles.
+  verifier("le texte : l'heure de Cotonou, combien attendent, le lien vers les preuves, sans le contact du client", lisible(alerte.texte).split("\n"), [
     "Un client vient d'envoyer une capture pour la réduction du road trip en groupe. Il attend votre réponse par email.",
     "",
     "Reçue : le mardi 10 novembre à 15 h 32",
-    "Téléphone : +229 01 97 11 22 33",
-    "Email : awa@example.com",
     "C'est la seule capture qui attend votre vérification.",
     "",
     "Regardez-la, puis validez ou refusez :",
@@ -58,7 +58,7 @@ console.log("\n— Une capture attend : l'email à Bike Land");
     alerte.html.includes("Vérifier la capture"),
   ], [true, true]);
   process.env.ADMIN_EMAIL = "equipe@example.com";
-  await email.envoyerAlertePreuve({ recueLe: "2026-11-10T07:05:00.000Z", telephone: "0197000000", email: "b@example.com", enAttente: 3 });
+  await email.envoyerAlertePreuve({ recueLe: "2026-11-10T07:05:00.000Z", enAttente: 3 });
   verifier("avec ADMIN_EMAIL : envoyé là, et le nombre de captures qui attendent", [dernier().a, lisible(dernier().texte).includes("3 captures attendent votre vérification, celle-ci comprise.")], [
     "equipe@example.com",
     true,
@@ -106,6 +106,14 @@ const lienSans = "https://site.test/?reserver-en-groupe=road-trip-groupe";
     dejaEue.html.includes("Réserver un road trip"),
   ], [true, false, true, true]);
 
+  await email.envoyerDecisionPreuve({ email: "awa@example.com", statut: "validee", lienReprise: lienSans, sansReduction: true });
+  const aZero = dernier();
+  verifier("validée alors que la réduction est réglée à 0 % : ni pourcentage, ni promesse, un lien pour réserver au prix normal", [
+    aZero.sujet,
+    lisible(aZero.texte).includes("La réduction des abonnés n'est pas proposée en ce moment : vos road trips en groupe se réservent au prix normal."),
+    /\d+ %/.test(aZero.texte),
+    aZero.html.includes("Réserver un road trip"),
+  ], ["Votre capture pour la réduction du road trip", true, false, true]);
   await email.envoyerDecisionPreuve({ email: "awa@example.com", statut: "refusee", lienReprise: lienSans, reduction: "4 %", motif: "On ne voit pas « Abonné(e) »." });
   const refus = dernier();
   verifier("refusée : inchangée, le motif et ce que le client peut faire", [

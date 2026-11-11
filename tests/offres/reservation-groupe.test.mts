@@ -244,13 +244,16 @@ console.log("\n— Devis : la réduction seulement avec une preuve validée et l
   const payee = { reference: "BL-PAYEE", statut: "CONFIRMEE", creeLe: new Date(MAINTENANT - 60 * MINUTE).toISOString() };
   const expiree = { reference: "BL-EXPIRE", statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 45 * MINUTE).toISOString() };
   const enCours = { reference: "BL-ENCOURS", statut: "EN_ATTENTE_PAIEMENT", creeLe: new Date(MAINTENANT - 10 * MINUTE).toISOString() };
+  // Le contact donné avec chaque capture (décision 25) : une capture validée sans contact ne sert plus.
+  const contact = { email: "awa.test@example.com", telephone: "+229 01 97 00 00 00" };
   const preuves = {
-    ok: { id: "ok", statut: "validee" },
-    attente: { id: "attente", statut: "en_attente" },
-    refusee: { id: "refusee", statut: "refusee" },
-    servie: { id: "servie", statut: "validee", reference: "BL-PAYEE" },
-    liberee: { id: "liberee", statut: "validee", reference: "BL-EXPIRE" },
-    retenue: { id: "retenue", statut: "validee", reference: "BL-ENCOURS" },
+    ok: { id: "ok", statut: "validee", ...contact },
+    attente: { id: "attente", statut: "en_attente", ...contact },
+    refusee: { id: "refusee", statut: "refusee", ...contact },
+    servie: { id: "servie", statut: "validee", reference: "BL-PAYEE", ...contact },
+    liberee: { id: "liberee", statut: "validee", reference: "BL-EXPIRE", ...contact },
+    retenue: { id: "retenue", statut: "validee", reference: "BL-ENCOURS", ...contact },
+    effacee: { id: "effacee", statut: "validee" },
   };
   const options = { preuves, reservationsConnues: [payee, expiree, enCours] };
   const cas = async (preuveId: string) => {
@@ -264,6 +267,7 @@ console.log("\n— Devis : la réduction seulement avec une preuve validée et l
   verifier("preuve déjà servie à un groupe payé : pas de réduction", await cas("servie"), ["deja-utilisee", 31250, null]);
   verifier("preuve d'une demande en attente depuis 10 min : retenue", await cas("retenue"), ["deja-utilisee", 31250, null]);
   verifier("preuve d'une demande jamais payée, expirée : de nouveau libre", await cas("liberee"), ["validee", 30050, 31250]);
+  verifier("validée, mais son contact effacé (30 jours après la décision) : ne sert plus, comme inconnue", await cas("effacee"), ["inconnue", 31250, null]);
   const bfa = await devis({ ...bikeForAll(), saisie: { ...bikeForAll().saisie, preuveId: "ok" } }, options);
   verifier("Bike for All : une preuve citée ne change rien", [bfa.corps.issue.resultat.totalXof, "preuve" in bfa.corps], [11250, false]);
 }
@@ -293,8 +297,9 @@ console.log("\n— Décision 25 : la réduction des abonnés, une seule fois par
   verifier("un autre client a eu la réduction : rien ne change", await auDevis([dejaReduit({})]), ["validee", 30050, 31250]);
 
   // En réservant : le contact de la réservation compte aussi, avant tout paiement.
+  // (La réservation garde le numéro de la capture : c'est bien sa capture.)
   const parLaReservation = await reserver(
-    reservation(roadTrip({ preuveId: "pr" }), 30050, { client: { ...client, email: "nouvelle@example.com", telephone: "+229 01 61 61 61 61" } }),
+    reservation(roadTrip({ preuveId: "pr" }), 30050, { client: { ...client, email: "nouvelle@example.com", telephone: "+229 01 50 50 50 50" } }),
     { preuves: { pr: { ...capture, email: "autre.capture@example.com", telephone: "0150505050" } }, reductions: [dejaReduit({ email: "nouvelle@example.com" })] },
   );
   verifier("en réservant, l'email de la réservation a déjà eu la réduction : 409 avant tout paiement, avec la phrase", [
@@ -306,6 +311,31 @@ console.log("\n— Décision 25 : la réduction des abonnés, une seule fois par
     parLaReservation.etat.creees.length,
     parLaReservation.etat.encaissements.length,
   ], [409, "REGLAGES", "Vous avez déjà eu la réduction de 4 % : elle vaut une seule fois par client.", "deja-eue", 31250, 0, 0]);
+
+  // Le lien d'une capture validée, transféré à quelqu'un d'autre : la réservation n'a ni le numéro ni
+  // l'email de la capture. La réduction vaut pour la personne qui l'a envoyée.
+  const lienTransfere = await reserver(
+    reservation(roadTrip({ preuveId: "pr" }), 30050, { client: { ...client, email: "inconnu@example.com", telephone: "+229 01 53 88 88 88" } }),
+    { preuves: { pr: capture } },
+  );
+  verifier("lien transféré : 409 avant tout paiement, la capture n'est pas à ce client, rien d'écrit", [
+    lienTransfere.statut,
+    lienTransfere.corps.code,
+    espaces(lienTransfere.corps.message),
+    lienTransfere.corps.devis?.preuve,
+    lienTransfere.corps.devis?.issue?.resultat?.totalXof,
+    lienTransfere.etat.creees.length,
+    lienTransfere.etat.encaissements.length,
+  ], [409, "REGLAGES", "Cette capture a été envoyée avec un autre numéro et un autre email : la réduction vaut pour la personne qui l'a envoyée.", "autre-client", 31250, 0, 0]);
+  const memeNumero = await reserver(
+    reservation(roadTrip({ preuveId: "pr" }), 30050, { client: { ...client, email: "autre.adresse@example.com", telephone: "0197000000" } }),
+    { preuves: { pr: capture } },
+  );
+  const memeEmail = await reserver(
+    reservation(roadTrip({ preuveId: "pr" }), 30050, { client: { ...client, email: " AWA.TEST@example.com", telephone: "0161616161" } }),
+    { preuves: { pr: capture } },
+  );
+  verifier("le même numéro, ou le même email que la capture : c'est la sienne, la réduction compte", [memeNumero.statut, memeEmail.statut], [201, 201]);
   const auPrixNormal = await reserver(reservation(roadTrip({ preuveId: "pr" }), 31250), { preuves: { pr: capture }, reductions: [dejaReduit({ telephone: "0197000000" })] });
   const ecrite = auPrixNormal.etat.creees[0] as Record<string, any>;
   verifier("confirmé au prix normal : écrite sans la capture (elle n'est pas consommée)", [auPrixNormal.statut, ecrite.totalXof, "preuveId" in ecrite, ecrite.details.reductionXof], [201, 31250, false, 0]);
@@ -500,17 +530,19 @@ console.log("\n— Réservation : succès, au bon montant et au bon canal");
   verifier("triche : prix en ligne plein (31 250 F), sans réduction, canal en ligne", [triche.statut, ecriteTriche.totalXof, ecriteTriche.details.reductionXof, ecriteTriche.details.canal], [201, 31250, 0, "en-ligne"]);
   verifier("triche : encaissé 31 250 F", (triche.etat.encaissements[0] as Record<string, unknown>).montantXof, 31250);
 
-  const avecPreuve = await reserver(reservation(roadTrip({ preuveId: "ok" }), 30050), { preuves: { ok: { id: "ok", statut: "validee" } } });
+  const avecPreuve = await reserver(reservation(roadTrip({ preuveId: "ok" }), 30050), {
+    preuves: { ok: { id: "ok", statut: "validee", email: client.email, telephone: client.telephone } },
+  });
   const ecritePreuve = avecPreuve.etat.creees[0] as Record<string, any>;
   verifier("road trip avec preuve validée : 30 050 F, la preuve consommée avec la réservation", [avecPreuve.statut, ecritePreuve.totalXof, ecritePreuve.preuveId, ecritePreuve.details.reductionXof], [201, 30050, "ok", 1200]);
 
-  const preuves = { ok: { id: "ok", statut: "validee" } as Record<string, unknown> };
+  const preuves = { ok: { id: "ok", statut: "validee", email: client.email, telephone: client.telephone } as Record<string, unknown> };
   const preuvePrise = await reserver(reservation(roadTrip({ preuveId: "ok" }), 30050), {
     preuves,
     reservationsConnues: [{ reference: "BL-AUTRE", statut: "CONFIRMEE", creeLe: new Date(MAINTENANT).toISOString() }],
     creer: () => {
       // Un autre groupe vient de la consommer, à la même seconde.
-      preuves.ok = { id: "ok", statut: "validee", reference: "BL-AUTRE" };
+      preuves.ok = { id: "ok", statut: "validee", reference: "BL-AUTRE", email: client.email, telephone: client.telephone };
       const e = new Error("Cette preuve de réduction a déjà servi pour une autre réservation.");
       e.name = "PreuveReductionInutilisableError";
       throw e;

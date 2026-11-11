@@ -9,7 +9,7 @@ import { depot, type ReservationRoadTripClient } from "@/lib/db";
 import { formatDateAvecJour, formatHeureAuBenin } from "@/lib/format";
 import { prenomDeAuteur } from "@/lib/journal";
 import { formatPourcentage } from "@/lib/offres";
-import { situationDuClient } from "@/lib/offres-groupe/preuves";
+import { departsALire, situationDuClient } from "@/lib/offres-groupe/preuves";
 import { lireReglagesOffres } from "@/lib/reglages-offres";
 import type { PreuveReduction } from "@/lib/types";
 
@@ -33,20 +33,20 @@ function comptesEnClair(): { abonnement: string; story: string } {
 
 /**
  * Les road trips en groupe qui disent la situation des clients des captures
- * à vérifier : ceux qui ont eu la réduction, et ceux au prix normal faits
- * depuis la plus ancienne capture. Une lecture qui échoue ne fait pas tomber
- * la page : les captures restent à décider, sans ces rappels.
+ * à vérifier : ceux qui ont eu la réduction, et ceux au prix normal qui
+ * partent depuis le jour de la plus ancienne capture (faits après elle, ou
+ * encore à venir). Une lecture qui échoue ne fait pas tomber la page : les
+ * captures restent à décider, sans ces rappels.
  */
-async function reservationsDesClients(aVerifier: PreuveReduction[]): Promise<{
+async function reservationsDesClients(aVerifier: PreuveReduction[], maintenant: number): Promise<{
   avecReduction: ReservationRoadTripClient[];
   auPrixNormal: ReservationRoadTripClient[];
 }> {
   if (aVerifier.length === 0) return { avecReduction: [], auPrixNormal: [] };
-  const plusAncienne = aVerifier.reduce((min, preuve) => (preuve.creeLe < min ? preuve.creeLe : min), aVerifier[0].creeLe);
   try {
     const [avecReduction, auPrixNormal] = await Promise.all([
       depot.listerReservationsRoadTripGroupe({ avecReduction: true }),
-      depot.listerReservationsRoadTripGroupe({ avecReduction: false, depuis: plusAncienne }),
+      depot.listerReservationsRoadTripGroupe({ avecReduction: false, departDepuis: departsALire(aVerifier, maintenant) }),
     ]);
     return { avecReduction, auPrixNormal };
   } catch (erreur) {
@@ -61,11 +61,9 @@ async function reservationsDesClients(aVerifier: PreuveReduction[]): Promise<{
  * déjà eue (décision 25), une réservation au prix normal faite pendant
  * l'attente (décision 24).
  */
-function cartesAVerifier(
-  aVerifier: PreuveReduction[],
-  reservations: { avecReduction: ReservationRoadTripClient[]; auPrixNormal: ReservationRoadTripClient[] },
-): PreuveAVerifier[] {
+async function cartesAVerifier(aVerifier: PreuveReduction[]): Promise<PreuveAVerifier[]> {
   const maintenant = Date.now();
+  const reservations = await reservationsDesClients(aVerifier, maintenant);
   return aVerifier.map((preuve) => {
     const situation = situationDuClient(preuve, reservations.avecReduction, reservations.auPrixNormal, maintenant);
     return {
@@ -99,7 +97,7 @@ export default async function PagePreuves() {
     lireReglagesOffres().catch(() => null),
     depot.listerJournal({ type: "preuve-email-non-envoye", limite: 200 }).catch(() => []),
   ]);
-  const preuves = cartesAVerifier(aVerifier, await reservationsDesClients(aVerifier));
+  const preuves = await cartesAVerifier(aVerifier);
   const sansEmail = new Set(emailsNonPartis.map((evenement) => evenement.details.preuveId).filter((id): id is string => typeof id === "string"));
   const decidees = [...validees, ...refusees]
     .sort((a, b) => (b.decideLe ?? b.creeLe).localeCompare(a.decideLe ?? a.creeLe))

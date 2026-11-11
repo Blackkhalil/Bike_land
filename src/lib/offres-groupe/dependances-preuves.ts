@@ -7,6 +7,8 @@
  * besoin ni de sharp ni du client de l'agent IA.
  */
 
+import { after } from "next/server";
+
 import { analyserCaptureReduction } from "@/lib/agent-ia/capture";
 import { agentIaActif } from "@/lib/agent-ia/client";
 import { depot } from "@/lib/db";
@@ -30,6 +32,16 @@ export function dependancesPreuves(): DependancesPreuves {
     maintenant: () => Date.now(),
     emailDecision: envoyerDecisionPreuve,
     alerterBikeLand: envoyerAlertePreuve,
+    // L'email à Bike Land part après la réponse au client (dans la limite du
+    // maxDuration de la route) : un Gmail lent ne retient pas la discussion.
+    // Hors d'une requête (un test qui appelle la route), il part tout de suite.
+    differer: (tache) => {
+      try {
+        after(tache);
+      } catch {
+        void tache();
+      }
+    },
     urlSite: urlDuSite,
   };
 }

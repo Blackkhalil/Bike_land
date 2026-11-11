@@ -206,11 +206,13 @@ export interface ReponseDevis {
   montantADebiterXof?: number;
   /**
    * Road trip avec `preuveId` : où en est la preuve (« inconnue » si
-   * l'identifiant ne correspond à rien ; « deja-eue » si son client a déjà
-   * eu la réduction, décision 25). La réduction n'est comptée que pour
+   * l'identifiant ne correspond à rien, ou si son contact a été effacé ;
+   * « deja-eue » si son client a déjà eu la réduction, décision 25 ;
+   * « autre-client », au moment de réserver, si la réservation n'a ni le
+   * numéro ni l'email de la capture). La réduction n'est comptée que pour
    * « validee ».
    */
-  preuve?: StatutPreuve | "inconnue" | "deja-utilisee" | "deja-eue";
+  preuve?: StatutPreuve | "inconnue" | "deja-utilisee" | "deja-eue" | "autre-client";
 }
 
 /** Les refus qui ne sont pas un refus du moteur. */
@@ -222,7 +224,8 @@ export type CodeErreurOffresGroupe =
   | "EN_ATTENTE" // une demande du même client attend déjà son paiement : 409
   | "PAIEMENT" // le paiement n'a pas pu être lancé : 502 (503 sans moyen de payer configuré)
   | "SERVEUR" // panne imprévue (base injoignable…) : 500, réessayer un peu plus tard (ajout du lot 5b)
-  | "REDUCTION_DEJA_EUE"; // capture refusée d'emblée, rien d'enregistré : ce client a déjà eu la réduction (409, décision 25)
+  | "REDUCTION_DEJA_EUE" // capture refusée d'emblée, rien d'enregistré : ce client a déjà eu la réduction (409, décision 25)
+  | "SANS_REDUCTION"; // capture refusée d'emblée, rien d'enregistré : la réduction est réglée à 0 % (409)
 
 export interface ReponseErreur {
   ok: false;

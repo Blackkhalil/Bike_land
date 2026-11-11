@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { ArticleLegal, PageLegale } from "@/components/PageLegale";
+import { JOURS_CONSERVATION_CONTACT } from "@/lib/offres-groupe/preuves";
 import { agentIaActif, interrupteurOffresGroupeOuvert } from "@/lib/offres-groupe/vitrine";
 import { site } from "@/lib/site";
 import { metadonneesPage } from "@/lib/seo";
@@ -40,12 +41,9 @@ export async function generateMetadata(): Promise<Metadata> {
  */
 const CONSERVATION_ANTHROPIC_JOURS = 30;
 const CONSERVATION_CAPTURE_JOURS = 30;
-/**
- * Le numéro et l'email donnés avec une capture : effacés 30 jours après la
- * décision, ou dès qu'elle a servi (src/lib/offres-groupe/preuves.ts,
- * JOURS_CONSERVATION_CONTACT ; le test des preuves vérifie qu'ils concordent).
- */
-const CONSERVATION_CONTACT_CAPTURE_JOURS = 30;
+// Le numéro et l'email donnés avec une capture : la durée vient du code qui
+// les efface (JOURS_CONSERVATION_CONTACT, src/lib/offres-groupe/preuves.ts),
+// une seule source pour la promesse et pour l'effacement.
 
 export default async function PageDonneesPersonnelles() {
   const { groupe, iaActive } = await quoiCiter();
@@ -133,10 +131,10 @@ export default async function PageDonneesPersonnelles() {
               ) : (
                 "."
               )}{" "}
-              Le numéro et l&apos;email envoyés avec elle sont effacés {CONSERVATION_CONTACT_CAPTURE_JOURS}&nbsp;jours
-              après la décision, ou dès que la capture a servi à une réservation, qui garde ses propres
-              coordonnées. Ces coordonnées de réservation nous servent aussi à n&apos;accorder la réduction
-              qu&apos;une fois par client.
+              Le numéro et l&apos;email envoyés avec elle sont effacés {JOURS_CONSERVATION_CONTACT}&nbsp;jours
+              après la décision. Si la capture a servi à une réservation, ils restent avec cette réservation,
+              comme ses propres coordonnées : ils nous servent à n&apos;accorder la réduction qu&apos;une fois
+              par client.
             </li>
           )}
         </ul>

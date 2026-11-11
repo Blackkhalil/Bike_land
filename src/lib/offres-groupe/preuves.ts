@@ -6,10 +6,12 @@
  * vérifiée : par l'agent IA quand il est activé, sinon à la main dans
  * l'administration, qui répond au client par email. Bike Land reçoit un
  * email à chaque capture qui attend (décision 24). La réduction ne se donne
- * qu'une fois par client (décision 25). Le fichier est effacé dès la
- * décision, et 30 jours au plus tard (tâche quotidienne) ; le contact du
- * client 30 jours après la décision, ou dès que la capture a servi. Jamais
- * de réduction par défaut.
+ * qu'une fois par client (décision 25), et une capture ne sert qu'à la
+ * personne qui l'a envoyée (son numéro ou son email sur la réservation). Le
+ * fichier est effacé dès la décision, et 30 jours au plus tard (tâche
+ * quotidienne) ; le contact du client 30 jours après la décision : la
+ * capture ne sert plus ensuite, et celle qui a servi l'a laissé sur la
+ * réservation qu'elle a réduite. Jamais de réduction par défaut.
  *
  * Comme le service des réservations, ces fonctions reçoivent leurs
  * dépendances : les routes passent les vraies, les tests des faux.
@@ -19,9 +21,14 @@ import { z } from "zod";
 
 import type { LectureReglagesOffres } from "@/data/reglages-offres";
 import type { ResultatCapture } from "@/lib/agent-ia/capture";
+import { dateAuBenin, type DateISO } from "@/lib/dates";
 import {
+  emailDuClient,
+  identiteVide,
   memeClient,
+  numeroDuClient,
   reductionDejaEue,
+  reductionDejaEueAuMemeContact,
   reservationRetenue,
   usageDUnePreuveValidee,
   type Depot,
@@ -45,7 +52,9 @@ import type { Reponse } from "./service";
 import type { StockagePreuves } from "./stockage-preuves";
 import {
   MESSAGE_CAPTURE_PAS_ENCORE,
+  MESSAGE_REDUCTION_INACTIVE,
   messageCaptureRecue,
+  messageCaptureRefusee,
   PHRASE_CAPTURE_DEJA_UTILISEE,
   phraseReductionDejaEue,
 } from "./textes-chat";
@@ -54,14 +63,26 @@ import {
 
 /** Captures acceptées par heure depuis une même adresse. */
 export const PREUVES_PAR_HEURE_ADRESSE = 10;
+/** Captures acceptées par jour depuis une même adresse : 10 par heure, mais pas toute la journée. */
+export const PREUVES_PAR_JOUR_ADRESSE = 20;
+/**
+ * Les emails « Capture à vérifier » envoyés à Bike Land par heure, au plus
+ * (décision 24). Au-delà, l'équipe est déjà prévenue plusieurs fois : les
+ * captures suivantes attendent sur la page des preuves et le tableau de
+ * bord, sans email de plus (quelqu'un qui enverrait des images à la chaîne
+ * ne remplit pas la boîte de Bike Land ni son quota d'envoi).
+ */
+export const ALERTES_PAR_HEURE = 10;
 /** Captures acceptées par jour pour un même numéro. */
 export const PREUVES_PAR_JOUR_NUMERO = 5;
 /** Captures acceptées par jour pour un même email. */
 export const PREUVES_PAR_JOUR_EMAIL = 5;
 /**
- * La même capture (même numéro, même poids une fois réencodée) renvoyée
- * dans ce délai n'est pas enregistrée une seconde fois : un envoi interrompu
- * (page rechargée, réseau coupé) et repris ne fait pas de doublon.
+ * La même capture (même numéro, même email, la même image une fois
+ * réencodée, octet pour octet) renvoyée dans ce délai n'est pas enregistrée
+ * une seconde fois : un envoi interrompu (page rechargée, réseau coupé) et
+ * repris ne fait pas de doublon. Une autre image, ou la même avec un autre
+ * email (une faute corrigée), fait une nouvelle capture.
  */
 export const DOUBLON_MINUTES = 10;
 /** Le plus long côté d'une capture réencodée, en pixels : assez pour lire un profil. */
@@ -78,8 +99,10 @@ export const PIXELS_MAX = 40_000_000;
 export const JOURS_CONSERVATION_MAX = 30;
 /**
  * L'email et le téléphone donnés avec une capture sont effacés tant de
- * jours après la décision, ou dès que la capture a servi à une réservation
- * (la réservation garde son propre contact).
+ * jours après la décision. Une capture validée qui n'a pas servi ne peut
+ * plus servir ensuite (on ne sait plus à qui elle est) ; celle qui a servi a
+ * laissé son contact sur la réservation qu'elle a réduite (décision 25). La
+ * page Données personnelles lit cette durée ici.
  */
 export const JOURS_CONSERVATION_CONTACT = 30;
 /**
@@ -144,12 +167,14 @@ export async function reencoderCapture(octets: Uint8Array): Promise<CaptureReenc
 
 /* ------------------------------------------------------- Dépendances */
 
-/** Ce que dit l'email de Bike Land quand une capture attend sa vérification (décision 24). */
+/**
+ * Ce que dit l'email de Bike Land quand une capture attend sa vérification
+ * (décision 24). Jamais le contact du client : il ne resterait pas dans la
+ * messagerie après l'effacement promis ; la page des preuves le montre.
+ */
 export interface AlerteCapture {
   /** L'instant où la capture est arrivée (ISO). */
   recueLe: string;
-  telephone: string;
-  email: string;
   /** Les captures qui attendent d'être vérifiées, celle-ci comprise. */
   enAttente: number;
 }
@@ -191,9 +216,17 @@ export interface DependancesPreuves {
     reservationPrixNormal?: string;
     /** Validée, alors que ce client a déjà eu la réduction sur cette réservation : une fois par client (décision 25). */
     reductionDejaEue?: string;
+    /** Validée, alors que la réduction est réglée à 0 % : rien à appliquer, ni pourcentage ni lien de reprise. */
+    sansReduction?: boolean;
   }) => Promise<{ envoye: boolean }>;
   /** Prévient Bike Land qu'une capture attend sa vérification (décision 24). */
   alerterBikeLand: (alerte: AlerteCapture) => Promise<{ envoye: boolean }>;
+  /**
+   * Lance une tâche après la réponse au client (`after` de next/server dans
+   * la route) : l'email à Bike Land ne retarde jamais l'envoi de la capture.
+   * Absente (tests), la tâche est attendue avant de répondre.
+   */
+  differer?: (tache: () => Promise<void>) => void;
   /** L'adresse du site (sur un aperçu, celle de la branche). */
   urlSite: () => string;
 }
@@ -204,14 +237,25 @@ function erreur(statut: number, code: ReponseErreur["code"], message: string): R
   return { statut, corps: { ok: false, code, message } };
 }
 
-/** « 4 % », lu dans les réglages ; rien s'ils ne se lisent pas. */
-async function tauxDeReduction(deps: Pick<DependancesPreuves, "lireReglages">): Promise<string | undefined> {
+/**
+ * Le taux de la réduction lu dans les réglages : « 4 % », et `inactive`
+ * quand il est réglé à 0 % (l'offre aux abonnés est arrêtée). Rien s'ils
+ * ne se lisent pas.
+ */
+async function lireTaux(deps: Pick<DependancesPreuves, "lireReglages">): Promise<{ texte?: string; inactive: boolean }> {
   try {
     const lecture = await deps.lireReglages();
-    return lecture.source === "illisible" ? undefined : formatPourcentage(lecture.reglages.roadTrip.reduction);
+    if (lecture.source === "illisible") return { inactive: false };
+    const taux = lecture.reglages.roadTrip.reduction;
+    return { texte: formatPourcentage(taux), inactive: taux <= 0 };
   } catch {
-    return undefined;
+    return { inactive: false };
   }
+}
+
+/** « 4 % », lu dans les réglages ; rien s'ils ne se lisent pas. */
+async function tauxDeReduction(deps: Pick<DependancesPreuves, "lireReglages">): Promise<string | undefined> {
+  return (await lireTaux(deps)).texte;
 }
 
 /**
@@ -220,13 +264,17 @@ async function tauxDeReduction(deps: Pick<DependancesPreuves, "lireReglages">): 
  * (jamais dans la réponse publique du statut). `suivi` : le client demande
  * où en est une capture déjà envoyée (« Est-ce que c'est validé ? »).
  */
-export function messagePreuve(statut: EtatPreuveClient, reduction?: string, options: { email?: string; suivi?: boolean } = {}): string {
+export function messagePreuve(
+  statut: EtatPreuveClient,
+  reduction?: string,
+  options: { email?: string; suivi?: boolean; motif?: string } = {},
+): string {
   const laReduction = reduction ? `la réduction de ${reduction}` : "la réduction";
   switch (statut) {
     case "validee":
       return `Votre capture est validée : ${laReduction} s'applique à votre road trip en groupe.`;
     case "refusee":
-      return "Nous n'avons pas pu valider cette capture. Vous pouvez en envoyer une autre, ou réserver sans la réduction.";
+      return messageCaptureRefusee(options.motif);
     case "deja-utilisee":
       return PHRASE_CAPTURE_DEJA_UTILISEE;
     case "deja-eue":
@@ -245,6 +293,31 @@ export function lienDeReprise(urlSite: string, preuveId?: string): string {
 
 /** Les huit derniers chiffres d'un numéro : « +229 01 97… » et « 0197… » se reconnaissent. */
 const finDeNumero = (telephone: string) => telephone.replace(/[^0-9]/g, "").slice(-8);
+
+/**
+ * L'adresse d'une boîte aux lettres, pour la limite de captures par jour et
+ * par email : en minuscules, sans la partie « +… » avant l'arobase (une même
+ * boîte), et, pour Gmail, sans les points (« a.y.o@gmail.com » arrive chez
+ * « ayo@gmail.com »). Ne sert qu'à la limite de débit : la règle « une
+ * réduction par client » garde l'email tel que la décision 25 le définit.
+ */
+export function boiteAuxLettres(email: string): string {
+  const adresse = emailDuClient(email);
+  const arobase = adresse.lastIndexOf("@");
+  if (arobase <= 0) return adresse;
+  let local = adresse.slice(0, arobase).split("+")[0] ?? "";
+  let domaine = adresse.slice(arobase + 1);
+  if (domaine === "googlemail.com") domaine = "gmail.com";
+  if (domaine === "gmail.com") local = local.replace(/\./g, "");
+  return `${local}@${domaine}`;
+}
+
+/** Deux images identiques, octet pour octet. */
+function memesOctets(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  for (let i = 0; i < a.byteLength; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 /** Le compteur d'une limite de débit ; injoignable, il ne bloque personne. */
 async function compter(deps: Pick<DependancesPreuves, "depot">, cle: string, fenetreSecondes: number): Promise<number> {
@@ -282,10 +355,23 @@ export interface SituationClient {
 }
 
 /**
+ * Le premier jour de départ à lire pour la situation des clients de ces
+ * captures : le jour où la plus ancienne est arrivée. Une réservation faite
+ * après une capture part ce jour-là ou plus tard ; une réservation à venir
+ * aussi.
+ */
+export function departsALire(captures: readonly Pick<PreuveReduction, "creeLe">[], maintenant: number): DateISO {
+  const plusAncienne = captures.reduce((min, preuve) => (preuve.creeLe < min ? preuve.creeLe : min), new Date(maintenant).toISOString());
+  return dateAuBenin(plusAncienne);
+}
+
+/**
  * La situation du client d'une capture, d'après les road trips en groupe :
  * ceux qui ont eu la réduction (`avecReduction`) et ceux au prix normal
  * (`auPrixNormal`). Pour l'écran des preuves, avant de décider, et pour
- * l'email qui suit une validation.
+ * l'email qui suit une validation. Une réservation au prix normal compte
+ * quand elle a été faite après la capture, ou quand son départ est encore à
+ * venir, même réservée un peu avant : elle garde ce prix (décision 24).
  */
 export function situationDuClient(
   preuve: Pick<PreuveReduction, "email" | "telephone" | "creeLe">,
@@ -294,14 +380,17 @@ export function situationDuClient(
   maintenant: number,
 ): SituationClient {
   const identite = { email: preuve.email, telephone: preuve.telephone };
-  const deja = reductionDejaEue(avecReduction, [identite], maintenant);
-  const normale = auPrixNormal.findLast(
-    (reservation) =>
-      reservation.reductionXof === 0 &&
-      reservation.creeLe >= preuve.creeLe &&
-      reservationRetenue(reservation, maintenant) &&
-      memeClient(identite, reservation),
-  );
+  const aujourdhui = dateAuBenin(new Date(maintenant));
+  const deja = identiteVide(identite) ? null : reductionDejaEue(avecReduction, [identite], maintenant);
+  const normale = identiteVide(identite)
+    ? undefined
+    : auPrixNormal.findLast(
+        (reservation) =>
+          reservation.reductionXof === 0 &&
+          (reservation.creeLe >= preuve.creeLe || (reservation.date !== undefined && reservation.date >= aujourdhui)) &&
+          reservationRetenue(reservation, maintenant) &&
+          memeClient(identite, reservation),
+      );
   return {
     ...(deja ? { dejaEue: deja.reference } : {}),
     ...(normale ? { prixNormal: { reference: normale.reference, payee: normale.statut !== "EN_ATTENTE_PAIEMENT" } } : {}),
@@ -314,11 +403,12 @@ export function situationDuClient(
  * POST preuves : la capture (champ « capture ») et le téléphone et l'email du
  * client. Réponse 201 avec le statut : « en_attente » tant que personne n'a
  * vérifié (sans agent IA, toujours), sinon la décision de l'agent. Une
- * capture qui attend sa vérification prévient Bike Land par email
- * (décision 24). Le client qui a déjà eu la réduction l'apprend tout de
- * suite (409 REDUCTION_DEJA_EUE), rien n'est gardé ni envoyé (décision 25).
- * La même capture renvoyée juste après (envoi interrompu) rend la première
- * (200), sans doublon.
+ * capture qui attend sa vérification prévient Bike Land par email, après la
+ * réponse au client (décision 24). Le client dont le numéro et l'email ont
+ * déjà eu la réduction ensemble l'apprend tout de suite (409
+ * REDUCTION_DEJA_EUE), rien n'est gardé ni envoyé (décision 25). La même
+ * capture renvoyée juste après (envoi interrompu) rend la première (200),
+ * sans doublon. Réduction réglée à 0 % : refusée (409 SANS_REDUCTION).
  */
 export async function recevoirPreuve(
   formulaire: FormData | null,
@@ -336,13 +426,25 @@ export async function recevoirPreuve(
   if (!champs.success) {
     return erreur(400, "SAISIE", "Vérifiez votre numéro Mobile Money (8 chiffres au moins) et votre email, puis réessayez.");
   }
+  // L'offre aux abonnés arrêtée (0 % dans les réglages), par exemple depuis
+  // une carte ouverte avant le changement : rien n'est gardé, personne n'est
+  // dérangé.
+  const taux = await lireTaux(deps);
+  if (taux.inactive) return erreur(409, "SANS_REDUCTION", MESSAGE_REDUCTION_INACTIVE);
 
-  // Limite de débit : par adresse, par numéro et par email.
+  // Limite de débit : par adresse (par heure et par jour), par numéro et par
+  // boîte aux lettres (un alias Gmail compte pour la même boîte).
   const parAdresse = await compter(deps, `preuve:${appelant.ip}`, 60 * 60);
+  const parAdresseJour = await compter(deps, `preuve-jour:${appelant.ip}`, 24 * 60 * 60);
   const numero = finDeNumero(champs.data.telephone);
   const parNumero = numero ? await compter(deps, `preuve-numero:${numero}`, 24 * 60 * 60) : 0;
-  const parEmail = await compter(deps, `preuve-email:${champs.data.email.toLowerCase()}`, 24 * 60 * 60);
-  if (parAdresse > PREUVES_PAR_HEURE_ADRESSE || parNumero > PREUVES_PAR_JOUR_NUMERO || parEmail > PREUVES_PAR_JOUR_EMAIL) {
+  const parEmail = await compter(deps, `preuve-email:${boiteAuxLettres(champs.data.email)}`, 24 * 60 * 60);
+  if (
+    parAdresse > PREUVES_PAR_HEURE_ADRESSE ||
+    parAdresseJour > PREUVES_PAR_JOUR_ADRESSE ||
+    parNumero > PREUVES_PAR_JOUR_NUMERO ||
+    parEmail > PREUVES_PAR_JOUR_EMAIL
+  ) {
     return erreur(429, "TROP_DE_DEMANDES", "Trop de captures envoyées. Réessayez plus tard, ou écrivez-nous sur WhatsApp.");
   }
   const enAttente = await deps.depot.listerPreuves({ statut: "en_attente", limite: PREUVES_EN_ATTENTE_MAX });
@@ -379,36 +481,49 @@ export async function recevoirPreuve(
     return erreur(413, "SAISIE", "Cette image est trop chargée : envoyez une simple capture d'écran de votre profil.");
   }
 
-  const taux = await tauxDeReduction(deps);
   const maintenant = deps.maintenant();
 
-  // Décision 25 : ce numéro ou cet email a déjà eu la réduction. Le client
-  // l'apprend tout de suite et continue sans elle ; rien n'est gardé, personne
-  // n'est prévenu. Les réservations illisibles n'empêchent pas l'envoi : la
-  // réservation refait ce contrôle, et c'est elle qui fait foi.
+  // Décision 25 : ce numéro et cet email ont déjà eu la réduction, ensemble,
+  // sur une même réservation. Le client l'apprend tout de suite et continue
+  // sans elle ; rien n'est gardé, personne n'est prévenu. Avec un seul des
+  // deux, la capture est reçue : le refus immédiat ne dirait rien d'un tiers
+  // dont on n'aurait que le numéro ou l'email. L'écran des preuves, le devis
+  // et la réservation appliquent la règle ; la réservation fait foi. Les
+  // réservations illisibles n'empêchent pas l'envoi.
   try {
     const reductions = await deps.depot.listerReservationsRoadTripGroupe({ avecReduction: true });
-    if (reductionDejaEue(reductions, [champs.data], maintenant)) {
-      return erreur(409, "REDUCTION_DEJA_EUE", phraseReductionDejaEue(taux));
+    if (reductionDejaEueAuMemeContact(reductions, champs.data, maintenant)) {
+      return erreur(409, "REDUCTION_DEJA_EUE", phraseReductionDejaEue(taux.texte));
     }
   } catch (e) {
     console.error("[offres-groupe] réservations illisibles : capture reçue sans le contrôle « une réduction par client »", e);
   }
 
-  // La même capture vient d'arriver de ce numéro (un envoi interrompu, puis
-  // repris) : la première suffit, sans doublon ni second email à Bike Land.
-  const doublon = enAttente.find(
+  // La même capture vient d'arriver de ce numéro, avec cet email (un envoi
+  // interrompu, puis repris) : la première suffit, sans doublon ni second
+  // email à Bike Land. L'image se compare octet pour octet à celle gardée.
+  const email = emailDuClient(champs.data.email);
+  const candidates = enAttente.filter(
     (preuve) =>
       numero !== "" &&
       finDeNumero(preuve.telephone ?? "") === numero &&
+      emailDuClient(preuve.email) === email &&
       preuve.tailleOctets === capture.octets.byteLength &&
       maintenant - Date.parse(preuve.creeLe) < DOUBLON_MINUTES * MINUTE_MS,
   );
-  if (doublon) {
-    return {
-      statut: 200,
-      corps: { ok: true, preuveId: doublon.id, statut: "en_attente", message: messagePreuve("en_attente", taux, { email: champs.data.email }) },
-    };
+  for (const candidate of candidates) {
+    const gardee = await deps.stockage.lire(candidate).catch(() => null);
+    if (gardee && memesOctets(gardee, capture.octets)) {
+      return {
+        statut: 200,
+        corps: {
+          ok: true,
+          preuveId: candidate.id,
+          statut: "en_attente",
+          message: messagePreuve("en_attente", taux.texte, { email: candidate.email ?? champs.data.email }),
+        },
+      };
+    }
   }
 
   // Rangée en privé : dans le magasin privé s'il est réglé, sinon dans la base, avec la preuve.
@@ -457,32 +572,46 @@ export async function recevoirPreuve(
   }
 
   // Décision 24 : une capture qui attend une personne, Bike Land le sait tout
-  // de suite. Un email qui ne part pas ne fait jamais échouer l'envoi.
+  // de suite, par un email parti après la réponse au client. Un email qui ne
+  // part pas ne fait jamais échouer l'envoi.
   if (statut === "en_attente") {
-    try {
-      await deps.alerterBikeLand({
-        recueLe: preuve.creeLe,
-        telephone: preuve.telephone ?? champs.data.telephone,
-        email: preuve.email ?? champs.data.email,
-        enAttente: enAttente.length + 1,
-      });
-    } catch (e) {
-      console.error(`[offres-groupe] preuve ${preuve.id} : email à Bike Land non envoyé`, e);
-    }
+    const alerte: AlerteCapture = { recueLe: preuve.creeLe, enAttente: enAttente.length + 1 };
+    const tache = () => alerterBikeLand(alerte, preuve.id, deps);
+    if (deps.differer) deps.differer(tache);
+    else await tache();
   }
 
   return {
     statut: 201,
-    corps: { ok: true, preuveId: preuve.id, statut, message: messagePreuve(statut, taux, { email: champs.data.email }) },
+    corps: { ok: true, preuveId: preuve.id, statut, message: messagePreuve(statut, taux.texte, { email: champs.data.email }) },
   };
+}
+
+/**
+ * L'email « Capture à vérifier » à Bike Land (décision 24), dix par heure
+ * au plus (ALERTES_PAR_HEURE). Ne lève jamais : un échec est noté au
+ * journal du serveur, sans le contact du client.
+ */
+async function alerterBikeLand(alerte: AlerteCapture, preuveId: string, deps: Pick<DependancesPreuves, "depot" | "alerterBikeLand">) {
+  try {
+    if ((await compter(deps, "preuve-alertes", 60 * 60)) > ALERTES_PAR_HEURE) {
+      console.info(`[offres-groupe] preuve ${preuveId} : déjà ${ALERTES_PAR_HEURE} emails à Bike Land cette heure-ci, pas d'email de plus.`);
+      return;
+    }
+    await deps.alerterBikeLand(alerte);
+  } catch (e) {
+    console.error(`[offres-groupe] preuve ${preuveId} : email à Bike Land non envoyé`, e);
+  }
 }
 
 /**
  * GET preuve : où en est une preuve, pour le chatbot qui attend (le bouton
  * « Est-ce que c'est validé ? » ou le lien de l'email). Une capture validée
  * qui ne peut plus servir le dit (« deja-utilisee », « deja-eue ») : le
- * chatbot n'annonce alors jamais « C'est validé ! ». Ne rend jamais le
- * contact du client.
+ * chatbot n'annonce alors jamais « C'est validé ! ». Une capture validée
+ * dont le contact a été effacé (30 jours après la décision) ne sert plus :
+ * 404, comme une capture inconnue. Refusée à la main, le message dit ce que
+ * Bike Land a vu, s'il l'a écrit. Ne rend jamais le contact du client.
  */
 export async function statutPreuve(
   preuveId: string,
@@ -493,15 +622,25 @@ export async function statutPreuve(
   let statut: EtatPreuveClient = preuve.statut;
   if (preuve.statut === "validee") {
     try {
-      statut = await usageDUnePreuveValidee(preuve, deps.depot, deps.maintenant());
+      const usage = await usageDUnePreuveValidee(preuve, deps.depot, deps.maintenant());
+      if (usage === "inconnue") return erreur(404, "SAISIE", "Cette capture n'est plus valable : envoyez-en une nouvelle.");
+      // Sans le contact de la réservation, « autre-client » ne peut pas venir ici.
+      statut = usage === "autre-client" ? "validee" : usage;
     } catch (e) {
       // La réservation refera ce contrôle, et c'est elle qui fait foi.
       console.error(`[offres-groupe] preuve ${preuve.id} : réservations illisibles, statut donné sans elles`, e);
     }
   }
+  // Le motif écrit par Bike Land en refusant (jamais celui du site ni de l'agent IA).
+  const motif = preuve.statut === "refusee" && preuve.decidePar?.startsWith("admin") ? preuve.motif : undefined;
   return {
     statut: 200,
-    corps: { ok: true, preuveId: preuve.id, statut, message: messagePreuve(statut, await tauxDeReduction(deps), { suivi: true }) },
+    corps: {
+      ok: true,
+      preuveId: preuve.id,
+      statut,
+      message: messagePreuve(statut, await tauxDeReduction(deps), { suivi: true, ...(motif ? { motif } : {}) }),
+    },
   };
 }
 
@@ -557,15 +696,18 @@ export async function deciderPreuveParAdmin(
 
   const fichierEfface = await effacerFichier(decidee, deps);
 
-  // Ce que le client a déjà réservé, pour lui dire la vérité.
+  // Ce que le client a déjà réservé, pour lui dire la vérité : la réduction
+  // déjà eue, ou un road trip au prix normal fait après la capture ou encore
+  // à venir.
   let situation: SituationClient = {};
+  const maintenant = deps.maintenant();
   if (statut === "validee") {
     try {
       const [avecReduction, auPrixNormal] = await Promise.all([
         deps.depot.listerReservationsRoadTripGroupe({ avecReduction: true }),
-        deps.depot.listerReservationsRoadTripGroupe({ avecReduction: false, depuis: decidee.creeLe }),
+        deps.depot.listerReservationsRoadTripGroupe({ avecReduction: false, departDepuis: departsALire([decidee], maintenant) }),
       ]);
-      situation = situationDuClient(decidee, avecReduction, auPrixNormal, deps.maintenant());
+      situation = situationDuClient(decidee, avecReduction, auPrixNormal, maintenant);
     } catch (e) {
       console.error(`[offres-groupe] preuve ${decidee.id} : réservations du client illisibles, email ordinaire`, e);
     }
@@ -573,18 +715,21 @@ export async function deciderPreuveParAdmin(
 
   let emailEnvoye = false;
   if (decidee.email) {
-    const reduction = await tauxDeReduction(deps);
+    const taux = await lireTaux(deps);
+    // Réduction réglée à 0 % : rien à appliquer, l'email le dit sans pourcentage ni lien de reprise.
+    const sansReduction = statut === "validee" && taux.inactive;
     // Le lien rouvre la discussion avec la preuve tant que la réduction peut encore servir à ce client.
-    const avecLaPreuve = statut === "validee" && !situation.dejaEue;
+    const avecLaPreuve = statut === "validee" && !situation.dejaEue && !sansReduction;
     const envoi = await deps
       .emailDecision({
         email: decidee.email,
         statut,
         lienReprise: lienDeReprise(deps.urlSite(), avecLaPreuve ? decidee.id : undefined),
-        ...(reduction ? { reduction } : {}),
+        ...(taux.texte && !sansReduction ? { reduction: taux.texte } : {}),
         ...(statut === "refusee" && motif ? { motif } : {}),
-        ...(situation.dejaEue ? { reductionDejaEue: situation.dejaEue } : {}),
-        ...(!situation.dejaEue && situation.prixNormal ? { reservationPrixNormal: situation.prixNormal.reference } : {}),
+        ...(sansReduction ? { sansReduction: true } : {}),
+        ...(!sansReduction && situation.dejaEue ? { reductionDejaEue: situation.dejaEue } : {}),
+        ...(!sansReduction && !situation.dejaEue && situation.prixNormal ? { reservationPrixNormal: situation.prixNormal.reference } : {}),
       })
       .catch((e: unknown) => {
         console.error(`[offres-groupe] preuve ${decidee.id} : email de décision non envoyé`, e);
@@ -593,9 +738,15 @@ export async function deciderPreuveParAdmin(
     emailEnvoye = envoi.envoye;
   }
   // L'email n'est pas parti : l'écran des preuves le rappelle sous « Décidées », pour prévenir le client autrement.
+  // Le journal garde les quatre derniers chiffres du numéro : de quoi savoir qui prévenir, sans tout le contact.
   if (!emailEnvoye) {
+    const numero = numeroDuClient(decidee.telephone);
     await deps.depot
-      .journaliser({ type: "preuve-email-non-envoye", details: { preuveId: decidee.id, statut }, auteur: auteurAdmin(prenom) })
+      .journaliser({
+        type: "preuve-email-non-envoye",
+        details: { preuveId: decidee.id, statut, ...(numero ? { finNumero: numero.slice(-4) } : {}) },
+        auteur: auteurAdmin(prenom),
+      })
       .catch((e: unknown) => console.error(`[offres-groupe] preuve ${decidee.id} : échec de l'email non noté au journal`, e));
   }
 
@@ -655,10 +806,10 @@ export async function effacerFichiersPreuves(
 
 /**
  * L'effacement quotidien du contact des captures : l'email et le téléphone
- * d'une capture décidée il y a plus de 30 jours, ou qui a servi à une
- * réservation. La règle « une réduction par client » s'appuie ensuite sur
- * le contact des réservations ; une capture validée qui n'a pas servi reste
- * utilisable par son identifiant.
+ * d'une capture décidée il y a plus de 30 jours. Une capture validée qui n'a
+ * pas servi ne peut plus servir ensuite (on ne sait plus à qui elle est) ;
+ * celle qui a servi a laissé son contact sur la réservation qu'elle a
+ * réduite, où la règle « une réduction par client » le retrouve.
  */
 export async function effacerContactsPreuves(
   deps: { depot: Pick<Depot, "effacerContactsPreuves">; maintenant: () => number },

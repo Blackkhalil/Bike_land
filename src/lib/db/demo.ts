@@ -78,6 +78,8 @@ import {
   memeClient,
   ordreAttribution,
   PreuveReductionInutilisableError,
+  preuveClientAGarder,
+  preuveClientDes,
   prixParLigne,
   raisonPreuveInutilisable,
   reductionDejaEue,
@@ -197,26 +199,32 @@ function etat(): EtatDemo {
 /**
  * Les road trips en groupe, sans les annulés, réduits à ce que regarde la
  * règle « une réduction par client » (décision 25), comme en base : la
- * remise de cette offre est la réduction des abonnés.
+ * remise de cette offre est la réduction des abonnés, et le contact de la
+ * capture qui l'a donnée est gardé dans l'instantané de l'offre.
  */
-function reservationsRoadTripGroupe(filtre: { avecReduction: boolean; depuis?: string }): ReservationRoadTripClient[] {
+function reservationsRoadTripGroupe(filtre: { avecReduction: boolean; departDepuis?: DateISO }): ReservationRoadTripClient[] {
   return etat()
     .reservations.filter(
       (r) =>
         r.offre === "road-trip-groupe" &&
         r.statut !== "ANNULEE" &&
         (filtre.avecReduction ? r.remiseXof > 0 : r.remiseXof === 0) &&
-        (!filtre.depuis || r.creeLe >= filtre.depuis),
+        (!filtre.departDepuis || r.dateDebut >= filtre.departDepuis),
     )
     .sort((a, b) => a.creeLe.localeCompare(b.creeLe))
-    .map((r) => ({
-      reference: r.reference,
-      statut: r.statut,
-      creeLe: r.creeLe,
-      email: r.client.email,
-      ...(r.client.telephone ? { telephone: r.client.telephone } : {}),
-      reductionXof: r.remiseXof,
-    }));
+    .map((r) => {
+      const preuveClient = preuveClientDes(r.offreDetails);
+      return {
+        reference: r.reference,
+        statut: r.statut,
+        creeLe: r.creeLe,
+        date: r.dateDebut,
+        email: r.client.email,
+        ...(r.client.telephone ? { telephone: r.client.telephone } : {}),
+        reductionXof: r.remiseXof,
+        ...(preuveClient ? { preuveClient } : {}),
+      };
+    });
 }
 
 /** Pour des identifiants uniques même à la même milliseconde. */
@@ -1545,7 +1553,7 @@ export const depotDemo: Depot = {
     for (const preuve of etat().preuves) {
       if (!preuve.email && !preuve.telephone) continue;
       const decideeAvant = preuve.statut !== "en_attente" && Boolean(preuve.decideLe) && preuve.decideLe! < avant;
-      if (!preuve.reference && !decideeAvant) continue;
+      if (!decideeAvant) continue;
       delete preuve.email;
       delete preuve.telephone;
       effaces += 1;
@@ -1649,7 +1657,13 @@ export const depotDemo: Depot = {
     // annulées avec l'écriture (décision 25), comme en base.
     let expireesDuClient: string[] = [];
     if (demande.preuveId) {
-      const raison = raisonPreuveInutilisable(preuve, lieeAvant ? { statut: lieeAvant.statut, creeLe: lieeAvant.creeLe } : null);
+      // La capture doit être celle de ce client : la réservation porte son numéro ou son email.
+      const raison = raisonPreuveInutilisable(
+        preuve,
+        lieeAvant ? { statut: lieeAvant.statut, creeLe: lieeAvant.creeLe } : null,
+        Date.now(),
+        demande.client,
+      );
       if (raison) throw new PreuveReductionInutilisableError(raison);
       // Décision 25 : la réduction des abonnés, une seule fois par client,
       // reconnu au contact de la réservation ou à celui de la capture. Sans
@@ -1662,6 +1676,8 @@ export const depotDemo: Depot = {
         .filter((r) => r.statut === "EN_ATTENTE_PAIEMENT" && !reservationRetenue(r) && identites.some((i) => memeClient(i, r)))
         .map((r) => r.reference);
     }
+
+    const preuveGardee = preuve ? preuveClientAGarder(preuve) : null;
 
     // Le client, comme `creerReservation` : une fiche existante n'est jamais
     // réécrite, le contact saisi reste sur la réservation.
@@ -1708,7 +1724,10 @@ export const depotDemo: Depot = {
       horaire: { depart, retour },
       minuteDebut: demande.debutMinute,
       minuteFin: demande.finMinute,
-      offreDetails: copie(demande.details),
+      // Le contact de la capture consommée reste avec la réservation : il
+      // reconnaît ce client pour la règle « une réduction par client »
+      // (décision 25), même si la réservation porte un autre contact.
+      offreDetails: { ...copie(demande.details), ...(preuveGardee ? { preuveClient: preuveGardee } : {}) },
       jours: 1,
       lignes: attribues.map((velo) => ({
         veloId: velo.id,

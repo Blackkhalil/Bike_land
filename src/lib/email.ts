@@ -1351,11 +1351,13 @@ export async function envoyerRemboursementGroupeAdmin(reservation: Reservation, 
 
 /**
  * Prévient Bike Land qu'une capture attend sa vérification (décision 24) :
- * quand elle est arrivée (heure de Cotonou), le contact du client, combien
- * de captures attendent, et le bouton vers la page des preuves. Le client a
- * lu que la réponse lui viendrait par email.
+ * quand elle est arrivée (heure de Cotonou), combien de captures attendent,
+ * et le bouton vers la page des preuves. Jamais le contact du client : il
+ * resterait dans la messagerie (et, sans fournisseur d'email, dans le
+ * journal du serveur) après l'effacement promis ; la page des preuves le
+ * montre. Le client a lu que la réponse lui viendrait par email.
  */
-export async function envoyerAlertePreuve(alerte: { recueLe: string; telephone: string; email: string; enAttente: number }) {
+export async function envoyerAlertePreuve(alerte: { recueLe: string; enAttente: number }) {
   const lien = `${site.urlAdmin}/admin/preuves`;
   const recue = `le ${formatDateAvecJour(dateAuBenin(alerte.recueLe))} à ${formatHeureAuBenin(alerte.recueLe)}`;
   const intro =
@@ -1367,24 +1369,12 @@ export async function envoyerAlertePreuve(alerte: { recueLe: string; telephone: 
   return envoyer({
     destinataire: destinataireBikeLand(),
     sujet: "Capture à vérifier : réduction du road trip",
-    texte: [
-      intro,
-      "",
-      champ("Reçue", recue),
-      champ("Téléphone", alerte.telephone),
-      champ("Email", alerte.email),
-      combien,
-      "",
-      "Regardez-la, puis validez ou refusez :",
-      lien,
-    ].join("\n"),
+    texte: [intro, "", champ("Reçue", recue), combien, "", "Regardez-la, puis validez ou refusez :", lien].join("\n"),
     html: gabarit({
       titre: "Capture à vérifier",
       intro,
       lignes: [
         ["Reçue", recue],
-        ["Téléphone", alerte.telephone],
-        ["Email", alerte.email],
         ["Captures à vérifier", String(alerte.enAttente)],
       ],
       action: { libelle: "Vérifier la capture", url: lien },
@@ -1416,8 +1406,34 @@ export async function envoyerDecisionPreuve(champs: {
   reservationPrixNormal?: string;
   /** La réservation où ce client a déjà eu la réduction. */
   reductionDejaEue?: string;
+  /** La réduction est réglée à 0 % : rien à appliquer, ni pourcentage ni lien de reprise. */
+  sansReduction?: boolean;
 }) {
   const reduction = champs.reduction ? `la réduction de ${champs.reduction}` : "la réduction";
+  if (champs.statut === "validee" && champs.sansReduction) {
+    const constat =
+      "Merci pour votre capture : elle est validée. La réduction des abonnés n'est pas proposée en ce moment : vos road trips en groupe se réservent au prix normal.";
+    return envoyer({
+      destinataire: champs.email,
+      sujet: "Votre capture pour la réduction du road trip",
+      texte: [
+        "Bonjour,",
+        "",
+        constat,
+        champs.lienReprise,
+        "",
+        `Une question ? Écrivez-nous sur WhatsApp ou appelez-nous au ${site.telephone}.`,
+        `L'équipe ${site.nom}`,
+      ].join("\n"),
+      html: gabarit({
+        titre: "Votre capture",
+        intro: `Bonjour. ${constat}`,
+        lignes: [],
+        action: { libelle: "Réserver un road trip", url: champs.lienReprise },
+        pied: `Une question ? ${site.telephone}.`,
+      }),
+    });
+  }
   if (champs.statut === "validee" && champs.reductionDejaEue) {
     const constat = `Vous avez déjà eu ${reduction} sur votre réservation ${champs.reductionDejaEue} : elle vaut une seule fois par client.`;
     return envoyer({

@@ -168,10 +168,11 @@ verifier("la discussion du chatbot gardée dans le navigateur, le temps de la vi
 {
   // Défaut 19 : la durée du contact des captures, la même que la tâche quotidienne.
   const { JOURS_CONSERVATION_CONTACT } = await charger("src/lib/offres-groupe/preuves.ts");
-  verifier("le numéro et l'email d'une capture : effacés 30 jours après la décision, ou quand elle a servi", [
-    page.includes(`Le numéro et l'email envoyés avec elle sont effacés ${JOURS_CONSERVATION_CONTACT} jours après la décision, ou dès que la capture a servi à une réservation`),
+  verifier("le numéro et l'email d'une capture : effacés 30 jours après la décision, gardés avec la réservation qu'elle a réduite", [
+    page.includes(`Le numéro et l'email envoyés avec elle sont effacés ${JOURS_CONSERVATION_CONTACT} jours après la décision.`),
+    page.includes("Si la capture a servi à une réservation, ils restent avec cette réservation"),
     page.includes("n'accorder la réduction qu'une fois par client"),
-  ], [true, true]);
+  ], [true, true, true]);
 }
 verifier("description sans IA", String((await donnees.generateMetadata()).description).includes("IA"), false);
 process.env.ANTHROPIC_API_KEY = "cle-de-test-factice";

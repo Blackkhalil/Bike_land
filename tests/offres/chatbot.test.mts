@@ -679,6 +679,36 @@ const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.re
     agir(p, { type: "preuve-recue", statut: 409, corps: { ok: false, code: "REDUCTION_DEJA_EUE" } }).messages.at(-2).texte,
     phraseDejaEue,
   );
+  // Revue de code : « Recommencer » ne fait pas oublier que ce client a déjà eu la réduction.
+  const recommence = suite([
+    { type: "recommencer" },
+    { type: "choisir-offre", offre: "road-trip-groupe" },
+    { type: "choisir-personnes", personnes: 10 },
+    { type: "choisir-date", date: SAMEDI },
+    { type: "choisir-gateaux", gateauxParPersonne: 0 },
+  ], LUNDI_10H, refusD25);
+  verifier("décision 25 dite, « Recommencer », de nouveau le road trip : la réduction n'est plus proposée, l'offre au prix normal", [
+    recommence.reductionDejaEue,
+    recommence.etape,
+    recommence.choix.reduction,
+    recommence.messages.some((message: { texte: string }) => /Voulez-vous une réduction/.test(message.texte)),
+    totalAffiche(recommence),
+  ], [true, "proposition", { etat: "sans", raison: "deja-eue" }, false, 31250]);
+  verifier("décision 25 : la négociation ne repropose pas la réduction après « Recommencer »", n.variantesMoinsCheres(
+    { ...recommence.choix, gateauxParPersonne: 1 },
+    FAITS,
+    LUNDI_10H,
+  ).map((a: { cle: string }) => a.cle), ["sans-gateaux"]);
+  verifier("décision 25 : gardée après un rechargement de la page", c.relireSauvegarde(c.sauvegarder(refusD25, true, LUNDI_10H), LUNDI_10H)?.etat.reductionDejaEue, true);
+
+  // La réduction réglée à 0 % pendant que la carte était ouverte : rien n'est gardé, le client continue au prix normal.
+  const aZero = agir(p, { type: "preuve-recue", statut: 409, corps: { ok: false, code: "SANS_REDUCTION", message: t.MESSAGE_REDUCTION_INACTIVE } });
+  verifier("réduction passée à 0 % : la capture n'est pas gardée, le client continue jusqu'à son offre au prix normal", [
+    aZero.envoi,
+    aZero.choix.reduction,
+    aZero.etape,
+    derniers(aZero, 2),
+  ], [null, { etat: "sans" }, "proposition", `${t.MESSAGE_REDUCTION_INACTIVE} | Voici votre offre, ligne par ligne :`]);
 
   // Décision 25 et défaut 10, au statut : jamais « C'est validé ! » pour une capture qui ne sert plus.
   const enVerification = agir(attente, { type: "verifier-preuve" });
@@ -696,6 +726,17 @@ const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.re
       lu.preuveEnCours,
     ], [`${phrase} | Voici votre offre, ligne par ligne :`, false, { etat: "sans", raison: statut }, "proposition", null]);
   }
+  // Refusée à la main avec ce que Bike Land a vu : la bulle le dit (le client n'envoie pas la même).
+  const refusMotif = agir(enVerification, {
+    type: "preuve-recue",
+    statut: 200,
+    corps: { ok: true, preuveId: "pr_2", statut: "refusee", message: preuves.messagePreuve("refusee", "4 %", { suivi: true, motif: "On ne voit pas le mot « Abonné »." }) },
+  });
+  verifier("refusée avec un motif : la bulle dit ce que Bike Land a vu, puis les réponses de la capture", [derniers(refusMotif), refusMotif.etape, refusMotif.choix.reduction.etat], [
+    "Nous n'avons pas pu valider cette capture. Ce que nous avons vu : On ne voit pas le mot « Abonné ». Vous pouvez en envoyer une autre, ou réserver sans la réduction.",
+    "preuve-statut",
+    "refusee",
+  ]);
   let lienDejaEue = agir(c.etatInitial(), { type: "demarrer", offre: "road-trip-groupe", preuveId: "pr_8" });
   lienDejaEue = agir(lienDejaEue, { type: "preuve-recue", statut: 200, corps: { ok: true, preuveId: "pr_8", statut: "deja-eue", message: phraseDejaEue } });
   verifier("lien de l'email, client qui a déjà eu la réduction : la phrase d'abord, puis la première question", [derniers(lienDejaEue, 2), lienDejaEue.etape], [
@@ -720,6 +761,22 @@ const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.re
     { type: "reservation-envoi" },
   ], LUNDI_10H, payer);
   verifier("prêt à payer avec la réduction (30 050 F)", [payer.envoi, c.demandeReservationDe({ ...payer, envoi: null })?.attendu], ["reservation", { totalXof: 30050 }]);
+  // Revue « client adverse » (H2) : la réservation n'a ni le numéro ni l'email de la capture.
+  const devisAutreClient = reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(SAMEDI)), { preuve: "autre-client" });
+  const autreClient = agir(payer, { type: "reservation-recue", statut: 409, corps: { ok: false, code: "REGLAGES", message: t.PHRASE_CAPTURE_AUTRE_CLIENT, devis: devisAutreClient } });
+  verifier("capture envoyée par quelqu'un d'autre, en réservant : avant de payer, la phrase et le prix normal à confirmer", [
+    autreClient.etape,
+    derniers(autreClient),
+    autreClient.choix.reduction,
+    autreClient.preuveEnCours,
+    totalAffiche(autreClient),
+  ], [
+    "proposition",
+    "Cette capture a été envoyée avec un autre numéro et un autre email : la réduction vaut pour la personne qui l'a envoyée. Voici l'offre à jour : 31 250 F. Confirmez pour réserver à ce prix.",
+    { etat: "sans", raison: "autre-client" },
+    null,
+    31250,
+  ]);
   const devisSansReduction = reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(SAMEDI)), { preuve: "deja-eue" });
   const auPaiement = agir(payer, { type: "reservation-recue", statut: 409, corps: { ok: false, code: "REGLAGES", message: phraseDejaEue, devis: devisSansReduction } });
   verifier("décision 25, en réservant : avant de payer, la phrase et le prix normal à confirmer", [
@@ -756,7 +813,8 @@ const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.re
       panne.preuveEnCours,
       agir(panne, { type: "verifier-preuve" }).choix.reduction,
     ], [
-      { etat: "en_attente", preuveId: "pr_2" },
+      // Son état n'est pas connu (« injoignable ») : elle n'est jamais dite « en attente ».
+      { etat: "en_attente", preuveId: "pr_2", injoignable: true },
       "La connexion est instable : je n'arrive pas à voir où en est votre capture. Réessayez dans un instant.",
       "preuve-statut",
       { preuveId: "pr_2", statut: "en_attente" },
@@ -767,7 +825,7 @@ const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.re
   // Le lien de l'email sans réseau : la capture est gardée, et la discussion avance.
   let lienSansReseau = agir(agir(c.etatInitial(), { type: "demarrer", offre: "road-trip-groupe", preuveId: "pr_7" }), { type: "preuve-recue", statut: 0, corps: null });
   verifier("lien de l'email sans réseau : la capture gardée, puis la première question", [lienSansReseau.choix.reduction, derniers(lienSansReseau, 2), lienSansReseau.etape], [
-    { etat: "en_attente", preuveId: "pr_7" },
+    { etat: "en_attente", preuveId: "pr_7", injoignable: true },
     "La connexion est instable : je n'arrive pas à voir où en est votre capture. Réessayez dans un instant. | Vous serez combien ? Un vélo par personne, 10 personnes au moins.",
     "personnes",
   ]);
@@ -776,10 +834,19 @@ const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.re
     { type: "choisir-date", date: SAMEDI },
     { type: "choisir-gateaux", gateauxParPersonne: 0 },
   ], LUNDI_10H, lienSansReseau);
-  verifier("arrivé à la réduction : Bike Land rappelle où en est la capture, avant les réponses", [lienSansReseau.etape, derniers(lienSansReseau)], [
+  // Revue de code : l'état n'a pas pu être lu (la capture est peut-être déjà validée, le lien de l'email le
+  // disait) : Bike Land ne la dit pas « en attente » et ne pousse pas vers le prix normal.
+  verifier("arrivé à la réduction, état inconnu : une question neutre, « Est-ce que c'est validé ? » pour réessayer", [lienSansReseau.etape, derniers(lienSansReseau)], [
     "preuve-statut",
-    "Votre capture attend encore notre vérification. Vous pouvez réserver maintenant au prix normal, ou attendre notre réponse.",
+    "Je n'ai pas pu voir où en est votre capture. Touchez « Est-ce que c'est validé ? » pour réessayer.",
   ]);
+  const sansAttendre = agir(lienSansReseau, { type: "reduction-sans" });
+  verifier("état inconnu, « Je réserve sans la réduction » : pas l'avertissement de la décision 24 (rien ne dit qu'elle attend)", derniers(sansAttendre, 3).includes("D'accord ! En réservant maintenant"), false);
+  const reessai = agir(agir(lienSansReseau, { type: "verifier-preuve" }), { type: "preuve-recue", statut: 200, corps: { ok: true, preuveId: "pr_7", statut: "en_attente", message: "" } });
+  verifier("réessayé, le serveur répond « en attente » : la capture est dite en attente, l'avertissement revient au besoin", [
+    reessai.choix.reduction,
+    derniers(agir(reessai, { type: "reduction-sans" }), 3).includes("D'accord ! En réservant maintenant"),
+  ], [{ etat: "en_attente", preuveId: "pr_7" }, true]);
 }
 {
   // Défaut 11 : « Recommencer », ou une autre offre, garde la capture en cours.
@@ -1148,6 +1215,14 @@ verifier("prendre le créneau libre le plus proche", [creneau.choix.date, crenea
     "Samedi 28 novembre : 31 250 F",
     "Choisir une autre date",
   ]);
+  // Revue de code : le jour plein choisi de nouveau. Le moteur du navigateur refuse avec le compte du
+  // serveur ; Bike Land le dit avec la même phrase, jamais l'ancienne qui citait le minimum de l'offre.
+  const autreDate = pleinRt.alternatives.find((a: { cle: string }) => a.cle === "autre-date");
+  const memeJour = agir(agir(pleinRt, { type: "appliquer", alternative: autreDate }), { type: "choisir-date", date: DIMANCHE });
+  verifier("L2, le jour plein choisi de nouveau : « Je viens de vérifier », le jour, sans « Voici ce que je peux vous proposer »", [memeJour.etape, derniers(memeJour, 2)], [
+    "refus",
+    "Dimanche 15 novembre | Je viens de vérifier : il ne reste que 9 vélos libres le dimanche 15 novembre, pas assez pour votre groupe. Choisissez un autre jour :",
+  ]);
   {
     // Le serveur cherche dans l'ordre : un jour d'ici à son créneau libre est plein, il n'est jamais proposé.
     const samediPlein = devisRecu(
@@ -1177,6 +1252,14 @@ verifier("prendre le créneau libre le plus proche", [creneau.choix.date, crenea
     "Je viens de vérifier : il ne reste que 12 vélos libres le dimanche 15 novembre, pas assez pour votre groupe de 15 personnes. | Voici ce que je peux vous proposer :",
     "Passer à 12 personnes : 37 500 F",
   ]);
+  const grandDeNouveau = agir(
+    agir(grand, { type: "appliquer", alternative: grand.alternatives.find((a: { cle: string }) => a.cle === "autre-date") }),
+    { type: "choisir-date", date: DIMANCHE },
+  );
+  verifier("L2, groupe de 15, le même dimanche de nouveau : son groupe, jamais « un groupe de 10 personnes »", derniers(grandDeNouveau, 2), [
+    "Je viens de vérifier : il ne reste que 12 vélos libres le dimanche 15 novembre, pas assez pour votre groupe de 15 personnes.",
+    "Voici ce que je peux vous proposer :",
+  ].join(" | "));
   // Le jour a assez de vélos : la question vient, une seule fois, puis la suite comme avant.
   const assez = devisRecu(avant, reponseDevis(m.calculerRoadTrip({ personnes: 10 }, R, ctx(DIMANCHE))));
   verifier("le dimanche a assez de vélos : la question des gâteaux, une seule fois", [

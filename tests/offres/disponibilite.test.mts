@@ -605,10 +605,12 @@ verifier("rien n'a été écrit ce jour-là", (await parcDu(S7)).occupations.len
 
 console.log("\n— La preuve de réduction du road trip, une par groupe");
 const maintenant = new Date().toISOString();
+// Le contact donné avec chaque capture : celui du client des réservations de ce test (décision 25).
+const contactCapture = { email: "groupe@example.com", telephone: "+229 01 97 00 00 01" };
 etatDemo().preuves.push(
-  { id: "preuve-validee", statut: "validee", creeLe: maintenant },
-  { id: "preuve-attente", statut: "en_attente", creeLe: maintenant },
-  { id: "preuve-refusee", statut: "refusee", creeLe: maintenant },
+  { id: "preuve-validee", statut: "validee", creeLe: maintenant, ...contactCapture },
+  { id: "preuve-attente", statut: "en_attente", creeLe: maintenant, ...contactCapture },
+  { id: "preuve-refusee", statut: "refusee", creeLe: maintenant, ...contactCapture },
 );
 const roadTrip = (heure: number, preuveId?: string, autre: Record<string, unknown> = {}) =>
   depot.creerReservationGroupe({

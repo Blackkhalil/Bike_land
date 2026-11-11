@@ -75,7 +75,7 @@ import {
   type ReponseReservation,
   type ReponseVenteComptoir,
 } from "./api";
-import { PHRASE_CAPTURE_DEJA_UTILISEE, phraseReductionDejaEue } from "./textes-chat";
+import { PHRASE_CAPTURE_AUTRE_CLIENT, PHRASE_CAPTURE_DEJA_UTILISEE, phraseReductionDejaEue } from "./textes-chat";
 
 /* --------------------------------------------------------- Dépendances */
 
@@ -416,8 +416,9 @@ function depasseLeParc(demande: DemandeDevis, parc: ParcDuJour): boolean {
  * contact de la capture, ou celui de la réservation (`client`, connu au
  * moment de réserver), a déjà eu la réduction sur une autre réservation qui
  * la retient encore, la preuve est « deja-eue » : prix normal, et la preuve
- * n'est pas consommée. Le dépôt refait ce contrôle dans la transaction qui
- * écrit la réservation.
+ * n'est pas consommée. Une capture ne sert qu'à qui l'a envoyée : une
+ * réservation qui n'a ni son numéro ni son email la voit « autre-client ».
+ * Le dépôt refait ces contrôles dans la transaction qui écrit la réservation.
  */
 async function etatPreuve(
   preuveId: string,
@@ -428,7 +429,7 @@ async function etatPreuve(
   const preuve = await deps.depot.trouverPreuve(preuveId);
   if (!preuve) return "inconnue";
   if (preuve.statut !== "validee") return preuve.statut;
-  return usageDUnePreuveValidee(preuve, deps.depot, maintenant, client ? [client] : []);
+  return usageDUnePreuveValidee(preuve, deps.depot, maintenant, client);
 }
 
 /**
@@ -439,6 +440,7 @@ async function etatPreuve(
 function messagePrixSansReduction(preuve: ReponseDevis["preuve"], reglages: ReglagesOffres): string {
   if (preuve === "deja-eue") return phraseReductionDejaEue(formatPourcentage(reglages.roadTrip.reduction));
   if (preuve === "deja-utilisee") return PHRASE_CAPTURE_DEJA_UTILISEE;
+  if (preuve === "autre-client") return PHRASE_CAPTURE_AUTRE_CLIENT;
   return MESSAGE_PRIX_CHANGE;
 }
 

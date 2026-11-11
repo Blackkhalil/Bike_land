@@ -80,8 +80,10 @@ import {
   MESSAGE_CAPTURE_INJOIGNABLE,
   MESSAGE_CAPTURE_PAS_ENCORE,
   MESSAGE_RECOMMENCER,
+  MESSAGE_REDUCTION_INACTIVE,
   MESSAGE_REPRISE_COORDONNEES,
   MESSAGE_RESERVER_SANS_ATTENDRE,
+  MESSAGE_STATUT_CAPTURE_INCONNU,
   messageCaptureRecue,
   messageJePaie,
   messageOnContinue,
@@ -89,6 +91,7 @@ import {
   ORDRE_OFFRES,
   personnesEnClair,
   personnesMinDe,
+  PHRASE_CAPTURE_AUTRE_CLIENT,
   PHRASE_CAPTURE_DEJA_UTILISEE,
   phraseReductionDejaEue,
   presentationOffre,
@@ -138,15 +141,21 @@ export type EtatReduction =
   | { etat: "a-demander" }
   /**
    * Le client réserve sans la réduction. `raison` : elle ne peut pas lui être
-   * donnée (il l'a déjà eue, décision 25, ou sa capture a déjà servi) ; elle
-   * ne lui est alors plus proposée.
+   * donnée (il l'a déjà eue, décision 25 ; sa capture a déjà servi ; la
+   * capture a été envoyée par quelqu'un d'autre) ; elle ne lui est alors plus
+   * proposée.
    */
-  | { etat: "sans"; raison?: "deja-eue" | "deja-utilisee" }
+  | { etat: "sans"; raison?: "deja-eue" | "deja-utilisee" | "autre-client" }
   /** Une capture est connue (lien de l'email), son état est à demander au serveur. */
   | { etat: "a-verifier"; preuveId: string }
   /** La capture part vers le serveur. */
   | { etat: "envoi" }
-  | { etat: "en_attente"; preuveId: string }
+  /**
+   * La capture attend sa vérification. `injoignable` : son état n'a pas pu
+   * être lu (réseau, panne), elle est gardée mais on ne sait pas où elle en
+   * est ; Bike Land ne la dit alors pas « en attente ».
+   */
+  | { etat: "en_attente"; preuveId: string; injoignable?: boolean }
   | { etat: "validee"; preuveId: string }
   | { etat: "refusee"; preuveId?: string };
 
@@ -351,6 +360,14 @@ export interface EtatChat {
    */
   preuveEnCours?: PreuveEnCours | null;
   /**
+   * Le serveur a dit que ce client a déjà eu la réduction (décision 25) :
+   * gardé hors des réponses, comme la capture en cours, il survit à
+   * « Recommencer » et au choix d'une autre offre. De retour au road trip,
+   * la réduction ne lui est plus proposée. Absent des conversations rangées
+   * avant : vaut non.
+   */
+  reductionDejaEue?: boolean;
+  /**
    * La question de l'étape (ou l'annonce de l'offre), retenue le temps que
    * le serveur compte les vélos libres d'un jour, ou d'un créneau, qu'il n'a
    * pas encore comptés : posée à sa réponse, ou remplacée par son refus
@@ -507,13 +524,20 @@ function ajouter(etat: EtatChat, ...messages: Omit<MessageChat, "id">[]): EtatCh
   return { ...etat, messages: [...etat.messages, ...nouveaux].slice(-MESSAGES_MAX), prochainId: id };
 }
 
+/**
+ * Le serveur a-t-il compté les vélos libres de ce jour, pour cette offre ?
+ * Bike for All part à l'heure choisie, pour une durée qui change : une
+ * mesure faite pour un autre créneau ne vaut pas pour celui-ci.
+ */
+function parcMesure(etat: EtatChat): boolean {
+  const { capacite, choix } = etat;
+  return capacite !== null && choix.offre !== "bike-for-all" && capacite.offre === choix.offre && capacite.date === choix.date;
+}
+
 /** Le parc à donner au moteur : les vélos libres que le serveur a mesurés ce jour-là, sinon le parc en état. */
 export function parcConnu(etat: EtatChat, faits: FaitsChat): ParcConnu {
-  const { capacite, choix } = etat;
-  // Bike for All part à l'heure choisie, pour une durée qui change : une
-  // mesure faite pour un autre créneau ne vaut pas pour celui-ci.
-  if (capacite && choix.offre !== "bike-for-all" && capacite.offre === choix.offre && capacite.date === choix.date) {
-    return { velosDisponibles: capacite.velosLibres, stockParGamme: capacite.parGamme };
+  if (parcMesure(etat) && etat.capacite) {
+    return { velosDisponibles: etat.capacite.velosLibres, stockParGamme: etat.capacite.parGamme };
   }
   return parcDesFaits(faits);
 }
@@ -594,6 +618,8 @@ function question(etape: Etape, etat: EtatChat, faits: FaitsChat, maintenant: nu
         case "a-verifier":
           return "Je regarde où en est votre capture d'écran.";
         case "en_attente":
+          // Son état n'a pas pu être lu : rien n'est affirmé, le client réessaie.
+          if (choix.reduction.injoignable) return MESSAGE_STATUT_CAPTURE_INCONNU;
           return "Votre capture attend encore notre vérification. Vous pouvez réserver maintenant au prix normal, ou attendre notre réponse.";
         case "refusee":
           return "Votre capture n'a pas été validée. Vous pouvez en envoyer une autre, ou réserver sans la réduction.";
@@ -706,12 +732,22 @@ function versProposition(etat: EtatChat, precedentXof: number | null, faits: Fai
  */
 function continuer(etatRecu: EtatChat, faits: FaitsChat, maintenant: number, precedentXof: number | null = null): EtatChat {
   // Réduction du road trip réglée à 0 % : il n'y a rien à demander au client.
+  // Déjà eue (décision 25, dite plus tôt dans la discussion) : elle n'est plus proposée.
+  const aDemander = etatRecu.choix.offre === "road-trip-groupe" && etatRecu.choix.reduction.etat === "a-demander";
   const etat: EtatChat =
-    etatRecu.choix.offre === "road-trip-groupe" && etatRecu.choix.reduction.etat === "a-demander" && faits.reglages.roadTrip.reduction <= 0
-      ? { ...etatRecu, choix: { ...etatRecu.choix, reduction: { etat: "sans" } } }
-      : etatRecu;
+    aDemander && etatRecu.reductionDejaEue
+      ? { ...etatRecu, choix: { ...etatRecu.choix, reduction: { etat: "sans", raison: "deja-eue" } } }
+      : aDemander && faits.reglages.roadTrip.reduction <= 0
+        ? { ...etatRecu, choix: { ...etatRecu.choix, reduction: { etat: "sans" } } }
+        : etatRecu;
   const issue = evaluer(etat.choix, faits, maintenant, parcConnu(etat, faits));
-  if (issue && !issue.ok) return versRefus(etat, issue.refus, null, faits, maintenant);
+  if (issue && !issue.ok) {
+    // Un jour que le serveur a déjà compté plein, choisi de nouveau : le
+    // moteur du navigateur refuse avec ce compte, et Bike Land le dit comme
+    // le refus du serveur (« Je viens de vérifier : », le jour, le groupe).
+    const refus = issue.refus.code === "PARC" && parcMesure(etat) ? refusDuCreneau(issue.refus, etat.choix, null, faits) : issue.refus;
+    return versRefus(etat, refus, null, faits, maintenant);
+  }
   const manque = etapeManquante(etat.choix);
   // Une nouvelle venue du serveur (état d'une capture) pendant que la même
   // question attend sa réponse : on ne la repose pas.
@@ -729,11 +765,16 @@ function totalAffiche(etat: EtatChat, faits: FaitsChat, maintenant: number): num
 const MESSAGE_VERIFICATION_CAPTURE = "Je regarde où en est votre capture d'écran pour la réduction.";
 
 /**
- * Une nouvelle discussion, les coordonnées et la capture en cours gardées :
- * « Recommencer », ou une autre offre ouverte depuis une page.
+ * Une nouvelle discussion, les coordonnées, la capture en cours et la
+ * réduction déjà eue gardées : « Recommencer », ou une autre offre ouverte
+ * depuis une page.
  */
 function repartir(etat: EtatChat): EtatChat {
-  return { ...etatInitial(etat.client), preuveEnCours: etat.preuveEnCours ?? null };
+  return {
+    ...etatInitial(etat.client),
+    preuveEnCours: etat.preuveEnCours ?? null,
+    ...(etat.reductionDejaEue ? { reductionDejaEue: true } : {}),
+  };
 }
 
 /** L'offre choisie : la bulle du client et la présentation de Bike Land, les réponses d'avant effacées. */
@@ -807,8 +848,14 @@ export function reduire(etat: EtatChat, action: ActionChat, faits: FaitsChat): E
   // libres (la vue n'en montre aucune à ce moment-là) : la question retenue
   // est dite d'abord, au-dessus de la réponse.
   const depart = verificationDuJour(etat) && !ACTIONS_SANS_REPONSE.has(action.type) ? liberer(etat) : etat;
-  const suivant = transition(depart, action, faits);
-  return suivant === depart ? etat : horodater(etat.messages, suivant, action.maintenant);
+  const transite = transition(depart, action, faits);
+  if (transite === depart) return etat;
+  // Le serveur vient de dire que ce client a déjà eu la réduction : la
+  // discussion s'en souvient, même après « Recommencer ».
+  const reduction = transite.choix.reduction;
+  const suivant =
+    reduction.etat === "sans" && reduction.raison === "deja-eue" && !transite.reductionDejaEue ? { ...transite, reductionDejaEue: true } : transite;
+  return horodater(etat.messages, suivant, action.maintenant);
 }
 
 /** Les actions qui ne sont pas une réponse du client à la question posée : elles ne libèrent pas la question retenue. */
@@ -1091,7 +1138,11 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
       // Décision 24 : une capture attend sa vérification. Réserver maintenant,
       // c'est le prix normal, et la réduction ne s'ajoutera pas ensuite :
       // Bike Land le dit avant l'offre.
-      const captureEnAttente = etat.choix.reduction.etat === "en_attente" || etat.preuveEnCours?.statut === "en_attente";
+      // Seulement quand le serveur a vraiment dit « en attente » : une capture
+      // dont l'état n'a pas pu être lu (peut-être déjà validée) n'est pas dite en attente.
+      const reduction = etat.choix.reduction;
+      const captureEnAttente =
+        (reduction.etat === "en_attente" && !reduction.injoignable) || etat.preuveEnCours?.statut === "en_attente";
       const suivant = ajouter(
         etat,
         duClient("Je réserve sans la réduction"),
@@ -1471,6 +1522,7 @@ const MESSAGES_ERREUR: Record<CodeErreurLue, string> = {
   REGLAGES_ILLISIBLES:
     "La réservation en ligne des sorties de groupe est en pause pour le moment. Écrivez-nous sur WhatsApp : nous organisons votre sortie avec vous.",
   SAISIE: "Une information n'est pas passée. Vérifiez vos réponses, puis réessayez.",
+  SANS_REDUCTION: MESSAGE_REDUCTION_INACTIVE,
   TROP_DE_DEMANDES: "Beaucoup de demandes en même temps : patientez une minute, puis réessayez.",
   EN_ATTENTE: `Une demande de paiement à votre nom attend déjà sur votre téléphone. Validez-la, ou attendez ${EXPIRATION_PANIER_MINUTES} minutes qu'elle expire avant d'en lancer une autre. Le lien de suivi est dans votre email.`,
   PAIEMENT: "La demande de paiement n'a pas pu partir. Aucun montant n'a été prélevé : réessayez dans un instant.",
@@ -1488,6 +1540,7 @@ const CODES_ERREUR: readonly CodeErreurOffresGroupe[] = [
   "PAIEMENT",
   "SERVEUR",
   "REDUCTION_DEJA_EUE",
+  "SANS_REDUCTION",
 ];
 
 const estObjet = (valeur: unknown): valeur is Record<string, unknown> => typeof valeur === "object" && valeur !== null;
@@ -1552,6 +1605,7 @@ const ETATS_PREUVE_DEVIS: readonly NonNullable<ReponseDevis["preuve"]>[] = [
   "inconnue",
   "deja-utilisee",
   "deja-eue",
+  "autre-client",
 ];
 
 export type LectureDevis = { type: "ok"; reponse: ReponseDevis } | { type: "erreur"; code: CodeErreurLue; message: string };
@@ -1746,6 +1800,12 @@ function recevoirDevis(
         texte: phraseReductionDejaEue(formatPourcentage(faits.reglages.roadTrip.reduction)),
         preuveEnCours: null,
       },
+      // Le devis du chat ne porte pas le contact : ne vient qu'à la réservation, mais se lit pareil.
+      "autre-client": {
+        reduction: { etat: "sans", raison: "autre-client" },
+        texte: PHRASE_CAPTURE_AUTRE_CLIENT,
+        preuveEnCours: null,
+      },
     };
     const changement = changements[reponse.preuve];
     suivant = {
@@ -1838,6 +1898,15 @@ function recevoirPreuve(etat: EtatChat, statut: number, corps: unknown, faits: F
       };
       return continuer(suivant, faits, maintenant);
     }
+    // La réduction vient d'être réglée à 0 % (une carte ouverte avant) : rien n'est gardé, on continue sans elle.
+    if (lecture.code === "SANS_REDUCTION") {
+      const suivant = {
+        ...ajouter(sans, bot(lecture.message || MESSAGE_REDUCTION_INACTIVE, "alerte")),
+        choix: { ...sans.choix, reduction: { etat: "sans" as const } },
+        preuveEnCours: null,
+      };
+      return continuer(suivant, faits, maintenant);
+    }
     if (reductionAvant.etat === "a-verifier") {
       // Une capture introuvable : on reprend la question de la réduction au bon moment.
       if (statut === 404) {
@@ -1848,10 +1917,12 @@ function recevoirPreuve(etat: EtatChat, statut: number, corps: unknown, faits: F
         };
         return continuer(suivant, faits, maintenant);
       }
-      // Le réseau, ou une panne : la capture est gardée, « Est-ce que c'est validé ? » reste là.
+      // Le réseau, ou une panne : la capture est gardée, « Est-ce que c'est
+      // validé ? » reste là. Son état n'est pas connu : elle n'est pas dite
+      // « en attente » (elle est peut-être déjà validée).
       const suivant = {
         ...ajouter(sans, bot(MESSAGE_CAPTURE_INJOIGNABLE, "alerte")),
-        choix: { ...sans.choix, reduction: { etat: "en_attente" as const, preuveId: reductionAvant.preuveId } },
+        choix: { ...sans.choix, reduction: { etat: "en_attente" as const, preuveId: reductionAvant.preuveId, injoignable: true } },
       };
       return continuer(suivant, faits, maintenant);
     }
@@ -1948,9 +2019,10 @@ function recevoirReservation(etat: EtatChat, statut: number, corps: unknown, fai
       // La capture ne compte plus au moment de réserver (le client a déjà eu
       // la réduction, décision 25, ou elle vient de servir) : sans la
       // réduction, et le message du serveur dit pourquoi, avant de payer.
+      // La capture envoyée par quelqu'un d'autre (« autre-client ») : la réservation n'a ni son numéro ni son email.
       const preuve = lecture.devis.preuve;
       const sansLaCapture =
-        etat.choix.reduction.etat === "validee" && (preuve === "deja-eue" || preuve === "deja-utilisee")
+        etat.choix.reduction.etat === "validee" && (preuve === "deja-eue" || preuve === "deja-utilisee" || preuve === "autre-client")
           ? { choix: { ...etat.choix, reduction: { etat: "sans" as const, raison: preuve } }, preuveEnCours: null }
           : {};
       const base: EtatChat = { ...etat, ...sansLaCapture };
@@ -2263,6 +2335,7 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
     capacite: null,
     confirmerRecommencer: etat.confirmerRecommencer === true,
     preuveEnCours: preuveEnCoursLisible(etat.preuveEnCours),
+    reductionDejaEue: etat.reductionDejaEue === true,
     retenue: null,
   };
   // Une question retenue pendant le compte des vélos libres (la page s'est

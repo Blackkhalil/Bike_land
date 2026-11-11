@@ -639,8 +639,19 @@ export function auteurAuJournal(encaissement?: { par: string }): string {
  * Pourquoi une preuve de réduction ne peut pas servir à cette réservation.
  * « deja-eue » : le client a déjà eu la réduction des abonnés sur une autre
  * réservation, elle ne se donne qu'une fois par client (décision 25).
+ * « autre-client » : la réservation n'a ni le numéro ni l'email donnés avec
+ * la capture ; la réduction vaut pour la personne qui l'a envoyée.
+ * « inconnue » vaut aussi pour une capture validée dont le contact a été
+ * effacé (30 jours après la décision) : on ne sait plus à qui elle est.
  */
-export type RaisonPreuveInutilisable = "inconnue" | "en_attente" | "refusee" | "deja-utilisee" | "deja-eue" | "offre";
+export type RaisonPreuveInutilisable =
+  | "inconnue"
+  | "en_attente"
+  | "refusee"
+  | "deja-utilisee"
+  | "deja-eue"
+  | "autre-client"
+  | "offre";
 
 /**
  * Ce qu'une réservation retient tant qu'elle compte (ses vélos, sa
@@ -689,6 +700,11 @@ export function memeClient(a: IdentiteClient, b: IdentiteClient): boolean {
   return numero !== "" && numero === numeroDuClient(b.telephone);
 }
 
+/** Une identité sans email ni numéro utilisables : elle ne reconnaît personne. */
+export function identiteVide(identite: IdentiteClient): boolean {
+  return emailDuClient(identite.email) === "" && numeroDuClient(identite.telephone) === "";
+}
+
 /**
  * Une réservation du Road trip en groupe, réduite à ce que regarde la règle
  * « une réduction par client » : son contact, son état et sa réduction.
@@ -697,18 +713,63 @@ export interface ReservationRoadTripClient {
   reference: string;
   statut: StatutReservation;
   creeLe: string;
+  /** Le jour du départ. */
+  date?: DateISO;
   email: string;
   telephone?: string;
   /** La réduction des abonnés comptée sur cette réservation ; 0 au prix normal. */
   reductionXof: number;
+  /**
+   * Le numéro et l'email donnés avec la capture qui a donné la réduction à
+   * cette réservation, gardés avec elle (offreDetails.preuveClient) : ils
+   * reconnaissent aussi ce client, même si la réservation porte un autre
+   * contact (décision 25).
+   */
+  preuveClient?: IdentiteClient;
+}
+
+/**
+ * Le contact de la capture gardé sur la réservation qu'elle a réduite, lu
+ * prudemment dans l'instantané de l'offre (une colonne JSON) : absent ou
+ * mal formé, rien.
+ */
+export function preuveClientDes(details: unknown): IdentiteClient | undefined {
+  if (typeof details !== "object" || details === null || Array.isArray(details)) return undefined;
+  const brut = (details as Record<string, unknown>).preuveClient;
+  if (typeof brut !== "object" || brut === null || Array.isArray(brut)) return undefined;
+  const { email, telephone } = brut as Record<string, unknown>;
+  const identite: IdentiteClient = {
+    ...(typeof email === "string" && email ? { email } : {}),
+    ...(typeof telephone === "string" && telephone ? { telephone } : {}),
+  };
+  return identiteVide(identite) ? undefined : identite;
+}
+
+/**
+ * Ce que la réservation garde de la capture qui l'a réduite, au moment où
+ * elle la consomme : son email (tel qu'il se compare) et son numéro. `null`
+ * si la capture n'a plus de contact.
+ */
+export function preuveClientAGarder(preuve: { email?: string | null; telephone?: string | null }): IdentiteClient | null {
+  const identite: IdentiteClient = {
+    ...(emailDuClient(preuve.email) ? { email: emailDuClient(preuve.email) } : {}),
+    ...(numeroDuClient(preuve.telephone) ? { telephone: (preuve.telephone ?? "").trim() } : {}),
+  };
+  return identiteVide(identite) ? null : identite;
+}
+
+/** Les identités d'une réservation : son contact, et celui de la capture qui l'a réduite. */
+function identitesDe(reservation: ReservationRoadTripClient): IdentiteClient[] {
+  return [reservation, ...(reservation.preuveClient ? [reservation.preuveClient] : [])];
 }
 
 /**
  * La réservation où l'un de ces clients a déjà eu la réduction des abonnés
  * (décision 25) : un road trip en groupe avec la réduction, qui la retient
- * encore (payée, ou en attente de paiement depuis moins de 30 minutes).
- * `null` s'il ne l'a jamais eue, ou si elle ne compte plus (annulée, jamais
- * payée et expirée). La même règle en démonstration et en base.
+ * encore (payée, ou en attente de paiement depuis moins de 30 minutes), dont
+ * le contact, ou celui de la capture qui l'a réduite, est le sien. `null`
+ * s'il ne l'a jamais eue, ou si elle ne compte plus (annulée, jamais payée
+ * et expirée). La même règle en démonstration et en base.
  */
 export function reductionDejaEue(
   reservations: readonly ReservationRoadTripClient[],
@@ -720,54 +781,96 @@ export function reductionDejaEue(
       (reservation) =>
         reservation.reductionXof > 0 &&
         reservationRetenue(reservation, maintenant) &&
-        identites.some((identite) => memeClient(identite, reservation)),
+        identites.some((identite) => identitesDe(reservation).some((autre) => memeClient(identite, autre))),
     ) ?? null
   );
 }
 
 /**
- * Une preuve validée peut-elle encore servir ? « deja-utilisee » : elle
- * retient déjà la réduction d'une réservation (payée, ou en attente de
- * paiement depuis moins de 30 minutes) ; « deja-eue » : son client, reconnu
- * au contact de la capture ou à l'un des contacts `autres` (celui de la
- * réservation en cours), a déjà eu la réduction sur une autre réservation
- * (décision 25). Le devis, le statut de la capture et la transaction qui
- * écrit la réservation appliquent tous cette règle.
+ * Comme `reductionDejaEue`, mais seulement quand le numéro ET l'email de
+ * cette identité sont tous deux ceux de la même réservation réduite. Sert à
+ * l'envoi d'une capture : le refus immédiat ne dit rien d'un tiers dont on
+ * n'aurait que le numéro ou l'email. Dans les autres cas, la capture est
+ * reçue ; l'écran des preuves, le devis et la réservation appliquent la règle.
+ */
+export function reductionDejaEueAuMemeContact(
+  reservations: readonly ReservationRoadTripClient[],
+  identite: IdentiteClient,
+  maintenant = Date.now(),
+): ReservationRoadTripClient | null {
+  const email = emailDuClient(identite.email);
+  const numero = numeroDuClient(identite.telephone);
+  if (!email || !numero) return null;
+  return (
+    reservations.find((reservation) => {
+      if (reservation.reductionXof <= 0 || !reservationRetenue(reservation, maintenant)) return false;
+      const autres = identitesDe(reservation);
+      return autres.some((autre) => emailDuClient(autre.email) === email) && autres.some((autre) => numeroDuClient(autre.telephone) === numero);
+    }) ?? null
+  );
+}
+
+/**
+ * La capture appartient-elle à ce client ? La réservation doit porter le
+ * numéro ou l'email donnés avec la capture : une capture validée ne sert
+ * qu'à la personne qui l'a envoyée, même si son lien circule.
+ */
+export function captureDuClient(preuve: { email?: string | null; telephone?: string | null }, client: IdentiteClient): boolean {
+  return memeClient(client, { email: preuve.email, telephone: preuve.telephone });
+}
+
+/**
+ * Une preuve validée peut-elle encore servir ? « inconnue » : son contact a
+ * été effacé (30 jours après la décision), on ne sait plus à qui elle est ;
+ * « deja-utilisee » : elle retient déjà la réduction d'une réservation
+ * (payée, ou en attente de paiement depuis moins de 30 minutes) ;
+ * « autre-client » : le contact de la réservation (`client`, connu au moment
+ * de réserver) n'est pas celui de la capture ; « deja-eue » : son client,
+ * reconnu au contact de la capture ou à celui de la réservation, a déjà eu
+ * la réduction sur une autre réservation (décision 25). Le devis, le statut
+ * de la capture et la transaction qui écrit la réservation appliquent tous
+ * cette règle.
  */
 export async function usageDUnePreuveValidee(
   preuve: Pick<PreuveReduction, "reference" | "email" | "telephone">,
   depot: Pick<Depot, "trouverReservationParReference" | "listerReservationsRoadTripGroupe">,
   maintenant = Date.now(),
-  autres: readonly IdentiteClient[] = [],
-): Promise<"validee" | "deja-utilisee" | "deja-eue"> {
+  client?: IdentiteClient,
+): Promise<"validee" | "deja-utilisee" | "deja-eue" | "autre-client" | "inconnue"> {
+  if (identiteVide(preuve)) return "inconnue";
   if (preuve.reference) {
     const liee = await depot.trouverReservationParReference(preuve.reference);
     if (liee && reservationRetenue(liee, maintenant)) return "deja-utilisee";
   }
+  if (client && !captureDuClient(preuve, client)) return "autre-client";
   const reductions = await depot.listerReservationsRoadTripGroupe({ avecReduction: true });
-  const identites: IdentiteClient[] = [{ email: preuve.email, telephone: preuve.telephone }, ...autres];
+  const identites: IdentiteClient[] = [{ email: preuve.email, telephone: preuve.telephone }, ...(client ? [client] : [])];
   return reductionDejaEue(reductions, identites, maintenant) ? "deja-eue" : "validee";
 }
 
 /**
  * La preuve de réduction peut-elle servir ? Elle doit être validée (par
- * l'agent IA ou à la main), et ne pas retenir déjà la réduction d'une autre
- * réservation : une par réservation, et une réduction par client (décision 25,
- * `reductionDejaEue`). Une preuve rattachée à une réservation qui ne
- * retient plus rien (annulée, ou jamais payée et expirée au bout de 30
- * minutes) redevient libre : le client qui recommence après un paiement
- * échoué garde sa réduction. `null` si elle peut servir. La même règle en
- * démonstration et en base.
+ * l'agent IA ou à la main), garder le contact de qui l'a envoyée, et ne pas
+ * retenir déjà la réduction d'une autre réservation : une par réservation,
+ * et une réduction par client (décision 25, `reductionDejaEue`). Une preuve
+ * rattachée à une réservation qui ne retient plus rien (annulée, ou jamais
+ * payée et expirée au bout de 30 minutes) redevient libre : le client qui
+ * recommence après un paiement échoué garde sa réduction. Avec `client` (le
+ * contact de la réservation), la capture doit être la sienne. `null` si
+ * elle peut servir. La même règle en démonstration et en base.
  */
 export function raisonPreuveInutilisable(
-  preuve: { statut: string; reference?: string | null } | null,
+  preuve: { statut: string; reference?: string | null; email?: string | null; telephone?: string | null } | null,
   reservationLiee: { statut: StatutReservation; creeLe: string } | null,
   maintenant = Date.now(),
+  client?: IdentiteClient,
 ): RaisonPreuveInutilisable | null {
   if (!preuve) return "inconnue";
   if (preuve.statut !== "validee") return preuve.statut === "refusee" ? "refusee" : "en_attente";
-  if (!preuve.reference || !reservationLiee) return null;
-  return reservationRetenue(reservationLiee, maintenant) ? "deja-utilisee" : null;
+  if (identiteVide(preuve)) return "inconnue";
+  if (preuve.reference && reservationLiee && reservationRetenue(reservationLiee, maintenant)) return "deja-utilisee";
+  if (client && !captureDuClient(preuve, client)) return "autre-client";
+  return null;
 }
 
 export interface Depot {
@@ -1200,12 +1303,12 @@ export interface Depot {
 
   /**
    * Efface l'email et le téléphone des preuves décidées avant `avant` (un
-   * instant ISO, 30 jours plus tôt) et de celles qui ont servi à une
-   * réservation. La preuve reste, sans eux : une capture validée qui n'a pas
-   * servi garde son identifiant et reste utilisable une fois. La règle « une
-   * réduction par client » (décision 25) s'appuie sur le contact des
-   * réservations, pas sur celui des captures. Rend le nombre de preuves
-   * dont le contact a été effacé.
+   * instant ISO, 30 jours plus tôt). La preuve reste, sans eux, et ne peut
+   * plus servir : on ne sait plus à qui elle est. Une capture qui a servi
+   * a laissé son contact sur la réservation qu'elle a réduite
+   * (offreDetails.preuveClient) : la règle « une réduction par client »
+   * (décision 25) le retrouve là. Rend le nombre de preuves dont le contact
+   * a été effacé.
    */
   effacerContactsPreuves(avant: string): Promise<number>;
 
@@ -1222,10 +1325,11 @@ export interface Depot {
    * Les réservations du Road trip en groupe, jamais les annulées, réduites à
    * leur contact, leur état et leur réduction (`ReservationRoadTripClient`) :
    * avec la réduction des abonnés (`avecReduction`), ou au prix normal ;
-   * `depuis` (instant ISO) : créées depuis cet instant. Une demande en attente
-   * de paiement y figure même expirée : `reservationRetenue` en décide.
+   * `departDepuis` : celles qui partent ce jour-là ou plus tard. Une demande
+   * en attente de paiement y figure même expirée : `reservationRetenue` en
+   * décide. Chacune porte aussi le contact de la capture qui l'a réduite.
    */
-  listerReservationsRoadTripGroupe(filtre: { avecReduction: boolean; depuis?: string }): Promise<ReservationRoadTripClient[]>;
+  listerReservationsRoadTripGroupe(filtre: { avecReduction: boolean; departDepuis?: DateISO }): Promise<ReservationRoadTripClient[]>;
 
   /* ------------------------------------------- Offres de groupe (lot 3) */
 
@@ -1345,6 +1449,7 @@ export class PreuveReductionInutilisableError extends Error {
         refusee: "Cette preuve de réduction n'a pas été acceptée.",
         "deja-utilisee": "Cette preuve de réduction a déjà servi pour une autre réservation.",
         "deja-eue": "Ce client a déjà eu la réduction des abonnés : elle vaut une seule fois par client.",
+        "autre-client": "Cette capture a été envoyée avec un autre numéro et un autre email que ceux de la réservation.",
         offre: "La réduction sur preuve ne vaut que pour le road trip en groupe.",
       }[raison],
     );

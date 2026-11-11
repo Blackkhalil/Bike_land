@@ -100,6 +100,8 @@ import {
   ordreAttribution,
   memeClient,
   PreuveReductionInutilisableError,
+  preuveClientAGarder,
+  preuveClientDes,
   prixParLigne,
   raisonPreuveInutilisable,
   reductionDejaEue,
@@ -510,34 +512,42 @@ type VeloDuParcEnBase = { id: string; nom: string; gamme: GammeVelo; statut: str
  */
 async function lireReservationsRoadTripGroupe(
   db: Prisma.TransactionClient,
-  filtre: { avecReduction: boolean; depuis?: string },
+  filtre: { avecReduction: boolean; departDepuis?: DateISO },
 ): Promise<ReservationRoadTripClient[]> {
-  const depuis = filtre.depuis ? new Date(filtre.depuis) : null;
+  const departDepuis = filtre.departDepuis && estDateISO(filtre.departDepuis) ? new Date(`${filtre.departDepuis}T00:00:00Z`) : null;
   const lignes = await db.booking.findMany({
     where: {
       offer: "ROAD_TRIP_GROUPE",
       status: { in: ["EN_ATTENTE_PAIEMENT", "CONFIRMEE", "EN_COURS", "TERMINEE"] },
       discountXof: filtre.avecReduction ? { gt: 0 } : 0,
-      ...(depuis && !Number.isNaN(depuis.getTime()) ? { createdAt: { gte: depuis } } : {}),
+      ...(departDepuis ? { startDate: { gte: departDepuis } } : {}),
     },
     select: {
       reference: true,
       status: true,
       createdAt: true,
+      startDate: true,
       contactPhone: true,
       discountXof: true,
+      // Le contact de la capture qui a donné la réduction y est gardé (décision 25).
+      offreDetails: true,
       customer: { select: { email: true, phone: true } },
     },
     orderBy: { createdAt: "asc" },
   });
-  return lignes.map((ligne) => ({
-    reference: ligne.reference,
-    statut: ligne.status,
-    creeLe: ligne.createdAt.toISOString(),
-    email: ligne.customer.email,
-    ...((ligne.contactPhone ?? ligne.customer.phone) ? { telephone: (ligne.contactPhone ?? ligne.customer.phone) as string } : {}),
-    reductionXof: ligne.discountXof,
-  }));
+  return lignes.map((ligne) => {
+    const preuveClient = preuveClientDes(ligne.offreDetails);
+    return {
+      reference: ligne.reference,
+      statut: ligne.status,
+      creeLe: ligne.createdAt.toISOString(),
+      date: ligne.startDate.toISOString().slice(0, 10),
+      email: ligne.customer.email,
+      ...((ligne.contactPhone ?? ligne.customer.phone) ? { telephone: (ligne.contactPhone ?? ligne.customer.phone) as string } : {}),
+      reductionXof: ligne.discountXof,
+      ...(preuveClient ? { preuveClient } : {}),
+    };
+  });
 }
 
 /**
@@ -2526,17 +2536,14 @@ const depotDirect: Depot = {
 
   async effacerContactsPreuves(avant) {
     const limite = new Date(avant);
+    if (Number.isNaN(limite.getTime())) return 0;
+    // Décidées il y a plus de 30 jours, servies ou non : une capture qui a
+    // servi a laissé son contact sur la réservation qu'elle a réduite.
     const { count } = await client().preuveReduction.updateMany({
       where: {
-        AND: [
-          { OR: [{ email: { not: null } }, { telephone: { not: null } }] },
-          {
-            OR: [
-              { reference: { not: null } },
-              ...(Number.isNaN(limite.getTime()) ? [] : [{ statut: { not: "en_attente" }, decideLe: { lt: limite } }]),
-            ],
-          },
-        ],
+        OR: [{ email: { not: null } }, { telephone: { not: null } }],
+        statut: { not: "en_attente" },
+        decideLe: { lt: limite },
       },
       data: { email: null, telephone: null },
     });
@@ -2688,6 +2695,7 @@ const depotDirect: Depot = {
           // et ne retenant pas déjà la réduction d'une autre réservation (une
           // par groupe). La mise à jour est conditionnée sur ce qui vient
           // d'être relu : deux réservations ne la prennent pas toutes les deux.
+          let preuveGardee: IdentiteClient | null = null;
           if (demande.preuveId) {
             const preuve = await tx.preuveReduction.findUnique({
               where: { id: demande.preuveId },
@@ -2699,9 +2707,12 @@ const depotDirect: Depot = {
                   select: { status: true, createdAt: true },
                 })
               : null;
+            // La capture doit être celle de ce client : la réservation porte son numéro ou son email.
             const raison = raisonPreuveInutilisable(
               preuve,
               liee ? { statut: liee.status, creeLe: liee.createdAt.toISOString() } : null,
+              Date.now(),
+              demande.client,
             );
             if (raison) throw new PreuveReductionInutilisableError(raison);
             // Décision 25 : la réduction des abonnés, une seule fois par
@@ -2717,6 +2728,10 @@ const depotDirect: Depot = {
               data: { reference },
             });
             if (count !== 1) throw new PreuveReductionInutilisableError("deja-utilisee");
+            // Le contact de la capture reste avec la réservation, dans la même
+            // transaction : il reconnaît ce client pour la règle « une
+            // réduction par client », même sous un autre contact (décision 25).
+            preuveGardee = preuve ? preuveClientAGarder(preuve) : null;
             // Reprise à une demande impayée expirée : celle-ci est annulée ici
             // même, comme les autres demandes impayées expirées de ce client
             // qui portaient la réduction. Leur paiement, s'il arrivait quand
@@ -2769,7 +2784,10 @@ const depotDirect: Depot = {
               endTime: retour,
               startMinute: demande.debutMinute,
               endMinute: demande.finMinute,
-              offreDetails: demande.details as Prisma.InputJsonObject,
+              offreDetails: {
+                ...demande.details,
+                ...(preuveGardee ? { preuveClient: preuveGardee } : {}),
+              } as Prisma.InputJsonObject,
               subtotalXof: sousTotalXof,
               optionsXof: 0,
               discountXof: remiseXof,
