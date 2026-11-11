@@ -822,6 +822,20 @@ const totalAffiche = (etat: Etat) => c.offreAffichee(etat, FAITS, LUNDI_10H)?.re
     ]);
   }
   verifier("capture vraiment introuvable (404) : seulement là, on repart de la question", agir(enVerification, { type: "preuve-recue", statut: 404, corps: { ok: false } }).choix.reduction, { etat: "a-demander" });
+  // Le 404 du serveur avec un message : la bulle le dit tel quel ; sans message, la phrase de Bike Land.
+  const textesDe = (etat: Etat) => etat.messages.map((message: { texte: string }) => message.texte.replace(ESPACES_INSECABLES, " "));
+  const plusValable = agir(enVerification, {
+    type: "preuve-recue",
+    statut: 404,
+    corps: { ok: false, code: "SAISIE", message: "Cette capture n'est plus valable : envoyez-en une nouvelle." },
+  });
+  const sansMessage = agir(enVerification, { type: "preuve-recue", statut: 404, corps: null });
+  verifier("404 avec un message du serveur : la bulle le reprend ; sans message, « Je ne retrouve pas votre capture d'écran… »", [
+    textesDe(plusValable).includes("Cette capture n'est plus valable : envoyez-en une nouvelle."),
+    textesDe(plusValable).some((texte: string) => texte.startsWith("Je ne retrouve pas")),
+    textesDe(sansMessage).includes("Je ne retrouve pas votre capture d'écran. Vous pouvez en envoyer une nouvelle, ou réserver sans la réduction."),
+    plusValable.choix.reduction,
+  ], [true, false, true, { etat: "a-demander" }]);
   // Le lien de l'email sans réseau : la capture est gardée, et la discussion avance.
   let lienSansReseau = agir(agir(c.etatInitial(), { type: "demarrer", offre: "road-trip-groupe", preuveId: "pr_7" }), { type: "preuve-recue", statut: 0, corps: null });
   verifier("lien de l'email sans réseau : la capture gardée, puis la première question", [lienSansReseau.choix.reduction, derniers(lienSansReseau, 2), lienSansReseau.etape], [

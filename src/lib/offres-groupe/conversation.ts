@@ -1908,10 +1908,13 @@ function recevoirPreuve(etat: EtatChat, statut: number, corps: unknown, faits: F
       return continuer(suivant, faits, maintenant);
     }
     if (reductionAvant.etat === "a-verifier") {
-      // Une capture introuvable : on reprend la question de la réduction au bon moment.
+      // Une capture introuvable (ou qui n'est plus valable) : le message du
+      // serveur s'il en donne un, sinon le nôtre ; on reprend la question de
+      // la réduction au bon moment.
       if (statut === 404) {
+        const texte = lecture.message || "Je ne retrouve pas votre capture d'écran. Vous pouvez en envoyer une nouvelle, ou réserver sans la réduction.";
         const suivant = {
-          ...ajouter(sans, bot("Je ne retrouve pas votre capture d'écran. Vous pouvez en envoyer une nouvelle, ou réserver sans la réduction.", "alerte")),
+          ...ajouter(sans, bot(texte, "alerte")),
           choix: { ...sans.choix, reduction: { etat: "a-demander" as const } },
           preuveEnCours: null,
         };
