@@ -336,6 +336,9 @@ export function PanneauChatGroupe({
     const zone = defilement.current;
     if (!zone) return;
     const reduit = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Là où le défilement doux va arriver : le focus qui suit (le rond disparu) se pose sur la
+    // première réponse visible à cet endroit, pas sur la discussion.
+    defilementVise.current = Math.max(0, zone.scrollHeight - zone.clientHeight);
     zone.scrollTo({ top: zone.scrollHeight, behavior: reduit ? "auto" : "smooth" });
   };
 
