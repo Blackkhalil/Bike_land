@@ -737,7 +737,7 @@ export async function deciderPreuveParAdmin(
     const sansReduction = statut === "validee" && taux.inactive;
     // Le lien rouvre la discussion avec la preuve tant que la réduction peut encore servir à ce client.
     const avecLaPreuve = statut === "validee" && !situation.dejaEue && !sansReduction;
-    // Refusée, alors que ce client a déjà eu la réduction : l'email dit « une fois par client », rien sur l'abonnement.
+    // Ce client a déjà eu la réduction (capture validée ou refusée) : l'email dit « une fois par client », rien sur l'abonnement.
     const dejaEue = sansReduction ? undefined : situation.dejaEue;
     const envoi = await deps
       .emailDecision({
