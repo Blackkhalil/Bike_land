@@ -1955,7 +1955,8 @@ function recevoirPreuve(etat: EtatChat, statut: number, corps: unknown, faits: F
     }
     case "deja-utilisee":
     case "deja-eue": {
-      // Validée, mais elle ne peut plus servir : jamais « C'est validé ! ».
+      // Validée, mais elle ne peut plus servir, ou refusée alors que ce client a déjà eu la
+      // réduction : jamais « C'est validé ! », ni une autre capture proposée (décision 25).
       const local = lecture.statut === "deja-eue" ? phraseReductionDejaEue(pourcentage) : PHRASE_CAPTURE_DEJA_UTILISEE;
       const suivant = {
         ...ajouter(sans, bot(lecture.message || local, "alerte")),

@@ -1391,8 +1391,9 @@ export async function envoyerAlertePreuve(alerte: { recueLe: string; enAttente: 
  * Validée, elle dit la vérité sur ce que le client a déjà réservé : une
  * réservation au prix normal faite pendant l'attente garde ce prix, et la
  * réduction servira une fois, sur un prochain road trip (décision 24, pas de
- * remboursement) ; un client qui a déjà eu la réduction ne l'a pas une
- * seconde fois (décision 25).
+ * remboursement). Validée ou refusée, un client qui a déjà eu la réduction
+ * l'apprend : elle vaut une seule fois par client (décision 25), et l'email
+ * ne dit rien de son abonnement.
  */
 export async function envoyerDecisionPreuve(champs: {
   email: string;
@@ -1404,7 +1405,7 @@ export async function envoyerDecisionPreuve(champs: {
   motif?: string;
   /** La réservation au prix normal que ce client a faite pendant l'attente : elle garde ce prix. */
   reservationPrixNormal?: string;
-  /** La réservation où ce client a déjà eu la réduction. */
+  /** La réservation où ce client a déjà eu la réduction (validée ou refusée, le même email). */
   reductionDejaEue?: string;
   /** La réduction est réglée à 0 % : rien à appliquer, ni pourcentage ni lien de reprise. */
   sansReduction?: boolean;
@@ -1437,7 +1438,8 @@ export async function envoyerDecisionPreuve(champs: {
       }),
     });
   }
-  if (champs.statut === "validee" && champs.reductionDejaEue) {
+  // Validée ou refusée : un client qui a déjà eu la réduction l'apprend, sans un mot de son abonnement.
+  if (champs.reductionDejaEue) {
     const constat = `Vous avez déjà eu ${reduction} sur votre réservation ${champs.reductionDejaEue} : elle vaut une seule fois par client.`;
     return envoyer({
       destinataire: champs.email,

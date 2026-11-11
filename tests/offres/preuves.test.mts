@@ -710,6 +710,50 @@ console.log("\n— Décision 24 : valider après une réservation au prix normal
   verifier("la situation du client, pour l'écran des preuves", preuves.situationDuClient(capture, [roadTrip({ reference: "BL-R", telephone: "0197000000" })], [], MAINTENANT), { dejaEue: "BL-R" });
 }
 
+console.log("\n— Décision 25 : refuser la capture d'un client qui a déjà eu la réduction");
+{
+  const lienSans = "https://site.test/?reserver-en-groupe=road-trip-groupe";
+  const cas: [string, Record<string, string>, Record<string, any>][] = [
+    ["même numéro, un autre email", { telephone: "0197000000", email: "nouvel.email@example.com" }, roadTrip({ reference: "BL-REDUIT", telephone: "+229 01 97 00 00 00" })],
+    ["même email, un autre numéro", { telephone: "+229 01 61 00 00 00", email: " Awa.Test@Example.com " }, roadTrip({ reference: "BL-REDUIT", email: "awa.test@example.com" })],
+  ];
+  for (const [nom, contact, reservation] of cas) {
+    const d = fauxDecor({ reservations: [reservation] });
+    d.etat.preuves.set("pr", { id: "pr", statut: "en_attente", ...contact, creeLe: new Date(MAINTENANT - 60 * 60_000).toISOString() });
+    const refus = (await preuves.deciderPreuveParAdmin({ action: "refuser", id: "pr", prenom: "Koffi", motif: "On ne voit pas « Abonné »." }, d.deps)) as {
+      statut: number;
+      corps: Record<string, any>;
+    };
+    const envoye = d.etat.emails[0];
+    verifier(`${nom}, Bike Land refuse : l'email « déjà eue » (sans motif sur l'abonnement), le lien sans la capture`, [
+      refus.statut,
+      refus.corps.dejaEue,
+      envoye.statut,
+      envoye.reductionDejaEue,
+      espaces(envoye.reduction),
+      "motif" in envoye,
+      envoye.lienReprise,
+    ], [200, "BL-REDUIT", "refusee", "BL-REDUIT", "4 %", false, lienSans]);
+    const statut = (await preuves.statutPreuve("pr", d.deps)) as { statut: number; corps: Record<string, any> };
+    verifier(`${nom}, refusée : le statut dit « deja-eue », avec la phrase « une seule fois par client »`, [statut.statut, statut.corps.statut, espaces(statut.corps.message)], [
+      200,
+      "deja-eue",
+      "Vous avez déjà eu la réduction de 4 % : elle vaut une seule fois par client.",
+    ]);
+  }
+  // Un client qui ne l'a jamais eue : le refus ordinaire, avec ce que Bike Land a vu.
+  const d = fauxDecor({ reservations: [roadTrip({})] });
+  d.etat.preuves.set("pr", { id: "pr", statut: "en_attente", telephone: "0197000000", email: "awa.test@example.com", creeLe: new Date(MAINTENANT).toISOString() });
+  await preuves.deciderPreuveParAdmin({ action: "refuser", id: "pr", prenom: "Koffi", motif: "On ne voit pas « Abonné »." }, d.deps);
+  const ordinaire = (await preuves.statutPreuve("pr", d.deps)) as { corps: Record<string, any> };
+  verifier("un autre client avait eu la réduction : refus ordinaire, le motif dans l'email et dans le statut", [
+    "reductionDejaEue" in d.etat.emails[0],
+    d.etat.emails[0].motif,
+    ordinaire.corps.statut,
+    espaces(ordinaire.corps.message).includes("Ce que nous avons vu : On ne voit pas « Abonné »."),
+  ], [false, "On ne voit pas « Abonné ».", "refusee", true]);
+}
+
 /* ------------------------------------------------------------ Stockage */
 
 const { depot } = await charger("src/lib/db/index.ts");

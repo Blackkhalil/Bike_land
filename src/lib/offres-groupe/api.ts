@@ -187,7 +187,8 @@ export type StatutPreuve = "validee" | "en_attente" | "refusee";
  * une capture validée qui ne peut plus servir, pourquoi. « deja-utilisee » :
  * elle a déjà servi à une réservation ; « deja-eue » : son client a déjà eu
  * la réduction sur une autre réservation, elle vaut une fois par client
- * (décision 25). Le chatbot ne dit alors jamais « C'est validé ! ».
+ * (décision 25), que la capture soit validée ou refusée. Le chatbot ne dit
+ * alors jamais « C'est validé ! », ni ne propose une autre capture.
  */
 export type EtatPreuveClient = StatutPreuve | "deja-utilisee" | "deja-eue";
 

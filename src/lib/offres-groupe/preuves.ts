@@ -213,7 +213,11 @@ export interface DependancesPreuves {
      * un prochain road trip (décision 24, sans remboursement).
      */
     reservationPrixNormal?: string;
-    /** Validée, alors que ce client a déjà eu la réduction sur cette réservation : une fois par client (décision 25). */
+    /**
+     * Validée ou refusée, alors que ce client a déjà eu la réduction sur
+     * cette réservation : une fois par client (décision 25), sans un mot de
+     * l'abonnement.
+     */
     reductionDejaEue?: string;
     /** Validée, alors que la réduction est réglée à 0 % : rien à appliquer, ni pourcentage ni lien de reprise. */
     sansReduction?: boolean;
@@ -614,7 +618,9 @@ async function alerterBikeLand(alerte: AlerteCapture, preuveId: string, deps: Pi
  * chatbot n'annonce alors jamais « C'est validé ! ». Une capture validée
  * dont le contact a été effacé (30 jours après la décision) ne sert plus :
  * 404, comme une capture inconnue. Refusée à la main, le message dit ce que
- * Bike Land a vu, s'il l'a écrit. Ne rend jamais le contact du client.
+ * Bike Land a vu, s'il l'a écrit ; refusée alors que son client a déjà eu
+ * la réduction, « deja-eue » (décision 25). Ne rend jamais le contact du
+ * client.
  */
 export async function statutPreuve(
   preuveId: string,
@@ -633,9 +639,19 @@ export async function statutPreuve(
       // La réservation refera ce contrôle, et c'est elle qui fait foi.
       console.error(`[offres-groupe] preuve ${preuve.id} : réservations illisibles, statut donné sans elles`, e);
     }
+  } else if (preuve.statut === "refusee" && !identiteVide(preuve)) {
+    // Refusée, alors que son client a déjà eu la réduction (décision 25) :
+    // « deja-eue », et la discussion continue sans elle, sans proposer une
+    // autre capture qui ne servirait pas.
+    try {
+      const reductions = await deps.depot.listerReservationsRoadTripGroupe({ avecReduction: true });
+      if (reductionDejaEue(reductions, [{ email: preuve.email, telephone: preuve.telephone }], deps.maintenant())) statut = "deja-eue";
+    } catch (e) {
+      console.error(`[offres-groupe] preuve ${preuve.id} : réservations illisibles, refus donné sans elles`, e);
+    }
   }
   // Le motif écrit par Bike Land en refusant (jamais celui du site ni de l'agent IA).
-  const motif = preuve.statut === "refusee" && preuve.decidePar?.startsWith("admin") ? preuve.motif : undefined;
+  const motif = statut === "refusee" && preuve.decidePar?.startsWith("admin") ? preuve.motif : undefined;
   return {
     statut: 200,
     corps: {
@@ -665,7 +681,7 @@ export type ReponseDecisionPreuve =
       emailEnvoye: boolean;
       /** Validée : la réservation au prix normal que ce client avait déjà faite après sa capture (décision 24). */
       prixNormal?: string;
-      /** Validée : la réservation où ce client avait déjà eu la réduction (décision 25). */
+      /** Validée ou refusée : la réservation où ce client avait déjà eu la réduction (décision 25). */
       dejaEue?: string;
     }
   | { ok?: false; erreur: string; champs?: Record<string, string> };
@@ -678,8 +694,9 @@ export type ReponseDecisionPreuve =
  * poli et ce qu'il peut faire. Une validation tient compte de ce que le
  * client a déjà réservé : une réservation au prix normal faite pendant
  * l'attente garde ce prix, et la réduction servira sur un prochain road trip
- * (décision 24) ; un client qui l'a déjà eue ne l'a pas une seconde fois
- * (décision 25). Un email qui ne part pas est noté au journal.
+ * (décision 24). Validée ou refusée, un client qui l'a déjà eue l'apprend :
+ * elle vaut une fois par client (décision 25), et l'email ne parle pas de
+ * son abonnement. Un email qui ne part pas est noté au journal.
  */
 export async function deciderPreuveParAdmin(
   corps: unknown,
@@ -700,20 +717,20 @@ export async function deciderPreuveParAdmin(
   const fichierEfface = await effacerFichier(decidee, deps);
 
   // Ce que le client a déjà réservé, pour lui dire la vérité : la réduction
-  // déjà eue, ou un road trip au prix normal fait après la capture ou encore
-  // à venir.
+  // déjà eue (validée ou refusée, décision 25), ou, pour une validation, un
+  // road trip au prix normal fait après la capture ou encore à venir.
   let situation: SituationClient = {};
   const maintenant = deps.maintenant();
-  if (statut === "validee") {
-    try {
-      const [avecReduction, auPrixNormal] = await Promise.all([
-        deps.depot.listerReservationsRoadTripGroupe({ avecReduction: true }),
-        deps.depot.listerReservationsRoadTripGroupe({ avecReduction: false, departDepuis: departsALire([decidee], maintenant) }),
-      ]);
-      situation = situationDuClient(decidee, avecReduction, auPrixNormal, maintenant);
-    } catch (e) {
-      console.error(`[offres-groupe] preuve ${decidee.id} : réservations du client illisibles, email ordinaire`, e);
-    }
+  try {
+    const [avecReduction, auPrixNormal] = await Promise.all([
+      deps.depot.listerReservationsRoadTripGroupe({ avecReduction: true }),
+      statut === "validee"
+        ? deps.depot.listerReservationsRoadTripGroupe({ avecReduction: false, departDepuis: departsALire([decidee], maintenant) })
+        : Promise.resolve([]),
+    ]);
+    situation = situationDuClient(decidee, avecReduction, auPrixNormal, maintenant);
+  } catch (e) {
+    console.error(`[offres-groupe] preuve ${decidee.id} : réservations du client illisibles, email ordinaire`, e);
   }
 
   let emailEnvoye = false;
@@ -723,17 +740,21 @@ export async function deciderPreuveParAdmin(
     const sansReduction = statut === "validee" && taux.inactive;
     // Le lien rouvre la discussion avec la preuve tant que la réduction peut encore servir à ce client.
     const avecLaPreuve = statut === "validee" && !situation.dejaEue && !sansReduction;
+    // Refusée, alors que ce client a déjà eu la réduction : l'email dit « une fois par client », rien sur l'abonnement.
+    const dejaEue = sansReduction ? undefined : situation.dejaEue;
     const envoi = await deps
       .emailDecision({
         email: decidee.email,
         statut,
         lienReprise: lienDeReprise(deps.urlSite(), avecLaPreuve ? decidee.id : undefined),
-        ...(taux.texte && !sansReduction ? { reduction: taux.texte } : {}),
-        ...(statut === "refusee" && motif ? { motif } : {}),
+        ...(taux.texte && !taux.inactive ? { reduction: taux.texte } : {}),
+        ...(statut === "refusee" && motif && !dejaEue ? { motif } : {}),
         ...(sansReduction ? { sansReduction: true } : {}),
         ...(avecLaPreuve ? { valableJours: JOURS_CONSERVATION_CONTACT } : {}),
-        ...(!sansReduction && situation.dejaEue ? { reductionDejaEue: situation.dejaEue } : {}),
-        ...(!sansReduction && !situation.dejaEue && situation.prixNormal ? { reservationPrixNormal: situation.prixNormal.reference } : {}),
+        ...(dejaEue ? { reductionDejaEue: dejaEue } : {}),
+        ...(statut === "validee" && !sansReduction && !dejaEue && situation.prixNormal
+          ? { reservationPrixNormal: situation.prixNormal.reference }
+          : {}),
       })
       .catch((e: unknown) => {
         console.error(`[offres-groupe] preuve ${decidee.id} : email de décision non envoyé`, e);

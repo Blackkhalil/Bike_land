@@ -127,6 +127,18 @@ const lienSans = "https://site.test/?reserver-en-groupe=road-trip-groupe";
     lisible(refus.sujet),
     lisible(refus.texte).includes("Ce que nous avons vu : On ne voit pas « Abonné(e) »."),
   ], ["Votre capture pour la réduction du road trip", true]);
+  // Décision 25 : refusée, alors que ce client a déjà eu la réduction. Le texte « déjà eue », rien sur l'abonnement.
+  await email.envoyerDecisionPreuve({ email: "awa@example.com", statut: "refusee", lienReprise: lienSans, reduction: "4 %", reductionDejaEue: "BL-REDUIT" });
+  const refusDejaEue = dernier();
+  verifier("refusée, déjà eue : « une seule fois par client », le bouton « Réserver un road trip », pas un mot de l'abonnement", [
+    lisible(refusDejaEue.sujet),
+    lisible(refusDejaEue.texte).includes(
+      "Merci pour votre capture. Vous avez déjà eu la réduction de 4 % sur votre réservation BL-REDUIT : elle vaut une seule fois par client.",
+    ),
+    refusDejaEue.html.includes("Réserver un road trip"),
+    /abonnement|story|autre capture/i.test(refusDejaEue.texte + refusDejaEue.html),
+    refusDejaEue.texte.includes(lienSans) && !refusDejaEue.texte.includes("preuve="),
+  ], ["Votre capture pour la réduction du road trip", true, true, false, true]);
   verifier("aucun tiret long dans ces emails", envois.filter((envoi) => /—|–/.test(envoi.texte + envoi.sujet)).length, 0);
 }
 

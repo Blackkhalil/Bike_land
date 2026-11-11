@@ -41,8 +41,13 @@ interface MessageDecision {
 /** Le message après une décision, en clair. */
 function messageApresDecision(preuve: PreuveAVerifier, action: "valider" | "refuser", reponse: ReponseDecision): MessageDecision {
   const morceaux: string[] = [];
-  if (action === "refuser") morceaux.push("Capture refusée.");
-  else if (reponse.dejaEue) {
+  if (action === "refuser") {
+    morceaux.push(
+      reponse.dejaEue
+        ? `Capture refusée. Ce client a déjà eu la réduction (${reponse.dejaEue}) : l'email lui dit qu'elle vaut une seule fois par client.`
+        : "Capture refusée.",
+    );
+  } else if (reponse.dejaEue) {
     morceaux.push(`Capture validée, mais ce client a déjà eu la réduction (${reponse.dejaEue}) : l'email lui dit qu'elle vaut une seule fois par client.`);
   } else if (reponse.prixNormal) {
     morceaux.push(
@@ -109,7 +114,9 @@ export function PreuvesAVerifier({ preuves, comptes }: { preuves: PreuveAVerifie
     }
     const question =
       action === "refuser"
-        ? "Vous refusez cette capture ? Le client recevra un email poli, et pourra en envoyer une autre."
+        ? preuve.dejaEue
+          ? `Vous refusez cette capture ? Ce client a déjà eu la réduction (${preuve.dejaEue}) : l'email lui dira qu'elle vaut une seule fois par client.`
+          : "Vous refusez cette capture ? Le client recevra un email poli, et pourra en envoyer une autre."
         : preuve.dejaEue
           ? `Ce client a déjà eu la réduction (${preuve.dejaEue}) : elle vaut une seule fois par client, refusez plutôt. Valider quand même ?`
           : preuve.prixNormal
