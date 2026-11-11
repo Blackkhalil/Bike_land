@@ -16,10 +16,12 @@ import { IconeEnvoyer, IconeVersLeBas } from "./IconesChat";
  * Ce qui part est l'action de la machine que rend `mode.lire` ; tant
  * qu'elle est nulle (rien de valable tapé), le bouton reste grisé.
  *
- * Quand la discussion n'est pas descendue jusqu'en bas et que rien ne se
- * tape (`onVoirLaSuite`), le rond blanc « Voir la suite » prend la place du
- * bouton d'envoi : il descend jusqu'aux dernières bulles et aux réponses,
- * sans jamais rien cacher de la discussion.
+ * Quand la discussion n'est pas descendue jusqu'en bas (`onVoirLaSuite`) et
+ * que le champ est vide, le rond blanc « Voir la suite » prend la place du
+ * bouton d'envoi, aux étapes où l'on tape aussi (personnes, date, prénom,
+ * nom, numéro, email) : il descend jusqu'aux dernières bulles et aux
+ * réponses, sans jamais rien cacher de la discussion. Le bouton d'envoi
+ * revient dès la première lettre tapée.
  */
 export function CompositeurChat({
   mode,
@@ -97,10 +99,14 @@ export function CompositeurChat({
             className="saisie-chat h-11 w-full min-w-0 text-ellipsis bg-transparent text-[1rem] text-noir-piste placeholder:text-[0.8125rem] placeholder:text-gris-cadre disabled:cursor-not-allowed min-[360px]:placeholder:text-[0.875rem]"
           />
         </div>
-        {!mode && onVoirLaSuite ? (
+        {onVoirLaSuite && texte === "" ? (
           <button
             type="button"
             onClick={onVoirLaSuite}
+            // Le champ a le focus (on allait taper) : il le garde, le clavier du téléphone reste ouvert.
+            onMouseDown={(evenement) => {
+              if (mode && document.activeElement === champ.current) evenement.preventDefault();
+            }}
             aria-label="Voir la suite"
             title="Voir la suite"
             className="rond-suite grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-noir-piste shadow-[0_2px_10px_rgba(14,14,14,0.18)] ring-1 ring-noir-piste/15 transition-colors hover:bg-craie"
