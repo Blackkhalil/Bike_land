@@ -141,8 +141,15 @@ dialog[data-chat-groupe] [data-discussion]:focus-visible {
   outline: 2px solid var(--color-noir-piste);
   outline-offset: -4px;
 }
+/* Au doigt (ou à la souris), le focus que pose le script ne montre pas son
+   contour : sur la première réponse, il se lirait comme un choix déjà fait.
+   Il revient dès que le client se sert du clavier (data-modalite, posé par
+   PanneauChatGroupe). Écrit après les règles qu'il corrige. */
+dialog[data-chat-groupe][data-modalite="pointeur"] :focus-visible {
+  outline: none;
+}
 
-/* Le rond « Voir la suite » arrive en douceur, en bas à droite de la discussion. */
+/* Le rond « Voir la suite » arrive en douceur, dans la barre du bas, à la place du bouton d'envoi. */
 @keyframes rond-suite-entree {
   from {
     opacity: 0;

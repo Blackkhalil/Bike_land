@@ -27,7 +27,7 @@ import { lienWhatsApp } from "@/lib/site";
 
 import { CompositeurChat } from "./CompositeurChat";
 import { CarteDeLEtape, indicationInactive, modeSaisieDe, ReponsesDeLEtape, type ActionsChat } from "./ControlesChat";
-import { IconeFermer, IconeRecommencer, IconeVersLeBas, IconeWhatsApp } from "./IconesChat";
+import { IconeFermer, IconeRecommencer, IconeWhatsApp } from "./IconesChat";
 import { BulleEcrit, FilMessages, JourDeLaDiscussion } from "./MessagesChat";
 
 /** Le temps laissé au client pour finir de choisir avant de demander le prix au serveur. */
@@ -38,6 +38,34 @@ const ATTENTE_DEVIS_MS = 350;
  * abandonnée : la discussion le dit et continue, le client peut réessayer.
  */
 const DELAI_SERVEUR_MS = 20_000;
+
+/**
+ * L'envoi d'une capture (une image, sur un réseau parfois faible) a un peu
+ * plus de temps. Au-delà, il est abandonné : la discussion le dit, la carte
+ * revient, et toutes les sorties (Fermer, Recommencer, Échap) se rouvrent.
+ * Renvoyée, la même capture n'est pas enregistrée deux fois (le serveur rend
+ * la première, si elle était arrivée).
+ */
+const DELAI_ENVOI_CAPTURE_MS = 60_000;
+
+/** Les touches qui disent que le client se sert du clavier : le contour du focus se montre alors. */
+const TOUCHES_CLAVIER = new Set(["Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", " ", "Home", "End", "PageUp", "PageDown"]);
+
+/**
+ * Comment le client se sert de la discussion : au doigt (ou à la souris), le
+ * focus posé par le script ne montre pas son contour, qui se lirait comme
+ * une réponse déjà choisie ; au clavier, il le montre. Sur un téléphone
+ * tactile, la discussion part au doigt (même ouverte par le lien d'un
+ * email, sans geste) ; ailleurs, le navigateur en décide.
+ */
+type Modalite = "clavier" | "pointeur" | null;
+function modaliteDeDepart(): Modalite {
+  try {
+    return window.matchMedia("(pointer: coarse)").matches ? "pointeur" : null;
+  } catch {
+    return null;
+  }
+}
 
 /** En deçà, la discussion est « en bas » : le rond « Voir la suite » n'a pas lieu d'être. */
 const MARGE_BAS_PX = 32;
@@ -158,6 +186,7 @@ export function PanneauChatGroupe({
   const defilementVise = useRef<number | null>(null);
   // La discussion est-elle descendue jusqu'en bas (les dernières bulles, les réponses) ?
   const [enBas, setEnBas] = useState(true);
+  const [modalite, setModalite] = useState<Modalite>(modaliteDeDepart);
   const [etat, envoyer] = useReducer(
     (actuel: EtatChat, action: ActionChat) => reduire(actuel, action, faits),
     ouvertA,
@@ -263,8 +292,10 @@ export function PanneauChatGroupe({
 
   // La discussion est-elle en bas ? Mesuré quand elle défile et quand ce
   // qu'elle contient change de taille. Pas en bas (une discussion neuve
-  // s'ouvre en haut, sur « Bonjour »), le rond « Voir la suite » apparaît en
-  // bas à droite, comme sur un téléphone, après un court instant.
+  // s'ouvre en haut, sur « Bonjour »), le rond « Voir la suite » prend la
+  // place du bouton d'envoi dans la barre du bas, après un court instant :
+  // il ne cache jamais rien de la discussion (ni les montants d'une offre,
+  // ni les boutons d'une carte).
   useEffect(() => {
     const zone = defilement.current;
     if (!zone) return;
@@ -444,12 +475,21 @@ export function PanneauChatGroupe({
       formulaire.set("capture", capture);
       formulaire.set("telephone", telephone.trim());
       formulaire.set("email", email.trim());
+      // Pendant l'envoi, la discussion ne se ferme pas : sans réponse au bout
+      // de DELAI_ENVOI_CAPTURE_MS (une connexion qui cale), l'envoi est
+      // abandonné, et la discussion se débloque.
+      const controleur = new AbortController();
+      const abandon = window.setTimeout(() => controleur.abort(), DELAI_ENVOI_CAPTURE_MS);
       try {
-        const reponse = await fetch(ROUTES_OFFRES_GROUPE.preuves, { method: "POST", body: formulaire });
+        const reponse = await fetch(ROUTES_OFFRES_GROUPE.preuves, { method: "POST", body: formulaire, signal: controleur.signal });
         const corps: unknown = await reponse.json().catch(() => null);
-        envoyer({ type: "preuve-recue", statut: reponse.status, corps, maintenant: Date.now() });
+        // La réponse coupée en route par l'abandon : comme si rien n'était revenu.
+        const statut = corps === null && controleur.signal.aborted ? 0 : reponse.status;
+        envoyer({ type: "preuve-recue", statut, corps, maintenant: Date.now() });
       } catch {
         envoyer({ type: "preuve-recue", statut: 0, corps: null, maintenant: Date.now() });
+      } finally {
+        window.clearTimeout(abandon);
       }
     },
     payer: async () => {
@@ -502,6 +542,14 @@ export function PanneauChatGroupe({
         ranger(etat, false);
         onFermer();
       }}
+      // Le contour du focus seulement au clavier (voir `Modalite`).
+      onKeyDown={(evenement) => {
+        if (modalite !== "clavier" && TOUCHES_CLAVIER.has(evenement.key)) setModalite("clavier");
+      }}
+      onPointerDownCapture={() => {
+        if (modalite !== "pointeur") setModalite("pointeur");
+      }}
+      data-modalite={modalite ?? undefined}
       style={zoneVisible ? { height: zoneVisible.hauteur, top: zoneVisible.haut } : undefined}
       // Sur ordinateur, le fond de la fenêtre reste transparent : l'en-tête noir et la barre du
       // bas portent eux-mêmes leurs coins arrondis, sans liseré clair autour des coins.
@@ -583,21 +631,16 @@ export function PanneauChatGroupe({
               </div>
             </div>
           </div>
-          {/* Plus bas, la suite (les dernières bulles, les réponses) : le rond y descend, comme sur un téléphone. */}
-          {!enBas && (
-            <button
-              type="button"
-              onClick={voirLaSuite}
-              aria-label="Voir la suite"
-              title="Voir la suite"
-              className="rond-suite absolute bottom-2.5 right-2.5 grid h-10 w-10 place-items-center rounded-full bg-white text-noir-piste shadow-[0_2px_10px_rgba(14,14,14,0.22)] ring-1 ring-noir-piste/10 transition-colors hover:bg-craie"
-            >
-              <IconeVersLeBas />
-            </button>
-          )}
         </div>
 
-        <CompositeurChat mode={mode} indicationInactive={indicationInactive(etat, !enBas)} champ={saisie} onEnvoyer={actions.envoyer} />
+        {/* Plus bas, la suite (les dernières bulles, les réponses) : le rond « Voir la suite » de la barre du bas y descend. */}
+        <CompositeurChat
+          mode={mode}
+          indicationInactive={indicationInactive(etat, !enBas)}
+          champ={saisie}
+          onEnvoyer={actions.envoyer}
+          onVoirLaSuite={enBas ? null : voirLaSuite}
+        />
       </div>
     </dialog>
   );

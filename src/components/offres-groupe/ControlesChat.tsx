@@ -225,10 +225,13 @@ export function modeSaisieDe(etat: EtatChat, faits: FaitsChat, maintenant: numbe
  * Ce que dit la barre du bas quand on répond en touchant une réponse.
  * `reponsesPlusBas` : la discussion n'est pas descendue jusqu'aux réponses
  * (elle s'ouvre en haut, sur « Bonjour ») ; la barre dit de faire défiler.
+ * À la carte de la capture, il n'y a rien à choisir plus bas : la barre dit
+ * de remplir la carte.
  */
 export function indicationInactive(etat: EtatChat, reponsesPlusBas = false): string {
   if (etat.etape === "attente") return "Validez sur votre téléphone";
   if (botEcrit(etat)) return "Bike Land écrit…";
+  if (etat.etape === "preuve" && !etat.confirmerRecommencer) return "Remplissez la carte ci-dessus";
   if (reponsesPlusBas) return "Faites défiler pour choisir";
   return "Touchez une réponse ci-dessus";
 }
