@@ -33,40 +33,46 @@ const liens = [
 ];
 
 /**
- * Le nombre de captures à vérifier, relu à chaque page : le layout qui le
- * donne au premier chargement ne se re-rend pas quand on navigue dans
- * l'administration. Une lecture qui échoue garde le dernier nombre connu.
+ * Le nombre de captures à vérifier, relu après chaque navigation (le layout
+ * qui le donne ne se re-rend pas quand on navigue dans l'administration) et
+ * après chaque nouveau rendu du layout (une décision, puis router.refresh()),
+ * même quand le nombre qu'il a compté n'a pas changé : `rendu` change à
+ * chaque rendu du layout. Une lecture qui échoue garde le dernier nombre
+ * connu.
  */
-function usePreuvesAVerifier(chemin: string, auChargement: number): number {
-  const [lu, setLu] = useState<{ pour: number; valeur: number } | null>(null);
+function usePreuvesAVerifier(chemin: string, duLayout: number, rendu: string): number {
+  const [lu, setLu] = useState<{ pour: string; valeur: number } | null>(null);
   useEffect(() => {
     const controleur = new AbortController();
     fetch("/api/admin/preuves", { cache: "no-store", signal: controleur.signal })
       .then((reponse) => (reponse.ok ? reponse.json() : null))
       .then((corps: { enAttente?: unknown } | null) => {
-        if (typeof corps?.enAttente === "number") setLu({ pour: auChargement, valeur: corps.enAttente });
+        if (typeof corps?.enAttente === "number") setLu({ pour: rendu, valeur: corps.enAttente });
       })
       .catch(() => undefined);
     return () => controleur.abort();
-  }, [chemin, auChargement]);
-  // Le layout vient de se re-rendre (une décision, un rechargement) : son nombre est le plus récent.
-  return lu && lu.pour === auChargement ? lu.valeur : auChargement;
+  }, [chemin, rendu]);
+  // Le layout vient de se re-rendre : son nombre vaut jusqu'à la lecture qui suit.
+  return lu && lu.pour === rendu ? lu.valeur : duLayout;
 }
 
 export function NavigationAdmin({
   protege,
   modeDonnees,
   preuvesAVerifier = 0,
+  rendu = "",
 }: {
   protege: boolean;
   modeDonnees: "postgres" | "demo";
-  /** Les captures de réduction qui attendent, au chargement : leur nombre à côté de « Preuves de réduction » (décision 24). */
+  /** Les captures de réduction qui attendent, au rendu du layout : leur nombre à côté de « Preuves de réduction » (décision 24). */
   preuvesAVerifier?: number;
+  /** Une marque propre à chaque rendu du layout : le nombre se relit à chaque nouveau rendu, même inchangé. */
+  rendu?: string;
 }) {
   const chemin = usePathname();
   const routeur = useRouter();
   const [ouvert, setOuvert] = useState(false);
-  const enAttenteDeVerification = usePreuvesAVerifier(chemin, preuvesAVerifier);
+  const enAttenteDeVerification = usePreuvesAVerifier(chemin, preuvesAVerifier, rendu);
 
   const deconnecter = async () => {
     await fetch("/api/admin/connexion", { method: "DELETE" });

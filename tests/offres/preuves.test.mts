@@ -1081,6 +1081,16 @@ console.log("\n— Routes, branchées au dépôt de démonstration");
     typeof (await compte.json()).enAttente,
     compte.headers.get("cache-control"),
   ], [200, "number", "no-store"]);
+  // Le menu relit ce nombre après chaque navigation et après chaque rendu du layout (router.refresh() après
+  // une décision), même quand le nombre compté par le layout n'a pas changé : une marque propre à chaque rendu.
+  const { readFileSync } = await import("node:fs");
+  const navigation = readFileSync(join(projet, "src/components/admin/NavigationAdmin.tsx"), "utf8");
+  const layoutAdmin = readFileSync(join(projet, "src/app/admin/(protege)/layout.tsx"), "utf8");
+  verifier("le menu relit le nombre à chaque navigation et à chaque rendu du layout, même inchangé", [
+    /\}, \[chemin, rendu\]\);/.test(navigation),
+    /rendu=\{captures\.rendu\}/.test(layoutAdmin),
+    /randomUUID\(\)/.test(layoutAdmin),
+  ], [true, true, true]);
   verifier("après la décision, l'image n'existe plus", (await routeImage(new Request("http://localhost/x"), parametres(p.id))).status, 404);
 
   process.env.BIKELAND_ROLE = "site";

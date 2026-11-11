@@ -10,14 +10,17 @@ export const dynamic = "force-dynamic";
 /**
  * Les captures de réduction qui attendent, pour le chiffre à côté de
  * « Preuves de réduction » (décision 24) : une seule requête de comptage.
- * Une base muette n'empêche jamais l'administration de s'afficher.
+ * Une base muette n'empêche jamais l'administration de s'afficher. Avec une
+ * marque propre à ce rendu (lue ici, hors du rendu) : après une décision
+ * (router.refresh()), le menu relit le nombre même s'il n'a pas changé.
  */
-async function capturesAVerifier(): Promise<number> {
+async function capturesAVerifier(): Promise<{ enAttente: number; rendu: string }> {
+  const rendu = crypto.randomUUID();
   try {
-    return await depot.compterPreuvesEnAttente();
+    return { enAttente: await depot.compterPreuvesEnAttente(), rendu };
   } catch (erreur) {
     console.error("[admin] captures à vérifier illisibles", erreur);
-    return 0;
+    return { enAttente: 0, rendu };
   }
 }
 
@@ -27,10 +30,16 @@ export default async function LayoutAdminProtege({ children }: { children: React
   // requête échappait au proxy.
   if (roleDuDeploiement() === "site") notFound();
   if (!(await sessionAdminValide())) redirect("/admin/connexion");
+  const captures = await capturesAVerifier();
 
   return (
     <div className="min-h-screen bg-craie text-noir-piste">
-      <NavigationAdmin protege={modeAcces() === "protege"} modeDonnees={modeDonnees()} preuvesAVerifier={await capturesAVerifier()} />
+      <NavigationAdmin
+        protege={modeAcces() === "protege"}
+        modeDonnees={modeDonnees()}
+        preuvesAVerifier={captures.enAttente}
+        rendu={captures.rendu}
+      />
       <div className="mx-auto max-w-[1500px] px-5 py-8 sm:px-8 lg:pl-[17.5rem]">{children}</div>
     </div>
   );
