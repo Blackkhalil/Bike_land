@@ -38,6 +38,8 @@ import type { DateISO } from "@/lib/dates";
 import { diagnostiquer } from "@/lib/echecs-paiement";
 import { formatDate, formatXof } from "@/lib/format";
 import { fraisEncaissement, moyensDisponibles, TAUX_ENCAISSEMENT } from "@/lib/tarifs-paiement";
+import { oublierDemande, retenirDemande } from "@/lib/demande-en-attente";
+import { RepriseDemande } from "./RepriseDemande";
 import { SuiviPaiementMomo } from "./SuiviPaiementMomo";
 import { calculerDevis } from "@/lib/tarification";
 import type {
@@ -483,8 +485,10 @@ export function TunnelReservation({
           setErreurGlobale(`${donnees.erreur} Aucun montant n'a été prélevé.`);
         } else if (reponse.status === 409 && donnees.code === "EN_ATTENTE") {
           // Une réservation à son nom attend déjà son paiement ce jour-là : le
-          // message dit laquelle, et comment la payer.
+          // message dit laquelle, et comment la payer. Mêmes email et numéro :
+          // le serveur rend son lien, « Reprendre ma demande » l'ouvre.
           setErreurGlobale(donnees.erreur);
+          if (donnees.reprise) retenirDemande(donnees.reprise);
         } else if (reponse.status === 409 && donnees.code === "PLACES") {
           // Des vélos de la gamme viennent d'être pris : le compteur suit.
           if (typeof donnees.places === "number") setLibresGamme({ cle: cleCreneau, nombre: donnees.places });
@@ -513,9 +517,19 @@ export function TunnelReservation({
 
       // En mode démonstration, le serveur a déjà confirmé : rien à payer.
       if (donnees.confirmee) {
+        oublierDemande();
         routeur.push(`/reservation/${donnees.token}?nouvelle=1`);
         return;
       }
+
+      // La demande attend son paiement : l'onglet la garde, pour la reprendre
+      // s'il se ferme pendant la validation sur le téléphone (aucun email ne
+      // part avant le paiement, décision 27).
+      retenirDemande({
+        reference: donnees.reference,
+        token: donnees.token,
+        expireLe: Date.now() + EXPIRATION_PANIER_MINUTES * 60_000,
+      });
 
       // Pas de suivi : la demande n'est jamais partie sur le téléphone.
       // La réservation existe et le vélo est retenu, mais le client doit
@@ -601,6 +615,10 @@ export function TunnelReservation({
             {erreurGlobale}
           </p>
         )}
+
+        {/* Une demande de cet onglet attend encore son paiement : l'onglet a
+            pu se fermer pendant la validation dans l'application Mobile Money. */}
+        {!attentePaiement && <RepriseDemande className="mt-6" />}
 
         {/* ---------------------------------------------- Étape 1 : location */}
         {etape === 1 && (
@@ -1158,7 +1176,10 @@ export function TunnelReservation({
                 telephone={attentePaiement.telephone}
                 montantXof={montantDebite}
                 urlCheckout={attentePaiement.urlCheckout}
-                onConfirme={() => routeur.push(`/reservation/${attentePaiement.token}?nouvelle=1`)}
+                onConfirme={() => {
+                  oublierDemande();
+                  routeur.push(`/reservation/${attentePaiement.token}?nouvelle=1`);
+                }}
                 onEchec={(texte) => setMessagePaiement(texte)}
               />
             )}

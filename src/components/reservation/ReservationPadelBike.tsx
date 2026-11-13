@@ -28,6 +28,8 @@ import { lienWhatsApp } from "@/lib/site";
 import { calculerDevis } from "@/lib/tarification";
 import { fraisEncaissement, moyensDisponibles, TAUX_ENCAISSEMENT } from "@/lib/tarifs-paiement";
 import type { MoyenPaiement } from "@/lib/types";
+import { oublierDemande, retenirDemande } from "@/lib/demande-en-attente";
+import { RepriseDemande } from "./RepriseDemande";
 import { SuiviPaiementMomo } from "./SuiviPaiementMomo";
 
 /** Les jours proposés d'emblée ; les suivants, sur demande. */
@@ -283,14 +285,24 @@ export function ReservationPadelBike({
           }`,
         );
         setErreurs(donnees.champs ?? {});
+        // Une réservation à son nom attend déjà : « Reprendre ma demande » l'ouvre.
+        if (reponse.status === 409 && donnees.code === "EN_ATTENTE" && donnees.reprise) retenirDemande(donnees.reprise);
         return;
       }
 
       // En démonstration, le serveur a déjà confirmé : rien à payer.
       if (donnees.confirmee) {
+        oublierDemande();
         routeur.push(`/reservation/${donnees.token}?nouvelle=1`);
         return;
       }
+      // L'onglet garde la demande, pour la reprendre s'il se ferme pendant la
+      // validation sur le téléphone (décision 27 : aucun email avant le paiement).
+      retenirDemande({
+        reference: donnees.reference,
+        token: donnees.token,
+        expireLe: Date.now() + EXPIRATION_PANIER_MINUTES * 60_000,
+      });
       // La demande n'est pas partie sur le téléphone : le suivi dit pourquoi
       // et propose de la relancer, les vélos restant retenus.
       if (!donnees.paiement?.suivi) {
@@ -337,7 +349,10 @@ export function ReservationPadelBike({
             montantXof={attente.montantXof}
             expiration="La demande de paiement a expiré et les vélos ne sont plus retenus. Rechargez cette page pour réserver de nouveau."
             urlCheckout={attente.urlCheckout}
-            onConfirme={() => routeur.push(`/reservation/${attente.token}?nouvelle=1`)}
+            onConfirme={() => {
+              oublierDemande();
+              routeur.push(`/reservation/${attente.token}?nouvelle=1`);
+            }}
             onEchec={(texte) => setMessagePaiement(texte)}
           />
           {messagePaiement && (
@@ -363,6 +378,8 @@ export function ReservationPadelBike({
           }}
           noValidate
         >
+          {/* Une demande de cet onglet attend encore son paiement. */}
+          <RepriseDemande className="mb-6" />
           {/* Le jour d'abord : la sortie part à heure fixe, les vélos libres
               se comptent pour ce jour-là. Un jour fermé reste visible. */}
           <fieldset>

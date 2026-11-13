@@ -30,6 +30,8 @@ import { encaisser, fournisseurActif } from "@/lib/paiement";
 import { estEnAttente } from "@/lib/reservations";
 import { site, urlDuSite } from "@/lib/site";
 import { TarifIntrouvableError } from "@/lib/tarification";
+import { genererToken } from "@/lib/tokens";
+import type { Reservation } from "@/lib/types";
 import {
   erreursParChamp,
   schemaInscriptionOctobreRose,
@@ -202,15 +204,10 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
   );
   if (enAttente) {
     return {
-      refus: NextResponse.json(
-        {
-          erreur:
-            `Une réservation à votre nom attend déjà son paiement pour ce jour (${enAttente.reference}). ` +
-            "Validez la demande sur votre téléphone. " +
-            `Sans paiement, elle se libère d'elle-même au bout de ${EXPIRATION_PANIER_MINUTES} minutes.`,
-          code: "EN_ATTENTE",
-        },
-        { status: 409 },
+      refus: refusEnAttente(
+        enAttente,
+        `Une réservation à votre nom attend déjà son paiement pour ce jour (${enAttente.reference}).`,
+        { email, numero },
       ),
     };
   }
@@ -301,6 +298,51 @@ const INSCRIPTIONS_PAR_HEURE = 12;
 
 /** Les huit derniers chiffres d'un numéro : « +229 01 97… » et « 0197… » se reconnaissent. */
 const finDeNumero = (telephone?: string) => (telephone ?? "").replace(/[^0-9]/g, "").slice(-8);
+
+/**
+ * Le refus d'une seconde demande pendant qu'une première attend son paiement
+ * (409 EN_ATTENTE), et la façon de la reprendre.
+ *
+ * Depuis la décision 27, le lien de suivi n'arrive plus par email avant le
+ * paiement. Le client dont l'onglet s'est fermé pendant qu'il validait dans
+ * son application Mobile Money ne pouvait plus que patienter 30 minutes.
+ * Quand la nouvelle demande porte le même email ET le même numéro que la
+ * première, la réponse rend donc le lien de suivi de celle-ci : la page de
+ * suivi relance le paiement sur cette même demande. Ni seconde demande, ni
+ * seconde retenue de vélos ; un second paiement réussi pour elle serait
+ * listé à rembourser (`confirmerParSasPay`). Les deux coordonnées sont
+ * exigées : le lien n'est rendu qu'à qui connaît celles de la demande, et
+ * seulement pendant son délai de paiement.
+ */
+function refusEnAttente(
+  enAttente: Reservation,
+  constat: string,
+  qui: { email: string; numero: string },
+): NextResponse {
+  const memeEmail = enAttente.client.email.trim().toLowerCase() === qui.email;
+  const memeNumero = qui.numero.length === 8 && finDeNumero(enAttente.client.telephone) === qui.numero;
+  const reprise =
+    memeEmail && memeNumero
+      ? {
+          reference: enAttente.reference,
+          token: genererToken(enAttente.reference),
+          expireLe: new Date(enAttente.creeLe).getTime() + EXPIRATION_PANIER_MINUTES * 60_000,
+        }
+      : null;
+  return NextResponse.json(
+    {
+      erreur:
+        `${constat} ` +
+        (reprise
+          ? "Reprenez-la pour relancer la demande de paiement. "
+          : "Validez la demande sur votre téléphone. ") +
+        `Sans paiement, elle se libère d'elle-même au bout de ${EXPIRATION_PANIER_MINUTES} minutes.`,
+      code: "EN_ATTENTE",
+      ...(reprise ? { reprise } : {}),
+    },
+    { status: 409 },
+  );
+}
 
 /**
  * L'inscription à Octobre rose : ni vélo ni heure à vérifier, ce sont ceux
@@ -400,15 +442,10 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
     const autreJour =
       enAttente.dateDebut !== sortie.date ? `, pour le ${formatDateAvecJour(enAttente.dateDebut)},` : "";
     return {
-      refus: NextResponse.json(
-        {
-          erreur:
-            `Une inscription à votre nom${autreJour} attend déjà son paiement (${enAttente.reference}). ` +
-            "Validez la demande sur votre téléphone. " +
-            "Sans paiement, elle se libère d'elle-même au bout de 30 minutes.",
-          code: "EN_ATTENTE",
-        },
-        { status: 409 },
+      refus: refusEnAttente(
+        enAttente,
+        `Une inscription à votre nom${autreJour} attend déjà son paiement (${enAttente.reference}).`,
+        { email, numero },
       ),
     };
   }
@@ -596,15 +633,10 @@ async function preparerPadelBike(corps: unknown, requete: Request): Promise<Prep
     const autreJour =
       enAttente.dateDebut !== donnees.date ? `, pour le ${formatDateAvecJour(enAttente.dateDebut)},` : "";
     return {
-      refus: NextResponse.json(
-        {
-          erreur:
-            `Une réservation à votre nom${autreJour} attend déjà son paiement (${enAttente.reference}). ` +
-            "Validez la demande sur votre téléphone. " +
-            `Sans paiement, elle se libère d'elle-même au bout de ${EXPIRATION_PANIER_MINUTES} minutes.`,
-          code: "EN_ATTENTE",
-        },
-        { status: 409 },
+      refus: refusEnAttente(
+        enAttente,
+        `Une réservation à votre nom${autreJour} attend déjà son paiement (${enAttente.reference}).`,
+        { email, numero },
       ),
     };
   }

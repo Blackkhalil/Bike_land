@@ -6,6 +6,7 @@ import { AnnulerReservation } from "@/components/reservation/AnnulerReservation"
 import { EnvoiWhatsApp } from "@/components/reservation/EnvoiWhatsApp";
 import { FormulaireAvis } from "@/components/reservation/FormulaireAvis";
 import { PaiementEnAttente } from "@/components/reservation/PaiementEnAttente";
+import { OublierDemande } from "@/components/reservation/RepriseDemande";
 import { EXPIRATION_PANIER_MINUTES, formatHeure, panierExpire } from "@/data/offres";
 import { fournisseurActif } from "@/lib/paiement";
 import { VeloIllustration } from "@/components/VeloIllustration";
@@ -108,6 +109,10 @@ export default async function PageSuiviReservation({
 
   return (
     <Section fond="sable" className="pb-24 pt-32 sm:pt-40">
+      {/* Payée, annulée ou hors délai : l'onglet n'a plus de demande à
+          reprendre (« Reprendre ma demande » des pages de réservation). */}
+      {!(enAttenteDePaiement && !delaiDepasse) && <OublierDemande reference={reservation.reference} />}
+
       {/* Le bandeau d'accueil ne doit annoncer une confirmation que si
           elle a réellement eu lieu : une réservation encore impayée n'a
           déclenché ni email de confirmation ni facture. */}

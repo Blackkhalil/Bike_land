@@ -27,6 +27,8 @@ import { formatDateAvecJour, formatXof } from "@/lib/format";
 import { fraisEncaissement, moyensDisponibles, TAUX_ENCAISSEMENT } from "@/lib/tarifs-paiement";
 import { lienWhatsApp } from "@/lib/site";
 import type { MoyenPaiement } from "@/lib/types";
+import { oublierDemande, retenirDemande } from "@/lib/demande-en-attente";
+import { RepriseDemande } from "./RepriseDemande";
 import { SuiviPaiementMomo } from "./SuiviPaiementMomo";
 
 /**
@@ -284,14 +286,24 @@ export function InscriptionOctobreRose({
           }`,
         );
         setErreurs(donnees.champs ?? {});
+        // Une inscription à son nom attend déjà : « Reprendre ma demande » l'ouvre.
+        if (reponse.status === 409 && donnees.code === "EN_ATTENTE" && donnees.reprise) retenirDemande(donnees.reprise);
         return;
       }
 
       // En démonstration, le serveur a déjà confirmé : rien à payer.
       if (donnees.confirmee) {
+        oublierDemande();
         routeur.push(`/reservation/${donnees.token}?nouvelle=1`);
         return;
       }
+      // L'onglet garde la demande, pour la reprendre s'il se ferme pendant la
+      // validation sur le téléphone (décision 27 : aucun email avant le paiement).
+      retenirDemande({
+        reference: donnees.reference,
+        token: donnees.token,
+        expireLe: Date.now() + EXPIRATION_PANIER_MINUTES * 60_000,
+      });
       // La demande n'est pas partie sur le téléphone : le suivi dit pourquoi
       // et propose de la relancer, les vélos restant retenus.
       if (!donnees.paiement?.suivi) {
@@ -331,7 +343,10 @@ export function InscriptionOctobreRose({
             montantXof={debite}
             expiration="La demande de paiement a expiré et vos places ne sont plus retenues. Rechargez cette page pour vous inscrire de nouveau."
             urlCheckout={attente.urlCheckout}
-            onConfirme={() => routeur.push(`/reservation/${attente.token}?nouvelle=1`)}
+            onConfirme={() => {
+              oublierDemande();
+              routeur.push(`/reservation/${attente.token}?nouvelle=1`);
+            }}
             onEchec={(texte) => setMessagePaiement(texte)}
           />
           {messagePaiement && (
@@ -357,6 +372,8 @@ export function InscriptionOctobreRose({
           }}
           noValidate
         >
+          {/* Une demande de cet onglet attend encore son paiement. */}
+          <RepriseDemande className="mb-6" />
           {/* Le jour d'abord : c'est lui qui fixe les places et le vélo
               attribué. Un jour impossible reste visible, avec sa raison. */}
           <fieldset>

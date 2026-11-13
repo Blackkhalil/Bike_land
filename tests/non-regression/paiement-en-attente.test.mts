@@ -67,13 +67,32 @@ console.log("\n— Le même client renvoie la demande");
 const doublon = await appeler(demande);
 verifier("même email, même jour : 409 EN_ATTENTE", [doublon.statut, doublon.donnees.code], [409, "EN_ATTENTE"]);
 verifier("…le message donne la référence en attente", String(doublon.donnees.erreur).includes(reference), true);
-verifier("…et dit comment payer", /Validez la demande sur votre téléphone/.test(String(doublon.donnees.erreur)), true);
+// Même email ET même numéro : l'onglet a pu se fermer pendant la validation
+// (aucun email avant le paiement, décision 27). La réponse rend le lien de la
+// première demande, où le paiement se relance : ni seconde demande, ni second vélo.
+verifier("…et dit comment la reprendre", /Reprenez-la pour relancer la demande de paiement/.test(String(doublon.donnees.erreur)), true);
+verifier(
+  "…avec son lien, qui ouvre bien la première demande, jusqu'à la fin de son délai",
+  [
+    doublon.donnees.reprise?.reference,
+    (await depot.trouverReservationParToken(String(doublon.donnees.reprise?.token)))?.reference,
+    doublon.donnees.reprise?.expireLe === new Date(enregistree.creeLe).getTime() + 30 * 60_000,
+  ],
+  [reference, reference, true],
+);
 
 const autreCasse = await appeler({ ...demande, client: { ...client, email: "  koffi.attente@EXAMPLE.com " } });
 verifier("même email, casse et espaces différents : 409 EN_ATTENTE", [autreCasse.statut, autreCasse.donnees.code], [409, "EN_ATTENTE"]);
 
 const memeNumero = await appeler({ ...demande, client: { ...client, email: "koffi.autre@example.com", telephone: "0197005501" } });
 verifier("même numéro, écrit autrement, autre email : 409 EN_ATTENTE", [memeNumero.statut, memeNumero.donnees.code], [409, "EN_ATTENTE"]);
+verifier(
+  "…sans le lien : il n'est rendu qu'à qui donne l'email ET le numéro de la demande",
+  ["reprise" in memeNumero.donnees, /Validez la demande sur votre téléphone/.test(String(memeNumero.donnees.erreur))],
+  [false, true],
+);
+const memeEmailSeul = await appeler({ ...demande, client: { ...client, telephone: "+229 01 97 99 99 99" } });
+verifier("même email, autre numéro : 409 EN_ATTENTE, sans le lien", [memeEmailSeul.statut, "reprise" in memeEmailSeul.donnees], [409, false]);
 
 const autreHeure = await appeler({ ...demande, heureDebut: heure + 2 <= 20 ? heure + 2 : heure });
 verifier("même jour, autre heure : toujours renvoyé vers la première", [autreHeure.statut, autreHeure.donnees.code], [409, "EN_ATTENTE"]);
