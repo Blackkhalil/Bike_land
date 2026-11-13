@@ -1,8 +1,7 @@
 // L'agent IA des offres de groupe (src/lib/agent-ia/), avec un faux client :
 // aucun appel réseau, aucune vraie clé (le lanceur retire ANTHROPIC_API_KEY).
-//  - Récapitulatif : le texte de l'agent part s'il passe le contrôle ; sinon
-//    le texte modèle (montant faux, nombre inconnu, nombre en lettres, tiret
-//    long, refus, erreur, délai dépassé, clé absente).
+// Le récapitulatif n'est plus confié à l'agent (décision 21) : c'est le texte
+// fixe de src/lib/offres/recapitulatif.ts, testé avec le moteur.
 //  - Capture de réduction : validée seulement pour un abonnement ou une story
 //    d'un compte Bike Land connu (Instagram @bikeland_bj, TikTok @bikelandbj) ;
 //    refusée sur un « non » clair ; en attente (vérification à la main) dans
@@ -10,8 +9,8 @@
 //    pas enregistré.
 //  - Forme des demandes : modèle claude-fable-5-1, ni réflexion ni
 //    température, aucun outil imposé, repli serveur « default » avec son
-//    en-tête exact, ni téléphone ni email, prénom seul ; l'image n'est jamais
-//    écrite dans les journaux.
+//    en-tête exact, ni téléphone ni email ; l'image n'est jamais écrite dans
+//    les journaux.
 import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -29,7 +28,6 @@ const Anthropic = sdk.default ?? sdk;
 
 const projet = fileURLToPath(new URL("../../", import.meta.url));
 const charger = (f: string) => import(pathToFileURL(join(projet, f)).href);
-const recap = await charger("src/lib/agent-ia/recapitulatif.ts");
 const capture = await charger("src/lib/agent-ia/capture.ts");
 const client = await charger("src/lib/agent-ia/client.ts");
 const comptes = await charger("src/lib/agent-ia/comptes.ts");
@@ -95,163 +93,6 @@ const erreurDebit = () =>
     new Headers({ "request-id": "req_factice" }),
   );
 
-/* ------------------------------------------------------------- Récapitulatif */
-
-// Le cas 2 du suivi : Bike for All, 10 personnes, 10 000 F de budget, petit
-// coco, 45 minutes, 11 250 F au lieu de 17 250 F.
-const FAITS = [
-  { libelle: "Total à payer", valeur: "11 250 F", obligatoire: true },
-  { libelle: "Prix sans l'offre", valeur: "17 250 F" },
-  { libelle: "Personnes", valeur: "10" },
-  { libelle: "Date", valeur: "samedi 21 novembre 2026" },
-  { libelle: "Horaires", valeur: "de 8 h à 8 h 45" },
-  { libelle: "Durée de vélo", valeur: "45 minutes" },
-  { libelle: "Cocos", valeur: "10 petits cocos, 1 par personne" },
-  { libelle: "Paiement électronique", valeur: "1 250 F" },
-  { libelle: "Retard", valeur: "7 minutes de tolérance, puis 1 000 F par minute pour tout le groupe", obligatoire: true },
-];
-const MODELE =
-  "BIKE FOR ALL : Cher client, pour votre groupe de 10 personnes, vous paierez 11 250 F au lieu de 17 250 F, " +
-  "pour 45 minutes de vélo de 08h00 à 08h45. Vous profitez de toute notre gamme de vélos (Classique, Premium, " +
-  "Prestige) et de nos casques. Vous aurez 10 cocos petit format inclus dans le prix, à raison de 1 par personne." +
-  "\n\nLe retour des vélos doit être expressément respecté. Vous avez une marge de retard de 7 minutes ; au-delà, " +
-  "le groupe paiera 1 000 F par minute.\n\nMerci de faire confiance à Bike Land !";
-const BON =
-  "Bonjour Awa,\n\nMerci pour votre réservation Bike for All du samedi 21 novembre 2026 ! Votre groupe de 10 " +
-  "personnes roulera 45 minutes, de 8 h à 8 h 45, avec toute notre gamme de vélos et nos casques. Un petit coco " +
-  "par personne est compris.\n\nLe total à payer est de 11 250 F au lieu de 17 250 F. Merci de rendre les vélos à " +
-  "l'heure : vous avez 7 minutes de marge, puis le groupe paie 1 000 F par minute de retard.\n\nMerci de votre " +
-  "confiance, à très vite chez Bike Land !";
-const ENTREE = {
-  offre: "bike-for-all",
-  prenom: "Awa Koffi-Mensah",
-  texteModele: MODELE,
-  faits: FAITS,
-  totalXof: 11250,
-  montantsXof: [11250, 17250, 1250, 1000],
-};
-
-type Resultat = { texte: string; source: string; motifRepli?: string };
-const rediger = async (reponse: (appel: Appel) => unknown, entree: object = ENTREE, delaiMs?: number) => {
-  const faux = fauxClient(reponse);
-  const r = (await recap.redigerRecapitulatif(entree, { client: faux, delaiMs })) as Resultat;
-  return { r, faux, issue: r.source === "ia" ? "ia" : `modele/${r.motifRepli}` };
-};
-
-console.log("\n— Récapitulatif : le texte de l'agent part quand il est juste");
-{
-  const { r, faux } = await rediger(() => message([reflexion, texte(BON)]));
-  verifier("texte juste : source ia, texte de l'agent", [r.source, r.texte === BON], ["ia", true]);
-  verifier("un seul appel", faux.appels.length, 1);
-}
-{
-  const { issue, r } = await rediger(() => message([repli, reflexion, texte(BON)]));
-  verifier("servi par le modèle de repli (bloc « fallback ») : texte lu, source ia", [issue, r.texte === BON], ["ia", true]);
-}
-{
-  const { r } = await rediger(() => message([texte(BON.replace("Bonjour Awa,", "Bonjour‎ Awa,"))]));
-  verifier("caractère invisible retiré du texte envoyé", [r.source, r.texte.includes("‎")], ["ia", false]);
-}
-
-console.log("\n— Récapitulatif : texte modèle quand le texte de l'agent s'écarte du calcul");
-verifier("montant faux (11 500 F)", (await rediger(() => message([texte(BON.replace("11 250 F", "11 500 F"))]))).issue, "modele/montant-inconnu");
-verifier("nombre inconnu (12 personnes)", (await rediger(() => message([texte(BON.replace("10 personnes", "12 personnes"))]))).issue, "modele/montant-inconnu");
-verifier("nombre en lettres (dix personnes)", (await rediger(() => message([texte(BON.replace("10 personnes", "dix personnes"))]))).issue, "modele/format");
-verifier("tiret long", (await rediger(() => message([texte(BON.replace("Bonjour Awa,", "Bonjour Awa —"))]))).issue, "modele/format");
-verifier("total absent", (await rediger(() => message([texte(BON.replace("11 250 F au lieu de ", ""))]))).issue, "modele/montant-inconnu");
-{
-  const { r } = await rediger(() => message([texte(BON.replace("11 250 F", "11 500 F"))]));
-  verifier("le repli envoie exactement le texte modèle", r.texte === MODELE, true);
-}
-
-console.log("\n— Récapitulatif : texte modèle quand l'agent refuse, échoue, tarde ou manque");
-verifier("refus avant toute réponse", (await rediger(() => message([], "refusal"))).issue, "modele/refus");
-verifier("refus après un texte partiel : le partiel ne sert jamais", (await rediger(() => message([texte(BON)], "refusal"))).issue, "modele/refus");
-verifier("réponse coupée (max_tokens)", (await rediger(() => message([texte(BON)], "max_tokens"))).issue, "modele/format");
-verifier("erreur de l'API (429)", (await rediger(() => Promise.reject(erreurDebit()))).issue, "modele/erreur");
-verifier("erreur quelconque", (await rediger(() => Promise.reject(new Error("panne")))).issue, "modele/erreur");
-{
-  const debut = Date.now();
-  const { issue } = await rediger(() => new Promise(() => {}), ENTREE, 50);
-  verifier("délai dépassé (le client ne répond jamais)", issue, "modele/delai");
-  verifier("l'attente est bornée au délai", Date.now() - debut < 2000, true);
-}
-{
-  let annule = false;
-  const { issue } = await rediger(
-    ({ options }) =>
-      new Promise((_, echouer) => {
-        options.signal?.addEventListener("abort", () => {
-          annule = true;
-          echouer(new Anthropic.APIUserAbortError());
-        });
-      }),
-    ENTREE,
-    50,
-  );
-  verifier("délai dépassé : la demande est annulée, pas laissée en cours", [issue, annule], ["modele/delai", true]);
-}
-verifier(
-  "délai de connexion du SDK",
-  (await rediger(() => Promise.reject(new Anthropic.APIConnectionTimeoutError()))).issue,
-  "modele/delai",
-);
-{
-  const r = (await recap.redigerRecapitulatif(ENTREE)) as Resultat;
-  verifier("clé absente (variable retirée par le lanceur) : texte modèle, sans appel", [r.source, r.motifRepli], ["modele", "cle-absente"]);
-  const r2 = (await recap.redigerRecapitulatif(ENTREE, { client: null })) as Resultat;
-  verifier("agent coupé (client null) : texte modèle", [r2.source, r2.motifRepli], ["modele", "cle-absente"]);
-}
-
-console.log("\n— Récapitulatif : rien n'est envoyé quand les faits ne s'y prêtent pas");
-{
-  const { issue, faux } = await rediger(() => message([texte(BON)]), {
-    ...ENTREE,
-    faits: [...FAITS, { libelle: "Téléphone", valeur: "+229 01 59 68 81 03" }],
-  });
-  verifier("un numéro de téléphone dans les faits : texte modèle, aucun appel", [issue, faux.appels.length], ["modele/coordonnees", 0]);
-}
-{
-  const { issue, faux } = await rediger(() => message([texte(BON)]), {
-    ...ENTREE,
-    faits: [...FAITS, { libelle: "Contact", valeur: "awa@example.com" }],
-  });
-  verifier("un email dans les faits : texte modèle, aucun appel", [issue, faux.appels.length], ["modele/coordonnees", 0]);
-}
-{
-  const { issue, faux } = await rediger(() => message([texte(BON)]), { ...ENTREE, texteModele: `${MODELE} Balade de 25 km.` });
-  verifier("texte modèle qui cite un nombre absent des faits : texte modèle, aucun appel", [issue, faux.appels.length], ["modele/faits", 0]);
-}
-{
-  const { issue, faux } = await rediger(() => message([texte(BON)]), { ...ENTREE, montantsXof: [11250, 17250, 1250] });
-  verifier("montant d'un fait absent de montantsXof : texte modèle, aucun appel", [issue, faux.appels.length], ["modele/faits", 0]);
-}
-
-console.log("\n— Récapitulatif : forme de la demande");
-{
-  const { faux } = await rediger(() => message([texte(BON)]), ENTREE, 1234);
-  const { parametres: p, options } = faux.appels[0];
-  // Ce que lit le modèle : les consignes et le message (l'en-tête bêta, daté,
-  // n'en fait pas partie).
-  const tout = JSON.stringify([p.system, p.messages]);
-  const dernier = p.messages[p.messages.length - 1];
-  verifier("modèle claude-fable-5-1", p.model, "claude-fable-5-1");
-  verifier("ni réflexion ni échantillonnage (thinking, temperature, top_p, top_k)", ["thinking", "temperature", "top_p", "top_k"].filter((c) => c in p), []);
-  verifier("aucun outil, aucun outil imposé", ["tools", "tool_choice"].filter((c) => c in p), []);
-  verifier("repli serveur « default » et son en-tête exact", [p.fallbacks, p.betas], ["default", ["server-side-fallback-2026-07-01"]]);
-  verifier("effort faible, max_tokens qui laisse place à la réflexion", [(p.output_config as { effort: string }).effort, p.max_tokens], ["low", 4096]);
-  verifier("aucun préremplissage : un seul message, du client", [p.messages.length, dernier.role], [1, "user"]);
-  verifier("prénom seul (le nom de famille ne part pas)", [tout.includes("Prénom du client : Awa"), tout.includes("Koffi"), tout.includes("Mensah")], [true, false, false]);
-  verifier("ni email ni numéro de téléphone dans la demande", [/@/.test(tout), /\d(?:[\s.-]?\d){7,}/.test(tout)], [false, false]);
-  verifier("faits et texte modèle transmis", [tout.includes("Total à payer : 11 250 F"), tout.includes("BIKE FOR ALL")], [true, true]);
-  verifier("délai et une seule nouvelle tentative transmis au SDK", [options.timeout, options.maxRetries, options.signal instanceof AbortSignal], [1234, 1, true]);
-}
-verifier(
-  "prénom : premier mot, lettres seulement",
-  [recap.prenomPourLAgent("  jean-marc DOSSOU "), recap.prenomPourLAgent("N'Dah"), recap.prenomPourLAgent("0612345678"), recap.prenomPourLAgent(null)],
-  ["jean-marc", "N'Dah", null, null],
-);
-
 /* ------------------------------------------------------------------- Capture */
 
 // Une image PNG factice : la signature, puis des octets reconnaissables pour
@@ -294,6 +135,11 @@ console.log("\n— Capture : comptes de Bike Land reconnus");
 
 console.log("\n— Capture : validée seulement pour un compte Bike Land connu");
 verifier("abonné à @bikeland_bj sur Instagram : validée", await statut(() => verdict("abonne", "instagram", "bikeland_bj")), "validee");
+verifier(
+  "servi par le modèle de repli (bloc « fallback ») : verdict lu",
+  await statut(() => message([repli, reflexion, texte(JSON.stringify({ decision: "abonne", reseau: "instagram", identifiant_vu: "bikeland_bj", indices: "Profil vu, bouton Abonné." }))])),
+  "validee",
+);
 verifier("écrit « @BikeLand_BJ » : validée", await statut(() => verdict("abonne", "Instagram", "@BikeLand_BJ")), "validee");
 verifier("story qui identifie @bikeland_bj : validée", await statut(() => verdict("story", "instagram", "bikeland_bj")), "validee");
 {
@@ -357,6 +203,21 @@ verifier("réponse coupée (max_tokens) : en attente", await statut(() => messag
 verifier("erreur de l'API : en attente", await statut(() => Promise.reject(erreurDebit())), "en_attente");
 verifier("délai dépassé : en attente", (await analyser(() => new Promise(() => {}), {}, 50)).r.statut, "en_attente");
 {
+  let annule = false;
+  const { r } = await analyser(
+    ({ options }) =>
+      new Promise((_, echouer) => {
+        options.signal?.addEventListener("abort", () => {
+          annule = true;
+          echouer(new Anthropic.APIUserAbortError());
+        });
+      }),
+    {},
+    50,
+  );
+  verifier("délai dépassé : la demande est annulée, pas laissée en cours", [r.statut, annule], ["en_attente", true]);
+}
+{
   const r = (await capture.analyserCaptureReduction({ image: PNG, typeMime: "image/png" })) as ResultatCapture;
   verifier("clé absente : en attente", r.statut, "en_attente");
 }
@@ -380,9 +241,10 @@ console.log("\n— Capture : fichier contrôlé avant tout envoi");
 
 console.log("\n— Capture : forme de la demande");
 {
-  const { faux } = await analyser(() => verdict("abonne", "instagram", "bikeland_bj"));
-  const { parametres: p } = faux.appels[0];
-  const contenu = p.messages[0].content as { type: string; source?: { type: string; media_type: string; data: string }; text?: string }[];
+  const { faux } = await analyser(() => verdict("abonne", "instagram", "bikeland_bj"), {}, 1234);
+  const { parametres: p, options } = faux.appels[0];
+  verifier("délai et une seule nouvelle tentative transmis au SDK", [options.timeout, options.maxRetries, options.signal instanceof AbortSignal], [1234, 1, true]);
+  const contenu =p.messages[0].content as { type: string; source?: { type: string; media_type: string; data: string }; text?: string }[];
   const format = (p.output_config as { effort: string; format: { type: string; schema: { additionalProperties: boolean; required: string[] } } });
   verifier("modèle claude-fable-5-1", p.model, "claude-fable-5-1");
   verifier("ni réflexion ni échantillonnage", ["thinking", "temperature", "top_p", "top_k"].filter((c) => c in p), []);
@@ -408,7 +270,6 @@ console.log("\n— Capture : forme de la demande");
 
 console.log("\n— Journaux et clé");
 verifier("l'image n'apparaît dans aucun journal", journaux.some((l) => l.includes(BASE64.slice(0, 24)) || l.includes("IMAGE-PRIVEE")), false);
-verifier("aucun texte complet de l'agent dans les journaux", journaux.some((l) => l.includes("Merci pour votre réservation")), false);
 verifier("sans clé, pas de client", client.creerClientAgentIa(), null);
 {
   process.env.ANTHROPIC_API_KEY = "cle-factice-pour-le-test";

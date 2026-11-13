@@ -284,8 +284,8 @@ export interface ResultatOffre {
   velosBloques: number;
   /**
    * Le récapitulatif modèle (onglets du tableur, cellules A33, A27 et A20 ;
-   * Gbashi Bike sur le même patron), que l'agent IA reprend sans changer
-   * un chiffre.
+   * Gbashi Bike sur le même patron), envoyé tel quel au client
+   * (décision 21).
    */
   recapModele: string;
 }

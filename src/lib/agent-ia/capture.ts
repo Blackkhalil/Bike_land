@@ -77,7 +77,7 @@ export const TAILLE_MAX_CAPTURE_OCTETS = 5 * 1024 * 1024;
 export const DELAI_CAPTURE_MS = 30_000;
 /** De quoi réfléchir sur l'image (réflexion toujours active), puis répondre en quelques lignes de JSON. */
 export const MAX_TOKENS_CAPTURE = 8192;
-/** Une décision qui accorde une remise : un peu plus de réflexion que pour le récapitulatif. */
+/** Une décision qui accorde une remise : un effort moyen, pas le plus faible. */
 export const EFFORT_CAPTURE = "medium" as const;
 
 const DECISIONS = ["abonne", "story", "non", "incertain"] as const;

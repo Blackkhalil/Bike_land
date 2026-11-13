@@ -4,9 +4,9 @@
  * « Bike for All durée », A27 ; « Road trip groupe », A20), rempli avec les
  * chiffres calculés. Gbashi Bike, absent du tableur, suit le même patron.
  *
- * L'agent IA le reprend pour écrire au client, sans changer un chiffre
- * (cahier des charges, étape 7). Les phrases sont celles du tableur, mot
- * pour mot ; seuls changent :
+ * C'est ce texte, tel quel, qui part au client dans l'email de
+ * confirmation : aucun agent IA ne le réécrit (décision 21). Les phrases
+ * sont celles du tableur, mot pour mot ; seuls changent :
  *
  *  - les montants, écrits « 11 250 F » (formatMontant) : le tableur, ouvert
  *    dans un Excel réglé en français, écrivait « 11250 0 F » ;

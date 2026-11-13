@@ -12,8 +12,8 @@
  *
  * L'extraction fait l'inverse : elle retrouve chaque montant d'un texte,
  * quelle que soit l'espace employée (ordinaire, insécable, fine) ou sans
- * espace du tout. Elle servira à vérifier que l'agent IA n'a changé aucun
- * chiffre du récapitulatif.
+ * espace du tout. Les tests s'en servent pour relire les montants du
+ * récapitulatif.
  */
 
 /** L'espace insécable des montants : « 11 250 F ». */

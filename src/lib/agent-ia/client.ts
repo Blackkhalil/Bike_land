@@ -7,15 +7,15 @@
  * ne met donc jamais dans le JavaScript envoyé aux visiteurs. Seuls les
  * routes d'API et les modules serveur l'importent.
  *
- * Ce que l'agent a le droit de faire est fixé ici et dans ses deux usages
- * (recapitulatif.ts, capture.ts) : reformuler des faits déjà calculés, et
- * dire ce qu'il voit sur une capture d'écran. Il ne reçoit jamais les
- * réglages des prix, ne calcule rien, et n'appelle aucun réseau social.
+ * Ce que l'agent a le droit de faire est fixé ici et dans son seul usage,
+ * capture.ts : dire ce qu'il voit sur une capture d'écran. Il ne reçoit
+ * jamais les réglages des prix, ne calcule rien, et n'appelle aucun réseau
+ * social. Le récapitulatif envoyé au client n'est pas de lui : c'est le
+ * texte fixe de src/lib/offres/recapitulatif.ts (décision 21).
  *
- * Sans clé, rien ne casse : chaque usage retombe sur son repli (le texte
- * modèle du tableur, ou la vérification à la main dans l'administration).
- * Chaque fonction accepte un client injecté, pour que les tests ne touchent
- * jamais le réseau.
+ * Sans clé, rien ne casse : la capture est vérifiée à la main dans
+ * l'administration. Chaque fonction accepte un client injecté, pour que les
+ * tests ne touchent jamais le réseau.
  *
  * Ce modèle exige que l'organisation Anthropic de Bike Land garde les
  * données 30 jours (pas de « zéro conservation ») : sinon chaque appel est
@@ -51,7 +51,7 @@ export const NOUVELLES_TENTATIVES_MAX = 1;
 /**
  * Le délai par défaut d'un appel, nouvelle tentative comprise. Claude Fable
  * 5.1 réfléchit avant de répondre : quelques secondes à quelques dizaines
- * de secondes. Chaque usage fixe le sien (recapitulatif.ts, capture.ts).
+ * de secondes. capture.ts fixe le sien (DELAI_CAPTURE_MS).
  */
 export const DELAI_PAR_DEFAUT_MS = 30_000;
 
@@ -90,8 +90,8 @@ export interface OptionsAgentIa {
  * Journal du SDK limité aux avertissements, et traces OpenTelemetry
  * coupées, quelles que soient les variables d'environnement
  * (ANTHROPIC_LOG, ANTHROPIC_OPEN_TELEMETRY_*) : en mode « debug », le SDK
- * écrirait le corps de chaque demande, donc la capture d'écran et le prénom
- * du client, dans les journaux de Vercel.
+ * écrirait le corps de chaque demande, donc la capture d'écran du client,
+ * dans les journaux de Vercel.
  */
 export function creerClientAgentIa(): ClientAgentIa | null {
   const cle = process.env.ANTHROPIC_API_KEY?.trim();

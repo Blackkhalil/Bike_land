@@ -6,8 +6,7 @@
  * calcul reçoit la demande du client, les réglages des offres
  * (src/data/reglages-offres.ts) et le contexte de la vente (canal, date,
  * instant présent, vélos libres), et rend un résultat chiffré ou un refus
- * motivé. Le site, le comptoir et l'agent IA lisent tous ces mêmes
- * chiffres : l'agent ne calcule jamais (cahier des charges, étape 4).
+ * motivé. Le site et le comptoir lisent tous deux ces mêmes chiffres.
  *
  * Le canal est fixé par le serveur selon la route, jamais par le client :
  * « en-ligne » sur le site (frais de paiement électronique, date limite du

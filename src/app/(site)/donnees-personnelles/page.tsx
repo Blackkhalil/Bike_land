@@ -176,36 +176,26 @@ export default async function PageDonneesPersonnelles() {
       {iaActive && (
       <ArticleLegal titre="Assistant d'intelligence artificielle (offres de groupe)">
         <p>
-          Pour les offres de groupe (Bike for All, Road trip en groupe et Gbashi Bike), nous faisons
-          appel à Claude, un assistant d&apos;intelligence artificielle de la société Anthropic, pour deux
-          tâches seulement :
+          Si vous demandez la réduction du Road trip en groupe, nous faisons appel à Claude, un
+          assistant d&apos;intelligence artificielle de la société Anthropic, pour une seule tâche :
+          vérifier votre capture d&apos;écran.
         </p>
-        <ul className="ml-5 list-disc space-y-2">
-          <li>
-            <strong>Vérifier la capture d&apos;écran de la réduction.</strong> L&apos;image est transmise à
-            Anthropic, et Claude nous dit si elle montre un abonnement à l&apos;un de nos comptes ou une
-            story qui nous identifie. Nous ne consultons jamais la liste de nos abonnés. En cas de doute,
-            notre équipe vérifie la capture à la main ; la réduction n&apos;est jamais accordée par défaut.
-            Si le résultat vous semble faux, écrivez-nous à {site.email} : une personne de notre équipe
-            regardera votre capture.
-          </li>
-          <li>
-            <strong>Rédiger le message récapitulatif de votre réservation.</strong> Nous transmettons
-            votre prénom et les détails de la réservation : offre, date, horaires, nombre de personnes et
-            montants calculés par notre site. Jamais votre nom, votre téléphone ni votre email. Claude ne
-            calcule rien : le site vérifie chaque montant du message avant de l&apos;envoyer, et au
-            moindre écart c&apos;est notre texte habituel qui part.
-          </li>
-        </ul>
         <p>
-          <strong>Transfert hors du Bénin.</strong> Anthropic est établie aux États-Unis : ces données
-          quittent donc le Bénin pour y être traitées. Anthropic agit pour le compte de {site.nom}, comme
+          L&apos;image est transmise à Anthropic, et Claude nous dit si elle montre un abonnement à
+          l&apos;un de nos comptes ou une story qui nous identifie. Nous ne consultons jamais la liste de
+          nos abonnés. En cas de doute, notre équipe vérifie la capture à la main ; la réduction
+          n&apos;est jamais accordée par défaut. Si le résultat vous semble faux, écrivez-nous à{" "}
+          {site.email} : une personne de notre équipe regardera votre capture.
+        </p>
+        <p>
+          <strong>Transfert hors du Bénin.</strong> Anthropic est établie aux États-Unis : votre capture
+          quitte donc le Bénin pour y être traitée. Anthropic agit pour le compte de {site.nom}, comme
           sous-traitant, selon ses conditions commerciales.
         </p>
         <p>
-          <strong>Combien de temps.</strong> Chez Anthropic, ces données sont conservées{" "}
-          {CONSERVATION_ANTHROPIC_JOURS}&nbsp;jours, durée exigée pour ce modèle, puis effacées.
-          Anthropic peut les garder plus longtemps seulement si la loi l&apos;y oblige ou pour la sécurité
+          <strong>Combien de temps.</strong> Chez Anthropic, la capture est conservée{" "}
+          {CONSERVATION_ANTHROPIC_JOURS}&nbsp;jours, durée exigée pour ce modèle, puis effacée.
+          Anthropic peut la garder plus longtemps seulement si la loi l&apos;y oblige ou pour la sécurité
           de son service, par exemple en cas d&apos;utilisation abusive, selon ses propres règles. Chez{" "}
           {site.nom}, la capture est rangée dans un espace de stockage privé, qui n&apos;est pas public.
           Notre équipe ne la regarde que pour une vérification à la main. Elle est supprimée dès que la
