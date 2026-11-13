@@ -42,8 +42,9 @@ export const metadata: Metadata = metadonneesPage({
  * Les sections de l'ancienne version qui empilaient les arguments
  * (« Ce que vous cherchiez », « Raisons », « Passion », le schéma
  * annoté, l'accordéon d'entretien, les deux tuiles aujourd'hui/demain)
- * sont retirées de la composition : elles répétaient le même propos sur
- * six écrans. Leurs fichiers sont conservés, non supprimés.
+ * sont retirées : elles répétaient le même propos sur six écrans. Leurs
+ * fichiers ont été supprimés le 13 novembre 2026 ; l'historique Git les
+ * garde.
  */
 /**
  * Page rendue une fois puis servie telle quelle pendant cinq minutes.

@@ -143,26 +143,6 @@ export function LienFleche({
   );
 }
 
-/**
- * Cadre d'image. À plat, arêtes vives, sans rotation ni ombre portée :
- * le brief §2 exclut les ombres molles et les angles arrondis.
- */
-export function CadrePhoto({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-  /** @deprecated L'inclinaison décorative a été retirée. */
-  rotation?: number;
-}) {
-  return (
-    <div className={`bg-craie p-2 ${className}`}>
-      <div className="overflow-hidden">{children}</div>
-    </div>
-  );
-}
-
 export function Etoiles({ note, className = "" }: { note: number; className?: string }) {
   return (
     <span className={`inline-flex items-center gap-0.5 ${className}`} aria-label={`Note : ${note} sur 5`}>
