@@ -78,7 +78,8 @@ verifier("même numéro, écrit autrement, autre email : 409 EN_ATTENTE", [memeN
 const autreHeure = await appeler({ ...demande, heureDebut: heure + 2 <= 20 ? heure + 2 : heure });
 verifier("même jour, autre heure : toujours renvoyé vers la première", [autreHeure.statut, autreHeure.donnees.code], [409, "EN_ATTENTE"]);
 
-const aucuneEnPlus = (await depot.listerReservations({ statut: "EN_ATTENTE_PAIEMENT", depuis: jeudi, jusqua: jeudi })).filter(
+// Les demandes pas encore payées ne se lisent qu'expressément (décision 27).
+const aucuneEnPlus = (await depot.listerReservations({ statut: "EN_ATTENTE_PAIEMENT", depuis: jeudi, jusqua: jeudi, inclureNonPayees: true })).filter(
   (r: { client: { email: string } }) => r.client.email.toLowerCase().startsWith("koffi."),
 ).length;
 verifier("aucune réservation en plus n'a été créée", aucuneEnPlus, 1);

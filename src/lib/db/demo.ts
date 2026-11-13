@@ -15,6 +15,7 @@ import { aujourdhui, nombreDeJours, type DateISO } from "../dates";
 import { limitePreuves, motifDecisionPreuve, PREFIXE_FICHIER_EN_BASE } from "./contrat";
 import {
   DUREE_ROAD_TRIP_HEURES,
+  estOffreGroupe,
   estSurCommande,
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_HEURE,
@@ -34,6 +35,7 @@ import {
   seChevauchent,
 } from "../disponibilite";
 import { penaliteRetardXof } from "../offres/retard";
+import { jamaisPayee } from "../reservations";
 import { calculerDevis } from "../tarification";
 import { genererReference, genererToken, hacherToken, lireToken } from "../tokens";
 import {
@@ -68,6 +70,7 @@ import {
   creneauOctobreRoseDemande,
   creneauxSeChevauchent,
   detailsReservationGroupe,
+  detailsReservationGroupePayee,
   estDateISO,
   journeeIndisponible,
   limiteJournal,
@@ -100,6 +103,7 @@ import {
   type NouvelEvenement,
   type ParcDuJour,
   type ReservationRoadTripClient,
+  type ResultatEffacementDemandes,
   type ResultatReservation,
 } from "./contrat";
 import { construireHistorique } from "./historique";
@@ -292,6 +296,16 @@ function trouver(reference: string) {
  * un contrôle fait avant une attente pouvait être périmé au moment
  * d'écrire, et deux réservations du même créneau passaient toutes deux.
  */
+
+/**
+ * Une réservation que l'administration voit : payée un jour, même annulée ou
+ * remboursée depuis, ou qui porte un remboursement noté. Une demande jamais
+ * payée n'y apparaît pas (décision 27), la même règle qu'en base
+ * (`jamaisPayeeEnBase`).
+ */
+function visible(reservation: Reservation): boolean {
+  return !jamaisPayee(reservation) || etat().remboursements.some((r) => r.reservationId === reservation.id);
+}
 
 /** La réservation bloque-t-elle ses vélos ? Tout sauf l'annulé et le panier abandonné. */
 function bloque(reservation: Reservation, limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000): boolean {
@@ -731,38 +745,55 @@ export const depotDemo: Depot = {
     return reservation ? copie(reservation) : null;
   },
 
-  async supprimerReservation(reference: string) {
+  async purgerDemandesNonPayees(creeesAvant: string, limite = 200): Promise<ResultatEffacementDemandes> {
+    // Les mêmes règles qu'en base : une demande jamais payée (ni confirmée,
+    // ni encaissée, ni remboursée, sans paiement reçu ni remboursement noté),
+    // créée avant la limite, sans avis. Fait sans attente, d'un seul tenant.
     const donnees = etat();
-    const index = donnees.reservations.findIndex(
-      (r) => r.reference.toUpperCase() === reference.toUpperCase(),
-    );
-    if (index === -1) return false;
+    const aEffacer = donnees.reservations
+      .filter(
+        (r) =>
+          !visible(r) &&
+          r.creeLe < creeesAvant &&
+          r.note === undefined &&
+          !donnees.avis.some((avis) => avis.reference === r.reference),
+      )
+      .sort((a, b) => a.creeLe.localeCompare(b.creeLe))
+      .slice(0, Math.max(1, Math.min(limite, 1000)));
 
-    const reservation = donnees.reservations[index];
-    // De l'argent à rendre y est rattaché : comme en base, elle reste.
-    if (donnees.remboursements.some((r) => r.reservationId === reservation.id)) return false;
-    // Même garde-fou qu'en base : ce qui a encaissé ne s'efface pas, ni ce
-    // qui porte un paiement reçu hors délai (la référence provisoire
-    // « TX-… » de la démonstration ne compte pas).
-    const aEncaisse = reservation.paiements.some(
-      (paiement) =>
-        !paiement.estCaution &&
-        (paiement.statut === "REUSSI" ||
-          Boolean(paiement.referenceFournisseur && !paiement.referenceFournisseur.startsWith("TX-"))),
-    );
-    if (aEncaisse || reservation.statut !== "EN_ATTENTE_PAIEMENT") return false;
+    const references: string[] = [];
+    let clients = 0;
+    for (const reservation of aEffacer) {
+      // Le quota du code de parrainage revient au pot, comme à l'annulation.
+      for (const usage of donnees.utilisationsPromo.filter((u) => u.reference === reservation.reference)) {
+        if (usage.statut === "EN_ATTENTE") {
+          const code = donnees.codesPromo.find((c) => c.code === usage.code);
+          if (code) code.utilisations = Math.max(0, code.utilisations - 1);
+        }
+        donnees.utilisationsPromo.splice(donnees.utilisationsPromo.indexOf(usage), 1);
+      }
+      // La capture qu'elle avait prise redevient libre, pour son client.
+      for (const preuve of donnees.preuves) {
+        if (preuve.reference?.toUpperCase() === reservation.reference.toUpperCase()) delete preuve.reference;
+      }
+      // La ligne qu'une version antérieure écrivait au journal dès la création.
+      donnees.journal = donnees.journal.filter(
+        (ligne) => !(ligne.reference === reservation.reference && ligne.type === "reservation-groupe" && ligne.auteur === auteurAuJournal()),
+      );
+      donnees.tokens.delete(reservation.reference);
+      donnees.reservations.splice(donnees.reservations.indexOf(reservation), 1);
+      references.push(reservation.reference);
 
-    const usage = donnees.utilisationsPromo.find(
-      (u) => u.reference === reservation.reference && u.statut === "EN_ATTENTE",
-    );
-    if (usage) {
-      const code = donnees.codesPromo.find((c) => c.code === usage.code);
-      if (code) code.utilisations = Math.max(0, code.utilisations - 1);
-      donnees.utilisationsPromo.splice(donnees.utilisationsPromo.indexOf(usage), 1);
+      // La fiche du client, s'il n'a plus aucune réservation.
+      if (!donnees.reservations.some((r) => r.clientId === reservation.clientId)) {
+        const index = donnees.clients.findIndex((c) => c.id === reservation.clientId);
+        if (index !== -1) {
+          donnees.clients.splice(index, 1);
+          clients += 1;
+        }
+      }
     }
-
-    donnees.reservations.splice(index, 1);
-    return true;
+    return { references, clients };
   },
 
   async annulerReservation(reference: string, options?: { rembourseAuComptoir?: boolean }) {
@@ -843,8 +874,10 @@ export const depotDemo: Depot = {
     rappelsEnvoyes.delete(reservationId);
   },
 
-  async listerReservations(options?: { statut?: StatutReservation; depuis?: DateISO; jusqua?: DateISO }) {
-    let resultat = etat().reservations;
+  async listerReservations(options?: { statut?: StatutReservation; depuis?: DateISO; jusqua?: DateISO; inclureNonPayees?: boolean }) {
+    // Les demandes jamais payées restent invisibles (décision 27), comme en
+    // base, sauf pour les contrôles du site qui les demandent.
+    let resultat = options?.inclureNonPayees ? etat().reservations : etat().reservations.filter(visible);
     if (options?.statut) resultat = resultat.filter((r) => r.statut === options.statut);
     if (options?.depuis) resultat = resultat.filter((r) => r.dateFin >= options.depuis!);
     if (options?.jusqua) resultat = resultat.filter((r) => r.dateDebut <= options.jusqua!);
@@ -852,7 +885,9 @@ export const depotDemo: Depot = {
   },
 
   async listerClients() {
-    return copie(etat().clients);
+    // Seulement les clients qui ont payé au moins une fois (décision 27).
+    const donnees = etat();
+    return copie(donnees.clients.filter((c) => donnees.reservations.some((r) => r.clientId === c.id && visible(r))));
   },
 
   async confirmerPaiement(reference: string, referenceTransaction?: string) {
@@ -962,6 +997,17 @@ export const depotDemo: Depot = {
       (u) => u.reference === reservation.reference && u.statut === "EN_ATTENTE",
     );
     if (usage) usage.statut = "VALIDE";
+
+    // Une offre de groupe payée en ligne entre au journal ici, comme en base :
+    // jamais avant le paiement (décision 27).
+    if (estOffreGroupe(reservation.offre)) {
+      ecrireAuJournal({
+        type: "reservation-groupe",
+        reference: reservation.reference,
+        details: detailsReservationGroupePayee(reservation),
+        auteur: auteurAuJournal(),
+      });
+    }
 
     return { reservation: copie(reservation), dejaConfirmee: false };
   },
@@ -1780,12 +1826,17 @@ export const depotDemo: Depot = {
       }
       preuve.reference = reference;
     }
-    ecrireAuJournal({
-      type: "reservation-groupe",
-      reference,
-      details: detailsReservationGroupe(demande, attribues.length, depart, retour),
-      auteur: auteurAuJournal(encaissement),
-    });
+    // Au journal tout de suite pour une vente au comptoir, déjà payée ; une
+    // demande en ligne n'y entre qu'une fois payée (`confirmerPaiement`,
+    // décision 27).
+    if (encaissement) {
+      ecrireAuJournal({
+        type: "reservation-groupe",
+        reference,
+        details: detailsReservationGroupe(demande, attribues.length, depart, retour),
+        auteur: auteurAuJournal(encaissement),
+      });
+    }
     return { reservation: copie(reservation), token };
   },
 };

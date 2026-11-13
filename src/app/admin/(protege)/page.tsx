@@ -171,7 +171,6 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
   const {
     departs: departsDuJour,
     retours: retoursDuJour,
-    aPayer,
     aPrevoir,
     cautions: cautionsAcollecter,
   } = indicateursDuJour(reservations, jour);
@@ -275,15 +274,6 @@ export default async function PageTableauDeBord({ searchParams }: { searchParams
               retoursDuJour.length === 0
                 ? "Aucun vélo dehors dont le retour soit échu."
                 : "Vélos sortis à récupérer et à contrôler."
-            }
-          />
-          <TuileStat
-            libelle="Paiements en attente"
-            valeur={formatNombre(aPayer.length)}
-            aide={
-              aPayer.length === 0
-                ? "Toutes les réservations sont réglées."
-                : "Réservations enregistrées mais pas encore payées."
             }
           />
           <TuileStat

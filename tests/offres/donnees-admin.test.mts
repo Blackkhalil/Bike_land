@@ -344,13 +344,20 @@ const [cree] = await depot.listerJournal({ type: "remboursement-cree", reference
 const [faitJournal] = await depot.listerJournal({ type: "remboursement-fait" });
 verifier("journal : créé par le site, fait par Awa", [cree?.auteur, faitJournal?.auteur, espaces(journal.resumeEvenement(faitJournal).titre)], ["site", "admin (Awa)", "31 250 F remboursés"]);
 verifier("sans prénom : refusé", (await appeler(routeRembourser, "/api/admin/remboursements", { action: "fait", id: second?.id })).statut, 422);
-// La demande en ligne jamais payée s'efface d'habitude ; plus quand de
-// l'argent à rendre y est rattaché (la base le refuserait : ON DELETE RESTRICT).
+// La demande en ligne jamais payée s'efface d'habitude (décision 27) ; plus
+// quand de l'argent à rendre y est rattaché (la base le refuserait : ON
+// DELETE RESTRICT). Une limite dans le futur : toutes sont assez anciennes.
 const aRendre = await depot.creerRemboursement({ reference: enAttente.reference, montantXof: 1000, motif: "Essai d'effacement" });
+const effacement = await depot.purgerDemandesNonPayees(new Date(Date.now() + 60_000).toISOString());
 verifier(
-  "une demande qui porte un remboursement ne s'efface pas",
-  [Boolean(aRendre), await depot.supprimerReservation(enAttente.reference), Boolean(await depot.trouverReservationParReference(enAttente.reference))],
-  [true, false, true],
+  "une demande qui porte un remboursement ne s'efface pas, et se voit",
+  [
+    Boolean(aRendre),
+    effacement.references.includes(enAttente.reference),
+    Boolean(await depot.trouverReservationParReference(enAttente.reference)),
+    (await depot.listerReservations()).some((r: { reference: string }) => r.reference === enAttente.reference),
+  ],
+  [true, false, true, true],
 );
 
 console.log("\n— Les offres de groupe se nomment partout");

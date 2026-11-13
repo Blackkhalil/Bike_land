@@ -36,6 +36,7 @@ import {
 } from "@/lib/db/contrat";
 import { auteurAdmin } from "@/lib/journal";
 import { formatPourcentage } from "@/lib/offres";
+import { estPayee } from "@/lib/reservations";
 import { champsEnErreur, erreursEnFrancais, schemaPrenom } from "@/lib/saisie-admin";
 import type { PreuveReduction } from "@/lib/types";
 
@@ -717,6 +718,9 @@ export async function deciderPreuveParAdmin(
   // déjà eue (validée ou refusée, décision 25), ou, pour une validation, un
   // road trip au prix normal fait après la capture ou encore à venir.
   let situation: SituationClient = {};
+  // Ce que l'écran de l'administration en apprend : les seules réservations
+  // payées, une demande pas encore payée n'y apparaît pas (décision 27).
+  let situationPayee: SituationClient = {};
   const maintenant = deps.maintenant();
   try {
     const [avecReduction, auPrixNormal] = await Promise.all([
@@ -726,6 +730,7 @@ export async function deciderPreuveParAdmin(
         : Promise.resolve([]),
     ]);
     situation = situationDuClient(decidee, avecReduction, auPrixNormal, maintenant);
+    situationPayee = situationDuClient(decidee, avecReduction.filter(estPayee), auPrixNormal.filter(estPayee), maintenant);
   } catch (e) {
     console.error(`[offres-groupe] preuve ${decidee.id} : réservations du client illisibles, email ordinaire`, e);
   }
@@ -778,8 +783,8 @@ export async function deciderPreuveParAdmin(
       preuve: { id: decidee.id, statut: decidee.statut },
       fichierEfface,
       emailEnvoye,
-      ...(situation.prixNormal ? { prixNormal: situation.prixNormal.reference } : {}),
-      ...(situation.dejaEue ? { dejaEue: situation.dejaEue } : {}),
+      ...(situationPayee.prixNormal ? { prixNormal: situationPayee.prixNormal.reference } : {}),
+      ...(situationPayee.dejaEue ? { dejaEue: situationPayee.dejaEue } : {}),
     },
   };
 }

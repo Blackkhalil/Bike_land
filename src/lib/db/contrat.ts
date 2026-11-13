@@ -198,6 +198,14 @@ export interface NouveauVelo {
   video?: string;
 }
 
+/** Ce que la tâche quotidienne a effacé des demandes jamais payées (décision 27). */
+export interface ResultatEffacementDemandes {
+  /** Les références effacées. */
+  references: string[];
+  /** Les fiches client effacées avec elles, faute de toute autre réservation. */
+  clients: number;
+}
+
 export interface ResultatReservation {
   reservation: Reservation;
   /** Token en clair, à n'utiliser que pour construire le lien envoyé par email. */
@@ -624,6 +632,31 @@ export function detailsReservationGroupe(
 }
 
 /**
+ * La même ligne du journal pour une réservation de groupe payée en ligne,
+ * refaite à partir de la réservation : elle s'écrit à la confirmation du
+ * paiement, jamais avant (décision 27). Une vente au comptoir, déjà payée,
+ * s'écrit toujours à sa création (`detailsReservationGroupe`).
+ */
+export function detailsReservationGroupePayee(reservation: Reservation): Record<string, unknown> {
+  const details = reservation.offreDetails ?? {};
+  const gammes = details.gammes;
+  const depart = reservation.horaire?.depart ?? details.depart;
+  const retour = reservation.horaire?.retour ?? details.retour;
+  return {
+    offre: reservation.offre,
+    date: reservation.dateDebut,
+    ...(depart ? { depart } : {}),
+    ...(retour ? { retour } : {}),
+    personnes: reservation.nombrePersonnes,
+    velos: reservation.lignes.length,
+    ...(gammes && typeof gammes === "object" ? { gammes: { ...gammes } } : {}),
+    totalXof: reservation.totalXof,
+    comptoir: false,
+    ...(typeof details.preuveId === "string" ? { preuveId: details.preuveId } : {}),
+  };
+}
+
+/**
  * L'auteur d'une réservation au journal : « site » pour une demande en ligne,
  * « admin (prénom) » pour une vente au comptoir, du nom de qui a reçu
  * l'argent (même forme que `auteurAdmin` de src/lib/journal.ts).
@@ -958,15 +991,6 @@ export interface Depot {
   noterRemboursementEspeces(reference: string, montantXof: number): Promise<Reservation | null>;
 
   /**
-   * Efface définitivement une réservation jamais payée.
-   *
-   * Réservé aux paniers abandonnés. L'implémentation refuse d'effacer
-   * tout ce qui porte un paiement réussi : un règlement encaissé est une
-   * pièce comptable, il s'annule mais ne s'efface pas.
-   */
-  supprimerReservation(reference: string): Promise<boolean>;
-
-  /**
    * Les réservations payées qui partent ce jour-là et n'ont pas encore
    * reçu leur rappel de la veille.
    */
@@ -982,12 +1006,47 @@ export interface Depot {
   /** Libère le rappel retenu, quand son envoi a échoué. */
   libererRappel(reservationId: string): Promise<void>;
 
+  /**
+   * Les réservations, des plus lointaines aux plus proches.
+   *
+   * Sans les demandes jamais payées (décision 27, `jamaisPayee` de
+   * src/lib/reservations.ts) : en attente de paiement, ou annulées sans avoir
+   * été payées. Elles n'apparaissent nulle part dans l'administration.
+   * `inclureNonPayees` les rend, pour les seuls contrôles du site qui en ont
+   * besoin (une demande déjà en attente pour la même personne, les places qui
+   * restent) : jamais pour un affichage.
+   */
   listerReservations(options?: {
     statut?: StatutReservation;
     depuis?: DateISO;
     jusqua?: DateISO;
+    inclureNonPayees?: boolean;
   }): Promise<Reservation[]>;
+  /**
+   * Les clients qui ont au moins une réservation visible (payée, même
+   * annulée ou remboursée depuis) : la fiche d'une personne qui n'a jamais
+   * payé n'apparaît pas (décision 27).
+   */
   listerClients(): Promise<Client[]>;
+
+  /**
+   * Efface les demandes jamais payées créées avant `creeesAvant` (un instant
+   * ISO, `limiteEffacementDemandes` : la fin du délai de paiement plus 48
+   * heures), avec leurs vélos, leurs options, leurs tentatives de paiement et
+   * leur utilisation de code de parrainage (le quota revient au code), et la
+   * fiche du client quand il n'a plus aucune autre réservation ni avis. La
+   * capture de réduction qu'une demande avait prise redevient libre (elle ne
+   * la retenait plus depuis la fin du délai), et la ligne du journal écrite à
+   * sa création par une version antérieure du site s'efface avec elle.
+   *
+   * Jamais effacée : une réservation confirmée un jour, ou qui porte un
+   * paiement réussi, remboursé, un identifiant de paiement reçu (de l'argent
+   * arrivé trop tard, à rendre), un remboursement noté ou un avis. Chaque
+   * effacement revérifie ces conditions dans sa propre transaction. Au plus
+   * `limite` demandes par appel (200 par défaut) : la tâche du lendemain
+   * reprend le reste.
+   */
+  purgerDemandesNonPayees(creeesAvant: string, limite?: number): Promise<ResultatEffacementDemandes>;
 
   /**
    * Marque le depart effectif d'une reservation : le velo est remis au

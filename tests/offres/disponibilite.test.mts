@@ -295,12 +295,8 @@ verifier(
 );
 verifier("l'instantané du calcul rangé tel quel", A.offreDetails, groupe(S1, 480, 510, 10).details);
 verifier("le lien de suivi retrouve la réservation", (await depot.trouverReservationParToken(reponseA.token))?.reference, A.reference);
-const [evenementA] = await depot.listerJournal({ type: "reservation-groupe", reference: A.reference });
-verifier(
-  "écrite au journal, par le site",
-  [evenementA?.auteur, evenementA?.details.offre, evenementA?.details.depart, evenementA?.details.retour, evenementA?.details.velos, evenementA?.details.comptoir],
-  ["site", "bike-for-all", "08:00", "08:30", 10, false],
-);
+// Décision 27 : une demande pas encore payée n'est écrite nulle part, journal compris.
+verifier("pas encore payée : rien au journal", (await depot.listerJournal({ type: "reservation-groupe", reference: A.reference })).length, 0);
 let parc = await parcDu(S1);
 verifier("le parc voit ses 10 vélos pris de 8 h à 8 h 30", [parc.occupations.length, parc.occupations.every((o) => o.debutMinute === 480 && o.finMinute === 510)], [10, true]);
 verifier("entre 8 h et 8 h 30, il ne reste que 8 vélos", D.velosLibresSurCreneau(parc, c(480, 510)).total, 8);
@@ -362,6 +358,22 @@ verifier(
 );
 const paiementR = ((await depot.trouverReservationParReference(R.reference)) as Resa).paiements[0];
 verifier("le paiement est noté réussi, avec sa transaction", [paiementR.statut, paiementR.referenceFournisseur], ["REUSSI", "TX-ESSAI-R"]);
+const [evenementR] = await depot.listerJournal({ type: "reservation-groupe", reference: R.reference });
+verifier(
+  "payée : écrite au journal à la confirmation, par le site, une seule fois",
+  [
+    evenementR?.auteur,
+    evenementR?.details.offre,
+    evenementR?.details.depart,
+    evenementR?.details.retour,
+    evenementR?.details.velos,
+    evenementR?.details.comptoir,
+    (await depot.listerJournal({ type: "reservation-groupe", reference: R.reference })).length,
+  ],
+  ["site", "bike-for-all", "08:00", "08:30", 10, false, 1],
+);
+await depot.confirmerPaiement(R.reference, "TX-ESSAI-R");
+verifier("confirmée une seconde fois (notification rejouée) : pas de seconde ligne", (await depot.listerJournal({ type: "reservation-groupe", reference: R.reference })).length, 1);
 const U: Resa = await reserverGroupe(S5, 720, 750, 5);
 vieillir(U.reference, 45);
 verifier("payée 45 minutes après, personne n'a pris ses vélos : confirmée", (await depot.confirmerPaiement(U.reference, "TX-ESSAI-U"))?.reservation.statut, "CONFIRMEE");
@@ -392,7 +404,9 @@ verifier(
   [G.offre, gammesDe(G), G.heureDebut, G.heureFin, G.horaire, G.nombrePersonnes],
   ["gbashi-groupe", { CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 }, 7, 11, { depart: "07:00", retour: "11:00" }, 5],
 );
-verifier("le journal garde les gammes", (await depot.listerJournal({ type: "reservation-groupe", reference: G.reference }))[0]?.details.gammes, { CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 });
+verifier("pas encore payée : rien au journal", (await depot.listerJournal({ type: "reservation-groupe", reference: G.reference })).length, 0);
+await depot.confirmerPaiement(G.reference, "SASPAY-GBASHI-G");
+verifier("payée : le journal garde les gammes", (await depot.listerJournal({ type: "reservation-groupe", reference: G.reference }))[0]?.details.gammes, { CLASSIQUE: 2, PREMIUM: 2, PRESTIGE: 1 });
 const gbashi = (velos: Gammes) => depot.creerReservationGroupe({ ...groupe(dimanche, 420, 660, velos), offre: "gbashi-groupe" });
 const deuxPrestige = await erreurDe(gbashi({ PRESTIGE: 2 }));
 verifier(

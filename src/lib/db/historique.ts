@@ -265,25 +265,28 @@ function fabriquerReservation(contexte: {
     remiseXof: 0,
     cautionXof: devis.cautionXof,
     totalXof: devis.totalXof,
-    paiements:
-      statut === "ANNULEE"
-        ? []
-        : [
-            {
-              id: `pay-demo-${index + 1}`,
-              fournisseur: moyen === "ESPECES" ? "ESPECES" : "SASPAY",
-              moyen,
-              statut: "REUSSI",
-              montantXof: devis.totalXof,
-              referenceFournisseur: `TX${String(900000 + index)}`,
-              estCaution: false,
-              creeLe: `${jourReservation}T10:00:00.000Z`,
-            },
-            // Aucune ligne de caution : elle se règle en espèces au départ
-            // et se rend au retour, sans jamais passer par la plateforme.
-          ],
+    // Une annulation de l'historique est une réservation payée, puis
+    // annulée et remboursée : une demande jamais payée n'apparaît pas dans
+    // l'administration (décision 27), elle n'a pas sa place ici.
+    paiements: [
+      {
+        id: `pay-demo-${index + 1}`,
+        fournisseur: moyen === "ESPECES" ? "ESPECES" : "SASPAY",
+        moyen,
+        statut: statut === "ANNULEE" ? "REMBOURSE" : "REUSSI",
+        montantXof: devis.totalXof,
+        referenceFournisseur: `TX${String(900000 + index)}`,
+        estCaution: false,
+        ...(statut === "ANNULEE"
+          ? { rembourseLe: `${ajouterJours(jourReservation, 2)}T09:00:00.000Z`, montantRenduXof: devis.totalXof }
+          : {}),
+        creeLe: `${jourReservation}T10:00:00.000Z`,
+      },
+      // Aucune ligne de caution : elle se règle en espèces au départ
+      // et se rend au retour, sans jamais passer par la plateforme.
+    ],
     creeLe: `${jourReservation}T10:00:00.000Z`,
-    confirmeLe: statut === "ANNULEE" ? undefined : `${jourReservation}T10:02:00.000Z`,
+    confirmeLe: `${jourReservation}T10:02:00.000Z`,
     annuleLe: statut === "ANNULEE" ? `${ajouterJours(jourReservation, 2)}T09:00:00.000Z` : undefined,
     note: statut === "TERMINEE" && hasard() > 0.55 ? (hasard() > 0.25 ? 5 : 4) : undefined,
   };

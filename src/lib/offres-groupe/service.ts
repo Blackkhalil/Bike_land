@@ -630,7 +630,15 @@ async function demandeEnAttente(
   const email = client.email.trim().toLowerCase();
   const numero = finDeNumero(client.telephone);
   const maintenant = deps.maintenant();
-  return (await deps.depot.listerReservations({ statut: "EN_ATTENTE_PAIEMENT", depuis: date, jusqua: date })).find(
+  // Une demande pas encore payée : invisible dans l'administration
+  // (décision 27), seul ce contrôle la demande au dépôt.
+  const demandes = await deps.depot.listerReservations({
+    statut: "EN_ATTENTE_PAIEMENT",
+    depuis: date,
+    jusqua: date,
+    inclureNonPayees: true,
+  });
+  return demandes.find(
     (r) =>
       // Octobre rose et Padel bike ont leur propre contrôle.
       r.offre !== "octobre-rose" &&

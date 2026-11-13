@@ -29,6 +29,7 @@ import { LIMITE_PREUVES_MAX, limitePreuves, motifDecisionPreuve, PREFIXE_FICHIER
 import { nombreDeJours, versISO, type DateISO } from "../dates";
 import {
   DUREE_ROAD_TRIP_HEURES,
+  estOffreGroupe,
   estSurCommande,
   EXPIRATION_PANIER_MINUTES,
   FERMETURE_HEURE,
@@ -89,6 +90,7 @@ import {
   contactDeCaptureAEffacer,
   controlerDemandeGroupe,
   detailsReservationGroupe,
+  detailsReservationGroupePayee,
   estDateISO,
   creneauOctobreRoseDemande,
   journeeIndisponible,
@@ -121,6 +123,7 @@ import {
   type IdentiteClient,
   type ParcDuJour,
   type ReservationRoadTripClient,
+  type ResultatEffacementDemandes,
   type ResultatReservation,
   type ResultatRetard,
 } from "./contrat";
@@ -458,6 +461,36 @@ function bookingBloquant(): Prisma.BookingWhereInput {
       { status: "EN_ATTENTE_PAIEMENT", createdAt: { gte: limite } },
     ],
   };
+}
+
+/**
+ * Une demande jamais payée (décision 27), la règle de `jamaisPayee`
+ * (src/lib/reservations.ts) écrite pour la base : en attente de paiement ou
+ * annulée, jamais confirmée, sans paiement réussi ni remboursé, sans
+ * identifiant de paiement reçu (la référence provisoire « TX-… » de la
+ * démonstration mise à part) et sans remboursement noté. Elle n'apparaît
+ * nulle part dans l'administration, et la tâche quotidienne l'efface.
+ */
+function jamaisPayeeEnBase(): Prisma.BookingWhereInput {
+  return {
+    status: { in: ["EN_ATTENTE_PAIEMENT", "ANNULEE"] },
+    confirmedAt: null,
+    remboursements: { none: {} },
+    payments: {
+      none: {
+        isDeposit: false,
+        OR: [
+          { status: { in: ["REUSSI", "REMBOURSE"] } },
+          { AND: [{ providerReference: { not: null } }, { NOT: { providerReference: { startsWith: "TX-" } } }] },
+        ],
+      },
+    },
+  };
+}
+
+/** Une réservation que l'administration voit : payée un jour, même annulée ou remboursée depuis. */
+function reservationVisible(): Prisma.BookingWhereInput {
+  return { NOT: jamaisPayeeEnBase() };
 }
 
 /**
@@ -1381,50 +1414,93 @@ const depotDirect: Depot = {
     return booking ? versReservation(booking) : null;
   },
 
-  async supprimerReservation(reference: string) {
-    return client().$transaction(
-      async (tx) => {
-        const booking = await tx.booking.findUnique({
-          where: { reference: reference.toUpperCase() },
-          include: { payments: true, promoUsage: true, remboursements: { select: { id: true }, take: 1 } },
-        });
-        if (!booking) return false;
-        // De l'argent à rendre y est rattaché : la ligne du remboursement en
-        // a besoin (la base refuserait d'ailleurs l'effacement).
-        if (booking.remboursements.length > 0) return false;
+  async purgerDemandesNonPayees(creeesAvant: string, limite = 200): Promise<ResultatEffacementDemandes> {
+    const avant = new Date(creeesAvant);
+    // Une demande jamais payée, assez ancienne, sans avis (un avis suppose
+    // une sortie terminée : il ne devrait pas exister, mais on n'efface pas
+    // ce qu'un client a écrit).
+    const aEffacer = (): Prisma.BookingWhereInput => ({
+      ...jamaisPayeeEnBase(),
+      createdAt: { lt: avant },
+      review: { is: null },
+    });
+    const candidates = await client().booking.findMany({
+      where: aEffacer(),
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+      take: Math.max(1, Math.min(limite, 1000)),
+    });
 
-        // Garde-fou, et il n'est pas décoratif : une réservation qui a
-        // encaissé est une pièce comptable. Elle s'annule, se rembourse,
-        // mais ne s'efface pas, sans quoi un contrôle trouverait un trou
-        // dans la suite des factures. Un identifiant de transaction noté
-        // compte aussi : c'est un paiement reçu hors délai, à rembourser,
-        // et cet identifiant ne doit pas redevenir utilisable ailleurs.
-        const aEncaisse = booking.payments.some(
-          (paiement) =>
-            !paiement.isDeposit &&
-            (paiement.status === "REUSSI" || paiement.providerReference !== null),
+    const references: string[] = [];
+    let clients = 0;
+    for (const { id } of candidates) {
+      try {
+        const effacee = await client().$transaction(
+          async (tx) => {
+            // Revérifié ici, dans la transaction qui efface : un paiement
+            // tardif confirmé entre-temps la rend visible, elle reste.
+            const booking = await tx.booking.findFirst({
+              where: { id, ...aEffacer() },
+              select: {
+                id: true,
+                reference: true,
+                customerId: true,
+                promoUsage: { select: { promoCode: true, status: true } },
+              },
+            });
+            if (!booking) return null;
+
+            // Le quota du code de parrainage revient au pot, comme à
+            // l'annulation : il avait été retenu à la création.
+            if (booking.promoUsage?.status === "EN_ATTENTE") {
+              await tx.promoCode.update({
+                where: { code: booking.promoUsage.promoCode },
+                data: { useCount: { decrement: 1 } },
+              });
+            }
+            await tx.promoUsage.deleteMany({ where: { bookingId: booking.id } });
+            await tx.payment.deleteMany({ where: { bookingId: booking.id } });
+            await tx.bookingOption.deleteMany({ where: { bookingId: booking.id } });
+            await tx.bookingItem.deleteMany({ where: { bookingId: booking.id } });
+            // La capture de réduction qu'elle avait prise ne la retenait plus
+            // depuis la fin du délai de paiement (`raisonPreuveInutilisable`) :
+            // elle redevient libre, « pas encore servie », pour son client.
+            await tx.preuveReduction.updateMany({
+              where: { reference: booking.reference },
+              data: { reference: null },
+            });
+            // La ligne qu'une version antérieure du site écrivait au journal
+            // dès la création d'une demande en ligne : elle ne racontait
+            // qu'une demande jamais payée, elle part avec elle.
+            await tx.journalEvenement.deleteMany({
+              where: { reference: booking.reference, type: "reservation-groupe", auteur: auteurAuJournal() },
+            });
+            await tx.booking.delete({ where: { id: booking.id } });
+
+            // La fiche du client, s'il n'a plus aucune réservation ni avis.
+            const fiche = await tx.customer.deleteMany({
+              where: { id: booking.customerId, bookings: { none: {} }, reviews: { none: {} } },
+            });
+            return { reference: booking.reference, client: fiche.count === 1 };
+          },
+          {
+            // Comme la confirmation : un paiement tardif confirmé au même
+            // instant ne peut pas réussir en même temps que l'effacement.
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            maxWait: DELAI_ATTENTE_MS,
+            timeout: DELAI_TRANSACTION_MS,
+          },
         );
-        if (aEncaisse || booking.status !== "EN_ATTENTE_PAIEMENT") return false;
-
-        // Le quota du code de parrainage revient au pot, comme à
-        // l'annulation : il avait été retenu à la création.
-        if (booking.promoUsage && booking.promoUsage.status === "EN_ATTENTE") {
-          await tx.promoCode.update({
-            where: { code: booking.promoUsage.promoCode },
-            data: { useCount: { decrement: 1 } },
-          });
+        if (effacee) {
+          references.push(effacee.reference);
+          if (effacee.client) clients += 1;
         }
-
-        await tx.promoUsage.deleteMany({ where: { bookingId: booking.id } });
-        await tx.payment.deleteMany({ where: { bookingId: booking.id } });
-        await tx.bookingOption.deleteMany({ where: { bookingId: booking.id } });
-        await tx.bookingItem.deleteMany({ where: { bookingId: booking.id } });
-        await tx.review.deleteMany({ where: { bookingId: booking.id } });
-        await tx.booking.delete({ where: { id: booking.id } });
-        return true;
-      },
-      { maxWait: DELAI_ATTENTE_MS, timeout: DELAI_TRANSACTION_MS },
-    );
+      } catch (erreur) {
+        // Une demande qui résiste (conflit, connexion) sera reprise demain.
+        console.error(`[effacement] demande ${id} non effacée`, erreur);
+      }
+    }
+    return { references, clients };
   },
 
   async listerRappelsAEnvoyer(date: DateISO) {
@@ -1457,7 +1533,9 @@ const depotDirect: Depot = {
   },
 
   async listerReservations(options) {
-    const where: Prisma.BookingWhereInput = {};
+    // Les demandes jamais payées restent invisibles (décision 27), sauf pour
+    // les contrôles du site qui les demandent expressément.
+    const where: Prisma.BookingWhereInput = options?.inclureNonPayees ? {} : reservationVisible();
     if (options?.statut) where.status = options.statut;
     if (options?.depuis)
       where.endDate = { gte: new Date(`${options.depuis}T00:00:00Z`) };
@@ -1652,9 +1730,23 @@ const depotDirect: Depot = {
             include: inclusionReservation,
           });
           if (!booking) return null;
+          const reservation = versReservation(booking);
+
+          // Une offre de groupe payée en ligne entre au journal ici, dans la
+          // transaction qui la confirme : jamais avant le paiement (décision 27).
+          if (passage.count === 1 && estOffreGroupe(reservation.offre)) {
+            await tx.journalEvenement.create({
+              data: {
+                type: "reservation-groupe",
+                reference: booking.reference,
+                details: detailsReservationGroupePayee(reservation) as Prisma.InputJsonObject,
+                auteur: auteurAuJournal(),
+              },
+            });
+          }
 
           return {
-            reservation: versReservation(booking),
+            reservation,
             dejaConfirmee: passage.count === 0,
           };
         },
@@ -1812,7 +1904,9 @@ const depotDirect: Depot = {
   },
 
   async listerClients() {
+    // Seulement les clients qui ont payé au moins une fois (décision 27).
     const customers = await client().customer.findMany({
+      where: { bookings: { some: reservationVisible() } },
       orderBy: { createdAt: "desc" },
     });
     return customers.map(versClient);
@@ -2850,14 +2944,19 @@ const depotDirect: Depot = {
             include: inclusionReservation,
           });
 
-          await tx.journalEvenement.create({
-            data: {
-              type: "reservation-groupe",
-              reference,
-              details: detailsReservationGroupe(demande, attribues.length, depart, retour) as Prisma.InputJsonObject,
-              auteur: auteurAuJournal(encaissement),
-            },
-          });
+          // Au journal tout de suite pour une vente au comptoir, déjà payée.
+          // Une demande en ligne n'y entre qu'une fois payée (décision 27) :
+          // `confirmerPaiement` l'écrit alors.
+          if (encaissement) {
+            await tx.journalEvenement.create({
+              data: {
+                type: "reservation-groupe",
+                reference,
+                details: detailsReservationGroupe(demande, attribues.length, depart, retour) as Prisma.InputJsonObject,
+                auteur: auteurAuJournal(encaissement),
+              },
+            });
+          }
           return cree;
         },
         {

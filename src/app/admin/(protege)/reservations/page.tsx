@@ -4,18 +4,10 @@ import { Fragment } from "react";
 
 import { CalendrierParc } from "@/components/admin/CalendrierParc";
 import { Pastille } from "@/components/ui";
-import { NettoyerPaniers } from "@/components/admin/NettoyerPaniers";
 import { SaisieRetard } from "@/components/admin/SaisieRetard";
 import { estOffreGroupe, GAMMES } from "@/data/offres";
 import { lireReglagesOffres } from "@/lib/reglages-offres";
-import {
-  estEnAttente,
-  estVenteEspeces,
-  paiementARembourser,
-  paiementPrincipal,
-  paniersAbandonnes,
-  seulementPayees,
-} from "@/lib/reservations";
+import { estVenteEspeces, paiementARembourser, paiementPrincipal, seulementPayees } from "@/lib/reservations";
 import { exigerSessionAdmin } from "@/lib/admin";
 import { depot } from "@/lib/db";
 import { aujourdhui } from "@/lib/dates";
@@ -32,8 +24,11 @@ const tons: Record<StatutReservation, "succes" | "info" | "alerte" | "neutre"> =
   ANNULEE: "alerte",
 };
 
+// Une réservation encore « en attente de paiement » n'apparaît ici que si un
+// paiement est arrivé trop tard pour elle : il est à rendre. Les demandes
+// jamais payées, elles, n'apparaissent pas (décision 27).
 const libelles: Record<StatutReservation, string> = {
-  EN_ATTENTE_PAIEMENT: "À payer",
+  EN_ATTENTE_PAIEMENT: "À rembourser",
   CONFIRMEE: "Confirmée",
   EN_COURS: "En cours",
   TERMINEE: "Terminée",
@@ -107,10 +102,9 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
   // le tableau de bord, on se fie à l'état et non aux dates : un vélo déjà
   // remis n'est plus à remettre.
   const actives = seulementPayees(reservations);
-  // Les paniers restent visibles, mais comptés à part : tant que le
-  // client n'a pas payé, ce n'est pas une réservation.
-  const enAttente = reservations.filter(estEnAttente);
-  const abandonnes = paniersAbandonnes(reservations);
+  // Une demande que le client n'a pas payée n'est pas une réservation : le
+  // dépôt ne la donne pas (décision 27). Reste à part l'argent arrivé trop
+  // tard, le vélo ayant été repris : il est à rendre.
   const aRembourser = reservations.filter(paiementARembourser);
   const departsDuJour = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retoursDuJour = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
@@ -140,33 +134,17 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
         <p className="mt-2 max-w-2xl text-[0.88rem] leading-relaxed text-gris-cadre">
           {actives.length} réservation{actives.length > 1 ? "s" : ""}, dont{" "}
           {actives.filter((r) => r.statut === "EN_COURS").length} en cours aujourd&apos;hui.
-          {enAttente.length > 0 && (
-            <>
-              {" "}
-              {enAttente.length} panier{enAttente.length > 1 ? "s" : ""} en attente de paiement,
-              vélo retenu.
-            </>
-          )}
-          {abandonnes.length > 0 && (
-            <>
-              {" "}
-              {abandonnes.length} panier{abandonnes.length > 1 ? "s" : ""} abandonné
-              {abandonnes.length > 1 ? "s" : ""} : jamais payé
-              {abandonnes.length > 1 ? "s" : ""}, le vélo est reparti à la location.
-            </>
-          )}
           {aRembourser.length > 0 && (
             <>
               {" "}
               <strong className="font-semibold text-orange-sourd">
                 {aRembourser.length} paiement{aRembourser.length > 1 ? "s" : ""} reçu
-                {aRembourser.length > 1 ? "s" : ""} hors délai
+                {aRembourser.length > 1 ? "s" : ""} trop tard
               </strong>
-              , le vélo ayant été repris entre-temps : à rembourser au client.
+              , le vélo ayant été repris ou la demande annulée entre-temps&nbsp;: à rembourser au client.
             </>
           )}
         </p>
-        <NettoyerPaniers nombre={abandonnes.length} />
       </header>
 
       {/* La fiche d'une réservation, ouverte depuis la liste ou la sortie du jour. */}
@@ -436,7 +414,7 @@ export default async function PageReservationsAdmin({ searchParams }: { searchPa
 
         {reservations.length > filtrees.length && (
           <p className="mt-4 text-[0.8rem] text-gris-cadre">
-            {filtrees.length} lignes affichées sur {reservations.length}, paniers compris.
+            {filtrees.length} lignes affichées sur {reservations.length}.
             Affinez la recherche ou exportez en CSV depuis le tableau de bord pour la liste
             complète.
           </p>

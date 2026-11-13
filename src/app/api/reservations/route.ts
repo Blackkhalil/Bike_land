@@ -183,10 +183,13 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
   const email = donnees.client.email.trim().toLowerCase();
   const numero = finDeNumero(donnees.client.telephone);
   const enAttente = (
+    // Une demande pas encore payée, invisible dans l'administration
+    // (décision 27) : seuls ces contrôles du site la demandent au dépôt.
     await depot.listerReservations({
       statut: "EN_ATTENTE_PAIEMENT",
       depuis: donnees.dateDebut,
       jusqua: donnees.dateDebut,
+      inclureNonPayees: true,
     })
   ).find(
     (r) =>
@@ -385,6 +388,7 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
       statut: "EN_ATTENTE_PAIEMENT",
       depuis: jours[0],
       jusqua: jours[jours.length - 1],
+      inclureNonPayees: true,
     })
   ).find(
     (r) =>
@@ -580,6 +584,7 @@ async function preparerPadelBike(corps: unknown, requete: Request): Promise<Prep
       statut: "EN_ATTENTE_PAIEMENT",
       depuis: heureAuBenin().date,
       jusqua: ajouterJours(heureAuBenin().date, JOURS_RESERVABLES_PADEL),
+      inclureNonPayees: true,
     })
   ).find(
     (r) =>

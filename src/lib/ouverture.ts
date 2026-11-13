@@ -254,10 +254,14 @@ export async function etatsSortiesOctobreRose(
         return depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin);
       }),
     ),
+    // Les places retenues le temps d'un paiement : des demandes pas encore
+    // payées, invisibles dans l'administration (décision 27), que seul ce
+    // décompte du site lit.
     depot.listerReservations({
       statut: "EN_ATTENTE_PAIEMENT",
       depuis: sorties[0].date,
       jusqua: sorties[sorties.length - 1].date,
+      inclureNonPayees: true,
     }),
   ]);
   return sorties.map((sortie, index) => {

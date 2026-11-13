@@ -19,7 +19,13 @@
  *  - **en attente** : la demande vient de partir sur son téléphone, le
  *    vélo lui est retenu. Elle peut encore devenir une réservation.
  *  - **abandonnée** : le délai est passé sans paiement. Le vélo est
- *    reparti à la vente, et cette ligne ne redeviendra jamais rien.
+ *    reparti à la vente ; un paiement tardif peut encore la confirmer, ou
+ *    être remboursé.
+ *
+ * Depuis la décision 27 du responsable (13 novembre 2026), une demande en
+ * attente ou abandonnée n'apparaît nulle part dans l'administration et ne
+ * déclenche aucun email : elle ne devient visible qu'une fois payée
+ * (`jamaisPayee`), et la tâche quotidienne efface celles jamais payées.
  */
 
 import { COCOS_ROAD_TRIP, estOffreGroupe, EXPIRATION_PANIER_MINUTES, panierExpire } from "@/data/offres";
@@ -54,45 +60,90 @@ export function estEnAttente(reservation: {
 /**
  * Vrai si un paiement est arrivé sur cette réservation alors qu'elle ne
  * pouvait plus le prendre : payée après son délai, le vélo ayant été
- * repris entre-temps. L'identifiant de la transaction y est noté, et
- * l'argent est à rembourser : ce n'est pas un panier abandonné, et la
- * ligne ne doit surtout pas être effacée avec eux.
+ * repris entre-temps, ou après l'annulation d'une demande jamais
+ * confirmée. L'identifiant de la transaction y est noté, et l'argent est à
+ * rembourser : ce n'est pas un panier abandonné, la réservation se voit dans
+ * l'administration et ne s'efface jamais.
  *
  * En démonstration, tout paiement en ligne naît avec une référence
  * provisoire « TX-… » : elle ne compte pas.
  */
 export function paiementARembourser(reservation: {
   statut: StatutReservation;
+  confirmeLe?: string;
   paiements?: Paiement[];
 }): boolean {
-  return (
-    reservation.statut === "EN_ATTENTE_PAIEMENT" &&
-    (reservation.paiements ?? []).some(
-      (paiement) =>
-        !paiement.estCaution &&
-        Boolean(paiement.referenceFournisseur) &&
-        !paiement.referenceFournisseur?.startsWith("TX-"),
-    )
+  const recu = (reservation.paiements ?? []).some((paiement) => !paiement.estCaution && referenceRecue(paiement));
+  // Payée après l'annulation d'une demande jamais confirmée : l'argent est
+  // arrivé sur une demande qui ne pouvait plus le prendre, il est à rendre
+  // aussi (`confirmerParSasPay`, issue « annulée »).
+  const annuleeAvantPaiement =
+    reservation.statut === "ANNULEE" &&
+    !reservation.confirmeLe &&
+    !(reservation.paiements ?? []).some((paiement) => !paiement.estCaution && paiement.statut === "REMBOURSE");
+  return recu && (reservation.statut === "EN_ATTENTE_PAIEMENT" || annuleeAvantPaiement);
+}
+
+/**
+ * Vrai pour une référence de transaction réellement reçue : un identifiant
+ * SasPay, ou la référence d'une saisie au comptoir. La référence provisoire
+ * « TX-… » qu'un paiement en ligne porte dès sa création en démonstration ne
+ * compte pas (en base, il naît sans).
+ */
+export function referenceRecue(paiement: Pick<Paiement, "referenceFournisseur">): boolean {
+  return Boolean(paiement.referenceFournisseur) && !paiement.referenceFournisseur?.startsWith("TX-");
+}
+
+/**
+ * Vrai pour une demande que le client n'a jamais payée (décision 27 du
+ * responsable, 13 novembre 2026) : en attente de paiement, ou annulée, sans
+ * avoir jamais été confirmée, ni encaissée, ni remboursée, et sans
+ * identifiant de paiement reçu (un paiement arrivé trop tard, ou sur une
+ * demande annulée, est de l'argent à rendre : il se voit).
+ *
+ * Ce n'est qu'une note technique, qui retient les vélos le temps du
+ * paiement et permet de le rattacher : elle n'apparaît nulle part dans
+ * l'administration (listes, recherche, chiffres, clients, exports, journal),
+ * et la tâche quotidienne l'efface (`DELAI_EFFACEMENT_DEMANDES_HEURES`). Une
+ * réservation payée puis annulée ou remboursée, elle, reste visible. Les
+ * deux dépôts appliquent la même règle (en base, `jamaisPayeeEnBase`), qui
+ * tient aussi compte des remboursements notés dans l'administration.
+ */
+export function jamaisPayee(reservation: {
+  statut: StatutReservation;
+  confirmeLe?: string;
+  paiements?: Paiement[];
+}): boolean {
+  if (reservation.statut !== "EN_ATTENTE_PAIEMENT" && reservation.statut !== "ANNULEE") return false;
+  if (reservation.confirmeLe) return false;
+  return !(reservation.paiements ?? []).some(
+    (paiement) =>
+      !paiement.estCaution &&
+      (paiement.statut === "REUSSI" || paiement.statut === "REMBOURSE" || referenceRecue(paiement)),
   );
 }
 
 /**
- * Vrai si le délai est passé sans paiement.
+ * Combien de temps une demande jamais payée reste en base après la fin du
+ * délai de paiement, avant que la tâche quotidienne ne l'efface.
  *
- * Ces lignes ne bloquent plus aucun vélo, mais elles restent en base. Il
- * faut donc les reconnaître pour ne pas les présenter comme des
- * réservations à venir dans l'espace d'exploitation.
+ * Un paiement arrivé après le délai est encore traité, sans limite de temps
+ * dans le code (`confirmerParSasPay`) : il confirme la réservation si les
+ * vélos sont libres, sinon le remboursement est noté. La relance du paiement
+ * n'est proposée que pendant le délai, et une demande Mobile Money expire en
+ * quelques minutes : 48 heures laissent largement le temps à une
+ * notification de SasPay en retard, ou rejouée, de trouver sa demande.
  */
-export function estAbandonnee(reservation: {
-  statut: StatutReservation;
-  creeLe: string;
-  paiements?: Paiement[];
-}): boolean {
-  return (
-    reservation.statut === "EN_ATTENTE_PAIEMENT" &&
-    panierExpire(reservation.creeLe) &&
-    !paiementARembourser(reservation)
-  );
+export const DELAI_EFFACEMENT_DEMANDES_HEURES = 48;
+
+/**
+ * L'instant (ISO) avant lequel une demande jamais payée, créée plus tôt, peut
+ * être effacée : délai de paiement, plus `DELAI_EFFACEMENT_DEMANDES_HEURES`.
+ */
+export function limiteEffacementDemandes(maintenant = Date.now()): string {
+  return new Date(
+    maintenant - EXPIRATION_PANIER_MINUTES * 60_000 - DELAI_EFFACEMENT_DEMANDES_HEURES * 3_600_000,
+  ).toISOString();
 }
 
 /**
@@ -106,24 +157,6 @@ export function seulementPayees<T extends { statut: StatutReservation }>(
   reservations: T[],
 ): T[] {
   return reservations.filter(estPayee);
-}
-
-/** Comment nommer l'état d'un panier non payé, pour l'exploitant. */
-export function libelleAttente(reservation: {
-  statut: StatutReservation;
-  creeLe: string;
-}): "en attente" | "abandonnée" | null {
-  if (reservation.statut !== "EN_ATTENTE_PAIEMENT") return null;
-  return panierExpire(reservation.creeLe) ? "abandonnée" : "en attente";
-}
-
-/** Les paniers abandonnés d'une liste, les seuls qu'il soit sûr d'effacer. */
-export function paniersAbandonnes<
-  T extends { statut: StatutReservation; creeLe: string; paiements?: Paiement[] },
->(
-  reservations: T[],
-): T[] {
-  return reservations.filter(estAbandonnee);
 }
 
 /** Vrai si cette réservation a déjà fait entrer de l'argent. */

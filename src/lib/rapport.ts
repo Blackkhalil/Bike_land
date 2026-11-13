@@ -15,7 +15,7 @@ import { OCTOBRE_ROSE, texteOffertOctobreRose } from "@/data/octobre-rose";
 import { estOffreGroupe } from "@/data/offres";
 import { aujourdhui } from "@/lib/dates";
 import { libelleCommission, libelleReduction, type CodeParrainage } from "@/lib/parrainage";
-import { aPreparerOffreGroupe, cocosDe, estEnAttente, estPayee, seulementPayees } from "@/lib/reservations";
+import { aPreparerOffreGroupe, cocosDe, estPayee, seulementPayees } from "@/lib/reservations";
 import {
   calculerStatistiques,
   construirePeriode,
@@ -47,7 +47,8 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
   const actives = seulementPayees(reservations);
   const departs = actives.filter((r) => r.dateDebut <= jour && r.statut === "CONFIRMEE");
   const retours = actives.filter((r) => r.dateFin <= jour && r.statut === "EN_COURS");
-  const aPayer = reservations.filter(estEnAttente);
+  // Plus de « paiements en attente » : une demande que le client n'a pas
+  // payée n'apparaît pas dans l'administration (décision 27).
   const participantsDe = (offre: CodeOffre) =>
     departs.filter((r) => r.offre === offre).reduce((total, r) => total + r.nombrePersonnes, 0);
   const participantsRoadTrip = participantsDe("road-trip");
@@ -80,7 +81,6 @@ export function indicateursDuJour(reservations: Reservation[], jour = aujourdhui
   return {
     departs,
     retours,
-    aPayer,
     participants,
     participantsRoadTrip,
     participantsOctobreRose,
@@ -219,11 +219,6 @@ export function construireRapport(entrees: {
       lignes: [
         { libelle: "Départs à préparer", valeur: nombre(jour.departs.length) },
         { libelle: "Retours attendus", valeur: nombre(jour.retours.length) },
-        {
-          libelle: "Paiements en attente",
-          valeur: nombre(jour.aPayer.length),
-          aide: "Paniers encore dans leur délai, vélo retenu.",
-        },
         {
           libelle: "Cocos à prévoir",
           valeur: nombre(jour.aPrevoir.cocos),

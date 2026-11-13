@@ -9,6 +9,7 @@ import { dateAuBenin } from "@/lib/dates";
 import { depot, type ReservationRoadTripClient } from "@/lib/db";
 import { formatDateAvecJour, formatHeureAuBenin } from "@/lib/format";
 import { prenomDeAuteur } from "@/lib/journal";
+import { estPayee } from "@/lib/reservations";
 import { formatPourcentage } from "@/lib/offres";
 import { departsALire, situationDuClient } from "@/lib/offres-groupe/preuves";
 import { lireReglagesOffres } from "@/lib/reglages-offres";
@@ -33,23 +34,26 @@ function comptesEnClair(): { abonnement: string; story: string } {
 }
 
 /**
- * Les road trips en groupe qui disent la situation des clients des captures
- * à vérifier : ceux qui ont eu la réduction, et ceux au prix normal qui
- * partent depuis le jour de la plus ancienne capture (faits après elle, ou
- * encore à venir). Une lecture qui échoue ne fait pas tomber la page : les
- * captures restent à décider, sans ces rappels.
+ * Les road trips en groupe payés qui disent la situation des clients des
+ * captures : ceux qui ont eu la réduction, et ceux au prix normal qui
+ * partent depuis le jour de la plus ancienne capture à vérifier (faits après
+ * elle, ou encore à venir). Une demande pas encore payée n'apparaît pas ici
+ * (décision 27) : seulement ce que le client a payé. Une lecture qui échoue
+ * ne fait pas tomber la page : les captures restent à décider, sans ces
+ * rappels.
  */
 async function reservationsDesClients(aVerifier: PreuveReduction[], maintenant: number): Promise<{
   avecReduction: ReservationRoadTripClient[];
   auPrixNormal: ReservationRoadTripClient[];
 }> {
-  if (aVerifier.length === 0) return { avecReduction: [], auPrixNormal: [] };
   try {
     const [avecReduction, auPrixNormal] = await Promise.all([
       depot.listerReservationsRoadTripGroupe({ avecReduction: true }),
-      depot.listerReservationsRoadTripGroupe({ avecReduction: false, departDepuis: departsALire(aVerifier, maintenant) }),
+      aVerifier.length > 0
+        ? depot.listerReservationsRoadTripGroupe({ avecReduction: false, departDepuis: departsALire(aVerifier, maintenant) })
+        : Promise.resolve([]),
     ]);
-    return { avecReduction, auPrixNormal };
+    return { avecReduction: avecReduction.filter(estPayee), auPrixNormal: auPrixNormal.filter(estPayee) };
   } catch (erreur) {
     console.error("[admin/preuves] réservations des clients illisibles", erreur);
     return { avecReduction: [], auPrixNormal: [] };
@@ -59,13 +63,15 @@ async function reservationsDesClients(aVerifier: PreuveReduction[], maintenant: 
 /**
  * Les cartes des captures à vérifier, chacune avec la situation de son
  * client à l'instant de la requête (lu ici, hors du rendu) : la réduction
- * déjà eue (décision 25), une réservation au prix normal faite pendant
- * l'attente (décision 24).
+ * déjà eue (décision 25), une réservation au prix normal payée pendant
+ * l'attente (décision 24). Et les références des réservations payées qui
+ * ont pris une capture : une capture servie à une demande pas encore payée
+ * n'en montre pas la référence (décision 27).
  */
-async function cartesAVerifier(aVerifier: PreuveReduction[]): Promise<PreuveAVerifier[]> {
+async function cartesAVerifier(aVerifier: PreuveReduction[]): Promise<{ preuves: PreuveAVerifier[]; servies: Set<string> }> {
   const maintenant = Date.now();
   const reservations = await reservationsDesClients(aVerifier, maintenant);
-  return aVerifier.map((preuve) => {
+  const preuves = aVerifier.map((preuve) => {
     const situation = situationDuClient(preuve, reservations.avecReduction, reservations.auPrixNormal, maintenant);
     return {
       id: preuve.id,
@@ -77,6 +83,7 @@ async function cartesAVerifier(aVerifier: PreuveReduction[]): Promise<PreuveAVer
       ...(situation.prixNormal ? { prixNormal: situation.prixNormal } : {}),
     };
   });
+  return { preuves, servies: new Set(reservations.avecReduction.map((r) => r.reference.toUpperCase())) };
 }
 
 /**
@@ -98,7 +105,7 @@ export default async function PagePreuves() {
     lireReglagesOffres().catch(() => null),
     depot.listerJournal({ type: "preuve-email-non-envoye", limite: 200 }).catch(() => []),
   ]);
-  const preuves = await cartesAVerifier(aVerifier);
+  const { preuves, servies } = await cartesAVerifier(aVerifier);
   const sansEmail = new Set(emailsNonPartis.map((evenement) => evenement.details.preuveId).filter((id): id is string => typeof id === "string"));
   const decidees = [...validees, ...refusees]
     .sort((a, b) => (b.decideLe ?? b.creeLe).localeCompare(a.decideLe ?? a.creeLe))
@@ -148,7 +155,11 @@ export default async function PagePreuves() {
                   <p className="text-[0.78rem] text-gris-cadre">
                     {preuve.telephone ?? preuve.email ?? "contact effacé"}
                     {preuve.motif ? ` · ${preuve.motif}` : ""}
-                    {preuve.reference ? "" : preuve.statut === "validee" ? " · pas encore servie" : ""}
+                    {preuve.reference && servies.has(preuve.reference.toUpperCase())
+                      ? ""
+                      : preuve.statut === "validee"
+                        ? " · pas encore servie"
+                        : ""}
                   </p>
                   {sansEmail.has(preuve.id) && (
                     <p className="mt-1 text-[0.8rem] font-semibold text-orange-sourd">
@@ -166,7 +177,7 @@ export default async function PagePreuves() {
                     </p>
                   )}
                 </div>
-                {preuve.reference && (
+                {preuve.reference && servies.has(preuve.reference.toUpperCase()) && (
                   <Link
                     href={`/admin/reservations?detail=${encodeURIComponent(preuve.reference)}`}
                     className="lien-souligne cible-elargie whitespace-nowrap font-mono text-[0.78rem]"

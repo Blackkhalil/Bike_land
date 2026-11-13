@@ -35,8 +35,11 @@ const MARGE = 36;
 const BAS = MARGE + 14;
 const UTILE = LARGEUR - 2 * MARGE;
 
+// Une demande jamais payée n'entre pas dans l'export (décision 27) : une
+// réservation encore « en attente » n'y figure que si un paiement est arrivé
+// trop tard pour elle, et il est à rendre.
 const LIBELLES_STATUT: Record<StatutReservation, string> = {
-  EN_ATTENTE_PAIEMENT: "Non payée",
+  EN_ATTENTE_PAIEMENT: "À rembourser",
   CONFIRMEE: "Confirmée",
   EN_COURS: "En cours",
   TERMINEE: "Terminée",

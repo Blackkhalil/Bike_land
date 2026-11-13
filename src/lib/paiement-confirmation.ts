@@ -100,7 +100,17 @@ export async function confirmerParSasPay(
   const d = { ...dependancesParDefaut(), ...dependances };
 
   const reservation = await d.depot.trouverReservationParReference(reference);
-  if (!reservation) return { issue: "introuvable" };
+  if (!reservation) {
+    // Une demande jamais payée s'efface 48 heures après la fin de son délai
+    // de paiement (décision 27). Un paiement réussi qui arriverait encore
+    // après ne trouve plus rien à confirmer : la trace dit quoi rendre.
+    if (paiement.statut === "SUCCESS") {
+      console.error(
+        `[paiement] ${reference} : paiement ${paiement.id} réussi pour une demande introuvable (effacée ?). Remboursement à faire.`,
+      );
+    }
+    return { issue: "introuvable" };
+  }
 
   // Un paiement ne confirme que la réservation pour laquelle il a été
   // poussé. Sans ce contrôle, le navigateur pouvait présenter le paiement

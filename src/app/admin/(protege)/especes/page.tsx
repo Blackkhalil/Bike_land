@@ -63,9 +63,13 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
   const demande = typeof parametres.jour === "string" ? parametres.jour : "";
   const jour = estDateISOValide(demande) && demande <= ajd ? demande : ajd;
 
-  const [parc, reservations, reglages, groupe] = await Promise.all([
+  const [parc, reservations, retenues, reglages, groupe] = await Promise.all([
     depot.listerVelos(),
     depot.listerReservations(),
+    // Les vélos retenus le temps d'un paiement en ligne, pour les seuls
+    // créneaux grisés ci-dessous : ces demandes pas encore payées ne
+    // s'affichent pas (décision 27).
+    depot.listerReservations({ statut: "EN_ATTENTE_PAIEMENT", depuis: ajd, inclureNonPayees: true }),
     lireReglages(),
     // Les offres de groupe se vendent aussi au comptoir (décision 12), quand
     // l'interrupteur est ouvert et que leurs réglages se lisent.
@@ -100,7 +104,7 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
   // règles que la base : une réservation payée, ou un panier encore dans
   // son délai. Le serveur revérifie de toute façon à l'enregistrement.
   const occupes: Record<string, CreneauOccupe[]> = {};
-  for (const reservation of reservations) {
+  for (const reservation of [...reservations, ...retenues]) {
     if (reservation.dateFin < ajd) continue;
     if (!estPayee(reservation) && !estEnAttente(reservation)) continue;
     for (const ligne of reservation.lignes) {
