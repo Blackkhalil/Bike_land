@@ -1307,7 +1307,7 @@ function transition(etat: EtatChat, action: ActionChat, faits: FaitsChat): EtatC
         ...ajouter(
           { ...etat, envoi: null },
           bot(
-            "La connexion a coupé avant la réponse. Si un email de Bike Land vient d'arriver, votre réservation existe déjà : suivez son lien. Sinon, réessayez.",
+            "La connexion a coupé avant la réponse. Si une demande de paiement est arrivée sur votre téléphone, validez-la : la confirmation vous parviendra par email. Sinon, réessayez.",
             "alerte",
           ),
         ),
@@ -1524,7 +1524,7 @@ const MESSAGES_ERREUR: Record<CodeErreurLue, string> = {
   SAISIE: "Une information n'est pas passée. Vérifiez vos réponses, puis réessayez.",
   SANS_REDUCTION: MESSAGE_REDUCTION_INACTIVE,
   TROP_DE_DEMANDES: "Beaucoup de demandes en même temps : patientez une minute, puis réessayez.",
-  EN_ATTENTE: `Une demande de paiement à votre nom attend déjà sur votre téléphone. Validez-la, ou attendez ${EXPIRATION_PANIER_MINUTES} minutes qu'elle expire avant d'en lancer une autre. Le lien de suivi est dans votre email.`,
+  EN_ATTENTE: `Une demande de paiement à votre nom attend déjà sur votre téléphone. Validez-la, ou attendez ${EXPIRATION_PANIER_MINUTES} minutes qu'elle expire avant d'en lancer une autre.`,
   PAIEMENT: "La demande de paiement n'a pas pu partir. Aucun montant n'a été prélevé : réessayez dans un instant.",
   SERVEUR: "Un souci de notre côté a interrompu la demande. Réessayez dans un instant, ou écrivez-nous sur WhatsApp.",
   REDUCTION_DEJA_EUE: phraseReductionDejaEue(),
@@ -2358,7 +2358,7 @@ export function relireSauvegarde(texte: string | null, maintenant: number): { et
     relu = {
       ...ajouter(
         relu,
-        bot("La page s'est rechargée pendant l'envoi. Si un email de Bike Land est arrivé, votre réservation existe déjà : suivez son lien. Sinon, réessayez.", "alerte"),
+        bot("La page s'est rechargée pendant l'envoi. Si une demande de paiement est arrivée sur votre téléphone, validez-la : la confirmation vous parviendra par email. Sinon, réessayez.", "alerte"),
       ),
       envoi: null,
       etape: "payer",

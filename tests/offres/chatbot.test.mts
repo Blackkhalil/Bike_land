@@ -1459,7 +1459,12 @@ verifier("201 ECHOUE : reprise depuis le lien de suivi, avec le diagnostic", [pa
 ]);
 verifier("201 sans jeton dans le lien : pas d'attente impossible à suivre", recue(201, reponse201({ statut: "EN_ATTENTE", suivi: { paiementId: "p", moyen: "MTN_MONEY", telephone: "97" } }, { lienSuivi: "https://bike-land.vercel.app/reservation/suivi" })).etape, "echec");
 const sansReseau = agir(pret, { type: "reservation-echec" });
-verifier("coupure pendant l'envoi : on prévient avant de réessayer", [sansReseau.etape, sansReseau.envoi, derniers(sansReseau).includes("email de Bike Land")], ["payer", null, true]);
+// Décision 27 : aucun email ne part avant le paiement, le message ne promet donc pas d'email de réservation.
+verifier(
+  "coupure pendant l'envoi : on prévient avant de réessayer, sans promettre d'email avant le paiement",
+  [sansReseau.etape, sansReseau.envoi, derniers(sansReseau).includes("demande de paiement est arrivée sur votre téléphone"), derniers(sansReseau).includes("email de Bike Land")],
+  ["payer", null, true, false],
+);
 verifier("Bike Land « écrit » pendant l'envoi de la réservation, d'une capture, ou la vérification d'une capture", [
   c.botEcrit(pret),
   c.botEcrit(p),

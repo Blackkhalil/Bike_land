@@ -113,7 +113,7 @@ export const etapesLocation = [
     numero: "03",
     titre: "Payez en Mobile Money",
     detail:
-      "MTN MoMo, Moov Money ou Celtiis Cash, à la dernière étape seulement. La facture part par email dans la minute.",
+      "MTN MoMo, Moov Money ou Celtiis Cash, à la dernière étape seulement. Dès le paiement validé, la confirmation et la facture partent par email.",
   },
   {
     numero: "04",
@@ -136,7 +136,7 @@ export const faq = [
       {
         question: "Dois-je créer un compte pour réserver ?",
         reponse:
-          "Non. Vous choisissez votre gamme de vélo, votre formule et votre jour, puis vous saisissez votre nom, votre email et votre moyen de paiement à la dernière étape. Un lien de suivi personnel vous est envoyé par email : il vous donne accès à votre réservation sans mot de passe.",
+          "Non. Vous choisissez votre gamme de vélo, votre formule et votre jour, puis vous saisissez votre nom, votre email et votre moyen de paiement à la dernière étape. Dès que le paiement est validé, un lien de suivi personnel vous est envoyé par email : il vous donne accès à votre réservation sans mot de passe.",
       },
       {
         question: "Comment savoir s'il reste des vélos ?",

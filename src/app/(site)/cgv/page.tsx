@@ -143,8 +143,9 @@ function ConditionsOffresDeGroupe({ reglages, iaActive }: { reglages: ReglagesOf
         Au comptoir, ces délais ne s&apos;appliquent pas, dans la limite des vélos disponibles.
       </p>
       <p>
-        <strong>Vos coordonnées.</strong> Votre adresse email est obligatoire : nous y envoyons le
-        récapitulatif de votre réservation, votre facture et votre lien de suivi.
+        <strong>Vos coordonnées.</strong> Votre adresse email est obligatoire&nbsp;: dès que votre
+        paiement est validé, nous y envoyons le récapitulatif de votre réservation, votre facture et
+        votre lien de suivi.
       </p>
       <p>
         <strong>Paiement.</strong> Le paiement se fait en entier à la réservation : en ligne par Mobile
@@ -243,7 +244,9 @@ export default async function PageCGV() {
         <p>
           La réservation s&apos;effectue en ligne, sans création de compte. Elle devient ferme à
           la validation du paiement. Un email de confirmation, une facture et un lien de suivi
-          personnel sont envoyés immédiatement après.
+          personnel sont envoyés immédiatement après. Tant que le paiement n&apos;est pas validé,
+          aucune réservation n&apos;est enregistrée et aucun email n&apos;est envoyé&nbsp;: les vélos
+          vous sont seulement gardés le temps du paiement.
         </p>
         <p>
           Le locataire doit être âgé d&apos;au moins 18 ans. Pour un mineur, la réservation est

@@ -119,6 +119,11 @@ export default async function PageDonneesPersonnelles() {
       <ArticleLegal titre="Durée de conservation">
         <ul className="ml-5 list-disc space-y-2">
           <li>Données de réservation&nbsp;: 3&nbsp;ans après la fin de la location.</li>
+          {/* Décision 27 : la demande jamais payée s'efface d'elle-même (tâche du soir). */}
+          <li>
+            Demande de réservation jamais payée&nbsp;: effacée automatiquement 2 à 3&nbsp;jours plus
+            tard, avec vos coordonnées si vous n&apos;avez pas d&apos;autre réservation.
+          </li>
           <li>Factures et pièces comptables&nbsp;: 10&nbsp;ans, conformément aux obligations fiscales.</li>
           <li>Messages du formulaire de contact&nbsp;: 12&nbsp;mois après la dernière réponse.</li>
           {groupe && (

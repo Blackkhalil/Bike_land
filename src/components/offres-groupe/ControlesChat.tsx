@@ -650,7 +650,7 @@ export function CarteDeLEtape({ etat, faits, maintenant, actions }: ProprietesEt
             telephone={reservation.suivi.telephone}
             montantXof={reservation.montantADebiterXof}
             urlCheckout={reservation.suivi.urlCheckout}
-            expiration="La demande de paiement a expiré et les vélos ne sont plus gardés. Votre lien de suivi, reçu par email, permet de la relancer."
+            expiration="La demande de paiement a expiré et les vélos ne sont plus gardés. Votre page de suivi, juste en dessous, vous dit quoi faire."
             onConfirme={() => actions.envoyer({ type: "paiement-confirme" })}
             onEchec={(message) => actions.envoyer({ type: "paiement-echoue", message })}
           />
@@ -1020,7 +1020,7 @@ function Paiement({ etat, faits, maintenant, actions }: ProprietesEtape) {
           </div>
         </dl>
       )}
-      <p className={`mt-2 ${AIDE}`}>Le récapitulatif et la facture partent sur {etat.client.email}.</p>
+      <p className={`mt-2 ${AIDE}`}>Dès le paiement validé, le récapitulatif et la facture partent sur {etat.client.email}.</p>
       <label className="mt-4 flex cursor-pointer items-start gap-3 text-[0.88rem] leading-relaxed">
         <input
           type="checkbox"

@@ -347,7 +347,11 @@ export function ReservationPadelBike({
           )}
           <p className="mt-4 text-[0.85rem] leading-relaxed text-gris-cadre">
             Vos vélos restent retenus {EXPIRATION_PANIER_MINUTES} minutes. Si la demande n&apos;arrive
-            pas, vous pourrez la relancer depuis le lien reçu par email.
+            pas, relancez-la depuis{" "}
+            <a href={`/reservation/${attente.token}`} className="lien-souligne cible-elargie font-semibold">
+              votre page de suivi
+            </a>
+            . Nous vous écrivons par email dès que le paiement est validé.
           </p>
         </>
       ) : (
