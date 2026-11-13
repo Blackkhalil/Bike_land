@@ -59,6 +59,7 @@ responsable notée ici.
 | 24 | Captures de réduction | À chaque capture envoyée, Bike Land reçoit un email avec le lien pour la vérifier, et le tableau de bord affiche les captures à vérifier. Pas de remboursement : un groupe qui paie le prix normal pendant l'attente garde ce prix, et la discussion le prévient avant (réponse du 10 novembre). |
 | 25 | Réduction du road trip | La réduction des abonnés ne se donne qu'une fois par client (même numéro ou même email). Ensuite, il paie le prix normal (choix du 10 novembre). |
 | 26 | Comptoir | Pas de réduction au comptoir, même si le groupe montre son abonnement (choix du 10 novembre). |
+| 27 | Avant paiement | Tant que le client n'a pas validé le paiement, rien n'est enregistré visiblement ni envoyé : pas de réservation dans l'administration, aucun email (ni à Bike Land ni au client). Une note technique invisible tient les vélos pendant le paiement et s'efface seule. L'email à chaque capture de réduction reste (choix du 13 novembre). |
 
 ## Cas de test de référence (après décisions)
 
