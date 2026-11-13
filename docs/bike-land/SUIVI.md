@@ -14,8 +14,8 @@ responsable notée ici.
 | Feu vert 1 | Donné le 9 novembre 2026 |
 | 1. Construction | Terminée le 10 novembre 2026 : lots 0 à 5 fusionnés et relus (calculatrice, administration, disponibilité à la minute, chatbot à boutons, réservation et paiement, agent IA inactif), toutes les relectures appliquées |
 | 2. Tests | 24 suites, 1 327 contrôles verts ; essai de concurrence sur la base de test (6 manches justes) ; parcours complet du chatbot essayé dans un navigateur (téléphone, 375 px), du choix de l'offre à la confirmation |
-| 3. Démo, feu vert 2 | En cours : aperçu protégé envoyé au responsable le 10 novembre (base de test, interrupteur allumé) |
-| 4. Mise en ligne | À venir |
+| 3. Démo, feu vert 2 | Fait : feu vert 2 du responsable le 13 novembre (« C'est bon ») |
+| 4. Mise en ligne | Fait le 13 novembre : code et base en production, interrupteur coupé ; le responsable l'allume quand il veut |
 | 5. Clôture | À venir |
 
 ## Règles de la mission
@@ -247,3 +247,30 @@ avant le suivant.
   demande, vélo indisponible remplacé), croisements réels rejoués par
   PostgreSQL, aucun vélo pris deux fois. Un passage sur six s'est arrêté sur
   une erreur non affichée, sans contrôle faux : à surveiller.
+
+- 10 novembre 2026 : nouvelle discussion « comme un téléphone » (bulle ronde
+  orange, couleurs Bike Land), relue au code et à l'écran, 18 corrections
+  vérifiées. Enquête complète sur la réduction des abonnés (capture) : 21
+  défauts confirmés. Décisions 24, 25 et 26 du responsable.
+- 10 et 11 novembre 2026 : les 21 défauts corrigés, décisions 24 à 26 en place,
+  deux restes de la relecture du chat (rond « Voir la suite », « Je viens de
+  vérifier »). Trois relectures indépendantes (code, fraude, navigateur), puis
+  correcteur et vérificateur : un client qui change de numéro et d'email à la
+  réservation ne récupère plus la réduction (le contact de la capture reste
+  avec la réservation) ; une capture validée sert une fois, à celui qui l'a
+  envoyée, sans limite de durée. Tests : 25 suites, 1 591 contrôles, tous
+  verts. Règle « une fois par client » rejouée sur la vraie base de test
+  (scénarios A à G, dont 4 réservations au même instant : une seule réduite).
+  Sept réservations d'essai « Essai Claude » restent sur la base de test
+  (week-ends de janvier et février 2027).
+- 13 novembre 2026 : feu vert 2 (« C'est bon »). Sauvegarde complète de la
+  production (18 tables, `sauvegardes/bike-land-2026-11-13-08-06.json`, hors
+  git ; l'outil copie désormais toutes les tables). SQL additif appliqué à la
+  production (`offres-groupe.sql`, `offres-groupe-preuves.sql`) : 5 tables
+  (RLS), 3 valeurs d'offre, 11 colonnes ; 40 réservations intactes ;
+  interrupteur des offres de groupe absent, donc coupé. `Projet-Bikeland`
+  avancé de ce91892 à 4c0383b. Déploiements de production d'avant, pour le
+  retour arrière : site `bike-land-qsxfxnslm`, administration
+  `bikeland-gestion-rsfaj-4wnratul6` (ce91892, à n'utiliser que tant
+  qu'aucune réservation de groupe n'existe). Nouveaux : site
+  `bike-land-98a1x6kzi`, administration `bikeland-gestion-rsfaj-mfgqantzd`.
