@@ -37,6 +37,7 @@ export const TYPES_EVENEMENT: Readonly<Record<string, string>> = {
   "preuve-refusee": "Réduction refusée",
   "preuve-email-non-envoye": "Email de réduction non parti",
   "vente-comptoir-groupe": "Vente de groupe au comptoir",
+  "paiement-sans-reservation": "Paiement sans réservation",
 };
 
 /** Le nom d'un type d'événement, ou le type lui-même s'il est inconnu. */
@@ -180,6 +181,19 @@ export function resumeEvenement(evenement: EvenementJournal): ResumeEvenement {
           ...(texte(d.encaissePar) ? [`Argent reçu par ${texte(d.encaissePar)}.`] : []),
         ],
       };
+    case "paiement-sans-reservation": {
+      // Un paiement réussi sans réservation à confirmer (src/lib/paiement-confirmation.ts).
+      const montant = nombre(d.montantXof);
+      return {
+        titre: `${montant ? montantF(montant) : "Un paiement"} reçu sans réservation : à rembourser`,
+        lignes: [
+          `Transaction SasPay ${texte(d.paiementId) ?? "inconnue"}.`,
+          evenement.reference
+            ? `La demande ${evenement.reference} n'existe plus : retrouvez le client sur SasPay pour le rembourser.`
+            : "Le paiement ne dit pas pour quelle réservation : retrouvez le client sur SasPay pour le rembourser.",
+        ],
+      };
+    }
     default:
       return {
         titre: libelleEvenement(evenement.type),

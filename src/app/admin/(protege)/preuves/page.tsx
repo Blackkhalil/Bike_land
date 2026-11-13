@@ -11,7 +11,7 @@ import { formatDateAvecJour, formatHeureAuBenin } from "@/lib/format";
 import { prenomDeAuteur } from "@/lib/journal";
 import { estPayee } from "@/lib/reservations";
 import { formatPourcentage } from "@/lib/offres";
-import { departsALire, situationDuClient } from "@/lib/offres-groupe/preuves";
+import { captureServie, departsALire, referencesVisibles, situationDuClient } from "@/lib/offres-groupe/preuves";
 import { lireReglagesOffres } from "@/lib/reglages-offres";
 import type { PreuveReduction } from "@/lib/types";
 
@@ -64,13 +64,20 @@ async function reservationsDesClients(aVerifier: PreuveReduction[], maintenant: 
  * Les cartes des captures à vérifier, chacune avec la situation de son
  * client à l'instant de la requête (lu ici, hors du rendu) : la réduction
  * déjà eue (décision 25), une réservation au prix normal payée pendant
- * l'attente (décision 24). Et les références des réservations payées qui
- * ont pris une capture : une capture servie à une demande pas encore payée
- * n'en montre pas la référence (décision 27).
+ * l'attente (décision 24). Et les références des réservations que
+ * l'administration voit (payées un jour, même annulées depuis ou à
+ * rembourser) : une capture servie à une demande jamais payée n'en montre
+ * pas la référence (décision 27).
  */
 async function cartesAVerifier(aVerifier: PreuveReduction[]): Promise<{ preuves: PreuveAVerifier[]; servies: Set<string> }> {
   const maintenant = Date.now();
-  const reservations = await reservationsDesClients(aVerifier, maintenant);
+  const [reservations, visibles] = await Promise.all([
+    reservationsDesClients(aVerifier, maintenant),
+    depot.listerReservations().catch((erreur) => {
+      console.error("[admin/preuves] réservations illisibles", erreur);
+      return [];
+    }),
+  ]);
   const preuves = aVerifier.map((preuve) => {
     const situation = situationDuClient(preuve, reservations.avecReduction, reservations.auPrixNormal, maintenant);
     return {
@@ -83,7 +90,7 @@ async function cartesAVerifier(aVerifier: PreuveReduction[]): Promise<{ preuves:
       ...(situation.prixNormal ? { prixNormal: situation.prixNormal } : {}),
     };
   });
-  return { preuves, servies: new Set(reservations.avecReduction.map((r) => r.reference.toUpperCase())) };
+  return { preuves, servies: referencesVisibles(visibles) };
 }
 
 /**
@@ -155,7 +162,7 @@ export default async function PagePreuves() {
                   <p className="text-[0.78rem] text-gris-cadre">
                     {preuve.telephone ?? preuve.email ?? "contact effacé"}
                     {preuve.motif ? ` · ${preuve.motif}` : ""}
-                    {preuve.reference && servies.has(preuve.reference.toUpperCase())
+                    {captureServie(preuve, servies)
                       ? ""
                       : preuve.statut === "validee"
                         ? " · pas encore servie"
@@ -177,7 +184,7 @@ export default async function PagePreuves() {
                     </p>
                   )}
                 </div>
-                {preuve.reference && servies.has(preuve.reference.toUpperCase()) && (
+                {preuve.reference && captureServie(preuve, servies) && (
                   <Link
                     href={`/admin/reservations?detail=${encodeURIComponent(preuve.reference)}`}
                     className="lien-souligne cible-elargie whitespace-nowrap font-mono text-[0.78rem]"

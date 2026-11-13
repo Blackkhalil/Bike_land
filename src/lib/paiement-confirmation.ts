@@ -35,9 +35,11 @@ import {
   envoyerRemboursementGroupeAdmin,
 } from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
-import { rembourserPaiementTardif, type DependancesRemboursement } from "@/lib/offres-groupe/paiement";
+import { lienDeSuivi } from "@/lib/lien-suivi";
+import { montantARembourser, rembourserPaiementTardif, type DependancesRemboursement } from "@/lib/offres-groupe/paiement";
 import { paiementARembourser } from "@/lib/reservations";
 import { controlerPaiement, type PaiementSasPay } from "@/lib/saspay";
+import { urlDuSite } from "@/lib/site";
 import type { Reservation } from "@/lib/types";
 
 export type IssueConfirmation =
@@ -60,7 +62,16 @@ export type IssueConfirmation =
 
 /** Ce que la confirmation lit et écrit, et les emails qu'elle envoie. */
 export interface DependancesConfirmation {
-  depot: Pick<Depot, "trouverReservationParReference" | "marquerTransactionRecue" | "estDisponible" | "confirmerPaiement" | "parcDuJour"> &
+  depot: Pick<
+    Depot,
+    | "trouverReservationParReference"
+    | "marquerTransactionRecue"
+    | "estDisponible"
+    | "confirmerPaiement"
+    | "parcDuJour"
+    | "journaliser"
+    | "listerJournal"
+  > &
     DependancesRemboursement["depot"];
   emails: {
     confirmation: (reservation: Reservation, lienSuivi: string) => Promise<unknown>;
@@ -69,6 +80,8 @@ export interface DependancesConfirmation {
     remboursementClient: DependancesRemboursement["emails"]["client"];
     remboursementAdmin: DependancesRemboursement["emails"]["admin"];
   };
+  /** Le lien de suivi d'une réservation, refait par le serveur (src/lib/lien-suivi.ts). */
+  lienDeSuivi: (reference: string) => Promise<string>;
   /** L'instant présent, en millisecondes. */
   maintenant: () => number;
 }
@@ -83,32 +96,66 @@ function dependancesParDefaut(): DependancesConfirmation {
       remboursementClient: envoyerRemboursementGroupe,
       remboursementAdmin: envoyerRemboursementGroupeAdmin,
     },
+    lienDeSuivi,
     maintenant: () => Date.now(),
   };
+}
+
+/** Le type des lignes du journal qui gardent un paiement réussi sans réservation à qui le rattacher. */
+export const TYPE_PAIEMENT_SANS_RESERVATION = "paiement-sans-reservation";
+
+/**
+ * Un paiement réussi qui ne trouve aucune réservation : sans référence, ou
+ * pour une demande déjà effacée (décision 27, 48 heures après son délai). Il
+ * n'y a pas de réservation où noter un remboursement : une ligne du journal
+ * garde la transaction et son montant, pour que Bike Land le rende. Une
+ * seule ligne par transaction, même si SasPay rejoue sa notification.
+ */
+export async function noterPaiementSansReservation(
+  paiement: Pick<PaiementSasPay, "id" | "statut" | "montantDebiteXof">,
+  reference: string | null,
+  journal: Pick<Depot, "journaliser" | "listerJournal"> = depot,
+): Promise<void> {
+  if (paiement.statut !== "SUCCESS") return;
+  console.error(
+    `[paiement] ${reference ?? "sans référence"} : paiement ${paiement.id} réussi sans réservation à confirmer. Remboursement à faire.`,
+  );
+  try {
+    const deja = await journal.listerJournal({ type: TYPE_PAIEMENT_SANS_RESERVATION, limite: 1000 });
+    if (deja.some((ligne) => ligne.details.paiementId === paiement.id)) return;
+    await journal.journaliser({
+      type: TYPE_PAIEMENT_SANS_RESERVATION,
+      ...(reference ? { reference: reference.toUpperCase() } : {}),
+      details: { paiementId: paiement.id, montantXof: paiement.montantDebiteXof },
+      auteur: "site",
+    });
+  } catch (erreur) {
+    console.error(`[paiement] ${paiement.id} : paiement sans réservation non noté au journal`, erreur);
+  }
 }
 
 export async function confirmerParSasPay(
   parametres: {
     reference: string;
     paiement: PaiementSasPay;
-    /** Lien de suivi mis dans les emails : personnel si connu, générique sinon. */
-    lienSuivi: string;
+    /**
+     * Lien de suivi mis dans les emails, quand l'appelant l'a (le jeton du
+     * navigateur). À défaut, refait par le serveur à partir de la référence
+     * de la réservation trouvée, jamais de celle que SasPay renvoie.
+     */
+    lienSuivi?: string;
   },
   dependances: Partial<DependancesConfirmation> = {},
 ): Promise<IssueConfirmation> {
-  const { reference, paiement, lienSuivi } = parametres;
+  const { reference, paiement } = parametres;
   const d = { ...dependancesParDefaut(), ...dependances };
 
   const reservation = await d.depot.trouverReservationParReference(reference);
   if (!reservation) {
     // Une demande jamais payée s'efface 48 heures après la fin de son délai
     // de paiement (décision 27). Un paiement réussi qui arriverait encore
-    // après ne trouve plus rien à confirmer : la trace dit quoi rendre.
-    if (paiement.statut === "SUCCESS") {
-      console.error(
-        `[paiement] ${reference} : paiement ${paiement.id} réussi pour une demande introuvable (effacée ?). Remboursement à faire.`,
-      );
-    }
+    // après ne trouve plus rien à confirmer : le journal dit quoi rendre.
+    await noterPaiementSansReservation(paiement, reference, d.depot);
     return { issue: "introuvable" };
   }
 
@@ -145,10 +192,20 @@ export async function confirmerParSasPay(
     const dejaEnregistre = reservation.paiements.find(
       (paiement) => !paiement.estCaution,
     )?.referenceFournisseur;
-    if (dejaEnregistre && dejaEnregistre !== paiement.id) {
+    if (dejaEnregistre && dejaEnregistre !== paiement.id && paiement.statut === "SUCCESS") {
       console.error(
         `[paiement] ${reference} : second paiement ${paiement.id} alors que ${dejaEnregistre} est déjà encaissé. Remboursement à faire.`,
       );
+      // Deux demandes validées pour la même réservation (une relance depuis
+      // la page de suivi, la première encore ouverte sur le téléphone) : le
+      // second paiement est listé à rembourser, une seule fois.
+      await d.depot.creerRemboursement({
+        reference: reservation.reference,
+        montantXof: montantARembourser(reservation, paiement),
+        motif: `Second paiement ${paiement.id} reçu pour une réservation déjà payée (${dejaEnregistre}).`,
+        par: "site",
+        cleIdempotence: paiement.id,
+      });
     }
     return { issue: "deja-confirmee", reservation };
   }
@@ -156,6 +213,10 @@ export async function confirmerParSasPay(
   const controle = controlerPaiement(paiement, { montantXof: reservation.totalXof });
   if (!controle.valide) {
     console.warn(`[paiement] ${reference} : transaction refusée, ${controle.raison}`);
+    // Un paiement réussi mais refusé (montant insuffisant) : l'argent est
+    // reçu. Noté sur la demande, il la rend visible « à rembourser » dans
+    // l'administration, et il ne pourra confirmer aucune autre réservation.
+    if (paiement.statut === "SUCCESS") await d.depot.marquerTransactionRecue(reservation.reference, paiement.id);
     return { issue: "refusee", raison: controle.raison };
   }
 
@@ -246,7 +307,11 @@ export async function confirmerParSasPay(
   // Les emails ne doivent jamais faire échouer une réservation déjà payée
   // et enregistrée : on les tente, on journalise les échecs. Une offre de
   // groupe reçoit les siens (récapitulatif, prix, retard ; ce qu'il faut
-  // préparer), par les mêmes fonctions (src/lib/email.ts).
+  // préparer), par les mêmes fonctions (src/lib/email.ts). Le lien de suivi
+  // se refait à partir de la référence de la réservation (`genererToken`).
+  const lienSuivi =
+    parametres.lienSuivi ??
+    (await d.lienDeSuivi(resultat.reservation.reference).catch(() => `${urlDuSite()}/reservation/suivi`));
   await Promise.allSettled([
     d.emails.confirmation(resultat.reservation, lienSuivi),
     d.emails.facture(resultat.reservation, lienSuivi),

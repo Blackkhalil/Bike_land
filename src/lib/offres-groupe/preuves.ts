@@ -347,6 +347,26 @@ async function effacerFichier(preuve: PreuveReduction, deps: Pick<DependancesPre
   }
 }
 
+/* ------------------------- Ce que l'écran des preuves montre (décision 27) */
+
+/**
+ * Les références des réservations que l'administration voit (`listerReservations`
+ * sans option : payées un jour, même annulées depuis, ou un paiement à rendre),
+ * en capitales.
+ */
+export function referencesVisibles(reservations: readonly { reference: string }[]): Set<string> {
+  return new Set(reservations.map((reservation) => reservation.reference.toUpperCase()));
+}
+
+/**
+ * La capture a-t-elle servi à une réservation que l'administration voit ?
+ * Alors l'écran en montre la référence. Prise par une demande jamais payée,
+ * elle ne la montre pas (décision 27) et se lit « pas encore servie ».
+ */
+export function captureServie(preuve: Pick<PreuveReduction, "reference">, visibles: ReadonlySet<string>): boolean {
+  return Boolean(preuve.reference) && visibles.has((preuve.reference as string).toUpperCase());
+}
+
 /* ------------------------------------------- Une réduction par client */
 
 /** Ce que l'administration et l'email de décision doivent savoir du client d'une capture. */

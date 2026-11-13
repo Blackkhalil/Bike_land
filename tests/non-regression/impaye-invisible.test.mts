@@ -81,6 +81,10 @@ const { ajouterJours, aujourdhui } = await charger("src/lib/dates.ts");
 const { genererToken } = await charger("src/lib/tokens.ts");
 const { site, urlDuSite } = await charger("src/lib/site.ts");
 const { confirmerParSasPay } = await charger("src/lib/paiement-confirmation.ts");
+const { captureServie, referencesVisibles } = await charger("src/lib/offres-groupe/preuves.ts");
+const { resumeEvenement } = await charger("src/lib/journal.ts");
+// Les espaces insécables des montants (U+00A0, U+202F) comptent pour des espaces.
+const espacesNormales = (texte: string) => texte.replace(/[  ]/g, " ");
 const { jamaisPayee, paiementARembourser, limiteEffacementDemandes, DELAI_EFFACEMENT_DEMANDES_HEURES } = await charger(
   "src/lib/reservations.ts",
 );
@@ -364,6 +368,53 @@ verifier(
   [false, false, false, false],
 );
 
+/* ------------------- Tout paiement réussi finit confirmé, ou à rembourser */
+
+console.log("\n— Le webhook refait le lien à partir de la réservation, pas de la référence de SasPay");
+const W = await reserverEnLigne(jour(11));
+valider(W.paiement.suivi!.paiementId);
+const avantW = emails.length;
+const notifW = await notifier(W.paiement.suivi!.paiementId, W.reference.toLowerCase());
+verifier("référence écrite en minuscules par SasPay : confirmée", [notifW.donnees.confirme, notifW.donnees.issue], [true, "confirmee"]);
+verifier(
+  "la confirmation porte le lien personnel de la réservation (pas la page générique)",
+  emailsDepuis(avantW).some((e) => /confirmée/.test(e.sujet) && e.texte.includes(lienAttendu(W.reference))),
+  true,
+);
+
+console.log("\n— Payé, mais moins que le total : noté, visible « à rembourser »");
+const M = await reserverEnLigne(jour(12));
+const ficheM = (await lire(M.reference))!;
+const insuffisant = await confirmerParSasPay({
+  reference: M.reference,
+  paiement: { id: "pay_insuffisant", statut: "SUCCESS", montantDemandeXof: ficheM.totalXof, montantDebiteXof: ficheM.totalXof - 100, montantNetXof: ficheM.totalXof - 100, urlCheckout: "", reference: M.reference },
+});
+const ficheMApres = (await lire(M.reference))!;
+verifier("refusé, rien de confirmé", [insuffisant.issue, ficheMApres.statut], ["refusee", "EN_ATTENTE_PAIEMENT"]);
+verifier("la transaction est notée : visible, « à rembourser »", [paiementARembourser(ficheMApres), (await visibles()).includes(M.reference)], [true, true]);
+
+console.log("\n— Un second paiement pour une réservation déjà payée : listé à rembourser");
+const avantDouble = (await depot.listerRemboursements({ statut: "a_faire" })).length;
+const double = await confirmerParSasPay({
+  reference: A.reference,
+  paiement: { id: "pay_second_A", statut: "SUCCESS", montantDemandeXof: ficheA.totalXof, montantDebiteXof: ficheA.totalXof, montantNetXof: ficheA.totalXof, urlCheckout: "", reference: A.reference },
+});
+await confirmerParSasPay({
+  reference: A.reference,
+  paiement: { id: "pay_second_A", statut: "SUCCESS", montantDemandeXof: ficheA.totalXof, montantDebiteXof: ficheA.totalXof, montantNetXof: ficheA.totalXof, urlCheckout: "", reference: A.reference },
+});
+const rembDouble = (await depot.listerRemboursements({ statut: "a_faire" })).filter((r: { reference: string; motif: string }) => r.reference === A.reference && r.motif.includes("pay_second_A"));
+verifier("déjà confirmée, le second paiement est listé une seule fois", [double.issue, rembDouble.length, (await depot.listerRemboursements({ statut: "a_faire" })).length - avantDouble], ["deja-confirmee", 1, 1]);
+
+console.log("\n— Payé sans référence de réservation : noté au journal");
+paiementsSasPay.set("pay_sans_reference", { statut: "SUCCESS", reference: "", montant: 2500 });
+const corpsSansRef = JSON.stringify({ event: "transaction.success", data: { id: "pay_sans_reference" } });
+const horodatageSansRef = String(Math.floor(Date.now() / 1000));
+const signatureSansRef = createHmac("sha256", "secret-webhook-de-test").update(`${horodatageSansRef}.${corpsSansRef}`).digest("hex");
+const sansRef = await appeler(webhook, "/api/paiement/webhook", corpsSansRef, { "x-webhook-signature": signatureSansRef, "x-webhook-timestamp": horodatageSansRef });
+const lignesSansRef = (await depot.listerJournal({ type: "paiement-sans-reservation" })).filter((l: { details: { paiementId?: string } }) => l.details.paiementId === "pay_sans_reference");
+verifier("le webhook l'accuse, et le journal le garde à rembourser", [sansRef.donnees.raison, lignesSansRef.length, lignesSansRef[0]?.details.montantXof], ["sans-reference", 1, 2500]);
+
 /* ------------------------------------------------------- L'effacement */
 
 console.log(`\n— L'effacement des demandes jamais payées (${DELAI_EFFACEMENT_DEMANDES_HEURES} heures après le délai)`);
@@ -425,6 +476,48 @@ const preuve = etatDemo().preuves.find((p) => p.id === "preuve-impaye");
 verifier("la capture reste validée et redevient libre pour son client", [preuve?.statut, preuve?.reference ?? null], ["validee", null]);
 verifier("la réservation payée puis annulée reste visible", (await visibles()).includes(B.reference), true);
 verifier("un second passage n'efface rien de plus", (await depot.purgerDemandesNonPayees(limiteEffacementDemandes())).references.length, 0);
+
+console.log("\n— Un paiement qui arrive après l'effacement : noté au journal, à rembourser");
+const apresEffacement = {
+  id: "pay_apres_effacement",
+  statut: "SUCCESS",
+  montantDemandeXof: 2125,
+  montantDebiteXof: 2195,
+  montantNetXof: 2125,
+  urlCheckout: "",
+  reference: abandonnee.reference,
+};
+const tropTard = await confirmerParSasPay({ reference: abandonnee.reference, paiement: apresEffacement });
+await confirmerParSasPay({ reference: abandonnee.reference, paiement: apresEffacement });
+const lignesTropTard = await depot.listerJournal({ type: "paiement-sans-reservation", reference: abandonnee.reference });
+verifier(
+  "introuvable, une seule ligne au journal même rejoué, avec la transaction et le montant",
+  [tropTard.issue, lignesTropTard.length, lignesTropTard[0]?.details.paiementId, lignesTropTard[0]?.details.montantXof],
+  ["introuvable", 1, "pay_apres_effacement", 2195],
+);
+verifier(
+  "le journal le dit en clair",
+  espacesNormales(resumeEvenement(lignesTropTard[0]).titre),
+  "2 195 F reçu sans réservation : à rembourser",
+);
+
+console.log("\n— L'écran des preuves : une capture servie à une réservation payée puis annulée le reste");
+etatDemo().preuves.push({ id: "preuve-annulee", statut: "validee", creeLe: new Date().toISOString(), email: "groupe.annule@example.com", telephone: "+229 01 97 40 00 01" });
+const payeePuisAnnulee = (
+  await depot.creerReservationGroupe({
+    ...groupe(ajouterJours(samedi, 14), 480, 720, 8, "groupe.annule@example.com"),
+    offre: "road-trip-groupe",
+    totalXof: 30050,
+    details: { reductionXof: 1200, prixBarreXof: 31250, totalXof: 30050 },
+    preuveId: "preuve-annulee",
+    client: { prenom: "Kossi", nom: "Annule", email: "groupe.annule@example.com", telephone: "+229 01 97 40 00 01" },
+  })
+).reservation as Resa;
+const preuveAnnulee = () => etatDemo().preuves.find((p) => p.id === "preuve-annulee")!;
+verifier("prise par une demande pas encore payée : « pas encore servie »", captureServie(preuveAnnulee(), referencesVisibles(await depot.listerReservations())), false);
+await depot.confirmerPaiement(payeePuisAnnulee.reference, "pay_preuve_annulee");
+await depot.annulerReservation(payeePuisAnnulee.reference);
+verifier("payée puis annulée : la capture reste servie, sa référence se montre", captureServie(preuveAnnulee(), referencesVisibles(await depot.listerReservations())), true);
 
 console.log("\n— La tâche du soir efface aussi");
 const parLaTache = await reserverEnLigne(jour(10));

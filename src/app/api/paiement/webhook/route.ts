@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { lienDeSuivi } from "@/lib/lien-suivi";
-import { confirmerParSasPay } from "@/lib/paiement-confirmation";
+import { confirmerParSasPay, noterPaiementSansReservation } from "@/lib/paiement-confirmation";
 import {
   referenceDepuisCharge,
   signatureWebhookValide,
@@ -103,6 +102,8 @@ export async function POST(requete: Request) {
   const reference = referenceDepuisCharge(enveloppe.data) ?? verification.paiement.reference;
   if (!reference) {
     console.warn(`[webhook] paiement ${paiementId} sans référence de réservation.`);
+    // Réussi, il est à rendre : le journal de l'administration le garde.
+    await noterPaiementSansReservation(verification.paiement, null);
     return NextResponse.json({ recu: true, confirme: false, raison: "sans-reference" });
   }
 
@@ -116,13 +117,10 @@ export async function POST(requete: Request) {
     return NextResponse.json({ recu: true, confirme: false, raison: "non-abouti" });
   }
 
-  // Le lien personnel, reconstitué à partir de la référence : le webhook
-  // ne voit jamais passer le client, et n'a donc pas son jeton.
-  const resultat = await confirmerParSasPay({
-    reference,
-    paiement: verification.paiement,
-    lienSuivi: await lienDeSuivi(reference),
-  });
+  // Le lien personnel est refait par la confirmation, à partir de la
+  // référence de la réservation trouvée : le webhook ne voit jamais passer
+  // le client, et la référence que SasPay renvoie peut s'écrire autrement.
+  const resultat = await confirmerParSasPay({ reference, paiement: verification.paiement });
 
   const confirme = resultat.issue === "confirmee" || resultat.issue === "deja-confirmee";
   return NextResponse.json({ recu: true, confirme, issue: resultat.issue });
