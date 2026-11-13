@@ -324,47 +324,15 @@ function aPrevoir(reservation: Reservation): string[] {
   ];
 }
 
-/**
- * Accuse de reception, envoye des l'enregistrement.
- *
- * Il porte le lien de suivi personnel, que la confirmation redonne
- * ensuite. La base n'en stocke que le hache : le serveur le reconstitue
- * avec le secret de signature (voir `genererToken`), une fuite de la base
- * seule ne permet donc pas de forger un lien vers une reservation.
+/*
+ * Aucun email ne part avant le paiement validé (décision 27 du 13 novembre
+ * 2026) : l'ancien accusé de réception, envoyé dès l'enregistrement de la
+ * demande, n'existe plus. Le lien de suivi personnel arrive avec la
+ * confirmation, quel que soit le chemin qui confirme (navigateur, webhook,
+ * paiement tardif) : le serveur refait le jeton à partir de la référence et
+ * du secret de signature (`genererToken`). La base n'en garde que le hachage,
+ * une fuite de la base seule ne permet donc pas de forger un lien.
  */
-export async function envoyerReceptionDemande(reservation: Reservation, lienSuivi: string) {
-  const rose = enRose(reservation);
-  return envoyer({
-    destinataire: reservation.client.email,
-    sujet: rose
-      ? `Octobre rose : votre inscription ${reservation.reference} est enregistrée`
-      : `Votre demande ${reservation.reference} est enregistrée`,
-    texte: [
-      `Bonjour ${reservation.client.prenom},`,
-      "",
-      `Votre ${rose ? "inscription à Octobre rose" : "demande"} est enregistrée sous la référence ${reservation.reference}.`,
-      "Elle sera confirmée dès réception de votre paiement.",
-      "",
-      `Conservez ce lien, il est le seul moyen de retrouver votre réservation :`,
-      lienSuivi,
-      "",
-      `L'équipe ${site.nom}, ${site.telephone}`,
-    ].join("\n"),
-    html: gabarit({
-      titre: rose ? "Inscription enregistrée" : "Demande enregistrée",
-      intro: `Bonjour ${reservation.client.prenom}, nous confirmons dès réception du paiement.`,
-      lignes: [
-        ["Référence", reservation.reference],
-        ...detailsOffre(reservation),
-        ["Date", formatCreneau(reservation)],
-        ["Montant à régler", formatXof(reservation.totalXof)],
-      ],
-      action: { libelle: "Suivre ma demande", url: lienSuivi },
-      pied: "Conservez ce lien : il vous est personnel et donne accès à votre réservation sans mot de passe.",
-      theme: rose ? "rose" : undefined,
-    }),
-  });
-}
 
 /** Où retrouver Bike Land, et comment joindre l'équipe le jour venu. */
 interface RendezVous {

@@ -9,7 +9,7 @@
 import { NextResponse } from "next/server";
 
 import { depot } from "@/lib/db";
-import { envoyerConfirmation, envoyerFacture, envoyerNotificationAdmin, envoyerReceptionDemande } from "@/lib/email";
+import { envoyerConfirmation, envoyerFacture, envoyerNotificationAdmin } from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
 import { lireOuverture, offresGroupeActives } from "@/lib/ouverture";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
@@ -31,7 +31,6 @@ export function dependancesOffresGroupe(): DependancesOffresGroupe {
     fournisseur: fournisseurActif,
     encaisser,
     emails: {
-      reception: envoyerReceptionDemande,
       confirmation: envoyerConfirmation,
       facture: (reservation, lienSuivi) => envoyerFacture(reservation, numeroDeFacture(reservation), lienSuivi),
       alerteAdmin: envoyerNotificationAdmin,

@@ -505,7 +505,8 @@ console.log("\n— Réservation : succès, au bon montant et au bon canal");
   const encaissement = ok.etat.encaissements[0] as Record<string, any>;
   verifier("encaissé : le total de la réservation (SasPay ajoute sa commission), la référence", [encaissement.montantXof, encaissement.reference, encaissement.moyen], [11250, "BL-T22221", "MTN_MONEY"]);
   verifier("réponse : montant débité, lien de suivi, paiement en attente et son suivi", [ok.corps.totalXof, ok.corps.montantADebiterXof, ok.corps.lienSuivi, ok.corps.paiement.statut, ok.corps.paiement.suivi.paiementId], [11250, 11616, "https://site.test/reservation/jeton-BL-T22221", "EN_ATTENTE", "pay_1"]);
-  verifier("paiement en attente : l'accusé de réception part, rien n'est confirmé", [ok.etat.emails, ok.etat.confirmations], [["reception:BL-T22221"], []]);
+  // Décision 27 : rien ne part avant le paiement validé, ni au client ni à Bike Land.
+  verifier("paiement en attente : aucun email (ni au client ni à Bike Land), rien n'est confirmé", [ok.etat.emails, ok.etat.confirmations], [[], []]);
 
   const demo = await reserver(reservation(bikeForAll(), 11250), {
     fournisseur: "demo",
@@ -517,7 +518,7 @@ console.log("\n— Réservation : succès, au bon montant et au bon canal");
     paiement: { statut: "ECHOUE", fournisseur: "saspay", referenceTransaction: "", message: "Solde insuffisant" },
   });
   verifier("paiement refusé : 201, statut ECHOUE et un message pour le client, réservation gardée 30 min", [echec.statut, echec.corps.paiement.statut, typeof echec.corps.paiement.message, echec.etat.creees.length], [201, "ECHOUE", "string", 1]);
-  verifier("paiement refusé : le lien de suivi part quand même par email, pour relancer le paiement", echec.etat.emails, ["reception:BL-T22221"]);
+  verifier("paiement refusé : aucun email, le lien de suivi est rendu au navigateur", [echec.etat.emails, echec.corps.lienSuivi], [[], "https://site.test/reservation/jeton-BL-T22221"]);
 
   // Le navigateur ne décide de rien : canal, réduction et total glissés dans la demande sont ignorés.
   const triche = await reserver({

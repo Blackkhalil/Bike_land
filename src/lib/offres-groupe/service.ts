@@ -105,9 +105,12 @@ export interface DependancesOffresGroupe {
   /** « saspay », « demo » ou « indisponible » (src/lib/paiement.ts). */
   fournisseur: () => FournisseurActif;
   encaisser: (demande: DemandePaiement) => Promise<ResultatPaiement>;
-  /** Les emails : tentés, jamais bloquants (un envoi raté ne défait rien). */
+  /**
+   * Les emails : tentés, jamais bloquants (un envoi raté ne défait rien).
+   * Aucun ne part avant le paiement validé (décision 27) : ni accusé de
+   * réception au client, ni alerte à Bike Land.
+   */
   emails: {
-    reception: (reservation: Reservation, lienSuivi: string) => Promise<unknown>;
     confirmation: (reservation: Reservation, lienSuivi: string) => Promise<unknown>;
     facture: (reservation: Reservation, lienSuivi: string) => Promise<unknown>;
     alerteAdmin: (reservation: Reservation) => Promise<unknown>;
@@ -707,7 +710,7 @@ export async function reserverOffreGroupe(
       409,
       "EN_ATTENTE",
       `Une réservation à votre nom attend déjà son paiement pour ce jour (${enAttente.reference}). ` +
-        "Validez la demande sur votre téléphone, ou relancez-la depuis le lien reçu par email. " +
+        "Validez la demande sur votre téléphone. " +
         "Sans paiement, elle se libère d'elle-même au bout de 30 minutes.",
     );
   }
@@ -782,15 +785,13 @@ export async function reserverOffreGroupe(
     // vérification du paiement : jamais d'ici sans preuve.
     const confirmation = await deps.depot.confirmerPaiement(reservation.reference, paiement.referenceTransaction);
     if (confirmation && !confirmation.dejaConfirmee) await emailsDeConfirmation(deps, confirmation.reservation, lienSuivi);
-  } else {
-    if (paiement.statut !== "EN_ATTENTE") {
-      console.warn(`[offres-groupe] ${reservation.reference} : paiement non lancé (${paiement.message ?? "sans détail"}).`);
-    }
-    // Le seul moment où le jeton de suivi existe en clair : le lien part tout
-    // de suite, même si la demande de paiement n'a pas pu partir (le client
-    // la relance depuis ce lien, comme dans le tunnel).
-    await Promise.allSettled([deps.emails.reception(reservation, lienSuivi)]);
+  } else if (paiement.statut !== "EN_ATTENTE") {
+    console.warn(`[offres-groupe] ${reservation.reference} : paiement non lancé (${paiement.message ?? "sans détail"}).`);
   }
+  // Paiement pas encore validé : aucun email, ni au client ni à Bike Land
+  // (décision 27). Le lien de suivi est rendu au navigateur ci-dessous, qui
+  // le montre pendant l'attente ; l'email de confirmation le redonnera, le
+  // serveur sachant le refaire à partir de la référence (`genererToken`).
 
   const message =
     paiement.statut === "ECHOUE" ? diagnostiquer(paiement.message, paiement.statut).explication : paiement.message;

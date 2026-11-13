@@ -23,12 +23,7 @@ import { lireReglages } from "@/lib/reglages";
 import { identifiantAppelant } from "@/lib/anti-force-brute";
 import { ConflitDisponibiliteError, depot } from "@/lib/db";
 import { messagePlacesManquantes, messageVelosManquants, type DemandeReservation } from "@/lib/db/contrat";
-import {
-  envoyerConfirmation,
-  envoyerFacture,
-  envoyerNotificationAdmin,
-  envoyerReceptionDemande,
-} from "@/lib/email";
+import { envoyerConfirmation, envoyerFacture, envoyerNotificationAdmin } from "@/lib/email";
 import { numeroDeFacture } from "@/lib/facture";
 import { formatDateAvecJour } from "@/lib/format";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
@@ -208,7 +203,7 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
         {
           erreur:
             `Une réservation à votre nom attend déjà son paiement pour ce jour (${enAttente.reference}). ` +
-            "Validez la demande sur votre téléphone, ou relancez-la depuis le lien reçu par email. " +
+            "Validez la demande sur votre téléphone. " +
             `Sans paiement, elle se libère d'elle-même au bout de ${EXPIRATION_PANIER_MINUTES} minutes.`,
           code: "EN_ATTENTE",
         },
@@ -314,8 +309,9 @@ const finDeNumero = (telephone?: string) => (telephone ?? "").replace(/[^0-9]/g,
  * Une inscription retient ses vélos le temps du paiement, jusqu'à cinq à
  * la fois. Deux garde-fous empêchent qu'on retienne les sorties sans payer :
  * une seule inscription en attente par email et par numéro, tous jours
- * confondus (une demande qui n'est pas arrivée se relance depuis le lien
- * reçu par email, sans se réinscrire), et un plafond par adresse.
+ * confondus (une demande qui n'est pas arrivée se relance depuis la page de
+ * suivi, montrée pendant l'attente, sans se réinscrire), et un plafond par
+ * adresse.
  */
 async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Preparation> {
   const analyse = schemaInscriptionOctobreRose.safeParse(corps);
@@ -404,7 +400,7 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
         {
           erreur:
             `Une inscription à votre nom${autreJour} attend déjà son paiement (${enAttente.reference}). ` +
-            "Validez la demande sur votre téléphone, ou relancez-la depuis le lien reçu par email. " +
+            "Validez la demande sur votre téléphone. " +
             "Sans paiement, elle se libère d'elle-même au bout de 30 minutes.",
           code: "EN_ATTENTE",
         },
@@ -599,7 +595,7 @@ async function preparerPadelBike(corps: unknown, requete: Request): Promise<Prep
         {
           erreur:
             `Une réservation à votre nom${autreJour} attend déjà son paiement (${enAttente.reference}). ` +
-            "Validez la demande sur votre téléphone, ou relancez-la depuis le lien reçu par email. " +
+            "Validez la demande sur votre téléphone. " +
             `Sans paiement, elle se libère d'elle-même au bout de ${EXPIRATION_PANIER_MINUTES} minutes.`,
           code: "EN_ATTENTE",
         },
@@ -675,12 +671,16 @@ async function creerEtEncaisser(demande: DemandeReservation) {
     });
 
     // Sur un aperçu, l'adresse de la branche (base de test) : voir urlDuSite.
+    // Le jeton se refait à partir de la référence et du secret de signature
+    // (`genererToken`) : chaque chemin qui confirme le paiement, webhook
+    // compris, redonne donc ce même lien dans l'email de confirmation.
     const lienSuivi = `${urlDuSite()}/reservation/${token}`;
     const facture = numeroDeFacture(reservation);
 
-    // La réservation vient d'être créée EN ATTENTE DE PAIEMENT. Elle
-    // n'est confirmée, et les emails envoyés, que lorsque l'encaissement
-    // est réellement abouti :
+    // La réservation vient d'être créée EN ATTENTE DE PAIEMENT : une note
+    // technique, invisible dans l'administration, qui retient les vélos le
+    // temps du paiement (décision 27). Elle n'est confirmée, et les emails
+    // envoyés, que lorsque l'encaissement est réellement abouti :
     //
     //  - en mode démonstration, `encaisser` répond REUSSI tout de suite,
     //    on confirme donc ici ;
@@ -692,6 +692,10 @@ async function creerEtEncaisser(demande: DemandeReservation) {
     //
     // Confirmer ici sans vérifier reviendrait à donner un vélo à qui
     // n'a pas payé.
+    //
+    // Tant que le paiement n'est pas validé, aucun email ne part, ni au
+    // client ni à Bike Land (décision 27) : le navigateur reçoit le lien de
+    // suivi ci-dessous et le montre pendant l'attente.
     let confirmee = false;
     if (paiement.statut === "REUSSI") {
       const resultat = await depot.confirmerPaiement(
@@ -708,13 +712,6 @@ async function creerEtEncaisser(demande: DemandeReservation) {
           envoyerNotificationAdmin(resultat.reservation),
         ]);
       }
-    } else {
-      // Paiement pas encore abouti : la demande est partie sur le
-      // téléphone du client et attend sa validation.
-      // On envoie tout de suite le lien de suivi, car c'est le seul
-      // moment ou le jeton existe en clair, la base n'en garde que le
-      // hache, et le webhook qui confirmera ne pourra pas le reconstituer.
-      await Promise.allSettled([envoyerReceptionDemande(reservation, lienSuivi)]);
     }
 
     return NextResponse.json(
