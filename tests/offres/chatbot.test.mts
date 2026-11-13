@@ -402,6 +402,13 @@ verifier("201 : le paiement attend dans le chat, avec le jeton du lien de suivi"
   "La demande de paiement de 11 616 F est partie sur le +229 97 00 00 00. Validez-la avec votre code secret. Vos vélos sont gardés 30 minutes.",
 ]);
 verifier("un paiement en cours ne s'interrompt pas", agir(enAttente, { type: "demarrer", offre: "gbashi-groupe" }).etape, "attente");
+// Passé le délai, la demande ne se relance plus (PANIER_EXPIRE) : le message ne le promet pas.
+const expiree = agir(enAttente, { type: "paiement-expire" });
+verifier(
+  "demande expirée : on ne promet pas de relance, on dit ce que devient un paiement tardif",
+  [expiree.etape, /ne peut plus être relancée/.test(derniers(expiree)), /permet de la relancer/.test(derniers(expiree)), /sinon nous vous remboursons/.test(derniers(expiree))],
+  ["echec", true, false, true],
+);
 const apresReservation = agir(agir(enAttente, { type: "paiement-confirme" }), { type: "demarrer", offre: "bike-for-all" });
 verifier("après une réservation, un bouton de page repart de zéro, même sur la même offre", [
   apresReservation.etape,

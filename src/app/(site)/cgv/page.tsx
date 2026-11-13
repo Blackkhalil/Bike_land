@@ -245,8 +245,8 @@ export default async function PageCGV() {
           La réservation s&apos;effectue en ligne, sans création de compte. Elle devient ferme à
           la validation du paiement. Un email de confirmation, une facture et un lien de suivi
           personnel sont envoyés immédiatement après. Tant que le paiement n&apos;est pas validé,
-          aucune réservation n&apos;est enregistrée et aucun email n&apos;est envoyé&nbsp;: les vélos
-          vous sont seulement gardés le temps du paiement.
+          la réservation n&apos;est pas ferme et aucun email n&apos;est envoyé&nbsp;: les vélos vous
+          sont seulement gardés le temps du paiement.
         </p>
         <p>
           Le locataire doit être âgé d&apos;au moins 18 ans. Pour un mineur, la réservation est

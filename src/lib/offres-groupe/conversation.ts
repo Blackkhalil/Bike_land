@@ -508,8 +508,11 @@ export type ActionChat = Horodatee<
 >;
 
 /** L'attente du paiement a dépassé la garde des vélos. */
+// Passé le délai, la demande ne se relance plus (la page de suivi le dit,
+// PANIER_EXPIRE) ; un paiement validé quand même est traité : confirmé si
+// les vélos sont libres, sinon remboursé (décision 6).
 const MESSAGE_PAIEMENT_EXPIRE =
-  "La demande de paiement a expiré. Votre lien de suivi permet de la relancer, si les vélos sont encore libres.";
+  "La demande de paiement a expiré et ne peut plus être relancée. Si vous avez validé le paiement entre-temps, la réservation est confirmée si les vélos sont encore libres, sinon nous vous remboursons. Pour réserver, refaites une demande ou écrivez-nous sur WhatsApp.";
 
 /* ------------------------------------------------------------ Petits outils */
 
