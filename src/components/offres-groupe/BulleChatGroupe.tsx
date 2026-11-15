@@ -30,7 +30,7 @@ const PanneauChatGroupe = dynamic(() => import("./PanneauChatGroupe").then((modu
 const CLE_STOCKAGE_CHAT = "bikeland.chat-groupe";
 const DUREE_CONSERVATION_MS = 12 * 60 * 60 * 1000;
 
-/** Le petit message « Réserver en groupe ? » a été montré dans cette session du navigateur. */
+/** Le petit message « Cliquez ici pour une réservation personnalisée » a été montré dans cette session du navigateur. */
 const CLE_INVITATION = "bikeland.chat-groupe.invitation";
 /** Il arrive peu après la page, reste quelques secondes, puis s'efface. */
 const DELAI_INVITATION_MS = 1500;
@@ -82,7 +82,7 @@ type PhaseInvitation = "attente" | "visible" | "sortie" | "finie";
  * La bulle « Réserver en groupe » : un rond orange en bas à droite, sur les
  * pages du site public, qui ouvre le chatbot des offres de groupe
  * (décisions 22 et 23). Peu après l'arrivée sur le site, un petit message
- * « Réserver en groupe ? » apparaît à côté quelques secondes, une seule fois
+ * « Cliquez ici pour une réservation personnalisée » apparaît à côté quelques secondes, une seule fois
  * par session du navigateur. Elle n'est rendue que quand le serveur a dit
  * que les offres se vendent en ligne : interrupteur ouvert, réglages
  * lisibles (`faits`, lus par le serveur).
@@ -275,7 +275,7 @@ export function BulleChatGroupe({ faits }: { faits: FaitsChat }) {
 }
 
 /**
- * « Réserver en groupe ? » : une petite carte blanche, sa pointe vers la
+ * « Cliquez ici pour une réservation personnalisée » : une petite carte blanche, sa pointe vers la
  * bulle. Un clic ouvre le chatbot, la croix la masque. Sans animation si
  * le système demande moins de mouvement (règle commune de globals.css).
  */
@@ -300,9 +300,13 @@ function Invitation({
         sortie ? "invitation-sortie" : "invitation-entree"
       }`}
     >
-      <button type="button" onClick={onOuvrir} className="min-h-11 rounded-l-2xl py-2 pl-4 pr-1 text-left text-[0.9rem] font-semibold leading-tight">
-        {/* Espace insécable : le « ? » ne part jamais seul à la ligne. */}
-        Réserver en groupe&nbsp;?
+      {/* Sur deux lignes au plus sur téléphone : la largeur laisse la place à la croix, à la bulle et aux marges. */}
+      <button
+        type="button"
+        onClick={onOuvrir}
+        className="min-h-11 max-w-[min(15rem,calc(100vw-9.5rem))] rounded-l-2xl py-2 pl-4 pr-1 text-left text-[0.9rem] font-semibold leading-tight"
+      >
+        Cliquez ici pour une réservation personnalisée
       </button>
       <button
         type="button"
