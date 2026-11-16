@@ -458,10 +458,11 @@ export function VenteComptoirGroupe({
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">4. L&apos;encaissement</legend>
         <div className="mt-2 grid *:min-w-0 gap-4 sm:grid-cols-2">
-          <Champ libelle="Argent reçu par" aide="Votre prénom. Il est retenu sur ce téléphone.">
+          <Champ libelle="Argent reçu par (obligatoire)" aide="Votre prénom. Il est retenu sur ce téléphone.">
             <input
               value={encaissePar}
               autoComplete="given-name"
+              aria-required="true"
               onChange={(evenement) => onEncaisseParChange(evenement.target.value)}
               className={CHAMP}
             />

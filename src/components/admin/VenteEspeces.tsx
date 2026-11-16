@@ -1374,6 +1374,7 @@ export function VenteEspeces({
           <Champ
             id="vente-encaisse-par"
             libelle="Argent reçu par"
+            obligatoire
             valeur={encaissePar}
             onChange={setEncaissePar}
             erreur={erreurs.encaissePar}
@@ -1757,6 +1758,7 @@ function Champ({
   aide,
   type = "text",
   autoComplete,
+  obligatoire = false,
 }: {
   id: string;
   libelle: string;
@@ -1766,17 +1768,21 @@ function Champ({
   aide?: string;
   type?: string;
   autoComplete?: string;
+  /** Champ sans lequel la vente ne part pas : le libellé le dit. */
+  obligatoire?: boolean;
 }) {
   return (
     <div>
       <label htmlFor={id} className="text-[0.8rem] text-gris-cadre">
         {libelle}
+        {obligatoire && <span className="font-semibold text-orange-sourd"> (obligatoire)</span>}
       </label>
       <input
         id={id}
         type={type}
         value={valeur}
         autoComplete={autoComplete}
+        aria-required={obligatoire || undefined}
         aria-invalid={erreur ? true : undefined}
         onChange={(evenement) => onChange(evenement.target.value)}
         className={`mt-2 w-full rounded-[var(--radius-bouton)] border bg-craie px-4 py-2.5 text-[0.92rem] outline-none transition-colors focus:border-orange-signal ${
