@@ -66,8 +66,10 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
   const demande = typeof parametres.jour === "string" ? parametres.jour : "";
   const jour = estDateISOValide(demande) && demande <= ajd ? demande : ajd;
 
-  const [parc, reservations, retenues, reglages, groupe, modifications] = await Promise.all([
-    depot.listerVelos(),
+  const [parcComplet, reservations, retenues, reglages, groupe, modifications] = await Promise.all([
+    // Les vélos retirés du parc compris : une vente ancienne garde la gamme
+    // de son vélo, qui fixe son prix quand on la modifie.
+    depot.listerVelos({ inclureRetires: true }),
     depot.listerReservations(),
     // Les vélos retenus le temps d'un paiement en ligne, pour les seuls
     // créneaux grisés ci-dessous : ces demandes pas encore payées ne
@@ -87,6 +89,8 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
     if (cle && !derniereModification.has(cle)) derniereModification.set(cle, evenement);
   }
 
+  // Le parc du comptoir : sans les vélos retirés, qui ne se vendent plus.
+  const parc = parcComplet.filter((velo) => velo.statut !== "RETIRE");
   const velos: VeloComptoir[] = parc.map((velo) => ({
     id: velo.id,
     nom: velo.nom,
@@ -132,12 +136,13 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
   }
 
   // Ce que la fenêtre « Modifier » doit savoir d'une vente. La gamme est
-  // celle de son premier vélo : elle fixe le prix de la location libre, du
-  // road trip et de Gbashi bike.
+  // celle de son premier vélo, même retiré du parc depuis : elle fixe le
+  // prix de la location libre, du road trip et de Gbashi bike.
   const venteModifiable = (reservation: Reservation): VenteModifiable => {
-    const gamme = parc.find((velo) => velo.id === reservation.lignes[0]?.veloId)?.gamme;
+    const gamme = parcComplet.find((velo) => velo.id === reservation.lignes[0]?.veloId)?.gamme;
     return {
       reference: reservation.reference,
+      statut: reservation.statut,
       offre: reservation.offre,
       nombrePersonnes: reservation.nombrePersonnes,
       ...(reservation.dureeHeures !== undefined ? { dureeHeures: reservation.dureeHeures } : {}),

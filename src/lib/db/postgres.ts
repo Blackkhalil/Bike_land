@@ -1547,6 +1547,9 @@ const depotDirect: Depot = {
                 status: { in: ["CONFIRMEE", "EN_COURS", "TERMINEE"] },
               },
               data: {
+                // Partie ou terminée, puis déplacée à un jour à venir : elle
+                // repasse à « confirmée », le départ se notera de nouveau.
+                ...(prevue.statut !== avant.statut ? { status: prevue.statut } : {}),
                 customerId,
                 contactFirstName: prevue.client.prenom,
                 contactLastName: prevue.client.nom,

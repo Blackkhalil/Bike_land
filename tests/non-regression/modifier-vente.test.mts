@@ -181,7 +181,7 @@ verifier("Padel bike déplacé d'une semaine : 200, même prix, horaire des rég
   [deplacee.statut, lueDeplacee.dateDebut, lueDeplacee.horaire, lueDeplacee.heureDebut, lueDeplacee.heureFin, lueDeplacee.totalXof, lueDeplacee.lignes.length],
   [200, autreVendredi, { depart: "17:30", retour: "20:30" }, 17, 21, 24500, 7]);
 verifier("journal : le jour changé en clair", resumeEvenement((await depot.listerJournal({ type: "vente-modifiee" }))[0]).lignes.map(net).some((l: string) => l.startsWith("Jour : ")), true);
-verifier("une date passée : 422 sur la date", (await modifier(reference, { date: ajouterJours(jour, -1), totalAttenduXof: 24500, nouveauTotalXof: 24500, modifiePar: "Zayed" })).donnees.champs?.date, "Cette date est passée.");
+verifier("au-delà de 60 jours : 422 sur la date", (await modifier(reference, { date: ajouterJours(jour, 61), totalAttenduXof: 24500, nouveauTotalXof: 24500, modifiePar: "Zayed" })).donnees.champs?.date, "Au-delà de 60 jours, la vente n'est pas prise.");
 verifier("l'heure de Padel bike ne se choisit pas : 422", (await modifier(reference, { heureDebut: 9, totalAttenduXof: 24500, nouveauTotalXof: 24500, modifiePar: "Zayed" })).statut, 422);
 
 // Location libre : l'heure et la durée, sur un mardi à venir.
@@ -273,6 +273,63 @@ verifier("ce qui se modifie, par formule", [champsModifiables("location-libre"),
   { personnes: true, date: true, heure: false, duree: false },
   { personnes: false, date: false, heure: false, duree: false },
 ]);
+
+/* ----------------------------------------------- Un jour passé, une vente déjà partie, un vélo retiré */
+
+// Une vente se déplace aussi à un jour passé, avec les mêmes contrôles des vélos sur ce créneau.
+const joursPasses: string[] = [];
+for (let ecart = 3; ecart <= 30 && joursPasses.length < 2; ecart += 1) {
+  const candidat = ajouterJours(jour, -ecart);
+  if (await depot.estDisponible(veloLibre!.id, candidat, candidat, 10, 13)) joursPasses.push(candidat);
+}
+const [passe, autrePasse] = joursPasses;
+const aDeplacer = await depot.creerReservation({
+  veloId: veloLibre!.id, offre: "location-libre", dureeHeures: 2, dateDebut: mardi, dateFin: mardi, heureDebut: 19, options: [],
+  client, moyenPaiement: "ESPECES", cgvAcceptees: true, encaissement: { par: "Koffi", reference: "ESP-modif-passe-1" },
+});
+const refPasse = aDeplacer.reservation.reference as string;
+const versLePasse = await modifier(refPasse, { date: passe, heureDebut: 10, totalAttenduXof: prix(2), nouveauTotalXof: prix(2), modifiePar: "Zayed" });
+const luePasse = await lire(refPasse);
+verifier("une vente se déplace à un jour passé : même montant, même vélo",
+  [versLePasse.statut, luePasse.dateDebut, luePasse.heureDebut, luePasse.totalXof, luePasse.lignes.map((l: Ligne) => l.veloId), luePasse.statut],
+  [200, passe, 10, prix(2), [veloLibre!.id], "CONFIRMEE"]);
+// Les vélos se revérifient sur ce jour passé comme sur un autre : sans vélo libre de la gamme, refusé.
+const deLaGamme = velos.filter((velo: { gamme: string }) => velo.gamme === veloLibre!.gamme);
+const indisposPasse = [];
+for (const velo of deLaGamme) indisposPasse.push(await depot.ajouterIndisponibilite({ veloId: velo.id, date: autrePasse, motif: "test", par: "admin (Test)" }));
+const passeComplet = await modifier(refPasse, { date: autrePasse, totalAttenduXof: prix(2), nouveauTotalXof: prix(2), modifiePar: "Zayed" });
+verifier("jour passé sans vélo libre de la gamme : 409 PLACES, la vente ne bouge pas", [passeComplet.statut, passeComplet.donnees.code, (await lire(refPasse)).dateDebut], [409, "PLACES", passe]);
+for (const indispo of indisposPasse) if (indispo) await depot.retirerIndisponibilite(indispo.id, "admin (Test)");
+
+// Partie puis terminée : déplacée à un jour à venir, elle repasse à « confirmée », le départ se note de nouveau.
+await depot.marquerDepart(refPasse);
+await depot.marquerRetour(refPasse);
+const heureSeule = await modifier(refPasse, { heureDebut: 11, totalAttenduXof: prix(2), nouveauTotalXof: prix(2), modifiePar: "Zayed" });
+verifier("vente terminée, l'heure corrigée le même jour : elle reste terminée", [heureSeule.statut, (await lire(refPasse)).statut], [200, "TERMINEE"]);
+const versLeFutur = await modifier(refPasse, { date: mardi, heureDebut: 19, totalAttenduXof: prix(2), nouveauTotalXof: prix(2), modifiePar: "Zayed" });
+verifier("vente terminée déplacée à un jour à venir : elle repasse à « confirmée »", [versLeFutur.statut, (await lire(refPasse)).statut, (await lire(refPasse)).dateDebut], [200, "CONFIRMEE", mardi]);
+const ligneStatut = (await depot.listerJournal({ type: "vente-modifiee", reference: refPasse }))[0];
+verifier("journal : le statut avant et après", [ligneStatut.details.avant.statut, ligneStatut.details.apres.statut, ligneStatut.details.champs.includes("statut")], ["TERMINEE", "CONFIRMEE", true]);
+verifier("journal : le retour à « Vélo à remettre » en clair", resumeEvenement(ligneStatut).lignes.map(net).at(-1), "La vente était terminée : elle repasse à « Vélo à remettre », le départ est à noter de nouveau.");
+verifier("le départ se note de nouveau", (await depot.marquerDepart(refPasse))?.statut, "EN_COURS");
+const enCoursVersLePasse = await modifier(refPasse, { date: passe, heureDebut: 10, totalAttenduXof: prix(2), nouveauTotalXof: prix(2), modifiePar: "Zayed" });
+verifier("vente en cours déplacée à un jour passé : elle reste en cours", [enCoursVersLePasse.statut, (await lire(refPasse)).statut], [200, "EN_COURS"]);
+
+// Le vélo de la vente retiré du parc depuis : sa gamme fixe toujours le prix.
+await depot.majVelo(veloLibre!.id, { statut: "RETIRE" });
+verifier("vélo retiré : absent du parc du comptoir, retrouvé avec les retirés",
+  [(await depot.listerVelos()).some((velo: { id: string }) => velo.id === veloLibre!.id), (await depot.listerVelos({ inclureRetires: true })).find((velo: { id: string }) => velo.id === veloLibre!.id)?.gamme],
+  [false, veloLibre!.gamme]);
+let voisin: { id: string } | undefined;
+for (const velo of deLaGamme) if (velo.id !== veloLibre!.id && velo.statut === "DISPONIBLE" && (await depot.estDisponible(velo.id, passe, passe, 10, 12))) { voisin = velo; break; }
+if (voisin) {
+  const deuxVelos = calculerDevis({ offre: "location-libre", gamme: veloLibre!.gamme, dureeHeures: 2, nombrePersonnes: 2, especes: true }).totalXof;
+  const avecRetire = await modifier(refPasse, { nombrePersonnes: 2, totalAttenduXof: prix(2), nouveauTotalXof: deuxVelos, modifiePar: "Zayed" });
+  verifier("vélo retiré : le nombre change, au prix de sa gamme, et il reste sur la vente",
+    [avecRetire.statut, avecRetire.donnees.totalXof, (await lire(refPasse)).lignes.some((l: Ligne) => l.veloId === veloLibre!.id), (await lire(refPasse)).lignes.length],
+    [200, deuxVelos, true, 2]);
+}
+await depot.majVelo(veloLibre!.id, { statut: "DISPONIBLE" });
 
 /* ----------------------------------------------- Le prix : ni refait par un jour changé, ni figé */
 

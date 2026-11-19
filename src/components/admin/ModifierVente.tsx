@@ -12,7 +12,6 @@ import {
   heureAuBenin,
   nomDeGamme,
   OUVERTURE_COMPTOIR_HEURE,
-  roadTripsDuJour,
 } from "@/data/offres";
 import { jourProgrammePadel } from "@/data/padel-bike";
 import { formatHeureMinute, type ReglagesProduits } from "@/data/reglages";
@@ -27,15 +26,18 @@ import {
   PERSONNES_MAX_VENTE,
   prixDuComptoirAujourdhui,
   prixParGamme,
+  statutApresDeplacement,
   type VenteAModifier,
 } from "@/lib/modification-vente";
 import { formatMontant } from "@/lib/offres";
 import { insecables } from "@/lib/offres-groupe/textes-chat";
 import { LIBELLE_AGENT, MESSAGE_PRENOM_ATTENDU, ressembleAUnPrenom } from "@/lib/prenom-agent";
+import type { StatutReservation } from "@/lib/types";
 
 /** Ce que la fenêtre de modification doit savoir de la vente, tiré d'elle par la page. */
 export interface VenteModifiable extends VenteAModifier {
   reference: string;
+  statut: StatutReservation;
   minuteDebut?: number;
   minuteFin?: number;
   client: { prenom: string; nom: string; email: string; telephone: string };
@@ -283,20 +285,15 @@ function FenetreModification({
     }
   };
 
-  // Les jours proposés : ceux du départ (road trip) ou des sorties (Octobre rose), le jour de la vente compris.
+  // Octobre rose se choisit parmi ses sorties, passées comprises ; les autres
+  // formules à n'importe quelle date, passée aussi : une vente ancienne se
+  // corrige en entier. Le road trip dit lui-même s'il part ce jour-là.
   const joursProposes =
-    vente.offre === "road-trip"
-      ? [
-          ...new Set([
-            vente.dateDebut,
-            ...Array.from({ length: 28 }, (_, ecart) => ajouterJours(aujourdhuiIci, ecart)).filter(
-              (jour) => roadTripsDuJour(jour).length > 0,
-            ).slice(0, 6),
-          ]),
-        ].sort()
-      : vente.offre === "octobre-rose"
-        ? [...new Set([vente.dateDebut, ...OCTOBRE_ROSE.sorties.map((s) => s.date).filter((jour) => jour >= aujourdhuiIci)])].sort()
-        : null;
+    vente.offre === "octobre-rose"
+      ? [...new Set([vente.dateDebut, ...OCTOBRE_ROSE.sorties.map((sortie) => sortie.date)])].sort()
+      : null;
+  // Partie ou terminée, puis déplacée à un jour à venir : le départ se notera de nouveau.
+  const repartira = calcul !== null && statutApresDeplacement(vente, calcul.date, aujourdhuiIci) !== vente.statut;
   const horaire = calcul?.horaire ?? vente.horaire;
   const padelHorsProgramme = vente.offre === "padel-bike" && date !== vente.dateDebut && !jourProgrammePadel(reglages.padel, date);
   const unite = locationLibre ? "vélo" : "personne";
@@ -421,7 +418,6 @@ function FenetreModification({
                         id={`${id}-jour`}
                         type="date"
                         value={date}
-                        min={vente.dateDebut < aujourdhuiIci ? vente.dateDebut : aujourdhuiIci}
                         max={ajouterJours(aujourdhuiIci, 60)}
                         onChange={(evenement) => evenement.target.value && setDate(evenement.target.value)}
                         className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-3 py-2.5 text-[0.92rem]"
@@ -434,6 +430,11 @@ function FenetreModification({
                         {insecables("Attention : aucun Padel bike n'est programmé ce jour-là. Vérifiez la date.")}
                       </p>
                     ) : null}
+                    {repartira && !champs.date && (
+                      <p className="mt-1.5 text-[0.76rem] text-gris-cadre">
+                        {insecables("La vente repassera à « Vélo à remettre » : le départ sera à noter de nouveau.")}
+                      </p>
+                    )}
                   </div>
 
                   {peut.heure && (

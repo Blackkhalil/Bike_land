@@ -267,6 +267,12 @@ function resumeVenteModifiee(evenement: EvenementJournal): ResumeEvenement {
   avantApres("telephone", "Téléphone", (valeur) => texte(valeur) ?? "aucun");
   avantApres("email", "Email", (valeur) => texte(valeur) ?? "aucun");
   avantApres("encaissePar", "Encaissé par", (valeur) => texte(valeur) ?? "non renseigné");
+  // Une vente partie ou terminée, déplacée à un jour à venir : le départ se note de nouveau.
+  if (apres.statut === "CONFIRMEE" && (avant.statut === "EN_COURS" || avant.statut === "TERMINEE")) {
+    lignes.push(
+      `La vente était ${avant.statut === "TERMINEE" ? "terminée" : "en cours"} : elle repasse à « Vélo à remettre », le départ est à noter de nouveau.`,
+    );
+  }
   const liste = (valeur: unknown) => (Array.isArray(valeur) ? valeur.map(nomDeVelo).filter((nom): nom is string => Boolean(nom)) : []);
   const liberes = [...liste(d.velosRetires), ...(nomDeVelo(d.veloRetire) ? [nomDeVelo(d.veloRetire) as string] : [])];
   if (liberes.length > 0) lignes.push(`${liberes.length > 1 ? "Vélos libérés" : "Vélo libéré"} : ${liberes.join(", ")}`);

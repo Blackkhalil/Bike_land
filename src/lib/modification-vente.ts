@@ -45,7 +45,7 @@ import { ajouterJours, estDateISOValide, type DateISO } from "@/lib/dates";
 import { ordreAttribution } from "@/lib/db/contrat";
 import { reductionPour } from "@/lib/parrainage";
 import { calculerDevis, DureeNonTarifeeError, TarifIntrouvableError } from "@/lib/tarification";
-import type { CodeOffre, EvenementJournal, Reservation } from "@/lib/types";
+import type { CodeOffre, EvenementJournal, Reservation, StatutReservation } from "@/lib/types";
 
 /** Les durées de la location libre : les mêmes d'une gamme à l'autre. */
 export const DUREES_LOCATION = GRILLE_HORAIRE.CLASSIQUE.map((palier) => palier.heures);
@@ -204,10 +204,11 @@ export type IssueModification = { ok: true; calcul: CalculModification } | { ok:
  * Le nouveau créneau et le nouveau prix de la vente, ou ce qui ne va pas,
  * champ par champ. `aujourdhuiIci` : le jour au Bénin.
  *
- * Un jour changé ne peut pas être passé, ni à plus de 60 jours, comme à la
- * vente ; un jour inchangé reste, même passé : une vente ancienne se
- * corrige. Le minimum de dix personnes du road trip ne s'applique pas : il
- * règle la vente, et une correction dit ce qui s'est vraiment passé.
+ * Une vente se déplace à n'importe quel jour passé (une vente ancienne se
+ * corrige en entier, les vélos revus sur ce créneau comme sur un autre),
+ * mais pas à plus de 60 jours, comme à la vente. Le minimum de dix
+ * personnes du road trip ne s'applique pas : il règle la vente, et une
+ * correction dit ce qui s'est vraiment passé.
  */
 export function calculerModification(
   vente: VenteAModifier,
@@ -245,7 +246,6 @@ export function calculerModification(
   const date = peut.date && demande.date !== undefined ? demande.date : vente.dateDebut;
   if (date !== vente.dateDebut) {
     if (!estDateISOValide(date)) champs.date = "Date attendue au format AAAA-MM-JJ.";
-    else if (date < aujourdhuiIci) champs.date = "Cette date est passée.";
     else if (date > ajouterJours(aujourdhuiIci, JOURS_MAX)) champs.date = "Au-delà de 60 jours, la vente n'est pas prise.";
   }
 
@@ -561,7 +561,7 @@ export function preparerModification(
   }
 
   const encaissePar = modification.encaissePar?.trim() ?? encaisseParDe(avant);
-  const prevue = reservationPrevue(avant, issue.calcul, client, encaissePar);
+  const prevue = reservationPrevue(avant, issue.calcul, client, encaissePar, aujourdhuiIci);
   const rienNeChange = champsChanges(etatDeLaVente(avant), etatDeLaVente(prevue)).length === 0;
   if (avant.totalXof !== modification.totalAttenduXof) {
     if (rienNeChange && avant.totalXof === modification.nouveauTotalXof) return { etape: "deja" };
@@ -593,6 +593,21 @@ function encaisseParDe(reservation: Reservation): string {
 }
 
 /**
+ * Le statut d'une vente déplacée. Partie ou terminée, puis déplacée à un
+ * jour à venir (après aujourd'hui, au Bénin), elle repasse à « confirmée » :
+ * le départ et le retour notés ne valent plus, l'équipe notera le départ
+ * de nouveau ce jour-là. Sinon, son statut reste.
+ */
+export function statutApresDeplacement(
+  avant: Pick<Reservation, "statut" | "dateDebut">,
+  date: DateISO,
+  aujourdhuiIci: DateISO,
+): StatutReservation {
+  const sortie = avant.statut === "EN_COURS" || avant.statut === "TERMINEE";
+  return sortie && date !== avant.dateDebut && date > aujourdhuiIci ? "CONFIRMEE" : avant.statut;
+}
+
+/**
  * La vente telle qu'elle sera après la modification, vélos mis à part :
  * ce que la démonstration écrit, et ce que le journal compare.
  */
@@ -601,9 +616,11 @@ export function reservationPrevue(
   calcul: CalculModification,
   client: { prenom: string; nom: string; email: string; telephone: string },
   encaissePar: string,
+  aujourdhuiIci: DateISO,
 ): Reservation {
   return {
     ...avant,
+    statut: statutApresDeplacement(avant, calcul.date, aujourdhuiIci),
     nombrePersonnes: calcul.nombrePersonnes,
     dureeHeures: calcul.dureeHeures,
     dateDebut: calcul.date,
@@ -645,6 +662,8 @@ export interface EtatVente {
   /** Vide quand le client n'en a pas laissé. */
   telephone: string;
   encaissePar: string;
+  /** Il ne change que pour une vente partie ou terminée déplacée à un jour à venir. */
+  statut: StatutReservation;
 }
 
 const deuxChiffres = (n: number) => String(n).padStart(2, "0");
@@ -675,6 +694,7 @@ export function etatDeLaVente(reservation: Reservation): EtatVente {
     email: reservation.client.email,
     telephone: reservation.client.telephone ?? "",
     encaissePar: encaisseParDe(reservation),
+    statut: reservation.statut,
   };
 }
 
@@ -691,6 +711,7 @@ export function champsChanges(avant: EtatVente, apres: EtatVente): (keyof EtatVe
     "telephone",
     "email",
     "encaissePar",
+    "statut",
   ];
   return ordre.filter((cle) => avant[cle] !== apres[cle]);
 }
