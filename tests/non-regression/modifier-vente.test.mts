@@ -211,18 +211,18 @@ const corrige = await modifier(refLocation, {
 const lueCorrigee = await lire(refLocation);
 verifier("client et vendeur : 200, montant inchangé", [corrige.statut, corrige.donnees.totalXof, corrige.donnees.differenceXof], [200, prix(3), 0]);
 verifier("le client corrigé sur la vente", [lueCorrigee.client.prenom, lueCorrigee.client.nom, lueCorrigee.client.telephone, lueCorrigee.client.email], ["Aminata", "Diallo", "+229 01 97 00 00 00", "aminata@example.com"]);
-verifier("« Argent reçu par » corrigé sur le paiement", paiementDe(lueCorrigee)?.encaissePar, "Zayed");
+verifier("l'agent qui a encaissé corrigé sur le paiement", paiementDe(lueCorrigee)?.encaissePar, "Zayed");
 const ligneClient = (await depot.listerJournal({ type: "vente-modifiee", reference: refLocation }))[0];
 verifier("journal : les champs du client et du vendeur", ligneClient.details.champs, ["prenom", "nom", "telephone", "email", "encaissePar"]);
 const resumeClient = resumeEvenement(ligneClient);
 verifier("journal : titre sans montant, puis une ligne par champ", [net(resumeClient.titre), resumeClient.lignes.map(net)], [
   `${refLocation} : vente corrigée, par Zayed`,
-  ["Client : Awa Test → Aminata Diallo", "Téléphone : aucun → +229 01 97 00 00 00", "Email : awa.modif@example.com → aminata@example.com", "Argent reçu par : Koffi → Zayed"],
+  ["Client : Awa Test → Aminata Diallo", "Téléphone : aucun → +229 01 97 00 00 00", "Email : awa.modif@example.com → aminata@example.com", "Encaissé par : Koffi → Zayed"],
 ]);
 const sansTelephone = await modifier(refLocation, { telephone: "", totalAttenduXof: prix(3), nouveauTotalXof: prix(3), modifiePar: "Zayed" });
 verifier("téléphone retiré", [sansTelephone.statut, (await lire(refLocation)).client.telephone ?? ""], [200, ""]);
 verifier("« Modifié par » obligatoire : 422", (await modifier(refLocation, { prenom: "Awa", totalAttenduXof: prix(3), nouveauTotalXof: prix(3), modifiePar: "" })).donnees.champs?.modifiePar, "Indiquez qui modifie la vente.");
-verifier("« Modifié par » : mêmes règles que « Argent reçu par »", (await modifier(refLocation, { prenom: "Awa", totalAttenduXof: prix(3), nouveauTotalXof: prix(3), modifiePar: "Zayed\nBcc: x@y.z" })).statut, 422);
+verifier("« Modifié par » : mêmes règles que l'agent qui a encaissé", (await modifier(refLocation, { prenom: "Awa", totalAttenduXof: prix(3), nouveauTotalXof: prix(3), modifiePar: "Zayed\nBcc: x@y.z" })).statut, 422);
 verifier("email invalide : 422", (await modifier(refLocation, { email: "pas-un-email", totalAttenduXof: prix(3), nouveauTotalXof: prix(3), modifiePar: "Zayed" })).donnees.champs?.email, "Adresse email invalide.");
 
 // Un code de parrainage garde sa remise de 1 % sur le nouveau montant.
@@ -273,6 +273,107 @@ verifier("ce qui se modifie, par formule", [champsModifiables("location-libre"),
   { personnes: true, date: true, heure: false, duree: false },
   { personnes: false, date: false, heure: false, duree: false },
 ]);
+
+/* ----------------------------------------------- Le prix : ni refait par un jour changé, ni figé */
+
+// Deux ventes d'avant, quand le comptoir comptait encore 3 625 F par personne (réglage à 3 750 F).
+const padelRegle = { ...REGLAGES_PADEL_PAR_DEFAUT, depart: "17:30", retour: "20:30", jours: [5], ouverture: jour };
+await enregistrerReglages("padel", { ...padelRegle, prixXof: 3750 });
+const vendrediPlusTard = ajouterJours(vendredi, 14);
+const aQuatre = await vendre({
+  cleVente: "cle-modif-ancien-prix-4", offre: "padel-bike", nombrePersonnes: 4, date: vendrediPlusTard, heureDebut: 17,
+  client, encaissePar: "Koffi", montantAttenduXof: 14500, cgvAcceptees: true,
+});
+const seule = await vendre({
+  cleVente: "cle-modif-ancien-prix-1", offre: "padel-bike", nombrePersonnes: 1, date: vendrediPlusTard, heureDebut: 17,
+  client, encaissePar: "Koffi", montantAttenduXof: 3625, cgvAcceptees: true,
+});
+verifier("ventes d'avant : 4 personnes à 14 500 F, 1 personne à 3 625 F", [aQuatre.donnees.totalXof, seule.donnees.totalXof], [14500, 3625]);
+// Aujourd'hui, le comptoir compte 3 500 F (réglage à 3 625 F).
+await enregistrerReglages("padel", { ...padelRegle, prixXof: 3625 });
+const refQuatre = aQuatre.donnees.reference as string;
+const refSeule = seule.donnees.reference as string;
+
+// Un jour changé seul : le montant payé reste (et non 14 000 F).
+const jourSeul = await modifier(refQuatre, { date: ajouterJours(vendrediPlusTard, 7), totalAttenduXof: 14500, nouveauTotalXof: 14500, modifiePar: "Zayed" });
+const lueQuatre = await lire(refQuatre);
+verifier("Padel bike déplacé seul : le montant enregistré reste 14 500 F", [jourSeul.statut, lueQuatre.totalXof, lueQuatre.dateDebut, paiementDe(lueQuatre)?.montantXof], [200, 14500, ajouterJours(vendrediPlusTard, 7), 14500]);
+verifier("…le serveur refuse le prix d'aujourd'hui annoncé pour un simple changement de jour", (await modifier(refQuatre, { date: vendrediPlusTard, totalAttenduXof: 14500, nouveauTotalXof: 14000, modifiePar: "Zayed" })).donnees.code, "MONTANT");
+// Le nombre change : le prix est refait, au prix du comptoir d'aujourd'hui.
+const aTrois = await modifier(refQuatre, { nombrePersonnes: 3, totalAttenduXof: 14500, nouveauTotalXof: 10500, modifiePar: "Zayed" });
+verifier("4 → 3 personnes : prix refait au comptoir d'aujourd'hui, 10 500 F", [aTrois.statut, aTrois.donnees.totalXof], [200, 10500]);
+
+// La case « Remettre au prix du comptoir d'aujourd'hui » : la vente BL-KAKWFY, 3 625 F notés, 3 500 F encaissés.
+const { venteAModifier, prixDuComptoirAujourdhui, calculerModification } = await charger("src/lib/modification-vente.ts");
+const { lireReglages } = await charger("src/lib/reglages.ts");
+const reglagesDuJour = await lireReglages();
+verifier("la case se propose : 3 500 F au comptoir d'aujourd'hui, 3 625 F notés", [prixDuComptoirAujourdhui(venteAModifier(await lire(refSeule)), reglagesDuJour, jour), (await lire(refSeule)).totalXof], [3500, 3625]);
+verifier("une vente au prix du jour : rien à proposer", prixDuComptoirAujourdhui(venteAModifier(await lire(reference)), reglagesDuJour, jour), (await lire(reference)).totalXof);
+verifier("une offre de groupe : jamais", prixDuComptoirAujourdhui(venteAModifier(await lire(refGroupe)), reglagesDuJour, jour), null);
+const caseMauvaisMontant = await modifier(refSeule, { remettreAuPrixDuComptoir: true, totalAttenduXof: 3625, nouveauTotalXof: 3000, modifiePar: "Zayed" });
+verifier("case sans le bon montant : 409 MONTANT, le bon renvoyé, rien d'écrit", [caseMauvaisMontant.statut, caseMauvaisMontant.donnees.code, caseMauvaisMontant.donnees.totalXof, (await lire(refSeule)).totalXof], [409, "MONTANT", 3500, 3625]);
+const remiseAuPrix = await modifier(refSeule, { remettreAuPrixDuComptoir: true, totalAttenduXof: 3625, nouveauTotalXof: 3500, modifiePar: "Zayed" });
+const lueSeule = await lire(refSeule);
+verifier("case cochée, rien d'autre : 200, 3 500 F sur la vente, le paiement et le vélo",
+  [remiseAuPrix.statut, lueSeule.totalXof, paiementDe(lueSeule)?.montantXof, lueSeule.lignes[0].prixUnitaireXof, lueSeule.nombrePersonnes, lueSeule.dateDebut],
+  [200, 3500, 3500, 3500, 1, vendrediPlusTard]);
+const ligneRemise = (await depot.listerJournal({ type: "vente-modifiee", reference: refSeule }))[0];
+verifier("journal : le total a changé, et la remise au prix du comptoir est notée", [ligneRemise.details.champs, ligneRemise.details.prixRemisAuComptoir], [["totalXof"], true]);
+const resumeRemise = resumeEvenement(ligneRemise);
+verifier("journal : la remise au prix du comptoir en clair", [net(resumeRemise.titre), resumeRemise.lignes.map(net)], [`${refSeule} : 3 625 F → 3 500 F, par Zayed`, ["Montant remis au prix du comptoir."]]);
+const remiseRepetee = await modifier(refSeule, { remettreAuPrixDuComptoir: true, totalAttenduXof: 3625, nouveauTotalXof: 3500, modifiePar: "Zayed" });
+verifier("case renvoyée (réponse perdue) : déjà faite, une seule ligne au journal", [remiseRepetee.statut, remiseRepetee.donnees.deja, (await depot.listerJournal({ type: "vente-modifiee", reference: refSeule })).length], [200, true, 1]);
+const caseSansEcart = await modifier(refQuatre, { remettreAuPrixDuComptoir: true, totalAttenduXof: 10500, nouveauTotalXof: 10500, modifiePar: "Zayed" });
+verifier("case sur une vente déjà au prix du jour : rien à écrire", [caseSansEcart.statut, caseSansEcart.donnees.deja, (await lire(refQuatre)).totalXof], [200, true, 10500]);
+const caseGroupe = await modifier(refGroupe, { remettreAuPrixDuComptoir: true, totalAttenduXof: 5000, nouveauTotalXof: 5000, modifiePar: "Zayed" });
+verifier("case sur une offre de groupe : 422", [caseGroupe.statut, caseGroupe.donnees.champs?.remettreAuPrixDuComptoir], [422, "Ne se modifie pas pour une offre de groupe."]);
+verifier("case mal formée : 422", (await modifier(refSeule, { remettreAuPrixDuComptoir: "oui", totalAttenduXof: 3500, nouveauTotalXof: 3500, modifiePar: "Zayed" })).statut, 422);
+
+// La règle, formule par formule : seuls le road trip et Octobre rose ont un prix qui dépend du jour.
+const venteType = (offre: string, plus: Record<string, unknown> = {}) => ({
+  offre, nombrePersonnes: 2, dateDebut: "2026-11-21", heureDebut: 10, heureFin: 12, gamme: "PREMIUM",
+  sousTotalXof: 9999, remiseXof: 0, cautionXof: 0, totalXof: 9999, ...plus,
+});
+const calcul = (vente: Record<string, unknown>, demande: Record<string, unknown>) => {
+  const issue = calculerModification(vente, demande, reglagesDuJour, "2026-11-19");
+  return issue.ok ? [issue.calcul.recalcule, issue.calcul.totalXof] : issue.champs;
+};
+verifier("location libre, jour seul : montant gardé", calcul(venteType("location-libre", { dureeHeures: 2 }), { date: "2026-11-24" }), [false, 9999]);
+verifier("location libre, durée changée : prix refait", calcul(venteType("location-libre", { dureeHeures: 2 }), { dureeHeures: 3 }), [true, calculerDevis({ offre: "location-libre", gamme: "PREMIUM", dureeHeures: 3, nombrePersonnes: 2, especes: true }).totalXof]);
+verifier("Gbashi bike, jour seul : montant gardé", calcul(venteType("gbashi-bike", { heureFin: 13 }), { date: "2026-11-24" }), [false, 9999]);
+verifier("Padel bike, jour seul : montant gardé", calcul(venteType("padel-bike", { heureDebut: 17, heureFin: 21, horaire: { depart: "17:30", retour: "20:30" } }), { date: "2026-11-27" }), [false, 9999]);
+verifier("road trip, jour changé : prix du nouveau jour", calcul(venteType("road-trip", { heureDebut: 8, heureFin: 11 }), { date: "2026-11-22" }), [true, calculerDevis({ offre: "road-trip", gamme: "PREMIUM", date: "2026-11-22", nombrePersonnes: 2, especes: true }).totalXof]);
+verifier("la case refait le prix sans rien changer d'autre", calcul(venteType("padel-bike", { heureDebut: 17, heureFin: 21 }), { remettreAuPrixDuComptoir: true }), [true, 7000]);
+
+/* ----------------------------------------------- L'agent qui a encaissé : un prénom, pas un montant */
+
+const { ressembleAUnPrenom, MESSAGE_PRENOM_ATTENDU, LIBELLE_AGENT } = await charger("src/lib/prenom-agent.ts");
+verifier("un prénom a deux lettres au moins", ["Zayed", "Jo", "Awa 2", "3500", "1 500", "K9", ""].map((valeur) => ressembleAUnPrenom(valeur)), [true, true, true, false, false, false, false]);
+verifier("le libellé du champ et son message", [LIBELLE_AGENT, MESSAGE_PRENOM_ATTENDU], ["Agent qui a encaissé (votre prénom)", "Écrivez votre prénom, pas un montant."]);
+const venteMontant = await vendre({
+  cleVente: "cle-modif-agent-montant", offre: "padel-bike", nombrePersonnes: 1, date: vendrediPlusTard, heureDebut: 17,
+  client, encaissePar: "3500", montantAttenduXof: 3500, cgvAcceptees: true,
+});
+verifier("vente : un montant à la place du prénom, 422", [venteMontant.statut, venteMontant.donnees.champs?.encaissePar], [422, "Écrivez votre prénom, pas un montant."]);
+const { schemaVenteComptoirGroupe } = await charger("src/lib/offres-groupe/api.ts");
+const analyseGroupe = schemaVenteComptoirGroupe.safeParse({ encaissePar: "1500" });
+verifier("vente de groupe : le même refus", !analyseGroupe.success && analyseGroupe.error.errors.find((e: { path: unknown[] }) => e.path.join(".") === "encaissePar")?.message, "Écrivez votre prénom, pas un montant.");
+verifier("modification : « Modifié par » refuse un montant", (await modifier(refSeule, { prenom: "Awa", totalAttenduXof: 3500, nouveauTotalXof: 3500, modifiePar: "3500" })).donnees.champs?.modifiePar, "Écrivez votre prénom, pas un montant.");
+verifier("modification : l'agent qui a encaissé aussi", (await modifier(refSeule, { encaissePar: "1500", totalAttenduXof: 3500, nouveauTotalXof: 3500, modifiePar: "Zayed" })).donnees.champs?.encaissePar, "Écrivez votre prénom, pas un montant.");
+// Une ancienne vente qui porte « 3500 » : elle s'affiche toujours, et se corrige.
+const vieille = await depot.creerReservation({
+  offre: "padel-bike", nombrePersonnes: 1, dateDebut: vendrediPlusTard, dateFin: vendrediPlusTard, heureDebut: 17, options: [],
+  client: { prenom: "Kossi", nom: "Ancien", email: "kossi.ancien@example.com" }, moyenPaiement: "ESPECES", cgvAcceptees: true,
+  encaissement: { par: "3500", reference: "ESP-modif-ancien-agent" },
+});
+const refVieille = vieille.reservation.reference;
+verifier("ancienne vente : « 3500 » reste lisible", [estVenteEspeces(await lire(refVieille)), paiementDe(await lire(refVieille))?.encaissePar], [true, "3500"]);
+const agentCorrige = await modifier(refVieille, { encaissePar: "Zayed", totalAttenduXof: 3500, nouveauTotalXof: 3500, modifiePar: "Zayed" });
+verifier("ancienne vente : le prénom remplace le montant", [agentCorrige.statut, paiementDe(await lire(refVieille))?.encaissePar], [200, "Zayed"]);
+verifier("journal : « Encaissé par », avant et après", resumeEvenement((await depot.listerJournal({ type: "vente-modifiee", reference: refVieille }))[0]).lignes.map(net), ["Encaissé par : 3500 → Zayed"]);
+verifier("journal : la vente de groupe au comptoir dit « Encaissé par »",
+  resumeEvenement({ id: "jrn-2", type: "vente-comptoir-groupe", reference: "BL-GROUPE", auteur: "admin (Koffi)", creeLe: new Date().toISOString(), details: { offre: "bike-for-all", date: "2026-11-21", personnes: 12, totalXof: 30000, encaissePar: "Koffi" } }).lignes.map(net).at(-1),
+  "Encaissé par Koffi.");
 
 /* ----------------------------------------------- Les vélos rendus : la gamme la plus rare d'abord */
 

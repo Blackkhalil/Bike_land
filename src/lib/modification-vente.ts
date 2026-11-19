@@ -13,13 +13,16 @@
  *
  * Le prix suit la vente au comptoir d'origine : `calculerDevis` au prix des
  * espèces, avec les réglages des produits et le prix du jour. Il n'est
- * recalculé que si le nombre, le jour ou la durée changent : corriger le
- * nom du client ne change pas ce qu'il a payé. Un code de parrainage qui a
- * réduit la vente réduit aussi le nouveau montant, au même taux.
+ * recalculé que si le nombre ou la durée changent, si le jour change là où
+ * il fixe le prix (road trip, Octobre rose), ou si le commercial demande de
+ * remettre la vente au prix du comptoir d'aujourd'hui : corriger le nom du
+ * client, ou déplacer un Padel bike d'un jour, ne change pas ce qui a été
+ * payé. Un code de parrainage qui a réduit la vente réduit aussi le nouveau
+ * montant, au même taux.
  *
  * Les offres de groupe (Bike for All, Road trip en groupe, Gbashi Bike)
  * tirent leur prix du moteur des offres et de ses réglages : seuls le client
- * et « Argent reçu par » s'y modifient.
+ * et l'agent qui a encaissé s'y modifient.
  *
  * Aucun email ne part pour une modification : le client garde sa facture,
  * le journal garde l'avant et l'après.
@@ -154,6 +157,23 @@ export interface CreneauModifie {
   date?: DateISO;
   heureDebut?: number;
   dureeHeures?: number;
+  /**
+   * Remettre la vente au prix du comptoir d'aujourd'hui, même si rien
+   * d'autre ne change : une vente ancienne, enregistrée quand le comptoir
+   * comptait encore le prix en ligne (un Padel bike à 3 625 F au lieu de
+   * 3 500 F), se corrige ainsi. Jamais pour une offre de groupe.
+   */
+  remettreAuPrixDuComptoir?: boolean;
+}
+
+/**
+ * Le jour fixe-t-il le prix de cette formule ? Le road trip, dont le samedi
+ * et le dimanche ont chacun leur prix, et Octobre rose, un prix par sortie.
+ * Padel bike, la location libre et Gbashi bike coûtent le même prix tous les
+ * jours : les déplacer ne change pas ce que le client a payé.
+ */
+export function prixSelonLeJour(offre: CodeOffre): boolean {
+  return offre === "road-trip" || offre === "octobre-rose";
 }
 
 /** La vente après la modification : son créneau et ses montants. */
@@ -170,7 +190,11 @@ export interface CalculModification {
   totalXof: number;
   /** Le jour ou les heures changent : les vélos sont revus sur le nouveau créneau. */
   creneauChange: boolean;
-  /** Le nombre, le jour ou la durée changent : le prix est recalculé. */
+  /**
+   * Le prix est recalculé : le nombre ou la durée changent, le jour change
+   * et fixe le prix (`prixSelonLeJour`), ou la vente est remise au prix du
+   * comptoir d'aujourd'hui.
+   */
   recalcule: boolean;
 }
 
@@ -205,6 +229,9 @@ export function calculerModification(
   if (!peut.date) refuser("date", demande.date, vente.dateDebut);
   if (!peut.heure) refuser("heureDebut", demande.heureDebut, vente.heureDebut);
   if (!peut.duree) refuser("dureeHeures", demande.dureeHeures, vente.dureeHeures);
+  // Le prix d'une offre de groupe vient du moteur des offres, jamais d'ici.
+  const remettre = demande.remettreAuPrixDuComptoir === true;
+  if (remettre && estOffreGroupe(vente.offre)) champs.remettreAuPrixDuComptoir = pasIci;
 
   const nombrePersonnes =
     peut.personnes && demande.nombrePersonnes !== undefined ? demande.nombrePersonnes : vente.nombrePersonnes;
@@ -277,10 +304,14 @@ export function calculerModification(
 
   if (Object.keys(champs).length > 0) return { ok: false, champs };
 
+  // Un jour changé seul ne refait pas le prix de Padel bike, de la location
+  // libre ni de Gbashi bike : une vente à 3 625 F par personne déplacée d'un
+  // jour passait sinon, sans le dire, au prix d'aujourd'hui.
   const recalcule =
     !estOffreGroupe(vente.offre) &&
-    (nombrePersonnes !== vente.nombrePersonnes ||
-      date !== vente.dateDebut ||
+    (remettre ||
+      nombrePersonnes !== vente.nombrePersonnes ||
+      (date !== vente.dateDebut && prixSelonLeJour(vente.offre)) ||
       (dureeHeures !== undefined && dureeHeures !== dureeAvant));
   const creneauChange = date !== vente.dateDebut || heureDebut !== vente.heureDebut || heureFin !== vente.heureFin;
 
@@ -339,6 +370,22 @@ export function calculerModification(
       recalcule,
     },
   };
+}
+
+/**
+ * Ce que coûterait la vente, telle quelle, au prix du comptoir
+ * d'aujourd'hui ; `null` quand ce prix ne se calcule pas (offre de groupe,
+ * gamme inconnue, jour sans tarif). Le formulaire propose de l'y remettre
+ * quand il diffère du montant enregistré.
+ */
+export function prixDuComptoirAujourdhui(
+  vente: VenteAModifier,
+  reglages: ReglagesProduits,
+  aujourdhuiIci: DateISO,
+): number | null {
+  if (estOffreGroupe(vente.offre)) return null;
+  const issue = calculerModification(vente, { remettreAuPrixDuComptoir: true }, reglages, aujourdhuiIci);
+  return issue.ok ? issue.calcul.totalXof : null;
 }
 
 /* ---------------------------------------------------- Les vélos */
@@ -648,11 +695,16 @@ export function champsChanges(avant: EtatVente, apres: EtatVente): (keyof EtatVe
   return ordre.filter((cle) => avant[cle] !== apres[cle]);
 }
 
-/** Les détails de la ligne « vente-modifiee » du journal : l'avant, l'après, ce qui a changé, les vélos rendus ou pris. */
+/**
+ * Les détails de la ligne « vente-modifiee » du journal : l'avant, l'après,
+ * ce qui a changé, les vélos rendus ou pris. `prixRemisAuComptoir` : le
+ * commercial a demandé de remettre la vente au prix du comptoir du jour.
+ */
 export function detailsVenteModifiee(
   avant: Reservation,
   apres: Reservation,
   velos: { retires: string[]; ajoutes: string[] },
+  prixRemisAuComptoir = false,
 ): Record<string, unknown> {
   const etatAvant = etatDeLaVente(avant);
   const etatApres = etatDeLaVente(apres);
@@ -661,6 +713,7 @@ export function detailsVenteModifiee(
     avant: etatAvant,
     apres: etatApres,
     champs: champsChanges(etatAvant, etatApres),
+    ...(prixRemisAuComptoir && etatAvant.totalXof !== etatApres.totalXof ? { prixRemisAuComptoir: true } : {}),
     ...(velos.retires.length > 0 ? { velosRetires: velos.retires } : {}),
     ...(velos.ajoutes.length > 0 ? { velosAjoutes: velos.ajoutes } : {}),
   };

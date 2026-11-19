@@ -1638,10 +1638,12 @@ const depotDirect: Depot = {
               data: {
                 type: "vente-modifiee",
                 reference: apres.reference,
-                details: detailsVenteModifiee(avant, apres, {
-                  retires: velosRetires,
-                  ajoutes: velosAjoutes,
-                }) as Prisma.InputJsonObject,
+                details: detailsVenteModifiee(
+                  avant,
+                  apres,
+                  { retires: velosRetires, ajoutes: velosAjoutes },
+                  modification.remettreAuPrixDuComptoir === true,
+                ) as Prisma.InputJsonObject,
                 auteur: modification.par,
               },
             });

@@ -11,14 +11,17 @@ import { erreursParChamp, schemaModificationVente } from "@/lib/validation";
  * Modifier une vente en espèces déjà enregistrée, même ancienne (demande du
  * responsable du 19 novembre 2026). Réservé à l'administration.
  *
- * Seuls les champs envoyés changent : le client, « Argent reçu par », et
+ * Seuls les champs envoyés changent : le client, l'agent qui a encaissé, et
  * pour une vente au comptoir classique le nombre de personnes (de vélos en
  * location libre), le jour, l'heure et la durée, là où la vente d'origine
- * les laissait choisir. Une offre de groupe ne change que de client et de
- * vendeur : son prix vient du moteur des offres.
+ * les laissait choisir. Une offre de groupe ne change que de client et
+ * d'agent : son prix vient du moteur des offres.
  *
- * Le serveur recalcule le prix comme à la vente, revoit les vélos du
- * créneau, et écrit au journal qui a modifié quoi, l'avant et l'après.
+ * Le serveur recalcule le prix comme à la vente quand le nombre ou la durée
+ * changent, quand le jour change là où il fixe le prix, ou quand
+ * `remettreAuPrixDuComptoir` le demande (une vente ancienne enregistrée au
+ * prix en ligne). Il revoit les vélos du créneau, et écrit au journal qui a
+ * modifié quoi, l'avant et l'après.
  * `totalAttenduXof` est le total que l'écran montrait : si la vente a
  * changé depuis, 409 et rien n'est écrit. `nouveauTotalXof` est le nouveau
  * montant affiché : le serveur doit trouver le même (409 sinon), c'est lui

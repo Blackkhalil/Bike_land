@@ -993,7 +993,7 @@ export interface Depot {
 
   /**
    * Modifie une vente en espèces déjà enregistrée, même ancienne
-   * (src/lib/modification-vente.ts) : le client, « Argent reçu par », et
+   * (src/lib/modification-vente.ts) : le client, l'agent qui a encaissé, et
    * pour une vente au comptoir classique le nombre, le jour, l'heure et la
    * durée. Le prix est recalculé comme à la vente, les vélos rendus ou pris
    * sur le créneau, hors ceux de la vente elle-même, et la ligne du journal

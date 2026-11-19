@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from "react";
 
+import { ressembleAUnPrenom } from "@/lib/prenom-agent";
+
 /**
  * Le prénom de qui agit dans l'administration : il signe la ligne du
  * journal (« admin (Koffi) »), puisqu'il n'y a qu'un compte. Retenu sur ce
- * téléphone, sous la même clé que « Argent reçu par » au comptoir
- * (src/components/admin/VenteEspeces.tsx) : on ne le tape qu'une fois.
+ * téléphone, sous la même clé que l'agent qui encaisse au comptoir
+ * (src/components/admin/VenteEspeces.tsx) : on ne le tape qu'une fois. Un
+ * montant retenu là par erreur (« 3500 ») est ignoré : ce n'est pas un prénom.
  */
 const CLE_PRENOM = "bikeland.encaisse-par";
 
@@ -23,7 +26,7 @@ export function usePrenomRetenu(): {
     const depart = setTimeout(() => {
       try {
         const retenu = window.localStorage.getItem(CLE_PRENOM);
-        if (retenu) setPrenom((actuel) => actuel || retenu);
+        if (retenu && ressembleAUnPrenom(retenu)) setPrenom((actuel) => actuel || retenu);
       } catch {
         // Stockage indisponible (navigation privée) : on le retapera.
       }
@@ -33,7 +36,7 @@ export function usePrenomRetenu(): {
 
   const retenir = () => {
     try {
-      if (prenom.trim()) window.localStorage.setItem(CLE_PRENOM, prenom.trim());
+      if (ressembleAUnPrenom(prenom)) window.localStorage.setItem(CLE_PRENOM, prenom.trim());
     } catch {
       // Sans stockage, le prénom sera simplement à retaper.
     }

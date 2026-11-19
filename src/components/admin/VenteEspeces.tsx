@@ -47,6 +47,8 @@ import { estOffreGroupe, FRAIS_PAIEMENT_EN_LIGNE_XOF } from "@/data/offres";
 import { formatMontant, heureEnClair } from "@/lib/offres";
 import { joursEnClair } from "@/lib/offres/calendrier";
 import type { FaitsChat } from "@/lib/offres-groupe/conversation";
+import { insecables } from "@/lib/offres-groupe/textes-chat";
+import { LIBELLE_AGENT, MESSAGE_PRENOM_ATTENDU, ressembleAUnPrenom } from "@/lib/prenom-agent";
 import { calculerDevis } from "@/lib/tarification";
 import type { CodeOffre, StatutVelo } from "@/lib/types";
 
@@ -377,11 +379,12 @@ export function VenteEspeces({
 
   // Le nom de qui encaisse est retenu sur ce téléphone : on ne le retape
   // pas à chaque client. Lu après le premier rendu, le serveur n'en sait rien.
+  // Un montant retenu là par erreur (« 3500 ») est ignoré : ce n'est pas un prénom.
   useEffect(() => {
     const depart = setTimeout(() => {
       try {
         const retenu = window.localStorage.getItem(CLE_ENCAISSEUR);
-        if (retenu) setEncaissePar((actuel) => actuel || retenu);
+        if (retenu && ressembleAUnPrenom(retenu)) setEncaissePar((actuel) => actuel || retenu);
       } catch {
         // Stockage indisponible (navigation privée) : on le retapera.
       }
@@ -574,9 +577,14 @@ export function VenteEspeces({
           ? "Renseignez le prénom, le nom et l'email du client."
           : encaissePar.trim().length < 2
             ? "Indiquez qui reçoit l'argent."
-            : !cgv
-              ? "Le client doit accepter les conditions générales."
-              : null);
+            : !ressembleAUnPrenom(encaissePar)
+              ? MESSAGE_PRENOM_ATTENDU
+              : !cgv
+                ? "Le client doit accepter les conditions générales."
+                : null);
+  // Un montant tapé à la place du prénom : dit sous le champ, sans attendre le bouton.
+  const erreurAgent =
+    erreurs.encaissePar ?? (encaissePar.trim().length >= 2 && !ressembleAUnPrenom(encaissePar) ? MESSAGE_PRENOM_ATTENDU : undefined);
 
   const choisirOffre = (nouvelle: CodeOffre) => {
     setOffre(nouvelle);
@@ -1043,7 +1051,7 @@ export function VenteEspeces({
                 </p>
                 <p className={`mt-1.5 text-[0.76rem] ${padelHorsProgramme ? "text-orange-sourd" : "text-gris-cadre"}`}>
                   {padelHorsProgramme
-                    ? "Pas de Padel bike programmé ce jour-là."
+                    ? insecables("Attention : aucun Padel bike n'est programmé ce jour-là. Vérifiez la date.")
                     : `Départ ${programmeEnClair(sortiePadel)}, réglé dans Réglages des produits.`}
                 </p>
               </div>
@@ -1391,11 +1399,11 @@ export function VenteEspeces({
           )}
           <Champ
             id="vente-encaisse-par"
-            libelle="Argent reçu par"
+            libelle={LIBELLE_AGENT}
             obligatoire
             valeur={encaissePar}
             onChange={setEncaissePar}
-            erreur={erreurs.encaissePar}
+            erreur={erreurAgent}
             aide="Votre prénom. Il est retenu sur ce téléphone."
             autoComplete="given-name"
           />

@@ -19,6 +19,7 @@ import { z } from "zod";
 import type { GammeVelo } from "@/data/offres";
 import type { DateISO } from "@/lib/dates";
 import type { HeureMinute, IssueOffre, Refus } from "@/lib/offres";
+import { MESSAGE_PRENOM_ATTENDU, ressembleAUnPrenom } from "@/lib/prenom-agent";
 
 /* --------------------------------------------------------------- Routes */
 
@@ -157,7 +158,9 @@ export const schemaVenteComptoirGroupe = schemaDemandeDevis.and(
       .trim()
       .min(2, "Indiquez qui a reçu l'argent.")
       .max(40, "Prénom trop long.")
-      .regex(/^[\p{L}\p{N} .'’-]+$/u, "Lettres, chiffres, espaces et tirets seulement."),
+      .regex(/^[\p{L}\p{N} .'’-]+$/u, "Lettres, chiffres, espaces et tirets seulement.")
+      // Un prénom, pas un montant : deux lettres au moins (src/lib/prenom-agent.ts).
+      .refine(ressembleAUnPrenom, MESSAGE_PRENOM_ATTENDU),
     attendu: z.object({ totalXof: entier(0, 100_000_000) }),
     cleVente: z.string().regex(/^[A-Za-z0-9-]{8,64}$/, "Saisie invalide : rechargez la page."),
     cgvAcceptees: z.literal(true, { errorMap: () => ({ message: "Le client doit accepter les conditions générales." }) }),

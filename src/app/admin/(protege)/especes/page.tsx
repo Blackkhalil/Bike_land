@@ -229,8 +229,8 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
         <h1 className="titre-editorial mt-3 text-[2rem]">Ventes en espèces</h1>
         <p className="mt-2 max-w-2xl text-[0.88rem] leading-relaxed text-gris-cadre">
           Le client paie sur place : enregistrez la vente ici, il reçoit aussitôt sa confirmation et
-          sa facture par email. Chaque vente est signée du nom de qui a reçu l&apos;argent, et le
-          gérant en est averti par email.
+          sa facture par email. Chaque vente est signée du prénom de l&apos;agent qui a encaissé, et
+          le gérant en est averti par email.
         </p>
       </header>
 
@@ -385,7 +385,7 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
                 <caption className="sr-only">Encaissements par vendeur</caption>
                 <thead className="border-b border-noir-piste/10 text-[0.76rem] text-gris-cadre">
                   <tr>
-                    <th scope="col" className="px-4 py-3 font-semibold">Reçu par</th>
+                    <th scope="col" className="px-4 py-3 font-semibold">Encaissé par</th>
                     <th scope="col" className="px-4 py-3 text-right font-semibold">Ce jour</th>
                     <th scope="col" className="px-4 py-3 text-right font-semibold">Ventes du jour</th>
                     <th scope="col" className="px-4 py-3 text-right font-semibold">Semaine</th>
@@ -438,7 +438,7 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[0.74rem] text-gris-cadre">Reçu par</dt>
+                      <dt className="text-[0.74rem] text-gris-cadre">Encaissé par</dt>
                       <dd>{paiementPrincipal(reservation)?.encaissePar ?? "non renseigné"}</dd>
                     </div>
                     <div>
@@ -484,7 +484,7 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
                     <th scope="col" className="px-3 py-3 font-semibold">Formule et vélo</th>
                     <th scope="col" className="px-3 py-3 font-semibold">Départ</th>
                     <th scope="col" className="px-3 py-3 text-right font-semibold">Montant</th>
-                    <th scope="col" className="px-3 py-3 font-semibold whitespace-nowrap">Reçu par</th>
+                    <th scope="col" className="px-3 py-3 font-semibold whitespace-nowrap">Encaissé par</th>
                     <th scope="col" className="px-3 py-3 font-semibold">Statut</th>
                     <th scope="col" className="px-3 py-3 font-semibold">Actions</th>
                   </tr>

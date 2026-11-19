@@ -10,7 +10,8 @@ import { formatNombre } from "@/lib/format";
 
 /**
  * Le prénom saisi par qui agit : il signe la ligne du journal
- * (« admin (Koffi) »). Mêmes règles que « Argent reçu par » au comptoir.
+ * (« admin (Koffi) »). Mêmes caractères que le prénom de l'agent qui
+ * encaisse au comptoir.
  */
 export const schemaPrenom = z
   .string({ required_error: "Indiquez votre prénom.", invalid_type_error: "Indiquez votre prénom." })

@@ -25,11 +25,13 @@ import {
   DUREES_LOCATION,
   messageVelosModification,
   PERSONNES_MAX_VENTE,
+  prixDuComptoirAujourdhui,
   prixParGamme,
   type VenteAModifier,
 } from "@/lib/modification-vente";
 import { formatMontant } from "@/lib/offres";
 import { insecables } from "@/lib/offres-groupe/textes-chat";
+import { LIBELLE_AGENT, MESSAGE_PRENOM_ATTENDU, ressembleAUnPrenom } from "@/lib/prenom-agent";
 
 /** Ce que la fenêtre de modification doit savoir de la vente, tiré d'elle par la page. */
 export interface VenteModifiable extends VenteAModifier {
@@ -46,7 +48,11 @@ export type CreneauPris = CreneauOccupe & { reference: string };
 /** La réponse du serveur à une modification enregistrée. */
 interface ModificationFaite {
   deja: boolean;
+  ancienTotalXof: number;
+  totalXof: number;
   differenceXof: number;
+  /** La vente a été remise au prix du comptoir : rien à rendre par réflexe. */
+  remiseAuPrixDuComptoir: boolean;
   velosRetires: string[];
   velosAjoutes: string[];
 }
@@ -63,13 +69,15 @@ const enEtat = (velo: VeloComptoir) => velo.statut !== "MAINTENANCE" && velo.sta
 /**
  * Le bouton « Modifier » d'une vente en espèces, et sa fenêtre (demande du
  * responsable du 19 novembre 2026). Une vente même ancienne se corrige : le
- * client, « Argent reçu par », et pour une vente au comptoir classique le
+ * client, l'agent qui a encaissé, et pour une vente au comptoir classique le
  * nombre, le jour, l'heure et la durée, là où la vente les laissait choisir.
- * Une offre de groupe ne change que de client et de vendeur.
+ * Une offre de groupe ne change que de client et d'agent.
  *
  * Le nouveau montant s'affiche avant l'enregistrement, avec ce qu'il faut
  * rendre au client ou encaisser en plus : il vient du même calcul que le
- * serveur, qui le refait et refuse tout autre montant. Aucun email ne part.
+ * serveur, qui le refait et refuse tout autre montant. Une vente ancienne
+ * enregistrée à un autre prix que celui du comptoir d'aujourd'hui peut y
+ * être remise, d'une case à cocher. Aucun email ne part.
  */
 export function ModifierVente({
   vente,
@@ -141,7 +149,8 @@ function FenetreModification({
   const [email, setEmail] = useState(vente.client.email);
   const [telephone, setTelephone] = useState(vente.client.telephone);
   const [encaissePar, setEncaissePar] = useState(vente.encaissePar);
-  // « Modifié par » : le prénom retenu sur ce téléphone, comme « Argent reçu par ».
+  const [auPrixDuComptoir, setAuPrixDuComptoir] = useState(false);
+  // « Modifié par » : le prénom retenu sur ce téléphone, comme celui de l'agent qui encaisse.
   const { prenom: modifiePar, setPrenom: setModifiePar, retenir } = usePrenomRetenu();
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -162,9 +171,20 @@ function FenetreModification({
     ...(telephone.trim() !== vente.client.telephone ? { telephone: telephone.trim() } : {}),
     ...(encaissePar.trim() !== vente.encaissePar ? { encaissePar: encaissePar.trim() } : {}),
   };
-  const changements = { ...creneau, ...contact };
 
-  const issue = calculerModification(vente, creneau, reglages, aujourdhuiIci);
+  // Le prix du comptoir d'aujourd'hui pour la vente telle quelle : s'il
+  // diffère du montant enregistré, le commercial peut l'y remettre. La case
+  // ne sert que si rien d'autre ne refait déjà le prix (nombre, durée).
+  const prixComptoir = prixDuComptoirAujourdhui(vente, reglages, aujourdhuiIci);
+  const sansLaCase = calculerModification(vente, creneau, reglages, aujourdhuiIci);
+  const caseProposee =
+    prixComptoir !== null && prixComptoir !== vente.totalXof && !(sansLaCase.ok && sansLaCase.calcul.recalcule);
+  const remettre = caseProposee && auPrixDuComptoir;
+  const changements = { ...creneau, ...contact, ...(remettre ? { remettreAuPrixDuComptoir: true } : {}) };
+
+  const issue = remettre
+    ? calculerModification(vente, { ...creneau, remettreAuPrixDuComptoir: true }, reglages, aujourdhuiIci)
+    : sansLaCase;
   const calcul = issue.ok ? issue.calcul : null;
   const champs: Record<string, string> = { ...(issue.ok ? {} : issue.champs), ...erreurs };
   const nouveauTotal = calcul?.totalXof ?? vente.totalXof;
@@ -190,21 +210,29 @@ function FenetreModification({
         ).length
       : null;
 
+  // L'agent qui a encaissé et celui qui modifie : un prénom, deux lettres au
+  // moins. Une ancienne vente qui porte un montant à la place (« 3500 ») le
+  // dit dès l'ouverture, jusqu'à ce que le commercial le remplace.
+  const agent = encaissePar.trim();
+  const erreurAgent =
+    agent.length < 2 ? "Indiquez qui a reçu l'argent." : !ressembleAUnPrenom(agent) ? MESSAGE_PRENOM_ATTENDU : null;
+  const signataire = modifiePar.trim();
+  const erreurSignataire =
+    signataire.length < 2 ? "Indiquez qui modifie la vente." : !ressembleAUnPrenom(signataire) ? MESSAGE_PRENOM_ATTENDU : null;
+
   const obstacle = fait
     ? null
-    : Object.keys(changements).length === 0
-      ? "Rien n'a changé."
-      : !issue.ok
-        ? "Corrigez les champs signalés."
-        : libres !== null && personnes > libres
-          ? messageVelosModification(vente.offre, vente.gamme, libres)
-          : contact.prenom === "" || contact.nom === "" || contact.email === ""
-            ? "Renseignez le prénom, le nom et l'email du client."
-            : contact.encaissePar !== undefined && contact.encaissePar.length < 2
-              ? "Indiquez qui a reçu l'argent."
-              : modifiePar.trim().length < 2
-                ? "Indiquez qui modifie la vente."
-                : null;
+    : erreurAgent
+      ? erreurAgent
+      : Object.keys(changements).length === 0
+        ? "Rien n'a changé."
+        : !issue.ok
+          ? "Corrigez les champs signalés."
+          : libres !== null && personnes > libres
+            ? messageVelosModification(vente.offre, vente.gamme, libres)
+            : contact.prenom === "" || contact.nom === "" || contact.email === ""
+              ? "Renseignez le prénom, le nom et l'email du client."
+              : erreurSignataire;
 
   const fermer = () => fenetre.current?.close();
 
@@ -240,7 +268,10 @@ function FenetreModification({
       retenir();
       setFait({
         deja: Boolean(donnees.deja),
+        ancienTotalXof: donnees.ancienTotalXof ?? vente.totalXof,
+        totalXof: donnees.totalXof,
         differenceXof: donnees.differenceXof ?? 0,
+        remiseAuPrixDuComptoir: remettre,
         velosRetires: donnees.velosRetires ?? [],
         velosAjoutes: donnees.velosAjoutes ?? [],
       });
@@ -303,10 +334,16 @@ function FenetreModification({
             <p className="font-semibold">
               {fait.deja ? "Cette modification était déjà enregistrée." : "Vente modifiée et notée au journal."}
             </p>
-            {fait.differenceXof < 0 && (
+            {/* Remise au prix du comptoir : le montant noté est corrigé, rien n'est à rendre par réflexe. */}
+            {fait.remiseAuPrixDuComptoir && fait.differenceXof !== 0 && (
+              <p className="mt-1 font-semibold text-noir-piste">
+                Le montant enregistré est passé de {formatMontant(fait.ancienTotalXof)} à {formatMontant(fait.totalXof)}.
+              </p>
+            )}
+            {!fait.remiseAuPrixDuComptoir && fait.differenceXof < 0 && (
               <p className="mt-1 font-semibold text-noir-piste">Rendez {formatMontant(-fait.differenceXof)} au client.</p>
             )}
-            {fait.differenceXof > 0 && (
+            {!fait.remiseAuPrixDuComptoir && fait.differenceXof > 0 && (
               <p className="mt-1 font-semibold text-noir-piste">Encaissez {formatMontant(fait.differenceXof)} de plus.</p>
             )}
             {fait.velosRetires.length > 0 && (
@@ -332,7 +369,7 @@ function FenetreModification({
             <fieldset disabled={envoi} className="m-0 min-w-0 border-0 p-0">
               {groupe ? (
                 <p className="mt-4 rounded-[var(--radius-bouton)] bg-craie px-3 py-2 text-[0.8rem] leading-relaxed">
-                  {insecables("Offre de groupe : seuls le client et « Argent reçu par » se modifient ici.")}
+                  {insecables("Offre de groupe : seuls le client et l'agent qui a encaissé se modifient ici.")}
                 </p>
               ) : (
                 <div className="mt-4 grid gap-4 *:min-w-0 sm:grid-cols-2">
@@ -393,7 +430,9 @@ function FenetreModification({
                     {champs.date ? (
                       <p className="mt-1.5 text-[0.76rem] text-orange-sourd">{insecables(champs.date)}</p>
                     ) : padelHorsProgramme ? (
-                      <p className="mt-1.5 text-[0.76rem] text-orange-sourd">Pas de Padel bike programmé ce jour-là.</p>
+                      <p className="mt-1.5 text-[0.76rem] text-orange-sourd">
+                        {insecables("Attention : aucun Padel bike n'est programmé ce jour-là. Vérifiez la date.")}
+                      </p>
                     ) : null}
                   </div>
 
@@ -477,11 +516,11 @@ function FenetreModification({
                 />
                 <Champ
                   id={`${id}-encaisse-par`}
-                  libelle="Argent reçu par"
+                  libelle={LIBELLE_AGENT}
                   obligatoire
                   valeur={encaissePar}
                   onChange={setEncaissePar}
-                  erreur={champs.encaissePar}
+                  erreur={champs.encaissePar ?? erreurAgent ?? undefined}
                   autoComplete="off"
                 />
                 <Champ
@@ -490,11 +529,27 @@ function FenetreModification({
                   obligatoire
                   valeur={modifiePar}
                   onChange={setModifiePar}
-                  erreur={champs.modifiePar}
+                  erreur={champs.modifiePar ?? (signataire.length >= 2 && erreurSignataire ? erreurSignataire : undefined)}
                   aide="Votre prénom. Il est retenu sur ce téléphone."
                   autoComplete="given-name"
                 />
               </div>
+
+              {/* Une vente ancienne, enregistrée à un autre prix que celui du comptoir d'aujourd'hui. */}
+              {caseProposee && prixComptoir !== null && (
+                <label className="mt-4 flex items-start gap-3 rounded-[var(--radius-bouton)] bg-craie px-3 py-3 text-[0.86rem] leading-relaxed">
+                  <input
+                    type="checkbox"
+                    checked={auPrixDuComptoir}
+                    onChange={(evenement) => setAuPrixDuComptoir(evenement.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 accent-orange-signal"
+                  />
+                  <span>
+                    Remettre au prix du comptoir d&apos;aujourd&apos;hui ({formatMontant(prixComptoir)} au lieu de{" "}
+                    {formatMontant(vente.totalXof)})
+                  </span>
+                </label>
+              )}
 
               {/* Le montant, avant d'enregistrer : l'ancien, le nouveau, et l'écart à régler. */}
               <div className="mt-5 rounded-[var(--radius-carte)] bg-noir-piste p-4 text-craie" aria-live="polite">
@@ -511,13 +566,22 @@ function FenetreModification({
                       <dt className="text-craie/70">Nouveau montant</dt>
                       <dd className="text-right font-display text-[1.4rem] font-bold">{formatMontant(nouveauTotal)}</dd>
                     </dl>
-                    <p className="mt-2 text-[0.9rem] font-semibold text-orange-signal">
-                      {insecables(
-                        ecart < 0
-                          ? `À rendre au client : ${formatMontant(-ecart)}`
-                          : `À encaisser en plus : ${formatMontant(ecart)}`,
-                      )}
-                    </p>
+                    {remettre ? (
+                      // Remise au prix du comptoir : le montant noté est corrigé. Rien à rendre par réflexe.
+                      <p className="mt-2 text-[0.86rem] leading-relaxed">
+                        Le montant enregistré passe de {formatMontant(vente.totalXof)} à {formatMontant(nouveauTotal)}. Si
+                        vous aviez déjà encaissé {formatMontant(nouveauTotal)}, il n&apos;y a rien à{" "}
+                        {ecart < 0 ? "rendre" : "encaisser en plus"}.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-[0.9rem] font-semibold text-orange-signal">
+                        {insecables(
+                          ecart < 0
+                            ? `À rendre au client : ${formatMontant(-ecart)}`
+                            : `À encaisser en plus : ${formatMontant(ecart)}`,
+                        )}
+                      </p>
+                    )}
                   </>
                 )}
                 <p className="mt-2 text-[0.76rem] text-craie/70">Aucun email ne part au client.</p>

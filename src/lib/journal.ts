@@ -181,7 +181,7 @@ export function resumeEvenement(evenement: EvenementJournal): ResumeEvenement {
         titre: `Vente au comptoir : ${montantF(nombre(d.totalXof) ?? 0)} en espèces`,
         lignes: [
           `${nomOffreGroupe(d.offre)}, ${nombre(d.personnes) ?? "?"} personnes, le ${jour(d.date)}.`,
-          ...(texte(d.encaissePar) ? [`Argent reçu par ${texte(d.encaissePar)}.`] : []),
+          ...(texte(d.encaissePar) ? [`Encaissé par ${texte(d.encaissePar)}.`] : []),
         ],
       };
     case "vente-modifiee":
@@ -250,6 +250,8 @@ function resumeVenteModifiee(evenement: EvenementJournal): ResumeEvenement {
   }
 
   const lignes: string[] = [];
+  // Le commercial a remis la vente au prix du comptoir du jour de la modification.
+  if (d.prixRemisAuComptoir === true) lignes.push("Montant remis au prix du comptoir.");
   const avantApres = (cle: string, libelle: string, enClair: (valeur: unknown) => string) => {
     if (avant[cle] !== undefined && apres[cle] !== undefined && avant[cle] !== apres[cle]) {
       lignes.push(`${libelle} : ${enClair(avant[cle])} → ${enClair(apres[cle])}`);
@@ -264,7 +266,7 @@ function resumeVenteModifiee(evenement: EvenementJournal): ResumeEvenement {
   }
   avantApres("telephone", "Téléphone", (valeur) => texte(valeur) ?? "aucun");
   avantApres("email", "Email", (valeur) => texte(valeur) ?? "aucun");
-  avantApres("encaissePar", "Argent reçu par", (valeur) => texte(valeur) ?? "non renseigné");
+  avantApres("encaissePar", "Encaissé par", (valeur) => texte(valeur) ?? "non renseigné");
   const liste = (valeur: unknown) => (Array.isArray(valeur) ? valeur.map(nomDeVelo).filter((nom): nom is string => Boolean(nom)) : []);
   const liberes = [...liste(d.velosRetires), ...(nomDeVelo(d.veloRetire) ? [nomDeVelo(d.veloRetire) as string] : [])];
   if (liberes.length > 0) lignes.push(`${liberes.length > 1 ? "Vélos libérés" : "Vélo libéré"} : ${liberes.join(", ")}`);

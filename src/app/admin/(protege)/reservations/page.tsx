@@ -571,13 +571,13 @@ function velosParGamme(gammes: unknown): string {
   }).join(", ");
 }
 
-/** « Espèces, reçu par Koffi » sous le montant d'une vente au comptoir. */
+/** « Espèces, encaissé par Koffi » sous le montant d'une vente au comptoir. */
 function ReglementEspeces({ reservation }: { reservation: Reservation }) {
   if (!estVenteEspeces(reservation)) return null;
   const par = paiementPrincipal(reservation)?.encaissePar;
   return (
     <span className="block text-[0.76rem] font-normal text-gris-cadre">
-      Espèces{par ? `, reçu par ${par}` : ""}
+      Espèces{par ? `, encaissé par ${par}` : ""}
     </span>
   );
 }

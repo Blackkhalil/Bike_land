@@ -24,6 +24,7 @@ import { dateAuBeninDe, heureDe, jourDeLaSemaine, minutesDe } from "@/lib/offres
 import { ROUTES_OFFRES_GROUPE, schemaClient, schemaDemandeDevis, type DemandeDevis } from "@/lib/offres-groupe/api";
 import type { FaitsChat } from "@/lib/offres-groupe/conversation";
 import { NOMS_OFFRES, personnesMinDe } from "@/lib/offres-groupe/textes-chat";
+import { LIBELLE_AGENT, MESSAGE_PRENOM_ATTENDU, ressembleAUnPrenom } from "@/lib/prenom-agent";
 
 const CHAMP =
   "mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem] outline-none transition-colors focus:border-orange-signal";
@@ -91,7 +92,7 @@ export function VenteComptoirGroupe({
   faits: FaitsChat;
   /** L'horloge du comptoir, relue chaque minute. */
   maintenant: number;
-  /** « Argent reçu par » : le prénom de qui encaisse, partagé avec le reste du comptoir. */
+  /** L'agent qui a encaissé : son prénom, partagé avec le reste du comptoir. */
   encaissePar: string;
   onEncaisseParChange: (valeur: string) => void;
   /** Appelé après l'enregistrement : le comptoir retient le prénom sur ce téléphone. */
@@ -169,9 +170,13 @@ export function VenteComptoirGroupe({
       ? "Renseignez le prénom, le nom, l'email et le téléphone du client."
       : encaissePar.trim().length < 2
         ? "Indiquez qui reçoit l'argent."
-        : !cgv
-          ? "Le client doit accepter les conditions générales."
-          : null;
+        : !ressembleAUnPrenom(encaissePar)
+          ? MESSAGE_PRENOM_ATTENDU
+          : !cgv
+            ? "Le client doit accepter les conditions générales."
+            : null;
+  // Un montant tapé à la place du prénom : dit sous le champ, sans attendre le bouton.
+  const agentSansPrenom = encaissePar.trim().length >= 2 && !ressembleAUnPrenom(encaissePar);
 
   /** Toute saisie qui change le prix oublie un montant donné par le serveur. */
   const changer = <T,>(maj: (valeur: T) => void) => (valeur: T) => {
@@ -458,11 +463,16 @@ export function VenteComptoirGroupe({
       <fieldset className="mt-6">
         <legend className="etiquette opacity-75">4. L&apos;encaissement</legend>
         <div className="mt-2 grid *:min-w-0 gap-4 sm:grid-cols-2">
-          <Champ libelle="Argent reçu par (obligatoire)" aide="Votre prénom. Il est retenu sur ce téléphone.">
+          <Champ
+            libelle={`${LIBELLE_AGENT} (obligatoire)`}
+            aide="Votre prénom. Il est retenu sur ce téléphone."
+            erreur={agentSansPrenom ? MESSAGE_PRENOM_ATTENDU : undefined}
+          >
             <input
               value={encaissePar}
               autoComplete="given-name"
               aria-required="true"
+              aria-invalid={agentSansPrenom || undefined}
               onChange={(evenement) => onEncaisseParChange(evenement.target.value)}
               className={CHAMP}
             />
@@ -523,12 +533,27 @@ export function VenteComptoirGroupe({
   );
 }
 
-function Champ({ libelle, aide, children }: { libelle: string; aide?: string; children: ReactNode }) {
+function Champ({
+  libelle,
+  aide,
+  erreur,
+  children,
+}: {
+  libelle: string;
+  aide?: string;
+  /** Ce qui ne va pas dans la saisie : il prend la place de l'aide. */
+  erreur?: string;
+  children: ReactNode;
+}) {
   return (
     <label className="block">
       <span className={ETIQUETTE}>{libelle}</span>
       {children}
-      {aide && <span className="mt-1.5 block text-[0.76rem] text-gris-cadre">{aide}</span>}
+      {erreur ? (
+        <span className="mt-1.5 block text-[0.76rem] text-orange-sourd">{erreur}</span>
+      ) : (
+        aide && <span className="mt-1.5 block text-[0.76rem] text-gris-cadre">{aide}</span>
+      )}
     </label>
   );
 }

@@ -22,6 +22,7 @@ import {
   SORTIES_SUR_COMMANDE,
 } from "@/data/offres";
 import { ajouterJours, aujourdhui, estDateISOValide } from "./dates";
+import { MESSAGE_PRENOM_ATTENDU, ressembleAUnPrenom } from "./prenom-agent";
 
 const dateISO = z
   .string()
@@ -400,6 +401,22 @@ function reglesComptoir(valeurs: z.infer<typeof champsComptoir>, contexte: z.Ref
 /** Le devis d'une vente au comptoir, avant de l'encaisser. */
 export const schemaDevisComptoir = champsComptoir.superRefine(reglesComptoir);
 
+/**
+ * Un prénom qui signe : l'agent qui a encaissé, « Modifié par ». Lettres,
+ * chiffres, espaces, points, apostrophes et tirets, avec deux lettres au
+ * moins : des ventes portaient un montant à la place du prénom
+ * (src/lib/prenom-agent.ts).
+ */
+function prenomQuiSigne(manquant: string) {
+  return z
+    .string()
+    .trim()
+    .min(2, manquant)
+    .max(40, "Nom trop long.")
+    .regex(/^[\p{L}\p{N} .'’-]+$/u, "Lettres, chiffres, espaces et tirets seulement.")
+    .refine(ressembleAUnPrenom, MESSAGE_PRENOM_ATTENDU);
+}
+
 export const schemaVenteComptoir = champsComptoir
   .extend({
     client: z.object({
@@ -416,15 +433,10 @@ export const schemaVenteComptoir = champsComptoir
         .or(z.literal("")),
     }),
     /**
-     * Qui a reçu l'argent. Lettres, chiffres, espaces, points, apostrophes
-     * et tirets : il figure dans l'objet de l'email envoyé au gérant.
+     * L'agent qui a encaissé : son prénom. Il figure dans l'objet de l'email
+     * envoyé au gérant.
      */
-    encaissePar: z
-      .string()
-      .trim()
-      .min(2, "Indiquez qui a reçu l'argent.")
-      .max(40, "Nom trop long.")
-      .regex(/^[\p{L}\p{N} .'’-]+$/u, "Lettres, chiffres, espaces et tirets seulement."),
+    encaissePar: prenomQuiSigne("Indiquez qui a reçu l'argent."),
     /**
      * Le montant affiché au commercial, donc celui qu'il a encaissé. Le
      * serveur refuse d'enregistrer un autre montant que celui-là.
@@ -442,18 +454,6 @@ export type EntreeDevisComptoir = z.infer<typeof schemaDevisComptoir>;
 export type EntreeVenteComptoir = z.infer<typeof schemaVenteComptoir>;
 
 /* ------------------------------------- Modifier une vente en espèces */
-
-/**
- * Un prénom qui signe : « Argent reçu par », « Modifié par ». Lettres,
- * chiffres, espaces, points, apostrophes et tirets, comme à la vente.
- */
-const prenomQuiSigne = (manquant: string) =>
-  z
-    .string()
-    .trim()
-    .min(2, manquant)
-    .max(40, "Nom trop long.")
-    .regex(/^[\p{L}\p{N} .'’-]+$/u, "Lettres, chiffres, espaces et tirets seulement.");
 
 /**
  * Une vente en espèces modifiée depuis l'administration
@@ -490,6 +490,11 @@ export const schemaModificationVente = z.object({
     .optional(),
   encaissePar: prenomQuiSigne("Indiquez qui a reçu l'argent.").optional(),
   modifiePar: prenomQuiSigne("Indiquez qui modifie la vente."),
+  /**
+   * Remettre la vente au prix du comptoir d'aujourd'hui, même si rien d'autre
+   * ne change : une vente ancienne enregistrée au prix en ligne se corrige.
+   */
+  remettreAuPrixDuComptoir: z.boolean().optional(),
 });
 
 export type EntreeModificationVente = z.infer<typeof schemaModificationVente>;

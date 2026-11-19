@@ -987,7 +987,12 @@ export const depotDemo: Depot = {
     const evenement = ecrireAuJournal({
       type: "vente-modifiee",
       reference: reservation.reference,
-      details: detailsVenteModifiee(avant, reservation, { retires: velosRetires, ajoutes: velosAjoutes }),
+      details: detailsVenteModifiee(
+        avant,
+        reservation,
+        { retires: velosRetires, ajoutes: velosAjoutes },
+        modification.remettreAuPrixDuComptoir === true,
+      ),
       auteur: modification.par,
     });
     return {
