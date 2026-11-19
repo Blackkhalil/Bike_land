@@ -1755,7 +1755,8 @@ export function RenvoyerFacture({ reference }: { reference: string }) {
   );
 }
 
-function Champ({
+/** Une case de saisie du comptoir, avec son libellé, son aide ou son erreur. */
+export function Champ({
   id,
   libelle,
   valeur,

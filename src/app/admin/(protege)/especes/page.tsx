@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { ModifierVente, type CreneauPris, type VenteModifiable } from "@/components/admin/ModifierVente";
 import {
   AnnulerVente,
   NoterRemboursement,
@@ -12,22 +13,24 @@ import { Pastille } from "@/components/ui";
 import { heureAuBenin } from "@/data/offres";
 import { exigerSessionAdmin } from "@/lib/admin";
 import { ajouterJours, aujourdhui, dateAuBenin, DECALAGE_BENIN_MS, estDateISOValide, type DateISO } from "@/lib/dates";
-import { depot } from "@/lib/db";
-import type { CreneauOccupe } from "@/lib/db/contrat";
+import { depot, LIMITE_JOURNAL_MAX } from "@/lib/db";
 import {
   formatDate,
   formatDateAvecJour,
   formatDateCourte,
+  formatHeureAuBenin,
   formatNombre,
   formatPlageReservation,
   formatXof,
   resumeOffre,
 } from "@/lib/format";
+import { prenomDeAuteur } from "@/lib/journal";
+import { refusModificationVente } from "@/lib/modification-vente";
 import { offresGroupeEnVente } from "@/lib/offres-groupe/vitrine";
 import { lireReglages } from "@/lib/reglages";
 import { estEnAttente, estPayee, estVenteEspeces, montantARendre, paiementPrincipal } from "@/lib/reservations";
 import { construirePeriode, dateEncaissement } from "@/lib/statistiques";
-import type { Reservation, StatutReservation } from "@/lib/types";
+import type { EvenementJournal, Reservation, StatutReservation } from "@/lib/types";
 
 export const metadata: Metadata = { title: "Ventes en espèces" };
 
@@ -63,7 +66,7 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
   const demande = typeof parametres.jour === "string" ? parametres.jour : "";
   const jour = estDateISOValide(demande) && demande <= ajd ? demande : ajd;
 
-  const [parc, reservations, retenues, reglages, groupe] = await Promise.all([
+  const [parc, reservations, retenues, reglages, groupe, modifications] = await Promise.all([
     depot.listerVelos(),
     depot.listerReservations(),
     // Les vélos retenus le temps d'un paiement en ligne, pour les seuls
@@ -74,7 +77,15 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
     // Les offres de groupe se vendent aussi au comptoir (décision 12), quand
     // l'interrupteur est ouvert et que leurs réglages se lisent.
     offresGroupeEnVente(),
+    // Les ventes modifiées, pour dire sur chacune quand et par qui.
+    depot.listerJournal({ type: "vente-modifiee", limite: LIMITE_JOURNAL_MAX }),
   ]);
+  // La dernière modification de chaque vente : le journal rend la plus récente d'abord.
+  const derniereModification = new Map<string, EvenementJournal>();
+  for (const evenement of modifications) {
+    const cle = evenement.reference?.toUpperCase();
+    if (cle && !derniereModification.has(cle)) derniereModification.set(cle, evenement);
+  }
 
   const velos: VeloComptoir[] = parc.map((velo) => ({
     id: velo.id,
@@ -102,8 +113,10 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
 
   // Les créneaux déjà pris, pour griser au comptoir un vélo occupé. Mêmes
   // règles que la base : une réservation payée, ou un panier encore dans
-  // son délai. Le serveur revérifie de toute façon à l'enregistrement.
-  const occupes: Record<string, CreneauOccupe[]> = {};
+  // son délai. Le serveur revérifie de toute façon à l'enregistrement. La
+  // référence dit à quelle vente est le créneau : une vente qu'on modifie
+  // n'est pas gênée par ses propres vélos.
+  const occupes: Record<string, CreneauPris[]> = {};
   for (const reservation of [...reservations, ...retenues]) {
     if (reservation.dateFin < ajd) continue;
     if (!estPayee(reservation) && !estEnAttente(reservation)) continue;
@@ -113,9 +126,53 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
         fin: reservation.dateFin,
         heureDebut: reservation.heureDebut,
         heureFin: reservation.heureFin,
+        reference: reservation.reference,
       });
     }
   }
+
+  // Ce que la fenêtre « Modifier » doit savoir d'une vente. La gamme est
+  // celle de son premier vélo : elle fixe le prix de la location libre, du
+  // road trip et de Gbashi bike.
+  const venteModifiable = (reservation: Reservation): VenteModifiable => {
+    const gamme = parc.find((velo) => velo.id === reservation.lignes[0]?.veloId)?.gamme;
+    return {
+      reference: reservation.reference,
+      offre: reservation.offre,
+      nombrePersonnes: reservation.nombrePersonnes,
+      ...(reservation.dureeHeures !== undefined ? { dureeHeures: reservation.dureeHeures } : {}),
+      dateDebut: reservation.dateDebut,
+      heureDebut: reservation.heureDebut,
+      heureFin: reservation.heureFin,
+      ...(reservation.horaire ? { horaire: reservation.horaire } : {}),
+      ...(reservation.minuteDebut !== undefined && reservation.minuteFin !== undefined
+        ? { minuteDebut: reservation.minuteDebut, minuteFin: reservation.minuteFin }
+        : {}),
+      ...(gamme ? { gamme } : {}),
+      ...(reservation.remiseXof > 0 && reservation.codeParrainage ? { codeParrainage: reservation.codeParrainage } : {}),
+      sousTotalXof: reservation.sousTotalXof,
+      remiseXof: reservation.remiseXof,
+      cautionXof: reservation.cautionXof,
+      totalXof: reservation.totalXof,
+      client: {
+        prenom: reservation.client.prenom,
+        nom: reservation.client.nom,
+        email: reservation.client.email,
+        telephone: reservation.client.telephone ?? "",
+      },
+      encaissePar: paiementPrincipal(reservation)?.encaissePar ?? "",
+    };
+  };
+  /** « Modifiée le 19 nov. à 14 h 05 par Zayed », d'après le journal. */
+  const modifieeLe = (reservation: Reservation): string | null => {
+    const evenement = derniereModification.get(reservation.reference.toUpperCase());
+    if (!evenement) return null;
+    return `Modifiée le ${formatDateCourte(dateAuBenin(evenement.creeLe))} à ${formatHeureAuBenin(evenement.creeLe)} par ${prenomDeAuteur(evenement.auteur)}`;
+  };
+  const boutonModifier = (reservation: Reservation) =>
+    refusModificationVente(reservation) === null ? (
+      <ModifierVente vente={venteModifiable(reservation)} velos={velos} occupes={occupes} reglages={reglages} />
+    ) : null;
 
   // --- Le suivi de caisse
   //
@@ -401,8 +458,12 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
                   <p className="mt-2 text-[0.8rem] text-gris-cadre">
                     {reservation.lignes.map((ligne) => ligne.veloNom).join(", ")}
                   </p>
+                  {modifieeLe(reservation) && (
+                    <p className="mt-1 text-[0.76rem] font-semibold text-gris-cadre">{modifieeLe(reservation)}</p>
+                  )}
                   {reservation.statut !== "ANNULEE" && (
                     <div className="mt-2 flex flex-wrap items-start gap-x-5 gap-y-1">
+                      {boutonModifier(reservation)}
                       <RenvoyerFacture reference={reservation.reference} />
                       {annulableAuComptoir(reservation) && (
                         <AnnulerVente reference={reservation.reference} montantXof={reservation.totalXof} />
@@ -469,10 +530,14 @@ export default async function PageEspeces({ searchParams }: { searchParams: Rech
                       <td className="px-3 py-3">{paiementPrincipal(reservation)?.encaissePar ?? "non renseigné"}</td>
                       <td className="px-3 py-3">
                         <Pastille ton={etiquette(reservation).ton}>{etiquette(reservation).texte}</Pastille>
+                        {modifieeLe(reservation) && (
+                          <span className="mt-1.5 block max-w-[11rem] text-[0.74rem] text-gris-cadre">{modifieeLe(reservation)}</span>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         {reservation.statut !== "ANNULEE" && (
                           <span className="flex flex-col items-start gap-1.5">
+                            {boutonModifier(reservation)}
                             <RenvoyerFacture reference={reservation.reference} />
                             {/* Tant que le vélo n'est pas parti, une erreur
                                 de saisie se corrige ici. */}
