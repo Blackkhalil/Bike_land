@@ -441,6 +441,59 @@ export const schemaVenteComptoir = champsComptoir
 export type EntreeDevisComptoir = z.infer<typeof schemaDevisComptoir>;
 export type EntreeVenteComptoir = z.infer<typeof schemaVenteComptoir>;
 
+/* ------------------------------------- Modifier une vente en espèces */
+
+/**
+ * Un prénom qui signe : « Argent reçu par », « Modifié par ». Lettres,
+ * chiffres, espaces, points, apostrophes et tirets, comme à la vente.
+ */
+const prenomQuiSigne = (manquant: string) =>
+  z
+    .string()
+    .trim()
+    .min(2, manquant)
+    .max(40, "Nom trop long.")
+    .regex(/^[\p{L}\p{N} .'’-]+$/u, "Lettres, chiffres, espaces et tirets seulement.");
+
+/**
+ * Une vente en espèces modifiée depuis l'administration
+ * (src/lib/modification-vente.ts). Seuls les champs donnés changent ; le
+ * serveur refuse ce que la formule ne laisse pas choisir, et revérifie le
+ * jour, l'heure et la durée. `totalAttenduXof` : le total que l'écran
+ * montrait, pour refuser une vente changée entre-temps ; `nouveauTotalXof` :
+ * le nouveau montant vu, que le serveur doit retrouver.
+ */
+export const schemaModificationVente = z.object({
+  totalAttenduXof: z.number().int().min(0).max(5_000_000),
+  nouveauTotalXof: z.number().int().min(0).max(5_000_000),
+  nombrePersonnes: z.number().int().min(1, "Une personne au moins.").max(12, "Douze au plus.").optional(),
+  date: dateISO.optional(),
+  heureDebut: z
+    .number()
+    .int()
+    .min(OUVERTURE_COMPTOIR_HEURE, `Départ à partir de ${OUVERTURE_COMPTOIR_HEURE} h.`)
+    .max(FERMETURE_COMPTOIR_HEURE - 1, `Départ avant ${FERMETURE_COMPTOIR_HEURE} h.`)
+    .optional(),
+  dureeHeures: z
+    .number()
+    .int()
+    .refine((h) => DUREES_TARIFEES.includes(h), { message: "Durée non proposée." })
+    .optional(),
+  prenom: z.string().trim().min(1, "Indiquez le prénom du client.").max(60, "Prénom trop long.").optional(),
+  nom: z.string().trim().min(1, "Indiquez le nom du client.").max(60, "Nom trop long.").optional(),
+  email: z.string().trim().toLowerCase().email("Adresse email invalide.").max(120, "Adresse trop longue.").optional(),
+  // Vide : le client n'a plus de téléphone noté.
+  telephone: z
+    .string()
+    .trim()
+    .refine((telephone) => telephone === "" || /^[+0-9 ().-]{8,20}$/.test(telephone), "Numéro de téléphone invalide.")
+    .optional(),
+  encaissePar: prenomQuiSigne("Indiquez qui a reçu l'argent.").optional(),
+  modifiePar: prenomQuiSigne("Indiquez qui modifie la vente."),
+});
+
+export type EntreeModificationVente = z.infer<typeof schemaModificationVente>;
+
 /** Met une erreur Zod en forme pour l'affichage champ par champ. */
 export function erreursParChamp(erreur: z.ZodError): Record<string, string> {
   const resultat: Record<string, string> = {};

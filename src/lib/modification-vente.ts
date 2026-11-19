@@ -195,6 +195,17 @@ export function calculerModification(
   const champs: Record<string, string> = {};
   const unite = vente.offre === "location-libre" ? "vélos" : "personnes";
 
+  // Ce que la formule ne laisse pas choisir ne se change pas : refusé plutôt
+  // qu'ignoré en silence.
+  const pasIci = estOffreGroupe(vente.offre) ? "Ne se modifie pas pour une offre de groupe." : "Ne se choisit pas pour cette formule.";
+  const refuser = (champ: string, demande: unknown, actuel: unknown) => {
+    if (demande !== undefined && demande !== actuel) champs[champ] = pasIci;
+  };
+  if (!peut.personnes) refuser("nombrePersonnes", demande.nombrePersonnes, vente.nombrePersonnes);
+  if (!peut.date) refuser("date", demande.date, vente.dateDebut);
+  if (!peut.heure) refuser("heureDebut", demande.heureDebut, vente.heureDebut);
+  if (!peut.duree) refuser("dureeHeures", demande.dureeHeures, vente.dureeHeures);
+
   const nombrePersonnes =
     peut.personnes && demande.nombrePersonnes !== undefined ? demande.nombrePersonnes : vente.nombrePersonnes;
   if (

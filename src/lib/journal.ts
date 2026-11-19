@@ -22,6 +22,8 @@ import {
 } from "@/data/libelles-reglages-offres";
 import { OFFRES_GROUPE } from "@/data/offres";
 import { formatDateAvecJour } from "@/lib/format";
+import { heureEnClair } from "@/lib/offres/calendrier";
+import { insecables } from "@/lib/offres-groupe/textes-chat";
 import type { EvenementJournal } from "@/lib/types";
 
 /** Les événements que l'administration sait raconter, et leur nom. */
@@ -37,6 +39,7 @@ export const TYPES_EVENEMENT: Readonly<Record<string, string>> = {
   "preuve-refusee": "Réduction refusée",
   "preuve-email-non-envoye": "Email de réduction non parti",
   "vente-comptoir-groupe": "Vente de groupe au comptoir",
+  "vente-modifiee": "Vente en espèces modifiée",
   "paiement-sans-reservation": "Paiement sans réservation",
 };
 
@@ -181,6 +184,8 @@ export function resumeEvenement(evenement: EvenementJournal): ResumeEvenement {
           ...(texte(d.encaissePar) ? [`Argent reçu par ${texte(d.encaissePar)}.`] : []),
         ],
       };
+    case "vente-modifiee":
+      return resumeVenteModifiee(evenement);
     case "paiement-sans-reservation": {
       // Un paiement réussi sans réservation à confirmer (src/lib/paiement-confirmation.ts).
       const montant = nombre(d.montantXof);
@@ -200,4 +205,76 @@ export function resumeEvenement(evenement: EvenementJournal): ResumeEvenement {
         lignes: Object.entries(d).map(([cle, valeur]) => `${cle} : ${brut(valeur)}`),
       };
   }
+}
+
+/** Un objet des détails, lu prudemment : mal formé, il est vide. */
+function objet(valeur: unknown): Record<string, unknown> {
+  return valeur !== null && typeof valeur === "object" && !Array.isArray(valeur) ? (valeur as Record<string, unknown>) : {};
+}
+
+/** Le nom d'un vélo : écrit tel quel, ou rangé dans un objet (`veloNom`, `nom`). */
+function nomDeVelo(valeur: unknown): string | undefined {
+  return texte(valeur) ?? texte(objet(valeur).veloNom) ?? texte(objet(valeur).nom);
+}
+
+/** « 17 h 30 - 20 h 30 » pour « 17:30-20:30 », ou tel quel s'il ne se lit pas. */
+function heuresEnClair(valeur: unknown): string {
+  const heures = texte(valeur);
+  const lues = heures ? /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(heures) : null;
+  if (!lues) return heures ?? "?";
+  return `${heureEnClair(`${lues[1]}:${lues[2]}`)} - ${heureEnClair(`${lues[3]}:${lues[4]}`)}`;
+}
+
+/**
+ * Une vente en espèces modifiée : « BL-ZPS2C5 : 7 → 6 personnes, 24 500 F →
+ * 21 000 F, par Zayed », puis le reste de ce qui a changé, une ligne par
+ * champ. Lit aussi une ligne réduite au nombre et au montant, avant et
+ * après, avec le vélo rendu au parc et le motif (`veloRetire`, `motif`).
+ */
+function resumeVenteModifiee(evenement: EvenementJournal): ResumeEvenement {
+  const d = evenement.details;
+  const avant = objet(d.avant);
+  const apres = objet(d.apres);
+
+  const morceaux: string[] = [];
+  const personnesAvant = nombre(avant.personnes);
+  const personnesApres = nombre(apres.personnes);
+  if (personnesAvant !== undefined && personnesApres !== undefined && personnesAvant !== personnesApres) {
+    const unite = d.offre === "location-libre" ? "vélo" : "personne";
+    morceaux.push(`${personnesAvant} → ${personnesApres} ${unite}${personnesApres > 1 ? "s" : ""}`);
+  }
+  const totalAvant = nombre(avant.totalXof);
+  const totalApres = nombre(apres.totalXof);
+  if (totalAvant !== undefined && totalApres !== undefined && totalAvant !== totalApres) {
+    morceaux.push(`${montantF(totalAvant)} → ${montantF(totalApres)}`);
+  }
+
+  const lignes: string[] = [];
+  const avantApres = (cle: string, libelle: string, enClair: (valeur: unknown) => string) => {
+    if (avant[cle] !== undefined && apres[cle] !== undefined && avant[cle] !== apres[cle]) {
+      lignes.push(`${libelle} : ${enClair(avant[cle])} → ${enClair(apres[cle])}`);
+    }
+  };
+  avantApres("date", "Jour", jour);
+  avantApres("heures", "Heures", heuresEnClair);
+  avantApres("dureeHeures", "Durée", (valeur) => `${nombre(valeur) ?? "?"} h`);
+  if ((avant.prenom !== apres.prenom || avant.nom !== apres.nom) && texte(apres.prenom) !== undefined) {
+    const nomComplet = (personne: Record<string, unknown>) => `${texte(personne.prenom) ?? ""} ${texte(personne.nom) ?? ""}`.trim();
+    lignes.push(`Client : ${nomComplet(avant)} → ${nomComplet(apres)}`);
+  }
+  avantApres("telephone", "Téléphone", (valeur) => texte(valeur) ?? "aucun");
+  avantApres("email", "Email", (valeur) => texte(valeur) ?? "aucun");
+  avantApres("encaissePar", "Argent reçu par", (valeur) => texte(valeur) ?? "non renseigné");
+  const liste = (valeur: unknown) => (Array.isArray(valeur) ? valeur.map(nomDeVelo).filter((nom): nom is string => Boolean(nom)) : []);
+  const liberes = [...liste(d.velosRetires), ...(nomDeVelo(d.veloRetire) ? [nomDeVelo(d.veloRetire) as string] : [])];
+  if (liberes.length > 0) lignes.push(`${liberes.length > 1 ? "Vélos libérés" : "Vélo libéré"} : ${liberes.join(", ")}`);
+  const ajoutes = liste(d.velosAjoutes);
+  if (ajoutes.length > 0) lignes.push(`${ajoutes.length > 1 ? "Vélos ajoutés" : "Vélo ajouté"} : ${ajoutes.join(", ")}`);
+  if (texte(d.motif)) lignes.push(`Motif : ${texte(d.motif)}`);
+
+  const quoi = morceaux.length > 0 ? morceaux.join(", ") : "vente corrigée";
+  return {
+    titre: insecables(`${evenement.reference ?? "Vente"} : ${quoi}, par ${prenomDeAuteur(evenement.auteur)}`),
+    lignes: lignes.map(insecables),
+  };
 }
