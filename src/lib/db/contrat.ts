@@ -13,6 +13,7 @@
  */
 
 import { listerJours, type DateISO } from "../dates";
+import type { ModificationVente, ResultatModificationVente } from "../modification-vente";
 import { creneauOctobreRose, sortieOctobreRoseDu } from "@/data/octobre-rose";
 import { estOffreGroupe, GAMMES, panierExpire, type GammeVelo } from "@/data/offres";
 import type { CodeParrainage, VerificationParrainage } from "../parrainage";
@@ -989,6 +990,20 @@ export interface Depot {
    * (vente non annulée, déjà rendue, ou pas en espèces).
    */
   noterRemboursementEspeces(reference: string, montantXof: number): Promise<Reservation | null>;
+
+  /**
+   * Modifie une vente en espèces déjà enregistrée, même ancienne
+   * (src/lib/modification-vente.ts) : le client, « Argent reçu par », et
+   * pour une vente au comptoir classique le nombre, le jour, l'heure et la
+   * durée. Le prix est recalculé comme à la vente, les vélos rendus ou pris
+   * sur le créneau, hors ceux de la vente elle-même, et la ligne du journal
+   * (« vente-modifiee », l'avant et l'après) écrite avec. Dans une seule
+   * transaction sérialisable en base : deux modifications ne prennent pas le
+   * même vélo. Rien n'est écrit si la vente a changé depuis que l'écran l'a
+   * lue (`totalAttenduXof`), ni si le nouveau total n'est pas celui que
+   * l'écran montrait. Aucun email ne part.
+   */
+  modifierVenteEspeces(reference: string, modification: ModificationVente): Promise<ResultatModificationVente>;
 
   /**
    * Les réservations payées qui partent ce jour-là et n'ont pas encore

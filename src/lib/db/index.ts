@@ -47,6 +47,8 @@ export const depot: Depot = {
   annulerReservation: async (reference, options) => (await obtenirDepot()).annulerReservation(reference, options),
   noterRemboursementEspeces: async (reference, montantXof) =>
     (await obtenirDepot()).noterRemboursementEspeces(reference, montantXof),
+  modifierVenteEspeces: async (reference, modification) =>
+    (await obtenirDepot()).modifierVenteEspeces(reference, modification),
   purgerDemandesNonPayees: async (creeesAvant, limite) =>
     (await obtenirDepot()).purgerDemandesNonPayees(creeesAvant, limite),
   listerRappelsAEnvoyer: async (date) => (await obtenirDepot()).listerRappelsAEnvoyer(date),

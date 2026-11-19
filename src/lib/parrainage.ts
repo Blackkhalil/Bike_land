@@ -28,7 +28,10 @@
  * réservation, dans la même transaction que la vérification du quota.
  */
 
-import { MONTANT_MINIMUM_XOF } from "./paiement";
+// Le module des tarifs de paiement, et non celui du paiement lui-même : le
+// formulaire de modification d'une vente calcule la réduction dans le
+// navigateur, où le chiffrement de Node n'a rien à faire.
+import { MONTANT_MINIMUM_XOF } from "./tarifs-paiement";
 
 /** Réduction accordée au client qui présente un code de parrainage. */
 export const TAUX_REDUCTION_CLIENT = 0.01;

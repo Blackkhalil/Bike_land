@@ -26,7 +26,16 @@ import type {
 import type { PreuveReduction as LignePreuve } from "@prisma/client";
 import { LIMITE_PREUVES_MAX, limitePreuves, motifDecisionPreuve, PREFIXE_FICHIER_EN_BASE } from "./contrat";
 
-import { nombreDeJours, versISO, type DateISO } from "../dates";
+import { aujourdhui, nombreDeJours, versISO, type DateISO } from "../dates";
+import {
+  compterParGamme,
+  detailsVenteModifiee,
+  messageVelosModification,
+  preparerModification,
+  velosApresModification,
+  type ResultatModificationVente,
+  type VeloAttribuable,
+} from "../modification-vente";
 import {
   DUREE_ROAD_TRIP_HEURES,
   estOffreGroupe,
@@ -337,11 +346,13 @@ function versReservation(booking: BookingComplet): Reservation {
     dureeHeures: booking.durationHours ?? undefined,
     clientId: booking.customerId,
     // Le contact saisi pour cette réservation passe avant la fiche client.
+    // Un téléphone vide (retiré en modifiant la vente) ne laisse pas la
+    // fiche prêter le sien.
     client: {
       ...versClient(booking.customer),
       prenom: booking.contactFirstName ?? booking.customer.firstName,
       nom: booking.contactLastName ?? booking.customer.lastName,
-      telephone: booking.contactPhone ?? booking.customer.phone ?? undefined,
+      telephone: (booking.contactPhone ?? booking.customer.phone) || undefined,
     },
     pointDeRetraitId: booking.pickupPointId ?? "",
     dateDebut: versISO(booking.startDate),
@@ -651,6 +662,19 @@ async function changerStatutReservation(
     include: inclusionReservation,
   });
   return booking ? versReservation(booking) : null;
+}
+
+/**
+ * Une écriture commencée qui doit être défaite : levée dans la transaction,
+ * elle l'annule toute entière, et l'appelant rend `resultat` tel quel.
+ */
+class EcritureAbandonnee extends Error {
+  readonly resultat: ResultatModificationVente;
+  constructor(resultat: ResultatModificationVente) {
+    super("Écriture abandonnée.");
+    this.name = "EcritureAbandonnee";
+    this.resultat = resultat;
+  }
 }
 
 const depotDirect: Depot = {
@@ -1412,6 +1436,228 @@ const depotDirect: Depot = {
     if (count === 0) return null;
     const booking = await client().booking.findUnique({ where: { reference: cible }, include: inclusionReservation });
     return booking ? versReservation(booking) : null;
+  },
+
+  async modifierVenteEspeces(reference, modification): Promise<ResultatModificationVente> {
+    // Les réglages des produits, lus ici même comme à la vente : le prix de
+    // Padel bike ne vient jamais de l'appelant.
+    const reglages = await lireReglagesAvec(lireParametre);
+    const cible = reference.toUpperCase();
+    try {
+      return await avecRepriseConnexion(() =>
+        client().$transaction(
+          async (tx): Promise<ResultatModificationVente> => {
+            const booking = await tx.booking.findUnique({ where: { reference: cible }, include: inclusionReservation });
+            if (!booking) return { ok: false, raison: "introuvable" };
+            const avant = versReservation(booking);
+            // Les vélos de la vente et leur gamme, relus ici : celle du premier fixe le prix.
+            const gammes = new Map(
+              (
+                await tx.bike.findMany({
+                  where: { id: { in: booking.items.map((item) => item.bikeId) } },
+                  select: { id: true, tier: true },
+                })
+              ).map((bike) => [bike.id, bike.tier]),
+            );
+            const actuels: VeloAttribuable[] = booking.items.flatMap((item) => {
+              const gamme = gammes.get(item.bikeId);
+              return gamme ? [{ id: item.bikeId, nom: item.bike.name, gamme }] : [];
+            });
+            const gamme = actuels[0]?.gamme;
+
+            // Tous les contrôles avant la moindre écriture : un refus ne laisse rien derrière lui.
+            const preparation = preparerModification(avant, gamme, modification, reglages, aujourdhui());
+            if (preparation.etape === "refus") return preparation.resultat;
+            if (preparation.etape === "deja") {
+              return { ok: true, deja: true, reservation: avant, avant, velosRetires: [], velosAjoutes: [] };
+            }
+            const { calcul, prevue } = preparation;
+            const jour = new Date(`${calcul.date}T00:00:00Z`);
+
+            // Les vélos, revus quand le nombre ou le créneau change, relus ici
+            // même : le niveau Serializable protège leur attribution, deux
+            // modifications ne prennent pas le même vélo. Ceux de la vente ne
+            // la gênent pas, ceux des autres réservations si.
+            const revoir =
+              !estOffreGroupe(avant.offre) &&
+              (calcul.creneauChange || calcul.nombrePersonnes !== avant.nombrePersonnes);
+            let choix: { gardes: VeloAttribuable[]; retires: VeloAttribuable[]; ajoutes: VeloAttribuable[] } = {
+              gardes: actuels,
+              retires: [],
+              ajoutes: [],
+            };
+            if (revoir) {
+              const enEtat = await tx.bike.findMany({
+                where: { status: { notIn: ["RETIRE", "MAINTENANCE"] } },
+                select: { id: true, name: true, tier: true },
+              });
+              const indisponibles = await velosIndisponibles(tx, calcul.date, calcul.date);
+              const pris = await tx.bookingItem.findMany({
+                where: {
+                  bookingId: { not: booking.id },
+                  booking: bookingBloquant(),
+                  startDate: { lte: jour },
+                  endDate: { gte: jour },
+                  startHour: { lt: calcul.heureFin },
+                  endHour: { gt: calcul.heureDebut },
+                },
+                select: { bikeId: true },
+              });
+              const occupes = new Set(pris.map((ligne) => ligne.bikeId));
+              const issue = velosApresModification({
+                offre: avant.offre,
+                gamme,
+                actuels,
+                nombre: calcul.nombrePersonnes,
+                creneauChange: calcul.creneauChange,
+                libres: enEtat
+                  .filter((bike) => !indisponibles.has(bike.id) && !occupes.has(bike.id))
+                  .map((bike) => ({ id: bike.id, nom: bike.name, gamme: bike.tier })),
+                parcParGamme: compterParGamme(enEtat.map((bike) => ({ gamme: bike.tier }))),
+              });
+              if (!issue.ok) {
+                return { ok: false, raison: "velos", message: messageVelosModification(avant.offre, gamme, issue.disponibles) };
+              }
+              choix = issue;
+            }
+
+            // Le client : une fiche existante n'est jamais réécrite, comme à la
+            // vente ; une autre adresse rattache la vente à la fiche de cette
+            // adresse, créée au besoin.
+            let customerId = booking.customerId;
+            if (prevue.client.email !== avant.client.email) {
+              const customer = await tx.customer.upsert({
+                where: { email: prevue.client.email },
+                create: {
+                  email: prevue.client.email,
+                  firstName: prevue.client.prenom,
+                  lastName: prevue.client.nom,
+                  phone: prevue.client.telephone,
+                },
+                update: {},
+              });
+              customerId = customer.id;
+            }
+
+            // La vente, sous condition du total que l'écran a vu.
+            const { count } = await tx.booking.updateMany({
+              where: {
+                id: booking.id,
+                totalXof: modification.totalAttenduXof,
+                status: { in: ["CONFIRMEE", "EN_COURS", "TERMINEE"] },
+              },
+              data: {
+                customerId,
+                contactFirstName: prevue.client.prenom,
+                contactLastName: prevue.client.nom,
+                // Vide plutôt que nul : sans téléphone, la fiche ne prête pas le sien.
+                contactPhone: prevue.client.telephone ?? "",
+                peopleCount: calcul.nombrePersonnes,
+                ...(avant.offre === "location-libre" ? { durationHours: calcul.dureeHeures ?? null } : {}),
+                ...(calcul.creneauChange
+                  ? {
+                      startDate: jour,
+                      endDate: jour,
+                      days: nombreDeJours(calcul.date, calcul.date),
+                      startHour: calcul.heureDebut,
+                      endHour: calcul.heureFin,
+                      startTime: calcul.horaire?.depart ?? null,
+                      endTime: calcul.horaire?.retour ?? null,
+                    }
+                  : {}),
+                subtotalXof: calcul.sousTotalXof,
+                discountXof: calcul.remiseXof,
+                depositXof: calcul.cautionXof,
+                totalXof: calcul.totalXof,
+              },
+            });
+            if (count !== 1) throw new EcritureAbandonnee({ ok: false, raison: "changee", totalXof: avant.totalXof });
+
+            if (revoir) {
+              if (choix.retires.length > 0) {
+                await tx.bookingItem.deleteMany({
+                  where: { bookingId: booking.id, bikeId: { in: choix.retires.map((velo) => velo.id) } },
+                });
+              }
+              if (calcul.creneauChange) {
+                await tx.bookingItem.updateMany({
+                  where: { bookingId: booking.id },
+                  data: { startDate: jour, endDate: jour, startHour: calcul.heureDebut, endHour: calcul.heureFin },
+                });
+              }
+              if (choix.ajoutes.length > 0) {
+                await tx.bookingItem.createMany({
+                  data: choix.ajoutes.map((velo) => ({
+                    bookingId: booking.id,
+                    bikeId: velo.id,
+                    startDate: jour,
+                    endDate: jour,
+                    startHour: calcul.heureDebut,
+                    endHour: calcul.heureFin,
+                    unitPriceXof: 0,
+                    lineTotalXof: 0,
+                  })),
+                });
+              }
+            }
+            if (revoir || calcul.recalcule) {
+              const nombre = revoir ? choix.gardes.length + choix.ajoutes.length : booking.items.length;
+              const prixLigne = prixParLigne(calcul.sousTotalXof, nombre);
+              await tx.bookingItem.updateMany({
+                where: { bookingId: booking.id },
+                data: { unitPriceXof: prixLigne, lineTotalXof: prixLigne },
+              });
+            }
+
+            // Le paiement en espèces : le nouveau montant, et qui l'a reçu.
+            const paiement = booking.payments.find((ligne) => !ligne.isDeposit);
+            if (paiement) {
+              await tx.payment.update({
+                where: { id: paiement.id },
+                data: {
+                  amountXof: calcul.totalXof,
+                  collectedBy: prevue.paiements.find((ligne) => !ligne.estCaution)?.encaissePar ?? null,
+                },
+              });
+            }
+            // Le code de parrainage suit le nouveau montant : la remise et la
+            // commission du partenaire, comme à la vente.
+            if (calcul.recalcule && booking.promoUsage) {
+              await tx.promoUsage.update({
+                where: { bookingId: booking.id },
+                data: { discountXof: calcul.remiseXof, commissionXof: commissionPour(calcul.totalXof) },
+              });
+            }
+
+            const apres = versReservation(
+              await tx.booking.findUniqueOrThrow({ where: { id: booking.id }, include: inclusionReservation }),
+            );
+            const velosRetires = choix.retires.map((velo) => velo.nom);
+            const velosAjoutes = choix.ajoutes.map((velo) => velo.nom);
+            const ligne = await tx.journalEvenement.create({
+              data: {
+                type: "vente-modifiee",
+                reference: apres.reference,
+                details: detailsVenteModifiee(avant, apres, {
+                  retires: velosRetires,
+                  ajoutes: velosAjoutes,
+                }) as Prisma.InputJsonObject,
+                auteur: modification.par,
+              },
+            });
+            return { ok: true, deja: false, reservation: apres, avant, evenement: versEvenement(ligne), velosRetires, velosAjoutes };
+          },
+          {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            maxWait: DELAI_ATTENTE_MS,
+            timeout: DELAI_TRANSACTION_MS,
+          },
+        ),
+      );
+    } catch (erreur) {
+      if (erreur instanceof EcritureAbandonnee) return erreur.resultat;
+      throw erreur;
+    }
   },
 
   async purgerDemandesNonPayees(creeesAvant: string, limite = 200): Promise<ResultatEffacementDemandes> {
@@ -3209,7 +3455,7 @@ function versPreuve(ligne: LignePreuve): PreuveReduction {
 /** Traduit un remboursement de la base vers le domaine, avec le contact de la réservation. */
 function versRemboursement(ligne: Prisma.RemboursementGetPayload<{ include: typeof inclusionRemboursement }>): Remboursement {
   const booking = ligne.booking;
-  const telephone = booking.contactPhone ?? booking.customer.phone ?? undefined;
+  const telephone = (booking.contactPhone ?? booking.customer.phone) || undefined;
   return {
     id: ligne.id,
     reservationId: ligne.bookingId,

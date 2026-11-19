@@ -34,6 +34,15 @@ import {
   remplacantsDesVelosRepris,
   seChevauchent,
 } from "../disponibilite";
+import {
+  compterParGamme,
+  detailsVenteModifiee,
+  messageVelosModification,
+  preparerModification,
+  velosApresModification,
+  type ResultatModificationVente,
+  type VeloAttribuable,
+} from "../modification-vente";
 import { penaliteRetardXof } from "../offres/retard";
 import { jamaisPayee } from "../reservations";
 import { calculerDevis } from "../tarification";
@@ -852,6 +861,144 @@ export const depotDemo: Depot = {
     paiement.rembourseLe = new Date().toISOString();
     paiement.montantRenduXof = montantXof;
     return copie(reservation);
+  },
+
+  async modifierVenteEspeces(reference, modification): Promise<ResultatModificationVente> {
+    // Les réglages d'abord : l'attente vient avant les contrôles et
+    // l'écriture, qui se suivent sans attente (voir `creneauxBloquants`).
+    // Deux modifications simultanées ne prennent donc pas le même vélo.
+    const reglages = await lireReglagesAvec(async (cleReglage) => etat().parametresAdmin.get(cleReglage) ?? null);
+    const reservation = trouver(reference);
+    if (!reservation) return { ok: false, raison: "introuvable" };
+    const avant = copie(reservation);
+    const actuels: VeloAttribuable[] = reservation.lignes.flatMap((ligne) => {
+      const velo = velos.find((v) => v.id === ligne.veloId);
+      return velo ? [{ id: velo.id, nom: ligne.veloNom, gamme: velo.gamme }] : [];
+    });
+    const gamme = actuels[0]?.gamme;
+
+    const preparation = preparerModification(avant, gamme, modification, reglages, aujourdhui());
+    if (preparation.etape === "refus") return preparation.resultat;
+    if (preparation.etape === "deja") {
+      return { ok: true, deja: true, reservation: copie(reservation), avant, velosRetires: [], velosAjoutes: [] };
+    }
+    const { calcul, prevue } = preparation;
+
+    // Les vélos, revus quand le nombre ou le créneau change : ceux de la vente
+    // ne la gênent pas, ceux des autres réservations si.
+    const revoir =
+      !estOffreGroupe(reservation.offre) &&
+      (calcul.creneauChange || calcul.nombrePersonnes !== reservation.nombrePersonnes);
+    let choix: { gardes: VeloAttribuable[]; retires: VeloAttribuable[]; ajoutes: VeloAttribuable[] } = {
+      gardes: actuels,
+      retires: [],
+      ajoutes: [],
+    };
+    if (revoir) {
+      const limite = Date.now() - EXPIRATION_PANIER_MINUTES * 60_000;
+      const creneau = { debut: calcul.date, fin: calcul.date, heureDebut: calcul.heureDebut, heureFin: calcul.heureFin };
+      const enEtat = velos.filter((v) => v.statut !== "MAINTENANCE" && v.statut !== "RETIRE");
+      const libres = enEtat
+        .filter(
+          (v) =>
+            !indisponibleSurPeriode(v.id, calcul.date, calcul.date) &&
+            !etat().reservations.some(
+              (autre) =>
+                autre.id !== reservation.id &&
+                bloque(autre, limite) &&
+                autre.lignes.some((ligne) => ligne.veloId === v.id) &&
+                creneauxSeChevauchent(creneau, {
+                  debut: autre.dateDebut,
+                  fin: autre.dateFin,
+                  heureDebut: autre.heureDebut,
+                  heureFin: autre.heureFin,
+                }),
+            ),
+        )
+        .map((v) => ({ id: v.id, nom: v.nom, gamme: v.gamme }));
+      const issue = velosApresModification({
+        offre: reservation.offre,
+        gamme,
+        actuels,
+        nombre: calcul.nombrePersonnes,
+        creneauChange: calcul.creneauChange,
+        libres,
+        parcParGamme: compterParGamme(enEtat),
+      });
+      if (!issue.ok) {
+        return { ok: false, raison: "velos", message: messageVelosModification(reservation.offre, gamme, issue.disponibles) };
+      }
+      choix = issue;
+    }
+
+    // L'écriture, d'un seul tenant. Le client : une fiche existante n'est
+    // jamais réécrite, comme à la vente ; une autre adresse rattache la vente
+    // à la fiche de cette adresse, créée au besoin.
+    const donnees = etat();
+    if (prevue.client.email !== reservation.client.email) {
+      let fiche = donnees.clients.find((c) => c.email === prevue.client.email);
+      if (!fiche) {
+        fiche = {
+          id: `cli-${donnees.clients.length + 1}-${Date.now().toString(36)}`,
+          email: prevue.client.email,
+          prenom: prevue.client.prenom,
+          nom: prevue.client.nom,
+          telephone: prevue.client.telephone,
+          creeLe: new Date().toISOString(),
+        };
+        donnees.clients.push(fiche);
+      }
+      prevue.clientId = fiche.id;
+      prevue.client = { ...fiche, prenom: prevue.client.prenom, nom: prevue.client.nom, telephone: prevue.client.telephone };
+    }
+    if (revoir) {
+      const sesVelos = [...choix.gardes, ...choix.ajoutes];
+      const prixLigne = prixParLigne(calcul.sousTotalXof, sesVelos.length);
+      prevue.lignes = sesVelos.map((velo) => {
+        const catalogue = velos.find((v) => v.id === velo.id);
+        return {
+          veloId: velo.id,
+          veloNom: velo.nom,
+          veloSlug: catalogue?.slug ?? velo.id,
+          prixUnitaireXof: prixLigne,
+          totalLigneXof: prixLigne,
+        };
+      });
+      prevue.jours = nombreDeJours(calcul.date, calcul.date);
+    } else if (calcul.recalcule) {
+      const prixLigne = prixParLigne(calcul.sousTotalXof, prevue.lignes.length);
+      prevue.lignes = prevue.lignes.map((ligne) => ({ ...ligne, prixUnitaireXof: prixLigne, totalLigneXof: prixLigne }));
+    }
+    // Le code de parrainage suit le nouveau montant : la remise et la
+    // commission du partenaire, comme à la vente.
+    if (calcul.recalcule && reservation.codeParrainage) {
+      prevue.commissionParrainageXof = commissionPour(calcul.totalXof);
+      const usage = donnees.utilisationsPromo.find(
+        (u) => u.reference === reservation.reference && u.statut !== "ANNULE",
+      );
+      if (usage) {
+        usage.remiseXof = calcul.remiseXof;
+        usage.commissionXof = commissionPour(calcul.totalXof);
+      }
+    }
+    Object.assign(reservation, copie(prevue));
+    const velosRetires = choix.retires.map((velo) => velo.nom);
+    const velosAjoutes = choix.ajoutes.map((velo) => velo.nom);
+    const evenement = ecrireAuJournal({
+      type: "vente-modifiee",
+      reference: reservation.reference,
+      details: detailsVenteModifiee(avant, reservation, { retires: velosRetires, ajoutes: velosAjoutes }),
+      auteur: modification.par,
+    });
+    return {
+      ok: true,
+      deja: false,
+      reservation: copie(reservation),
+      avant,
+      evenement: copie(evenement),
+      velosRetires,
+      velosAjoutes,
+    };
   },
 
   async listerRappelsAEnvoyer(date: DateISO) {
