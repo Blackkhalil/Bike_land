@@ -780,11 +780,17 @@ export function VenteEspeces({
           ["road-trip", "Road trip", `8 h, samedi et dimanche : ${gammesDuDepart("samedi-matin")}, ${CRENEAUX_ROAD_TRIP[0].personnesMin} personnes min.`],
         ] as const)),
     // Les sorties sur commande : au jour et à l'heure convenus avec le client.
-    [
-      "gbashi-bike",
-      "Gbashi bike",
-      `Sur commande, ${SORTIES_SUR_COMMANDE["gbashi-bike"].dureeHeures} h : ${GAMMES.map((g) => formatXof(PRIX_GBASHI_BIKE_XOF[g.code])).join(" / ")} par personne`,
-    ],
+    // Offres de groupe ouvertes, le Gbashi Bike de groupe le remplace (décision 1) :
+    // un seul Gbashi dans la liste, jamais deux (demande du responsable, 19 novembre).
+    ...(offresGroupe
+      ? []
+      : ([
+          [
+            "gbashi-bike",
+            "Gbashi bike",
+            `Sur commande, ${SORTIES_SUR_COMMANDE["gbashi-bike"].dureeHeures} h : ${GAMMES.map((g) => formatXof(PRIX_GBASHI_BIKE_XOF[g.code])).join(" / ")} par personne`,
+          ],
+        ] as const)),
     [
       "padel-bike",
       "Padel bike",
