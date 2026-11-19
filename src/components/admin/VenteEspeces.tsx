@@ -38,7 +38,7 @@ import {
   minutesDe as minutesDuReglage,
   type ReglagesProduits,
 } from "@/data/reglages";
-import { jourProgrammePadel } from "@/data/padel-bike";
+import { jourProgrammePadel, prochainJourPadelAuComptoir } from "@/data/padel-bike";
 import { VenteComptoirGroupe } from "@/components/offres-groupe/VenteComptoirGroupe";
 import { ajouterJours } from "@/lib/dates";
 import { creneauxSeChevauchent, type CreneauOccupe } from "@/lib/db/contrat";
@@ -346,6 +346,9 @@ export function VenteEspeces({
   // retour ne doit pas emporter, sans le dire, la date choisie pour l'autre.
   const [dateLocation, setDateLocation] = useState(ici.date);
   const [dateRoadTrip, setDateRoadTrip] = useState(() => premierRoadTripAVenir(ici));
+  // Padel bike : le jour choisi ; tant qu'il n'est pas choisi, le prochain
+  // jour programmé dans les réglages, et non aujourd'hui d'office.
+  const [datePadel, setDatePadel] = useState<string | null>(null);
   const [dureeHeures, setDureeHeures] = useState(1);
   // L'heure de départ, tapée par le commercial. Tant qu'il n'a rien tapé,
   // elle suit l'horloge : une page ouverte le matin propose encore,
@@ -408,7 +411,13 @@ export function VenteEspeces({
   // Padel bike part à l'heure réglée dans l'administration : rien à taper.
   const sortiePadel = reglages.padel;
   const blocDuPadel = blocPadel(sortiePadel);
-  const date = octobreRose ? sortieRose.date : roadTrip ? dateRoadTrip : dateLocation;
+  const date = octobreRose
+    ? sortieRose.date
+    : roadTrip
+      ? dateRoadTrip
+      : padel
+        ? (datePadel ?? prochainJourPadelAuComptoir(sortiePadel, maintenant))
+        : dateLocation;
   const heure = octobreRose
     ? sortieRose.heureDebut
     : roadTrip
@@ -643,6 +652,7 @@ export function VenteEspeces({
     setMaintenant(heureCourante);
     setDateLocation(maintenantIci.date);
     setDateRoadTrip(premierRoadTripAVenir(maintenantIci));
+    setDatePadel(null);
     setHeureSaisie(null);
     setVente(null);
     setClient(CLIENT_VIDE);
@@ -1018,7 +1028,9 @@ export function VenteEspeces({
                 value={date}
                 min={ici.date}
                 max={ajouterJours(ici.date, 60)}
-                onChange={(evenement) => evenement.target.value && setDateLocation(evenement.target.value)}
+                onChange={(evenement) =>
+                  evenement.target.value && (padel ? setDatePadel : setDateLocation)(evenement.target.value)
+                }
                 className="mt-2 w-full rounded-[var(--radius-bouton)] border border-noir-piste/20 bg-craie px-4 py-2.5 text-[0.92rem]"
               />
             </div>
@@ -1031,7 +1043,7 @@ export function VenteEspeces({
                 </p>
                 <p className={`mt-1.5 text-[0.76rem] ${padelHorsProgramme ? "text-orange-sourd" : "text-gris-cadre"}`}>
                   {padelHorsProgramme
-                    ? "Ce jour n'est pas programmé pour Padel bike : la vente reste possible, pour une sortie convenue avec le client."
+                    ? "Pas de Padel bike programmé ce jour-là."
                     : `Départ ${programmeEnClair(sortiePadel)}, réglé dans Réglages des produits.`}
                 </p>
               </div>

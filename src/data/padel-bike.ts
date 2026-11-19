@@ -81,6 +81,27 @@ export function jourProgrammePadel(reglages: Pick<ReglagesPadel, "jours" | "date
   return reglages.jours.includes(new Date(`${date}T12:00:00Z`).getUTCDay()) || reglages.dates.includes(date);
 }
 
+/**
+ * Le jour de Padel bike que le comptoir propose d'office : le prochain jour
+ * programmé dont le départ n'est pas encore passé, aujourd'hui compris. Un
+ * commercial avait enregistré un Padel bike le jeudi 19 novembre pour la
+ * sortie du vendredi 20, la date du jour étant proposée. Sans jour programmé
+ * dans les 60 jours, aujourd'hui : le comptoir vend aussi une sortie
+ * convenue avec le client.
+ */
+export function prochainJourPadelAuComptoir(
+  reglages: Pick<ReglagesPadel, "jours" | "dates" | "depart">,
+  maintenant: Date | number = new Date(),
+): DateISO {
+  const instant = new Date(maintenant).getTime();
+  const ici = heureAuBenin(new Date(instant)).date;
+  for (let ecart = 0; ecart <= JOURS_RESERVABLES_PADEL; ecart += 1) {
+    const jour = ajouterJours(ici, ecart);
+    if (jourProgrammePadel(reglages, jour) && instantDepartPadel(reglages, jour) > instant) return jour;
+  }
+  return ici;
+}
+
 /** Padel bike part-il ce jour-là ? Un jour programmé, sans autre sortie sur ses heures. */
 export function departPadelCeJour(reglages: ReglagesPadel, date: DateISO): boolean {
   return jourProgrammePadel(reglages, date) && !departEnConflit(reglages, date);
