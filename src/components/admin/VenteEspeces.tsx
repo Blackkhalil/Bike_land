@@ -43,7 +43,7 @@ import { VenteComptoirGroupe } from "@/components/offres-groupe/VenteComptoirGro
 import { ajouterJours } from "@/lib/dates";
 import { creneauxSeChevauchent, type CreneauOccupe } from "@/lib/db/contrat";
 import { formatDateAvecJour, formatXof } from "@/lib/format";
-import { estOffreGroupe } from "@/data/offres";
+import { estOffreGroupe, FRAIS_PAIEMENT_EN_LIGNE_XOF } from "@/data/offres";
 import { formatMontant, heureEnClair } from "@/lib/offres";
 import { joursEnClair } from "@/lib/offres/calendrier";
 import type { FaitsChat } from "@/lib/offres-groupe/conversation";
@@ -788,7 +788,7 @@ export function VenteEspeces({
     [
       "padel-bike",
       "Padel bike",
-      `${formatHeureMinute(sortiePadel.depart)}, ${programmeEnClair(sortiePadel)} : ${formatXof(sortiePadel.prixXof)} par personne, vélos attribués`,
+      `${formatHeureMinute(sortiePadel.depart)}, ${programmeEnClair(sortiePadel)} : ${formatXof(sortiePadel.prixXof - FRAIS_PAIEMENT_EN_LIGNE_XOF)} par personne en espèces, vélos attribués`,
     ],
     ...(sortiesRose.length > 0
       ? ([["octobre-rose", "Octobre rose", detailFormuleRose(sortiesRose)]] as const)

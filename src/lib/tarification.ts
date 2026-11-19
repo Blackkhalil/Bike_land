@@ -81,7 +81,7 @@ export interface ParametresDevis {
   /**
    * Vente réglée en espèces au comptoir : au prix de la plaquette, sans les
    * frais du paiement en ligne que portent les tarifs du site (cf.
-   * `FRAIS_PAIEMENT_EN_LIGNE_XOF`). Octobre rose fait exception : son prix
+   * `FRAIS_PAIEMENT_EN_LIGNE_XOF`), Padel bike compris. Octobre rose fait exception : son prix
    * au comptoir est celui de la sortie (`prixComptoirXof`). Gbashi bike
    * aussi, vendu sur commande : son prix n'a pas de frais à retirer. Le serveur ne
    * l'accorde qu'à une vente saisie dans l'administration, jamais à une
@@ -150,13 +150,16 @@ export function calculerDevis(parametres: ParametresDevis, reglages: ReglagesPro
 
   if (offre === "padel-bike") {
     // Padel bike : le prix par personne réglé dans l'administration, quel que
-    // soit le vélo, le même en ligne et au comptoir.
+    // soit le vélo. C'est le prix en ligne : en espèces au comptoir, les frais
+    // du paiement en ligne s'en retirent (3 625 F en ligne, 3 500 F au
+    // comptoir, demande du responsable du 19 novembre 2026).
     const { prixXof, dureePadelHeures } = reglages.padel;
-    sousTotalXof = prixXof * nombrePersonnes;
+    const prixUnitaire = prixXof - fraisRetires;
+    sousTotalXof = prixUnitaire * nombrePersonnes;
     cautionXof = 0;
     lignes.push({
       libelle: nombrePersonnes > 1 ? `Padel bike, ${nombrePersonnes} personnes` : "Padel bike, 1 personne",
-      detail: `${formatXof(prixXof)} par personne, le vélo et ${formatDureeHeures(dureePadelHeures)} de padel`,
+      detail: `${formatXof(prixUnitaire)} par personne, le vélo et ${formatDureeHeures(dureePadelHeures)} de padel`,
       montantXof: sousTotalXof,
     });
   } else if (offre === "octobre-rose") {

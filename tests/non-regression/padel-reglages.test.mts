@@ -127,7 +127,9 @@ const avec = (padel: object) => ({ padel: { ...R, ...padel } });
 verifier("4 000 F, 2 personnes : 8 000 F", calculerDevis({ offre: "padel-bike", nombrePersonnes: 2 }, avec({ prixXof: 4000 })).totalXof, 8000);
 verifier("le détail dit 1 h 30 de padel", espaces(calculerDevis({ offre: "padel-bike", nombrePersonnes: 1 }, avec({ dureePadelHeures: 1.5 })).lignes[0].detail).includes("1 h 30 de padel"), true);
 verifier("sans réglages : 3 500 F", calculerDevis({ offre: "padel-bike", nombrePersonnes: 1 }).totalXof, 3500);
-verifier("au comptoir, même prix", calculerDevis({ offre: "padel-bike", nombrePersonnes: 2, especes: true }, avec({ prixXof: 4000 })).totalXof, 8000);
+verifier("au comptoir, 125 F de frais retirés par personne", calculerDevis({ offre: "padel-bike", nombrePersonnes: 2, especes: true }, avec({ prixXof: 4000 })).totalXof, 7750);
+verifier("au comptoir, 3 625 F en ligne donne 3 500 F", calculerDevis({ offre: "padel-bike", nombrePersonnes: 1, especes: true }, avec({ prixXof: 3625 })).totalXof, 3500);
+verifier("en ligne, le prix réglé", calculerDevis({ offre: "padel-bike", nombrePersonnes: 1 }, avec({ prixXof: 3625 })).totalXof, 3625);
 
 console.log("\n— En ligne, avant l'ouverture (réglages de départ)");
 const ici = heureAuBenin();

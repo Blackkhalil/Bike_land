@@ -203,7 +203,7 @@ function CartePadel({
             onChange={(v) => changer("prixXof", v)}
             erreur={erreurs.prixXof}
             inputMode="numeric"
-            aide="Le même en ligne et au comptoir."
+            aide="Le prix en ligne. Au comptoir, en espèces, 125 F de frais de paiement en moins."
           />
           <Champ
             id="padel-depart"

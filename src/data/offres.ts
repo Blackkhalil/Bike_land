@@ -116,7 +116,8 @@ export const PRIX_GBASHI_BIKE_XOF: Record<GammeVelo, number> = {
 /**
  * Padel bike, lancé en novembre 2026 : on pédale ensemble jusqu'au
  * terrain de padel, puis on joue au padel pendant trois heures. Un prix
- * par personne, quel que soit le vélo, le même en ligne et au comptoir.
+ * par personne, quel que soit le vélo ; au comptoir, en espèces, sans les
+ * frais du paiement en ligne (FRAIS_PAIEMENT_EN_LIGNE_XOF).
  *
  * Il se vend au comptoir, et se réserve en ligne sur sa propre page,
  * /padel-bike, à partir du 20 novembre 2026 (src/data/padel-bike.ts).

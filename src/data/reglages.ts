@@ -85,7 +85,11 @@ export function programmeEnClair(programme: { jours: readonly number[]; dates: r
 /* ---------------------------------------------------------- Padel bike */
 
 export interface ReglagesPadel {
-  /** Le prix par personne, le même en ligne et au comptoir, quel que soit le vélo. */
+  /**
+   * Le prix par personne en ligne, quel que soit le vélo. Au comptoir, en
+   * espèces, les frais du paiement en ligne s'en retirent
+   * (`FRAIS_PAIEMENT_EN_LIGNE_XOF`).
+   */
   prixXof: number;
   /** L'heure du départ à vélo. */
   depart: HeureMinute;
