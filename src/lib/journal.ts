@@ -20,7 +20,7 @@ import {
   nomDuReglage,
   valeurReglageEnClair,
 } from "@/data/libelles-reglages-offres";
-import { OFFRES_GROUPE } from "@/data/offres";
+import { formatHeure, GAMMES, OFFRES, OFFRES_GROUPE, SORTIES_SUR_COMMANDE } from "@/data/offres";
 import { formatDateAvecJour } from "@/lib/format";
 import { heureEnClair } from "@/lib/offres/calendrier";
 import { insecables } from "@/lib/offres-groupe/textes-chat";
@@ -41,6 +41,7 @@ export const TYPES_EVENEMENT: Readonly<Record<string, string>> = {
   "vente-comptoir-groupe": "Vente de groupe au comptoir",
   "vente-modifiee": "Vente en espèces modifiée",
   "paiement-sans-reservation": "Paiement sans réservation",
+  "reservation-refusee": "Réservation refusée faute de vélo",
 };
 
 /** Le nom d'un type d'événement, ou le type lui-même s'il est inconnu. */
@@ -199,6 +200,8 @@ export function resumeEvenement(evenement: EvenementJournal): ResumeEvenement {
         ],
       };
     }
+    case "reservation-refusee":
+      return resumeRefus(evenement);
     default:
       return {
         titre: libelleEvenement(evenement.type),
@@ -284,5 +287,48 @@ function resumeVenteModifiee(evenement: EvenementJournal): ResumeEvenement {
   return {
     titre: insecables(`${evenement.reference ?? "Vente"} : ${quoi}, par ${prenomDeAuteur(evenement.auteur)}`),
     lignes: lignes.map(insecables),
+  };
+}
+
+/** Le nom d'une formule d'après son code : « Padel bike », ou le code s'il est inconnu. */
+function nomOffre(valeur: unknown): string {
+  const code = texte(valeur);
+  if (!code) return "Formule inconnue";
+  if (code === "octobre-rose") return "Octobre rose";
+  if (code in SORTIES_SUR_COMMANDE) return SORTIES_SUR_COMMANDE[code as keyof typeof SORTIES_SUR_COMMANDE].nom;
+  if (code in OFFRES_GROUPE) return OFFRES_GROUPE[code as keyof typeof OFFRES_GROUPE].nom;
+  if (code === "location-libre") return "Location libre";
+  if (code === "road-trip") return "Road trip";
+  return OFFRES.find((offre) => offre.code === code)?.nom ?? code;
+}
+
+/**
+ * Une réservation refusée faute de vélo (src/lib/refus.ts) : « Gamme
+ * Classique complète le samedi 14 novembre, de 16 h à 18 h », puis ce qui
+ * était demandé et ce qu'il restait.
+ */
+function resumeRefus(evenement: EvenementJournal): ResumeEvenement {
+  const d = evenement.details;
+  const gamme = GAMMES.find((g) => g.code === texte(d.gamme))?.nom;
+  const debut = nombre(d.heureDebut);
+  const fin = nombre(d.heureFin);
+  const creneau =
+    debut !== undefined && fin !== undefined
+      ? `, de ${formatHeure(debut)} à ${formatHeure(fin)}`
+      : debut !== undefined
+        ? `, à ${formatHeure(debut)}`
+        : "";
+  const quoi = gamme ? `Gamme ${gamme}` : nomOffre(d.offre);
+  const places = nombre(d.places);
+  const personnes = nombre(d.personnes) ?? 1;
+  const constat = d.code === "PLACES" ? "pas assez de vélos" : "complet";
+  return {
+    titre: insecables(`${quoi} : ${constat} le ${jour(d.date)}${creneau}`),
+    lignes: [
+      insecables(
+        `${nomOffre(d.offre)}, ${personnes} demandé${personnes > 1 ? "s" : ""}` +
+          (places !== undefined ? `, ${places} vélo${places > 1 ? "s" : ""} libre${places > 1 ? "s" : ""}.` : "."),
+      ),
+    ],
   };
 }

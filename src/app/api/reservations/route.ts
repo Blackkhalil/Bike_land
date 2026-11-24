@@ -27,6 +27,7 @@ import { envoyerConfirmation, envoyerFacture, envoyerNotificationAdmin } from "@
 import { numeroDeFacture } from "@/lib/facture";
 import { formatDateAvecJour } from "@/lib/format";
 import { encaisser, fournisseurActif } from "@/lib/paiement";
+import { journaliserRefus } from "@/lib/refus";
 import { estEnAttente } from "@/lib/reservations";
 import { site, urlDuSite } from "@/lib/site";
 import { TarifIntrouvableError } from "@/lib/tarification";
@@ -96,6 +97,16 @@ function paiementIndisponible(): NextResponse | null {
 
 /* ------------------------------------------------------- Le tunnel */
 
+/**
+ * L'heure de fin découle de la formule : le road trip dure le temps de son
+ * créneau encadré, la location libre le nombre d'heures acheté.
+ */
+function heureFinDemandee(donnees: { offre: string; heureDebut: number; dureeHeures?: number }): number {
+  return donnees.offre === "road-trip"
+    ? donnees.heureDebut + DUREE_ROAD_TRIP_HEURES
+    : donnees.heureDebut + (donnees.dureeHeures ?? 1);
+}
+
 async function preparerReservation(corps: unknown): Promise<Preparation> {
   const analyse = schemaReservation.safeParse(corps);
 
@@ -139,6 +150,15 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
   // motif donne le numéro.
   const refus = motifDeRefus(await lireOuverture(), donnees);
   if (refus) {
+    await journaliserRefus({
+      code: "COMPLET",
+      offre: donnees.offre,
+      gamme: donnees.gamme,
+      date: donnees.dateDebut,
+      heureDebut: donnees.heureDebut,
+      heureFin: heureFinDemandee(donnees),
+      personnes: donnees.nombrePersonnes,
+    });
     return { refus: NextResponse.json({ erreur: refus, code: "COMPLET" }, { status: 409 }) };
   }
 
@@ -212,12 +232,7 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
     };
   }
 
-  // L'heure de fin découle de la formule : le road trip dure le temps de
-  // son créneau encadré, la location libre le nombre d'heures acheté.
-  const heureFin =
-    donnees.offre === "road-trip"
-      ? donnees.heureDebut + DUREE_ROAD_TRIP_HEURES
-      : donnees.heureDebut + (donnees.dureeHeures ?? 1);
+  const heureFin = heureFinDemandee(donnees);
 
   // Un vélo par personne, de la gamme choisie : pas plus de vélos qu'il
   // n'en reste de cette gamme, libres à cette heure, et au moins un. Vérifié
@@ -228,6 +243,16 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
       (autre) => autre.gamme === gamme,
     ).length;
     if (donnees.nombrePersonnes > libresGamme) {
+      await journaliserRefus({
+        code: libresGamme === 0 ? "INDISPONIBLE" : "PLACES",
+        offre: donnees.offre,
+        gamme,
+        date: donnees.dateDebut,
+        heureDebut: donnees.heureDebut,
+        heureFin,
+        personnes: donnees.nombrePersonnes,
+        places: libresGamme,
+      });
       return {
         refus: NextResponse.json(
           {
@@ -253,6 +278,15 @@ async function preparerReservation(corps: unknown): Promise<Preparation> {
       heureFin,
     );
     if (!libre) {
+      await journaliserRefus({
+        code: "INDISPONIBLE",
+        offre: donnees.offre,
+        gamme,
+        date: donnees.dateDebut,
+        heureDebut: donnees.heureDebut,
+        heureFin,
+        personnes: donnees.nombrePersonnes,
+      });
       return {
         refus: NextResponse.json(
           { erreur: "Ce vélo n'est plus libre sur ce créneau.", code: "INDISPONIBLE" },
@@ -389,6 +423,18 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
   // inscription close ou fermée pour un jour ne dit rien de l'autre.
   const refus = refusInscriptionOctobreRose(await lireOuverture(), sortie);
   if (refus) {
+    // « Sold out » depuis le tableau de bord : un refus faute de place. Une
+    // inscription close par l'heure (FERME) n'en est pas un.
+    if (refus.code !== "FERME") {
+      await journaliserRefus({
+        code: "COMPLET",
+        offre: "octobre-rose",
+        date: creneau.date,
+        heureDebut: creneau.heureDebut,
+        heureFin: creneau.heureFin,
+        personnes: donnees.nombrePersonnes,
+      });
+    }
     return {
       refus: NextResponse.json(
         { erreur: refus.erreur, code: refus.code },
@@ -455,6 +501,15 @@ async function preparerOctobreRose(corps: unknown, requete: Request): Promise<Pr
   // jour-là : chaque sortie a ses vélos.
   const libres = await depot.velosLibres(creneau.date, creneau.heureDebut, creneau.heureFin);
   if (libres.length < donnees.nombrePersonnes) {
+    await journaliserRefus({
+      code: libres.length === 0 ? "COMPLET" : "PLACES",
+      offre: "octobre-rose",
+      date: creneau.date,
+      heureDebut: creneau.heureDebut,
+      heureFin: creneau.heureFin,
+      personnes: donnees.nombrePersonnes,
+      places: libres.length,
+    });
     return {
       refus: NextResponse.json(
         {
@@ -578,6 +633,14 @@ async function preparerPadelBike(corps: unknown, requete: Request): Promise<Prep
 
   // Fermée depuis le tableau de bord, pour tous les jours ou pour ce jour-là.
   if (!padelBikeOuvertEnLigne(await lireOuverture(), donnees.date)) {
+    await journaliserRefus({
+      code: "COMPLET",
+      offre: "padel-bike",
+      date: donnees.date,
+      heureDebut: bloc.heureDebut,
+      heureFin: bloc.heureFin,
+      personnes: donnees.nombrePersonnes,
+    });
     return {
       refus: NextResponse.json(
         {
@@ -646,6 +709,15 @@ async function preparerPadelBike(corps: unknown, requete: Request): Promise<Prep
   // refait le compte.
   const libres = await depot.velosLibres(donnees.date, bloc.heureDebut, bloc.heureFin);
   if (libres.length < donnees.nombrePersonnes) {
+    await journaliserRefus({
+      code: libres.length === 0 ? "COMPLET" : "PLACES",
+      offre: "padel-bike",
+      date: donnees.date,
+      heureDebut: bloc.heureDebut,
+      heureFin: bloc.heureFin,
+      personnes: donnees.nombrePersonnes,
+      places: libres.length,
+    });
     return {
       refus: NextResponse.json(
         {
@@ -804,10 +876,23 @@ async function creerEtEncaisser(demande: DemandeReservation) {
           : undefined;
       const plusieurs = !creneau && (demande.nombrePersonnes ?? 1) > 1;
       const parPlaces = Boolean(creneau) || demande.offre === "padel-bike";
+      const code = parPlaces || (plusieurs && places !== 0) ? "PLACES" : "INDISPONIBLE";
+      // Les vélos sont partis entre le contrôle et l'écriture : un refus
+      // faute de vélo, comme les autres.
+      await journaliserRefus({
+        code,
+        offre: demande.offre,
+        gamme: demande.gamme,
+        date: demande.dateDebut,
+        heureDebut: creneau ? creneau.heureDebut : demande.heureDebut,
+        heureFin: creneau ? creneau.heureFin : heureFin,
+        personnes: demande.nombrePersonnes ?? 1,
+        places,
+      });
       return NextResponse.json(
         {
           erreur: erreur.message,
-          code: parPlaces || (plusieurs && places !== 0) ? "PLACES" : "INDISPONIBLE",
+          code,
           places,
         },
         { status: 409 },
